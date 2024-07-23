@@ -1710,7 +1710,7 @@ public class VenicePushJob implements AutoCloseable {
    *
    * @return Error message if there is any error detected in the reporter counter and {@code null} otherwise
    */
-  private String updatePushJobDetailsWithJobDetails(DataWriterTaskTracker dataWriterTaskTracker) {
+  String updatePushJobDetailsWithJobDetails(DataWriterTaskTracker dataWriterTaskTracker) {
     // Quota exceeded
     final long totalInputDataSizeInBytes =
         dataWriterTaskTracker.getTotalKeySize() + dataWriterTaskTracker.getTotalValueSize();
@@ -1747,11 +1747,16 @@ public class VenicePushJob implements AutoCloseable {
     final long recordTooLargeFailureCount = dataWriterTaskTracker.getRecordTooLargeFailureCount();
     if (recordTooLargeFailureCount > 0) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.RECORD_TOO_LARGE_FAILED);
-      String errorMessage = String.format(
+
+      // maxSizeForUserPayloadPerMessageInBytes < 1MB (Kafka record limit); errors appear when chunking is not enabled
+      // maxRecordSizeBytes can be much larger and should take effect only once chunking is enabled
+      final int recordSizeLimit = (pushJobDetails.chunkingEnabled)
+          ? getVeniceWriter(pushJobSetting).getMaxRecordSizeBytes()
+          : getVeniceWriter(pushJobSetting).getMaxSizeForUserPayloadPerMessageInBytes();
+      final String errorMessage = String.format(
           "Input data has at least %d records that exceed the maximum record limit of %s",
           recordTooLargeFailureCount,
-          generateHumanReadableByteCountString(
-              getVeniceWriter(pushJobSetting).getMaxSizeForUserPayloadPerMessageInBytes()));
+          generateHumanReadableByteCountString(recordSizeLimit));
       return errorMessage;
     }
     return null;
@@ -2305,7 +2310,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(PushJobSetting pushJobSetting) {
+  synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(PushJobSetting pushJobSetting) {
     if (veniceWriter == null) {
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
       Properties partitionerProperties = new Properties();
@@ -2317,6 +2322,7 @@ public class VenicePushJob implements AutoCloseable {
           new VeniceWriterOptions.Builder(pushJobSetting.topic).setUseKafkaKeySerializer(true)
               .setPartitioner(partitioner)
               .setPartitionCount(pushJobSetting.partitionCount)
+              .setMaxRecordSizeBytes(pushJobSetting.maxRecordSizeBytes)
               .build();
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
       LOGGER.info("Created VeniceWriter: {}", newVeniceWriter);
@@ -2340,25 +2346,17 @@ public class VenicePushJob implements AutoCloseable {
       veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
     }
     if (sslToKafka) {
-      veniceWriterProperties.putAll(this.sslProperties.get());
+      veniceWriterProperties.putAll(sslProperties.get());
     }
-    if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
-      veniceWriterProperties
-          .setProperty(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
-    } else {
-      veniceWriterProperties.setProperty(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, Integer.toString(Integer.MAX_VALUE));
-    }
-    if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
-      veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
-    } else {
-      veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE));
-    }
-    if (props.containsKey(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS)) {
-      veniceWriterProperties
-          .setProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS));
-    } else {
-      veniceWriterProperties.setProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, Integer.toString(Integer.MAX_VALUE));
-    }
+    veniceWriterProperties.setProperty(
+        KAFKA_PRODUCER_REQUEST_TIMEOUT_MS,
+        props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, Integer.toString(Integer.MAX_VALUE)));
+    veniceWriterProperties.setProperty(
+        KAFKA_PRODUCER_RETRIES_CONFIG,
+        props.getString(KAFKA_PRODUCER_RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE)));
+    veniceWriterProperties.setProperty(
+        KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS,
+        props.getString(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, Integer.toString(Integer.MAX_VALUE)));
     return veniceWriterProperties;
   }
 
@@ -2716,6 +2714,13 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSetting.isStoreWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
       pushJobSetting.isStoreIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
       pushJobSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+      pushJobSetting.maxRecordSizeBytes = storeResponse.getStore().getMaxRecordSizeBytes();
+      final boolean isRepush = pushJobSetting.isSourceKafka || pushJobSetting.isSourceETL;
+      if (isRepush && pushJobSetting.maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+        pushJobSetting.maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE; // safer to allow on repush
+        final String repushJobType = (pushJobSetting.isSourceKafka) ? "Kafka" : "ETL";
+        LOGGER.info("Setting max record size to unlimited for {} repush job", repushJobType);
+      }
     }
     return pushJobSetting.storeResponse;
   }
@@ -2746,6 +2751,9 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add(
         "Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
             + " MB. This could be the size of compressed data if the underlying filesystem compresses it");
+    propKeyValuePairs.add("Max Venice Record Size: " + pushJobSetting.maxRecordSizeBytes);
+    propKeyValuePairs.add("Is Chunking Enabled: " + pushJobSetting.chunkingEnabled);
+    propKeyValuePairs.add("Is Replication Metadata Chunking Enabled: " + pushJobSetting.rmdChunkingEnabled);
     propKeyValuePairs.add("Is incremental push: " + pushJobSetting.isIncrementalPush);
     propKeyValuePairs.add("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
     propKeyValuePairs.add("Is source ETL data: " + pushJobSetting.isSourceETL);
@@ -2941,5 +2949,13 @@ public class VenicePushJob implements AutoCloseable {
   // used only for testing
   void setDataWriterComputeJob(DataWriterComputeJob dataWriterComputeJob) {
     this.dataWriterComputeJob = dataWriterComputeJob;
+  }
+
+  void setInputStorageQuotaTracker(InputStorageQuotaTracker inputStorageQuotaTracker) {
+    this.inputStorageQuotaTracker = inputStorageQuotaTracker;
+  }
+
+  PushJobDetails getPushJobDetails() {
+    return pushJobDetails;
   }
 }

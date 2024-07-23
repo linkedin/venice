@@ -10,6 +10,7 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
@@ -952,7 +953,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testUpdateMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
-    final int expectedMaxRecordSizeBytes = 7 * 1024 * 1024;
+    final int expectedMaxRecordSizeBytes = 7 * BYTES_PER_MB;
     testUpdateConfig(
         parentClient,
         childClient,

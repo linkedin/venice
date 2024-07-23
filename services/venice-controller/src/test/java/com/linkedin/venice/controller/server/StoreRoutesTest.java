@@ -12,7 +12,13 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Collections;
@@ -178,5 +184,36 @@ public class StoreRoutesTest {
             MultiStoreStatusResponse.class);
     Assert.assertTrue(multiStoreStatusResponse.isError());
     Assert.assertEquals(multiStoreStatusResponse.getErrorType(), STORE_NOT_FOUND);
+  }
+
+  /** Testing getStore API code paths for code coverage purposes */
+  @Test
+  public void testGetStore() throws Exception {
+    final Store testStore = new ZKStore(
+        TEST_STORE_NAME,
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    final int testMaxRecordSizeBytesValue = 33333;
+    final Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+    doReturn(testStore).when(mockAdmin).getStore(TEST_CLUSTER, TEST_STORE_NAME);
+    doReturn(testMaxRecordSizeBytesValue).when(mockAdmin).getDefaultMaxRecordSizeBytes();
+
+    final Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository);
+    final StoreResponse response = ObjectMapperFactory.getInstance()
+        .readValue(
+            storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),
+            StoreResponse.class);
+    Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), testMaxRecordSizeBytesValue);
   }
 }
