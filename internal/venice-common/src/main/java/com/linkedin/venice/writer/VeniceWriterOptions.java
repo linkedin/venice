@@ -144,7 +144,7 @@ public class VeniceWriterOptions {
         time = SystemTime.INSTANCE;
       }
       if (maxRecordSizeBytes == null) {
-        maxRecordSizeBytes = -1;
+        maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
       }
     }
 
