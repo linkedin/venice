@@ -1004,7 +1004,7 @@ public abstract class TestBatch {
 
       // Add a little wiggle room (1e-3) for generating the test data / record sizes
       final double maxRatio = (double) tooLargeValueSize / maxRecordSizeBytesForTest + 1e-3;
-      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 1e-3, maxRatio);
+      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 0, maxRatio);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());

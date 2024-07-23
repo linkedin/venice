@@ -284,7 +284,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setChunkingEnabled(isChunked)
             .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
             .setPartitionCount(storeVersionPartitionCount)
-            // .setMaxRecordSizeBytes(store.getMaxRecordSizeBytes()) // TODO: allow when nearline jobs are enforced
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.maxRecordSizeBytes = (store.getMaxRecordSizeBytes() < 0) // TODO: move to VeniceWriter when nearline supported
@@ -1903,9 +1902,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected final void recordAssembledRecordSizeRatio(long size, long currentTimeMs) {
-    final double sizeRatio =
-        (maxRecordSizeBytes == VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) ? 0 : (double) size / maxRecordSizeBytes;
-    hostLevelIngestionStats.recordAssembledRecordSizeRatio(sizeRatio, currentTimeMs);
+    if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+      hostLevelIngestionStats.recordAssembledRecordSizeRatio((double) size / maxRecordSizeBytes, currentTimeMs);
+    }
   }
 
   private void recordRegionHybridConsumptionStats(

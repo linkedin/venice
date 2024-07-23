@@ -282,7 +282,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.assembledValueSizeSensor = registerSensor(ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, avgAndMax());
 
-    this.assembledRecordSizeRatioSensor = registerSensor(ASSEMBLED_RECORD_SIZE_RATIO, avgAndMax());
+    this.assembledRecordSizeRatioSensor = registerSensor(ASSEMBLED_RECORD_SIZE_RATIO, new Max());
 
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(

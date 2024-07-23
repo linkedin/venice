@@ -179,9 +179,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final ExecutorService SHUTDOWN_EXECUTOR_FOR_DVC =
       Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
 
-  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
-      new ChunkedValueManifestSerializer(true);
-
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
@@ -327,6 +324,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
+  protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
@@ -485,6 +483,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
+    this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[partitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
       this.msgForLagMeasurement[i] = kafkaVersionTopic + "_" + i;
@@ -2429,9 +2428,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
 
-  protected void recordAssembledRecordSizeRatio(long recordSize, long currentTimeMs) {
-    // no op
-  }
+  protected abstract void recordAssembledRecordSizeRatio(long recordSize, long currentTimeMs);
 
   public abstract long getBatchReplicationLag();
 
@@ -3241,11 +3238,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (metricsEnabled && recordLevelMetricEnabled.get()
             && put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
           try {
-            ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(
+            ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
                 ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
                 AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
             hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
-            recordAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize(), currentTimeMs); // TODO: RMD?
+
+            // Ideally, the record size calculation should include rmd, but it's too difficult to keep track of it
+            recordAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize(), currentTimeMs);
           } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
             LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
           }
