@@ -231,7 +231,7 @@ public class ConfigKeys {
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
-  /** Cluster name for all parent controllers */
+  // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
 
   /** List of forbidden admin paths */
@@ -1739,8 +1739,12 @@ public class ConfigKeys {
   // Config to control how much percentage of DVC replica instances are allowed to be offline before failing VPJ push.
   public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO =
       "davinci.push.status.scan.max.offline.instance.ratio";
-  // Port used by peer-to-peer transfer service
-  public static final String DAVINCI_P2P_BLOB_TRANSFER_PORT = "davinci.p2p.blob.transfer.port";
+  // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
+  public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  // Port used by peer-to-peer transfer service. It should be used by both server and client
+  public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
+  // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
+  public static final String DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT = "davinci.p2p.blob.transfer.client.port";
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
@@ -2162,4 +2166,10 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
+
+  /**
+   * Controller config for the default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes}.
+   * Only used in batch push jobs and partial updates.
+   */
+  public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
 }

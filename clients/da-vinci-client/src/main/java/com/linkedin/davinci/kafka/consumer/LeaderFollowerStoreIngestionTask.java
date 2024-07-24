@@ -40,6 +40,7 @@ import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -2991,8 +2992,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
           partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
         }
-        leaderProducedRecordContext =
-            LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, null);
+        leaderProducedRecordContext = LeaderProducedRecordContext
+            .newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, (Delete) kafkaValue.payloadUnion);
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,

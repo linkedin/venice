@@ -114,20 +114,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.elapsed.time.for.segment.in.ms";
 
   /**
-   * Maximum Venice record size. Default: {@value DEFAULT_MAX_RECORD_SIZE_BYTES}
-   *
-   * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be
-   * confused with Kafka record size (which is the ~1MB limit {@link MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
-   * is designed to comply with). Venice records refer to a Venice key-value pair, which can be spread across 1+ Kafka
-   * records / events. Basically: Records without Chunking < ~1MB < Records with Chunking < Max Record Size
-   *
-   * 1. If a batch push data contains records larger than this setting, the push job will fail.
-   * 2. If a nearline job contains records larger than this setting, consumption will be paused and manual intervention
-   * will be necessary.
-   */
-  // public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
-
-  /**
    * Chunk size. Default: {@value DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
    *
    * N.B.: This must be configured in relation to the following configs:
@@ -139,6 +125,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES =
       VENICE_WRITER_CONFIG_PREFIX + "max.size.for.user.payload.per.message.in.bytes";
 
+  /**
+   * Maximum Venice record size. Default: {@value UNLIMITED_MAX_RECORD_SIZE}
+   *
+   * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be confused
+   * with Kafka record size (which is the ~1MB limit {@link VeniceWriter#MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
+   * is designed to comply with). Venice records refer to a Venice key-value pair, which can be spread across 1+ Kafka
+   * records / events. Basically: Chunking Not Needed < ~1MB < Chunking Needed < Max Record Size
+   *
+   * 1. If a batch push data contains records larger than this setting, the push job will fail.
+   * 2. If a partial update creates records larger than this setting, consumption will be paused and manual
+   * intervention will be necessary.
+   */
+  public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
+
   // Config value defaults
 
   /**
@@ -147,9 +147,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
 
   /**
-   * The default value of -1 is overwritten with 10 MB, if not specified in the VeniceProperties from the constructor.
+   * The default for {@link #maxRecordSizeBytes} is unlimited / unset (-1) just to be safe. A more specific default value
+   * should be set using {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
+   * config on the cluster level.
    */
-  // public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = 10 * 1024 * 1024;
+  public static final int UNLIMITED_MAX_RECORD_SIZE = -1;
 
   /**
    * This controls the Kafka producer's close timeout.
@@ -273,7 +275,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingFlagInvoked;
 
   private final boolean isRmdChunkingEnabled;
-  // private final int maxRecordSizeBytes;
+  private final int maxRecordSizeBytes;
 
   private final ControlMessage heartBeatMessage;
 
@@ -304,20 +306,27 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingEnabled = params.isChunkingEnabled();
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
-    // this.maxRecordSizeBytes = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
+    this.maxRecordSizeBytes = params.getMaxRecordSizeBytes();
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
       if (!isChunkingEnabled) {
         throw new VeniceException(
-            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " cannot be set higher than "
-                + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless " + ENABLE_CHUNKING + " is true");
+            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+                + ") cannot be set higher than " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
+                + ENABLE_CHUNKING + " is true");
       } else if (isChunkingEnabled && !Version.isVersionTopic(topicName)) {
         throw new VeniceException(
-            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " cannot be set higher than "
-                + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless " + ENABLE_CHUNKING
-                + " is true and the topic is Version Topic");
+            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+                + ") cannot be set higher than " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
+                + ENABLE_CHUNKING + " is true and the topic is Version Topic");
       }
+    }
+    if (maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE
+        && maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
+      throw new VeniceException(
+          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+              + ") cannot be set higher than " + MAX_RECORD_SIZE_BYTES + " (" + maxRecordSizeBytes + ')');
     }
     this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing =
@@ -694,8 +703,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     isChunkingFlagInvoked = true;
 
+    // TODO: does a check for size > maxRecordSizeBytes need to be done here?
     int rmdPayloadSize = deleteMetadata == null ? 0 : deleteMetadata.getSerializedSize();
-    if (serializedKey.length + rmdPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
+    if (isChunkingNeededForRecord(serializedKey.length + rmdPayloadSize)) {
       throw new RecordTooLargeException(
           "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
     }
@@ -889,12 +899,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
-
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
-    if (serializedKey.length + serializedValue.length
-        + replicationMetadataPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
-      if (isChunkingEnabled) {
+
+    /**
+     * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
+     * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
+     */
+    int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
+    if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
+      if (isChunkingEnabled && !isRecordTooLarge(veniceRecordSize)) {
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1588,7 +1602,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return "Key size: " + serializedKeySize + " bytes, " + "Value size: " + serializedValueSize + " bytes, "
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
-        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes.";
+        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes, " + ", Max record size: "
+        + ((maxRecordSizeBytes == UNLIMITED_MAX_RECORD_SIZE) ? "unlimited" : maxRecordSizeBytes) + " bytes.";
   }
 
   /**
@@ -2065,6 +2080,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public Time getTime() {
     return time;
+  }
+
+  public int getMaxRecordSizeBytes() {
+    return maxRecordSizeBytes;
+  }
+
+  public boolean isRecordTooLarge(int recordSize) {
+    return maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE && recordSize > maxRecordSizeBytes;
+  }
+
+  public boolean isChunkingNeededForRecord(int recordSize) {
+    return recordSize > maxSizeForUserPayloadPerMessageInBytes;
   }
 
   public int getMaxSizeForUserPayloadPerMessageInBytes() {

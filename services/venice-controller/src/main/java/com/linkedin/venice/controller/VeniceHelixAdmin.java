@@ -414,6 +414,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private long backupVersionDefaultRetentionMs;
 
+  private int defaultMaxRecordSizeBytes;
+
   private DataRecoveryManager dataRecoveryManager;
 
   protected final PubSubTopicRepository pubSubTopicRepository;
@@ -459,7 +461,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
-    VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
+    VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
@@ -470,6 +472,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
+    this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
@@ -701,7 +704,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getCommonConfig();
+    VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getCommonConfig();
 
     VeniceProperties originalPros = controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
@@ -710,7 +713,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     }
-    controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
+    controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
@@ -1579,21 +1582,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
     return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
       Map<String, ControllerClient> controllerClients = new HashMap<>();
-      VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-      veniceControllerConfig.getChildDataCenterControllerUrlMap()
+      VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      controllerConfig.getChildDataCenterControllerUrlMap()
           .entrySet()
           .forEach(
               entry -> controllerClients.put(
                   entry.getKey(),
                   ControllerClient.constructClusterControllerClient(clusterName, entry.getValue(), sslFactory)));
 
-      veniceControllerConfig.getChildDataCenterControllerD2Map()
+      controllerConfig.getChildDataCenterControllerD2Map()
           .entrySet()
           .forEach(
               entry -> controllerClients.put(
                   entry.getKey(),
                   new D2ControllerClient(
-                      veniceControllerConfig.getD2ServiceName(),
+                      controllerConfig.getD2ServiceName(),
                       clusterName,
                       entry.getValue(),
                       sslFactory)));
@@ -2180,7 +2183,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     checkControllerLeadershipFor(clusterName);
     try {
-      VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+      VeniceControllerClusterConfig controllerConfig = getHelixVeniceClusterResources(clusterName).getConfig();
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
       createBatchTopics(
@@ -2188,7 +2191,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           version.getPushType(),
           getTopicManager(),
           version.getPartitionCount() * amplificationFactor,
-          clusterConfig,
+          controllerConfig,
           false);
     } finally {
       topicToCreationTime.remove(version.kafkaTopicName());
@@ -3152,7 +3155,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Store store = getStore(clusterName, storeName);
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
+    VeniceControllerClusterConfig systemSchemaClusterConfig =
+        multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
     String systemSchemaClusterD2Service = systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName);
     String systemSchemaClusterD2ZkHost = systemSchemaClusterConfig.getChildControllerD2ZkHost(getRegionName());
     int currentVersionNumber = store.getCurrentVersion();
@@ -7058,7 +7062,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return resources.get();
   }
 
-  void addConfig(VeniceControllerConfig config) {
+  void addConfig(VeniceControllerClusterConfig config) {
     multiClusterConfigs.addClusterConfig(config);
   }
 
@@ -7707,7 +7711,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
     /**
-     * According to {@link VeniceControllerConfig#VeniceControllerConfig(VeniceProperties)}, the map is empty
+     * According to {@link VeniceControllerClusterConfig#VeniceControllerClusterConfig(VeniceProperties)}, the map is empty
      * if this is a child controller.
      */
     return multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterControllerUrlMap();
@@ -7945,6 +7949,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public long getBackupVersionDefaultRetentionMs() {
     return backupVersionDefaultRetentionMs;
+  }
+
+  /** @see Admin#getDefaultMaxRecordSizeBytes() */
+  @Override
+  public int getDefaultMaxRecordSizeBytes() {
+    return defaultMaxRecordSizeBytes;
   }
 
   private Pair<NodeReplicasReadinessState, List<Replica>> areAllCurrentVersionReplicasReady(

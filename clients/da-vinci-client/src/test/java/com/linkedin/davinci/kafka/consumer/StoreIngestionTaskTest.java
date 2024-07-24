@@ -882,7 +882,7 @@ public abstract class StoreIngestionTaskTest {
 
     doReturn(1).when(mockStore).getPartitionCount();
 
-    doReturn(-1).when(mockStore).getMaxRecordSizeBytes();
+    doReturn(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE).when(mockStore).getMaxRecordSizeBytes();
 
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
