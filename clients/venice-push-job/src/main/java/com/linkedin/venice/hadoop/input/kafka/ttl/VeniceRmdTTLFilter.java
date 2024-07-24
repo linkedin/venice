@@ -96,6 +96,14 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
       return (long) rmdTimestampObject <= filterTimestamp;
     }
+    ByteBuffer valuePayload = getValuePayload(value);
+    if (valuePayload == null || valuePayload.remaining() == 0) {
+      /**
+       * We do not need check the field level TS for DELETE. If a field has TS older than TTL, it does not matter as it
+       * will still be overwritten by new PUT/UPDATE.
+       */
+      return true;
+    }
     RecordDeserializer<GenericRecord> valueDeserializer =
         valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
     GenericRecord valueRecord = valueDeserializer.deserialize(getValuePayload(value));
