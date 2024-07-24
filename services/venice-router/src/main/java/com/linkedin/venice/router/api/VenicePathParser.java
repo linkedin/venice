@@ -182,7 +182,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       if (VeniceRouterUtils.isHttpGet(method)) {
         RetryManager singleGetRetryManager = routerSingleGetRetryManagers.computeIfAbsent(
             storeName,
-            k -> new RetryManager(
+            ignored -> new RetryManager(
                 metricsRepository,
                 SINGLE_GET_RETRY_MANAGER_STATS_PREFIX + storeName,
                 routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
@@ -198,11 +198,10 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
             partitionFinder,
             routerStats,
             singleGetRetryManager);
-        singleGetRetryManager.recordRequest();
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         RetryManager multiGetRetryManager = routerMultiGetRetryManagers.computeIfAbsent(
             storeName,
-            k -> new RetryManager(
+            ignored -> new RetryManager(
                 metricsRepository,
                 MULTI_GET_RETRY_MANAGER_STATS_PREFIX + storeName,
                 routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
@@ -263,7 +262,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               "The passed in request must be either a GET or " + "be a POST with a resource type of " + TYPE_STORAGE
                   + " or " + TYPE_COMPUTE + ", but instead it was: " + request.toString());
         }
-        multiGetRetryManager.recordRequest();
       } else {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.empty(),

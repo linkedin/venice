@@ -360,4 +360,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   public abstract byte[] getBody();
 
   public abstract String getVeniceApiVersionHeader();
+
+  public void recordRequest() {
+    retryManager.recordRequest();
+  }
 }

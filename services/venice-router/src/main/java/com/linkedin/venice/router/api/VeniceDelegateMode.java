@@ -286,6 +286,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
               "Quota exceeded for '" + storeName + "' while serving a " + venicePath.getRequestType()
                   + " request! msg: " + e.getMessage());
         }
+        // Only record route(s) of the original request for retry manager purposes.
+        venicePath.recordRequest();
       }
     }
 

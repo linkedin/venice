@@ -244,7 +244,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
     // 1. retry attempts < longTailRetryMaxRouteForMultiKeyReq (if set).
     // 2. we still have retry budget according to retry manager.
     if (longTailRetryMaxRouteForMultiKeyReq == -1) {
-      // feature is disabled
+      // max route feature is disabled
       return retryManager.isRetryAllowed();
     } else if (longTailRetryMaxRouteForMultiKeyReq <= 0) {
       return false;

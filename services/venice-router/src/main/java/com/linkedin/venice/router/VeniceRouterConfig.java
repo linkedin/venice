@@ -401,9 +401,9 @@ public class VeniceRouterConfig {
     httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
     identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     singleGetLongTailRetryBudgetPercentDecimal =
-        props.getDouble(ROUTER_SINGLE_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.1);
+        props.getDouble(ROUTER_SINGLE_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
     multiGetLongTailRetryBudgetPercentDecimal =
-        props.getDouble(ROUTER_MULTI_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.1);
+        props.getDouble(ROUTER_MULTI_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
     longTailRetryBudgetEnforcementWindowInMs =
         props.getLong(ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, Time.MS_PER_MINUTE);
   }

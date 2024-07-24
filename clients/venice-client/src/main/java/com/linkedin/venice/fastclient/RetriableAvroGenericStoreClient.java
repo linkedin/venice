@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RetryManager;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Optional;
@@ -33,6 +34,7 @@ import org.apache.logging.log4j.Logger;
  * 2. Leverage some smart logic to avoid useless retry, such as retry triggered by heavy GC.
  */
 public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
+  private static final String FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX = "Fast-client-retry-manager-thread";
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
   private final boolean longTailRetryEnabledForCompute;
@@ -40,7 +42,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
-  private final ScheduledExecutorService retryManagerExecutorService = Executors.newScheduledThreadPool(1);
+  private final ScheduledExecutorService retryManagerExecutorService =
+      Executors.newScheduledThreadPool(1, new DaemonThreadFactory(FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX));
   /**
    * The long tail retry budget is only applied to long tail retries. If there were any exception that's not a 429 the
    * retry will be triggered without going through the long tail {@link com.linkedin.venice.meta.RetryManager}. If the retry budget is exhausted

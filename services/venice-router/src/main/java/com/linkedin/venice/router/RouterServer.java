@@ -84,6 +84,7 @@ import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -127,6 +128,8 @@ import org.apache.logging.log4j.Logger;
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
+
+  private static final String ROUTER_RETRY_MANAGER_THREAD_PREFIX = "Router-retry-manager-thread";
 
   // Immutable state
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
@@ -523,7 +526,8 @@ public class RouterServer extends AbstractVeniceService {
         compressorFactory,
         metricsRepository);
 
-    retryManagerExecutorService = Executors.newScheduledThreadPool(3);
+    retryManagerExecutorService =
+        Executors.newScheduledThreadPool(3, new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
 
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
