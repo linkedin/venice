@@ -931,11 +931,20 @@ public class PartialUpdateTest {
     sendStreamingRecord(veniceProducer, storeName, key3, updateBuilder.build(), FRESH_TS);
 
     /**
-     * Case 3: The delete record is fully fresh, TTL repush should NOT FAIL due to this record.
+     * Case 4: The delete record is fully fresh, TTL repush should NOT FAIL due to this record.
      */
     String key4 = "key4";
     sendStreamingRecord(veniceProducer, storeName, key4, updateBuilder.build(), FRESH_TS);
     sendStreamingDeleteRecord(veniceProducer, storeName, key4, FRESH_TS + 1);
+
+    /**
+     * Case 5: The delete record is stale, TTL repush should keep new update.
+     */
+    String key5 = "key5";
+    sendStreamingDeleteRecord(veniceProducer, storeName, key5, STALE_TS);
+    updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue(REGULAR_FIELD, "new_name_5");
+    sendStreamingRecord(veniceProducer, storeName, key5, updateBuilder.build(), FRESH_TS);
 
     /**
      * Validate the data is ready in storage before TTL repush.
@@ -962,6 +971,10 @@ public class PartialUpdateTest {
 
           valueRecord = readValue(storeReader, key4);
           assertNull(valueRecord);
+
+          valueRecord = readValue(storeReader, key5);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_5"));
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -1032,6 +1045,13 @@ public class PartialUpdateTest {
           valueRecord = readValue(storeReader, key3);
           assertNotNull(valueRecord);
           assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_3"));
+
+          valueRecord = readValue(storeReader, key4);
+          assertNull(valueRecord);
+
+          valueRecord = readValue(storeReader, key5);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_5"));
         } catch (Exception e) {
           throw new VeniceException(e);
         }

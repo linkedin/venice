@@ -102,7 +102,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
        * We do not need check the field level TS for DELETE. If a field has TS older than TTL, it does not matter as it
        * will still be overwritten by new PUT/UPDATE.
        */
-      return true;
+      return false;
     }
     RecordDeserializer<GenericRecord> valueDeserializer =
         valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
