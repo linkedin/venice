@@ -617,7 +617,7 @@ public class VeniceControllerClusterConfig {
     this.replicationMetadataVersion = props.getInt(REPLICATION_METADATA_VERSION, 1);
     // go/inclusivecode deferred(Will be replaced when clients have migrated)
     this.childDatacenters = Utils.parseCommaSeparatedStringToSet(
-        props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, (String) null));
+        props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, null));
     this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
 
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -645,7 +645,7 @@ public class VeniceControllerClusterConfig {
             NATIVE_REPLICATION_FABRIC_ALLOWLIST,
             // go/inclusivecode deferred(will be removed once all configs have migrated)
             NATIVE_REPLICATION_FABRIC_WHITELIST,
-            (String) null));
+            null));
 
     this.d2ServiceName =
         childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
@@ -666,26 +666,10 @@ public class VeniceControllerClusterConfig {
       }
     }
 
-    Set<String> activeActiveRealTimeSourceFabrics = Utils
-        .parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, (String) null));
-
-    for (String fabric: activeActiveRealTimeSourceFabrics) {
-      if (!childDataCenterKafkaUrlMap.containsKey(fabric)) {
-        throw new VeniceException(
-            String.format("No A/A source Kafka URL found for fabric %s in %s", fabric, childDataCenterKafkaUrlMap));
-      }
-    }
-
-    this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceFabrics.stream()
-        .map(childDataCenterKafkaUrlMap::get)
-        .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
-
-    this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
-
     if (props.containsKey(MULTI_REGION)) {
       this.multiRegion = props.getBoolean(MULTI_REGION);
     } else {
-      LOGGER.warn("Config {} is not set. Inferring multi-region setup from other configs.", MULTI_REGION);
+      LOGGER.warn("Config '{}' is not set. Inferring multi-region setup from other configs.", MULTI_REGION);
 
       /**
        * Historically, {@link MULTI_REGION} was not a supported config. It was handled on a case-by-case basis by
@@ -710,6 +694,29 @@ public class VeniceControllerClusterConfig {
         this.multiRegion = false;
       }
     }
+
+    Set<String> activeActiveRealTimeSourceFabrics = Utils
+        .parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, (String) null));
+
+    if (activeActiveRealTimeSourceFabrics.isEmpty()) {
+      LOGGER.info(
+          "'{}' not configured explicitly. Using '{}' from '{}'",
+          ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+          nativeReplicationSourceFabricAllowlist,
+          NATIVE_REPLICATION_FABRIC_ALLOWLIST);
+      activeActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
+    }
+
+    this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceFabrics.stream()
+        .map(childDataCenterKafkaUrlMap::get) // Get the Kafka URL for each fabric
+        .peek(kafkaUrl -> { // Ensure that a Kafka URL is found for each fabric
+          if (kafkaUrl == null) {
+            throw new VeniceException("No Kafka URL found for A/A source fabric");
+          }
+        })
+        .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
+
+    this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
 
     this.parentControllerWaitingTimeForConsumptionMs =
         props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);

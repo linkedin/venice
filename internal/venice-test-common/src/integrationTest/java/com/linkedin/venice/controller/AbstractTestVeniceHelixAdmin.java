@@ -248,7 +248,7 @@ class AbstractTestVeniceHelixAdmin {
    */
   private void verifyParticipantMessageStoreSetup() {
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);
       Assert.assertNotNull(store);
       Assert.assertEquals(store.getVersions().size(), 1);

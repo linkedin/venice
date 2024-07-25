@@ -460,13 +460,6 @@ public class Utils {
     return Arrays.asList(allowed).contains(newStatus.getRootStatus());
   }
 
-  public static List<String> parseCommaSeparatedStringToList(String rawString) {
-    if (StringUtils.isEmpty(rawString)) {
-      return Collections.emptyList();
-    }
-    return Arrays.asList(rawString.split(",\\s*"));
-  }
-
   public static Set<String> parseCommaSeparatedStringToSet(String rawString) {
     if (StringUtils.isEmpty(rawString)) {
       return Collections.emptySet();
