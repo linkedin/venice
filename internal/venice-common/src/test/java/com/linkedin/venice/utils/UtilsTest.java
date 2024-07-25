@@ -189,10 +189,17 @@ public class UtilsTest {
   public void testParseCommaSeparatedStringToSet() {
     Assert.assertTrue(Utils.parseCommaSeparatedStringToSet(null).isEmpty());
     Assert.assertTrue(Utils.parseCommaSeparatedStringToSet("").isEmpty());
+
     Set<String> set = Utils.parseCommaSeparatedStringToSet("a,b,c");
     Assert.assertEquals(set.size(), 3);
     Assert.assertTrue(set.contains("a"));
     Assert.assertTrue(set.contains("b"));
     Assert.assertTrue(set.contains("c"));
+
+    Set<String> setWithSpaces = Utils.parseCommaSeparatedStringToSet("a, b, c");
+    Assert.assertEquals(setWithSpaces.size(), 3);
+    Assert.assertTrue(setWithSpaces.contains("a"));
+    Assert.assertTrue(setWithSpaces.contains("b"));
+    Assert.assertTrue(setWithSpaces.contains("c"));
   }
 }

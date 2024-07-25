@@ -707,13 +707,14 @@ public class VeniceControllerClusterConfig {
       activeActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
     }
 
+    for (String aaSourceFabric: activeActiveRealTimeSourceFabrics) {
+      if (!childDataCenterKafkaUrlMap.containsKey(aaSourceFabric)) {
+        throw new VeniceException(String.format("No Kafka URL found for A/A source fabric '%s'", aaSourceFabric));
+      }
+    }
+
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceFabrics.stream()
-        .map(childDataCenterKafkaUrlMap::get) // Get the Kafka URL for each fabric
-        .peek(kafkaUrl -> { // Ensure that a Kafka URL is found for each fabric
-          if (kafkaUrl == null) {
-            throw new VeniceException("No Kafka URL found for A/A source fabric");
-          }
-        })
+        .map(childDataCenterKafkaUrlMap::get)
         .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
 
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
@@ -141,6 +142,7 @@ public class TestVeniceControllerClusterConfig {
     props.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, "dc-0, dc-1, dc-parent");
     props.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".dc-0", "kafkaUrlDc0");
     props.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".dc-1", "kafkaUrlDc1");
+    props.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".dc-parent", "kafkaUrlDcParent");
 
     if (includeMultiRegionConfig) {
       props.put(MULTI_REGION, "true");
@@ -168,6 +170,12 @@ public class TestVeniceControllerClusterConfig {
     VeniceControllerClusterConfig multiRegionConfig =
         new VeniceControllerClusterConfig(new VeniceProperties(multiRegionProps));
     Assert.assertTrue(multiRegionConfig.isMultiRegion());
+
+    Properties multiRegionPropsWithAaSourceRegion = getBaseMultiRegionProperties(explicitMultiRegionConfig);
+    multiRegionPropsWithAaSourceRegion.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, "dc-0, dc-1");
+    VeniceControllerClusterConfig multiRegionConfigWithAaSourceRegion =
+        new VeniceControllerClusterConfig(new VeniceProperties(multiRegionPropsWithAaSourceRegion));
+    Assert.assertTrue(multiRegionConfigWithAaSourceRegion.isMultiRegion());
 
     Properties parentControllerProps = getBaseParentControllerProperties(explicitMultiRegionConfig);
     VeniceControllerClusterConfig parentControllerConfig =
