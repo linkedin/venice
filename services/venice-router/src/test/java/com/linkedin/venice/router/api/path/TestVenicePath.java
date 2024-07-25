@@ -214,9 +214,9 @@ public class TestVenicePath {
       retryPath.setRetryRequest();
       retryPath.setupRetryRelatedInfo(orgPath);
       if (i < 5) {
-        assertTrue(retryPath.isLongTailRetryAllowedForNewRoute());
+        assertTrue(retryPath.isLongTailRetryAllowedForNewRequest());
       } else {
-        assertFalse(retryPath.isLongTailRetryAllowedForNewRoute());
+        assertFalse(retryPath.isLongTailRetryAllowedForNewRequest());
       }
     }
   }

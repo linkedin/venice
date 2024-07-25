@@ -526,8 +526,9 @@ public class RouterServer extends AbstractVeniceService {
         compressorFactory,
         metricsRepository);
 
-    retryManagerExecutorService =
-        Executors.newScheduledThreadPool(3, new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
+    retryManagerExecutorService = Executors.newScheduledThreadPool(
+        config.getRetryManagerCorePoolSize(),
+        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
 
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,

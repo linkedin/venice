@@ -34,7 +34,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
     rejectedRetrySensor = registerSensorIfAbsent("rejected_retry", new OccurrenceRate());
   }
 
-  public void recordRejectedRetry() {
-    rejectedRetrySensor.record();
+  public void recordRejectedRetry(int count) {
+    rejectedRetrySensor.record(count);
   }
 }

@@ -72,7 +72,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_PENDING_REQUEST;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_READ_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_META_STORE_SHADOW_READ_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTIGET_TARDY_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
@@ -82,8 +82,9 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFE
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SOCKET_TIMEOUT;
@@ -218,9 +219,10 @@ public class VeniceRouterConfig {
   private boolean httpClientOpensslEnabled;
   private String identityParserClassName;
 
-  private double singleGetLongTailRetryBudgetPercentDecimal;
-  private double multiGetLongTailRetryBudgetPercentDecimal;
+  private double singleKeyLongTailRetryBudgetPercentDecimal;
+  private double multiKeyLongTailRetryBudgetPercentDecimal;
   private long longTailRetryBudgetEnforcementWindowInMs;
+  private int retryManagerCorePoolSize;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -400,12 +402,13 @@ public class VeniceRouterConfig {
     perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
     httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
     identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
-    singleGetLongTailRetryBudgetPercentDecimal =
-        props.getDouble(ROUTER_SINGLE_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
-    multiGetLongTailRetryBudgetPercentDecimal =
-        props.getDouble(ROUTER_MULTI_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
+    singleKeyLongTailRetryBudgetPercentDecimal =
+        props.getDouble(ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
+    multiKeyLongTailRetryBudgetPercentDecimal =
+        props.getDouble(ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, 0.0);
     longTailRetryBudgetEnforcementWindowInMs =
         props.getLong(ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, Time.MS_PER_MINUTE);
+    retryManagerCorePoolSize = props.getInt(ROUTER_RETRY_MANAGER_CORE_POOL_SIZE, 5);
   }
 
   public double getPerStoreRouterQuotaBuffer() {
@@ -857,15 +860,19 @@ public class VeniceRouterConfig {
     return identityParserClassName;
   }
 
-  public double getSingleGetLongTailRetryBudgetPercentDecimal() {
-    return singleGetLongTailRetryBudgetPercentDecimal;
+  public double getSingleKeyLongTailRetryBudgetPercentDecimal() {
+    return singleKeyLongTailRetryBudgetPercentDecimal;
   }
 
-  public double getMultiGetLongTailRetryBudgetPercentDecimal() {
-    return multiGetLongTailRetryBudgetPercentDecimal;
+  public double getMultiKeyLongTailRetryBudgetPercentDecimal() {
+    return multiKeyLongTailRetryBudgetPercentDecimal;
   }
 
   public long getLongTailRetryBudgetEnforcementWindowInMs() {
     return longTailRetryBudgetEnforcementWindowInMs;
+  }
+
+  public int getRetryManagerCorePoolSize() {
+    return retryManagerCorePoolSize;
   }
 }

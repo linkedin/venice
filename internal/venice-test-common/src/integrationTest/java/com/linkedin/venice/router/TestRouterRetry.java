@@ -235,8 +235,8 @@ public class TestRouterRetry {
   @Test(timeOut = 60000)
   public void testRouterMultiGetRetryManager() throws ExecutionException, InterruptedException {
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, "1000");
-    extraProperties.put(ConfigKeys.ROUTER_SINGLE_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
-    extraProperties.put(ConfigKeys.ROUTER_MULTI_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    extraProperties.put(ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
     initCluster();
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -251,26 +251,26 @@ public class TestRouterRetry {
       // Retry manager should eventually be initialized for multi-get
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         double multiGetRetryLimit = MetricsUtils.getSum(
-            ".multi-get-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+            ".multi-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
             veniceCluster.getVeniceRouters());
         Assert.assertTrue(multiGetRetryLimit > 0);
       });
       double multiGetRejectedRetry = MetricsUtils.getSum(
-          ".multi-get-long-tail-retry-manager-" + storeName + "--rejected_retry.OccurrenceRate",
+          ".multi-key-long-tail-retry-manager-" + storeName + "--rejected_retry.OccurrenceRate",
           veniceCluster.getVeniceRouters());
       double singleGetRetryLimit = MetricsUtils.getSum(
-          "single-get-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+          "single-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
           veniceCluster.getVeniceRouters());
       Assert.assertEquals(multiGetRejectedRetry, 0.0, "Rejected retry is unexpected");
-      Assert.assertEquals(singleGetRetryLimit, 0.0, "Single-get retry manager shouldn't be initialized");
+      Assert.assertEquals(singleGetRetryLimit, 0.0, "Single-key retry manager shouldn't be initialized");
     }
   }
 
   @Test(timeOut = 60000)
   public void testRouterSingleGetRetryManager() throws ExecutionException, InterruptedException {
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, "1000");
-    extraProperties.put(ConfigKeys.ROUTER_SINGLE_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
-    extraProperties.put(ConfigKeys.ROUTER_MULTI_GET_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    extraProperties.put(ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
     initCluster();
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -282,18 +282,18 @@ public class TestRouterRetry {
       // Retry manager should eventually be initialized for single-get
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         double singleGetRetryLimit = MetricsUtils.getSum(
-            ".single-get-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+            ".single-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
             veniceCluster.getVeniceRouters());
         Assert.assertTrue(singleGetRetryLimit > 0);
       });
       double singleGetRejectedRetry = MetricsUtils.getSum(
-          ".single-get-long-tail-retry-manager-" + storeName + "--rejected_retry.OccurrenceRate",
+          ".single-key-long-tail-retry-manager-" + storeName + "--rejected_retry.OccurrenceRate",
           veniceCluster.getVeniceRouters());
       double multiGetRetryLimit = MetricsUtils.getSum(
-          "multi-get-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+          "multi-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
           veniceCluster.getVeniceRouters());
       Assert.assertEquals(singleGetRejectedRetry, 0.0, "Rejected retry is unexpected");
-      Assert.assertEquals(multiGetRetryLimit, 0.0, "Multi-get retry manager shouldn't be initialized");
+      Assert.assertEquals(multiGetRetryLimit, 0.0, "Multi-key retry manager shouldn't be initialized");
     }
   }
 }

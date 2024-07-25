@@ -75,15 +75,19 @@ public class RetryManager {
   }
 
   public boolean isRetryAllowed() {
+    return this.isRetryAllowed(1);
+  }
+
+  public boolean isRetryAllowed(int numberOfRetries) {
     TokenBucket tokenBucket = retryTokenBucket.get();
     if (!retryBudgetEnabled.get() || tokenBucket == null) {
       // All retries are allowed when the feature is disabled or during the very first enforcement window when we
       // haven't collected enough data points yet
       return true;
     }
-    boolean retryAllowed = retryTokenBucket.get().tryConsume(1);
+    boolean retryAllowed = retryTokenBucket.get().tryConsume(numberOfRetries);
     if (!retryAllowed) {
-      retryManagerStats.recordRejectedRetry();
+      retryManagerStats.recordRejectedRetry(numberOfRetries);
     }
     return retryAllowed;
   }

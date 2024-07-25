@@ -339,8 +339,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return getChunkedResponse() != null;
   }
 
-  public boolean isLongTailRetryAllowedForNewRoute() {
-    return retryManager.isRetryAllowed();
+  public boolean isLongTailRetryAllowedForNewRequest() {
+    return true;
   }
 
   public abstract RequestType getRequestType();
@@ -363,5 +363,9 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public void recordRequest() {
     retryManager.recordRequest();
+  }
+
+  public boolean isLongTailRetryWithinBudget(int numberOfRoutes) {
+    return retryManager.isRetryAllowed(numberOfRoutes);
   }
 }

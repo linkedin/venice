@@ -49,13 +49,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
    * retry will be triggered without going through the long tail {@link com.linkedin.venice.meta.RetryManager}. If the retry budget is exhausted
    * then the retry task will do nothing and the request will either complete eventually (original future) or time out.
    */
-  private RetryManager singleGetLongTailRetryManager = null;
-  private RetryManager multiGetLongTailRetryManager = null;
+  private RetryManager singleKeyLongTailRetryManager = null;
+  private RetryManager multiKeyLongTailRetryManager = null;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
   // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
   private static final double LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL = 0.1d;
-  private static final String SINGLE_GET_LONG_TAIL_RETRY_STATS_PREFIX = "single-get-long-tail-retry-manager-";
-  private static final String MULTI_GET_LONG_TAIL_RETRY_STATS_PREFIX = "multi-get-long-tail-retry-manager-";
+  private static final String SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "single-key-long-tail-retry-manager-";
+  private static final String MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "multi-key-long-tail-retry-manager-";
 
   public RetriableAvroGenericStoreClient(
       InternalAvroStoreClient<K, V> delegate,
@@ -77,17 +77,17 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         clientConfig.getLongTailRetryThresholdForComputeInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
     if (longTailRetryEnabledForSingleGet) {
-      this.singleGetLongTailRetryManager = new RetryManager(
+      this.singleKeyLongTailRetryManager = new RetryManager(
           clientConfig.getClusterStats().getMetricsRepository(),
-          SINGLE_GET_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
+          SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
           LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL,
           retryManagerExecutorService);
     }
     if (longTailRetryEnabledForBatchGet) {
-      this.multiGetLongTailRetryManager = new RetryManager(
+      this.multiKeyLongTailRetryManager = new RetryManager(
           clientConfig.getClusterStats().getMetricsRepository(),
-          MULTI_GET_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
+          MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
           LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL,
           retryManagerExecutorService);
@@ -141,7 +141,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       // if longTailRetry is not enabled for single get, simply return the original future
       return originalRequestFuture;
     }
-    singleGetLongTailRetryManager.recordRequest();
+    singleKeyLongTailRetryManager.recordRequest();
     final CompletableFuture<V> retryFuture = new CompletableFuture<>();
     final CompletableFuture<V> finalFuture = new CompletableFuture<>();
 
@@ -153,7 +153,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         retryFuture.completeExceptionally(savedException.get());
         return;
       }
-      if (savedException.get() != null || singleGetLongTailRetryManager.isRetryAllowed()) {
+      if (savedException.get() != null || singleKeyLongTailRetryManager.isRetryAllowed()) {
         super.get(requestContext, key).whenComplete((value, throwable) -> {
           if (throwable != null) {
             retryFuture.completeExceptionally(throwable);
@@ -312,7 +312,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           finalRequestCompletionFuture.completeExceptionally(throwable);
           return;
         }
-        if (throwable != null || multiGetLongTailRetryManager.isRetryAllowed()) {
+        if (throwable != null || multiKeyLongTailRetryManager.isRetryAllowed()) {
           Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
           R retryRequestContext =
               requestContextConstructor.construct(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
@@ -360,7 +360,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             savedException,
             pendingKeysFuture,
             scheduledRetryTask));
-    multiGetLongTailRetryManager.recordRequest();
+    multiKeyLongTailRetryManager.recordRequest();
 
     finalRequestCompletionFuture.whenComplete((ignore, finalException) -> {
       if (!scheduledRetryTask.isDone()) {

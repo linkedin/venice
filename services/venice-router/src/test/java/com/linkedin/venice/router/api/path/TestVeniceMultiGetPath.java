@@ -180,8 +180,8 @@ public class TestVeniceMultiGetPath {
         null,
         1,
         disabledRetryManager);
-    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
-    Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
+    Assert.assertFalse(path.isLongTailRetryAllowedForNewRequest());
 
     request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
@@ -198,7 +198,7 @@ public class TestVeniceMultiGetPath {
         null,
         -1,
         disabledRetryManager);
-    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
-    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
   }
 }
