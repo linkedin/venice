@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -38,7 +39,7 @@ public class TestTopicCleanupServiceForParentController {
     doReturn(2).when(config).getTopicCleanupDelayFactor();
     VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(config).getCommonConfig();
-    doReturn("dc1").when(controllerConfig).getChildDatacenters();
+    doReturn(Collections.singleton("dc1")).when(controllerConfig).getChildDatacenters();
     TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(pubSubClientsFactory).getAdminAdapterFactory();
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();

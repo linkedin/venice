@@ -17,7 +17,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,7 +73,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
-  private final List<String> childFabricList;
+  private final Set<String> childRegions;
   private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicCleanupServiceStats topicCleanupServiceStats;
@@ -105,12 +104,11 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.multiClusterConfigs = multiClusterConfigs;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.topicCleanupServiceStats = topicCleanupServiceStats;
-    this.childFabricList =
-        Utils.parseCommaSeparatedStringToList(multiClusterConfigs.getCommonConfig().getChildDatacenters());
+    this.childRegions = multiClusterConfigs.getCommonConfig().getChildDatacenters();
     if (!admin.isParent()) {
       // Only perform cross fabric VT check for RT deletion in child fabrics.
-      this.multiDataCenterStoreToVersionTopicCount = new HashMap<>(childFabricList.size());
-      for (String datacenter: childFabricList) {
+      this.multiDataCenterStoreToVersionTopicCount = new HashMap<>(childRegions.size());
+      for (String datacenter: childRegions) {
         multiDataCenterStoreToVersionTopicCount.put(datacenter, new HashMap<>());
       }
     } else {
@@ -306,14 +304,14 @@ public class TopicCleanupService extends AbstractVeniceService {
   private void refreshMultiDataCenterStoreToVersionTopicCountMap(Set<PubSubTopic> localTopics) {
     if (localDatacenter == null) {
       String localPubSubBootstrapServer = getTopicManager().getPubSubClusterAddress();
-      for (String childFabric: childFabricList) {
+      for (String childFabric: childRegions) {
         if (localPubSubBootstrapServer.equals(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric))) {
           localDatacenter = childFabric;
           break;
         }
       }
       if (localDatacenter == null) {
-        String childFabrics = String.join(",", childFabricList);
+        String childFabrics = String.join(",", childRegions);
         LOGGER.error(
             "Blocking RT topic deletion. Cannot find local datacenter in child datacenter list: {}",
             childFabrics);
@@ -324,8 +322,8 @@ public class TopicCleanupService extends AbstractVeniceService {
     clearAndPopulateStoreToVersionTopicCountMap(
         localTopics,
         multiDataCenterStoreToVersionTopicCount.get(localDatacenter));
-    if (childFabricList.size() > 1) {
-      for (String childFabric: childFabricList) {
+    if (childRegions.size() > 1) {
+      for (String childFabric: childRegions) {
         try {
           if (childFabric.equals(localDatacenter)) {
             continue;

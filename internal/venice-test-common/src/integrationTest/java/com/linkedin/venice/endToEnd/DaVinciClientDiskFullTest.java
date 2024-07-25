@@ -94,7 +94,6 @@ public class DaVinciClientDiskFullTest {
             .numberOfRouters(1)
             .replicationFactor(1)
             .partitionSize(100)
-            .minActiveReplica(0)
             .sslToStorageNodes(false)
             .sslToKafka(false)
             .extraProperties(clusterConfig)

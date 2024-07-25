@@ -4,190 +4,588 @@ Venice Admin Tool
 For directly affecting administrative actions and queries on a Venice cluster
 
 ```
-usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
+usage: java -jar venice-admin-tool-all.jar --<command> [parameters]
 
 Commands:
-    --add-schema                 Requires: --url, --cluster, --store,
-                                 --value-schema-file
-    --cluster-health-instances   List the status for every instance.
-                                 Requires: --url, --cluster
-    --cluster-health-stores      List the status for every store.
-                                 Requires: --url, --cluster
-    --delete-all-versions        Delete all versions in given store..
-                                 Requires: --url, --cluster, --store
-    --delete-store               Delete the given store including both
-                                 metadata and all versions in this store..
-                                 Requires: --url, --cluster, --store
-    --describe-store             Requires: --url, --cluster, --store
-    --describe-stores            Requires: --url, --cluster
-    --disable-store              Disable store in both read and write
-                                 path..  Requires: --url, --cluster,
-                                 --store
-    --disable-store-read         Prevent a store from serving read
-                                 requests.  Requires: --url, --cluster,
-                                 --store
-    --disable-store-write        Prevent a store from accepting new
-                                 versions.  Requires: --url, --cluster,
-                                 --store
-    --empty-push                 Do an empty push into an existing store.
-                                 Requires: --url, --cluster, --store,
-                                 --push-id, --store-size
-    --enable-store               Enable a store in both read and write
-                                 path.  Requires: --url, --cluster,
-                                 --store
-    --enable-store-read          Allow a store to serve read requests
-                                 again after reads have been disabled.
-                                 Requires: --url, --cluster, --store
-    --enable-store-write         Allow a store to accept new versions
-                                 again after being writes have been
-                                 disabled.  Requires: --url, --cluster,
-                                 --store
-    --get-execution              Get the execution status for an async
-                                 admin command..  Requires: --url,
-                                 --cluster, --execution
-    --job-status                 Query the ingest status of a running push
-                                 job.  Requires: --url, --cluster,
-                                 --store, --version
-    --kill-job                   Kill a running push job.  Requires:
-                                 --url, --cluster, --store, --version
-    --list-storage-nodes         Requires: --url, --cluster
-    --list-stores                Requires: --url, --cluster
-    --new-store                  Requires: --url, --cluster, --store,
-                                 --key-schema-file, --value-schema-file,
-                                 --owner
-    --node-removable             A node is removable if all replicas it is
-                                 serving are available on other nodes.
-                                 Requires: --url, --cluster,
-                                 --storage-node
-    --query                      Query a store that has a simple key
-                                 schema.  Requires: --url, --cluster,
-                                 --store, --key
-    --remove-node                Remove a storage node from the cluster.
-                                 Requires: --url, --cluster,
-                                 --storage-node
-    --replicas-of-store          List the location and status of all
-                                 replicas for a store.  Requires: --url,
-                                 --cluster, --store, --version
-    --replicas-on-storage-node   List the store and status of all replicas
-                                 on a storage node.  Requires: --url,
-                                 --cluster, --storage-node
-    --schemas                    Show the key and value schemas for a
-                                 store.  Requires: --url, --cluster,
-                                 --store
-    --set-owner                  Update owner info of an existing store.
-                                 Requires: --url, --cluster, --store,
-                                 --owner
-    --set-partition-count        Update the number of partitions of an
-                                 existing store.  Requires: --url,
-                                 --cluster, --store, --partition-count
-    --set-version                Set the version that will be served.
-                                 Requires: --url, --cluster, --store,
-                                 --version
-    --skip-admin                 Skip an admin message.  Requires: --url,
-                                 --cluster, --offset
-    --update-store               update store metadata.  Requires: --url,
-                                 --cluster, --store, --owner,
-                                 --partition-count, --version,
-                                 --readability, --writeability,
-                                 --storage-quota, --read-quota
-    --white-list-add-node        Add a storage node into the white list..
-                                 Requires: --url, --cluster,
-                                 --storage-node
-    --white-list-remove-node     Remove a storage node from the white
-                                 list..  Requires: --url, --cluster,
-                                 --storage-node
-    --node-replicas-readiness    Get the status of all current version
-                                 replicas that a storage node assigned to.
-                                 Requires: --url, --cluster, --storage-node
+    --abort-migration                                 Kill store migration task and revert to previous state.
+                                                      Requires: --url --store --cluster-src --cluster-dest
+                                                      Optional args: --force
+    --add-derived-schema
+                                                      Requires: --url --store --value-schema-id --derived-schema-file
+                                                      Optional args: --cluster
+    --add-schema
+                                                      Requires: --url --store --value-schema-file
+                                                      Optional args: --cluster
+    --add-schema-to-zk
+                                                      Requires: --venice-zookeeper-url --store --value-schema-file --value-schema-id
+                                                      --zk-ssl-config-file
+                                                      Optional args: --cluster
+    --add-to-store-acl                                Add a principal to ACL's for an existing store.
+                                                      Requires: --url --store --principal
+                                                      Optional args: --cluster --readability --writeability
+    --allow-list-add-node                             Add a storage node into the allowlist.
+                                                      Requires: --url --cluster --storage-node
+    --allow-list-remove-node                          Remove a storage node from the allowlist.
+                                                      Requires: --url --cluster --storage-node
+    --backfill-system-stores                          Create system stores of a given type for user stores in a cluster.
+                                                      Requires: --url --cluster --system-store-type
+    --backup-store-metadata-from-graveyard            Backup store metadata from graveyard in EI.
+                                                      Requires: --venice-zookeeper-url --zk-ssl-config-file --backup-folder
+    --check-fabric-buildout-status                    Check the status of cluster building in destination fabric.
+                                                      Requires: --url --cluster --source-fabric --dest-fabric
+    --cleanup-instance-customized-states              Cleanup any lingering instance level customized states.
+                                                      Requires: --url --cluster
+    --cluster-health-instances                        List the status for every instance.
+                                                      Requires: --url --cluster
+                                                      Optional args: --enable-disabled-replicas
+    --cluster-health-stores                           List the status for every store.
+                                                      Requires: --url --cluster
+    --compare-store                                   Compare a store between two fabrics.
+                                                      Requires: --url --store --fabric-a --fabric-b
+                                                      Optional args: --cluster
+    --complete-migration                              Update cluster discovery in a fabric.
+                                                      Requires: --url --store --cluster-src --cluster-dest --fabric
+    --configure-store-view                            Configure store view of a certain store.
+                                                      Requires: --url --store --view-name
+                                                      Optional args: --cluster --view-class --view-params --remove-view
+    --convert-vson-schema                             Convert and print out Avro schemas based on input Vson schemas.
+                                                      Requires: --key-schema-file --value-schema-file
+    --delete-all-versions                             Delete all versions in given store.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --delete-kafka-topic                              Delete a Kafka topic directly (without interaction with the Venice Controller.
+                                                      Requires: --kafka-bootstrap-servers --kafka-topic-name
+                                                      Optional args: --kafka-operation-timeout --kafka-consumer-config-file
+    --delete-old-version                              Delete the given version(non current version) in the given store.
+                                                      Requires: --url --store --version
+                                                      Optional args: --cluster
+    --delete-storage-persona                          Deletes an existing storage persona.
+                                                      Requires: --url --cluster --storage-persona
+    --delete-store                                    Delete the given store including both metadata and all versions in this store.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --delete-store-acl                                Delete ACL's for an existing store.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --describe-store                                  Get store details.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --describe-stores
+                                                      Requires: --url --cluster
+                                                      Optional args: --include-system-stores
+    --disable-active-active-replication-for-cluster   disable active active replication for certain stores (batch-only, hybrid-only,
+                                                      incremental-push, hybrid-or-incremental, all) in a cluster.
+                                                      Requires: --url --cluster --store-type
+                                                      Optional args: --regions-filter
+    --disable-max-capacity-protection                 Disable the feature that prevent read request usage exceeding the max capacity on all
+                                                      routers..
+                                                      Requires: --url --cluster
+    --disable-quota-rebalance                         Disable the feature that quota could be rebalanced once live router count is changed
+                                                      on all routers.
+                                                      Requires: --url --cluster --expected-router-count
+    --disable-store                                   Disable store in both read and write path.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --disable-store-read                              Prevent a store from serving read requests.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --disable-store-write                             Prevent a store from accepting new versions.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --disable-throttling                              Disable the feature that throttling read request on all routers.
+                                                      Requires: --url --cluster
+    --dump-admin-messages                             Dump admin messages.
+                                                      Requires: --cluster --kafka-bootstrap-servers --starting_offset --message_count
+                                                      --kafka-consumer-config-file
+    --dump-control-messages                           Dump control messages in a partition.
+                                                      Requires: --kafka-bootstrap-servers --kafka-consumer-config-file --kafka-topic-name
+                                                      --kafka-topic-partition --starting_offset --message_count
+    --dump-ingestion-state                            Dump the real-time ingestion state for a certain store version in a certain storage
+                                                      node.
+                                                      Requires: --server-url --store --version
+                                                      Optional args: --partition
+    --dump-kafka-topic                                Dump a Kafka topic for a Venice cluster.  If start offset and message count are not
+                                                      specified, the entire partition will be dumped.  PLEASE REFRAIN FROM USING SERVER
+                                                      CERTIFICATES, IT IS A GDPR VIOLATION, GET ADDED TO THE STORE ACL'S OR GET FAST ACCESS
+                                                      TO THE KAFKA TOPIC!!.
+                                                      Requires: --kafka-bootstrap-servers --kafka-consumer-config-file --kafka-topic-name
+                                                      --cluster --url
+    --dump-topic-partition-ingestion-context          Dump the topic partition ingestion context belong to a certain store version in a
+                                                      certain storage node.
+                                                      Requires: --server-url --store --version --kafka-topic-name --kafka-topic-partition
+    --empty-push                                      Do an empty push into an existing store.
+                                                      Requires: --url --store --push-id --store-size
+                                                      Optional args: --cluster
+    --enable-active-active-replication-for-cluster    enable active active replication for certain stores (batch-only, hybrid-only,
+                                                      incremental-push, hybrid-or-incremental, all) in a cluster.
+                                                      Requires: --url --cluster --store-type
+                                                      Optional args: --regions-filter
+    --enable-max-capacity-protection                  Enable the feature that prevent read request usage exceeding the max capacity on all
+                                                      routers.
+                                                      Requires: --url --cluster
+    --enable-quota-rebalance                          Enable the feature that quota could be rebalanced once live router count is changed on
+                                                      all routers.
+                                                      Requires: --url --cluster
+    --enable-store                                    Enable a store in both read and write path.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --enable-store-read                               Allow a store to serve read requests again after reads have been disabled.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --enable-store-write                              Allow a store to accept new versions again after being writes have been disabled.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --enable-throttling                               Enable the feature that throttling read request on all routers.
+                                                      Requires: --url --cluster
+    --end-fabric-buildout                             End the building of a cluster in destination fabric.
+                                                      Requires: --url --cluster --source-fabric --dest-fabric
+    --end-migration                                   Send this command to delete the original store.
+                                                      Requires: --url --store --cluster-src --cluster-dest
+    --estimate-data-recovery-time                     Estimates the time it would take to execute data recovery for a group of stores.
+                                                      ('--stores' overwrites '--cluster' value).
+                                                      Requires: --url --dest-fabric
+                                                      Optional args: --stores --cluster
+    --execute-data-recovery                           Execute data recovery for a group of stores. ('--stores' overwrites '--cluster'
+                                                      value).
+                                                      Requires: --url --recovery-command --source-fabric --dest-fabric --datetime
+                                                      Optional args: --stores --cluster --extra-command-args --debug --non-interactive
+    --extract-venice-zk-paths                         Extract Venice-specific paths from a ZK snapshot input text file to an output text
+                                                      file.
+                                                      Requires: --infile --outfile --cluster-list --base-path
+    --get-all-migration-push-strategies               Get migration push strategies for all the voldemort stores.
+                                                      Requires: --url --cluster
+    --get-deletable-store-topics                      Get a list of deletable store topics in the fabric that belongs to the controller
+                                                      handling the request.
+                                                      Requires: --url --cluster
+    --get-execution                                   Get the execution status for an async admin command.
+                                                      Requires: --url --cluster --execution
+    --get-kafka-topic-configs                         Get configs of a topic through controllers.
+                                                      Requires: --url --kafka-topic-name
+    --get-migration-push-strategy                     Get migration push strategy for the specified voldemort store.
+                                                      Requires: --url --cluster --voldemort-store
+    --get-routers-cluster-config                      Get cluster level router's config.
+                                                      Requires: --url --cluster
+    --get-storage-persona                             Gets info on an existing storage persona by name.
+                                                      Requires: --url --cluster --storage-persona
+    --get-storage-persona-for-store                   Gets the storage persona associated with a store name..
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --get-store-acl                                   Get ACL's for an existing store.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --job-status                                      Query the ingest status of a running push job. If a version is not specified, the job
+                                                      status of the last job will be printed..
+                                                      Requires: --url --store
+                                                      Optional args: --cluster --version
+    --kill-job                                        Kill a running push job.
+                                                      Requires: --url --store --version
+                                                      Optional args: --cluster
+    --list-bootstrapping-versions                     List all versions which have at least one bootstrapping replica.
+                                                      Requires: --url --cluster
+    --list-cluster-stale-stores                       List all stores in a cluster which have stale replicas..
+                                                      Requires: --url --cluster
+    --list-cluster-storage-personas                   Lists all storage personas in a cluster..
+                                                      Requires: --url --cluster
+    --list-storage-nodes
+                                                      Requires: --url --cluster
+    --list-store-push-info                            List information about current pushes and push history for a specific store..
+                                                      Requires: --url --store
+                                                      Optional args: --cluster --partition-detail-enabled
+    --list-stores                                     List all stores present in the given cluster.
+                                                      Requires: --url --cluster
+                                                      Optional args: --include-system-stores
+    --migrate-store                                   Migrate store from one cluster to another within the same fabric.
+                                                      Requires: --url --store --cluster-src --cluster-dest
+    --migration-status                                Get store migration status.
+                                                      Requires: --url --store --cluster-src --cluster-dest
+    --monitor-data-recovery                           Monitor data recovery progress for a group of stores. ('--stores' overwrites
+                                                      '--cluster' value).
+                                                      Requires: --url --dest-fabric --datetime
+                                                      Optional args: --stores --cluster --interval
+    --new-storage-persona                             Creates a new storage persona..
+                                                      Requires: --url --cluster --storage-persona --storage-quota --store --owner
+    --new-store
+                                                      Requires: --url --cluster --store --key-schema-file --value-schema-file
+                                                      Optional args: --owner --vson_store
+    --new-store-acl                                   Create a new store with ACL permissions set.
+                                                      Requires: --url --store --key-schema-file --value-schema-file --acl-perms
+                                                      Optional args: --cluster --owner --vson_store
+    --node-removable                                  A node is removable if all replicas it is serving are available on other nodes.
+                                                      Requires: --url --cluster --storage-node
+    --node-replicas-readiness                         Get the readiness of all current replicas on a storage node from a child controller.
+                                                      Requires: --url --cluster --storage-node
+    --query                                           Query a store that has a simple key schema.
+                                                      Requires: --url --store --key
+                                                      Optional args: --cluster --vson_store --venice-client-ssl-config-file
+    --query-kafka-topic                               Query some specific keys from the Venice Topic.
+                                                      Requires: --kafka-bootstrap-servers --kafka-consumer-config-file --kafka-topic-name
+                                                      --cluster --url --start-date --key
+                                                      Optional args: --end-date --progress-interval
+    --recover-store-metadata                          Recover store metadata in EI.
+                                                      Requires: --url --store --venice-zookeeper-url --kafka-bootstrap-servers
+                                                      --graveyard-clusters
+                                                      Optional args: --zk-ssl-config-file --kafka-consumer-config-file --recover-cluster
+                                                      --skip-last-store-creation --repair
+    --remove-derived-schema                           remove derived schema for a given store by the value and derived schema Ids.
+                                                      Requires: --url --store --value-schema-id --derived-schema-id
+                                                      Optional args: --cluster
+    --remove-from-store-acl                           Remove a principal from ACL's for an existing store.
+                                                      Requires: --url --store --principal
+                                                      Optional args: --cluster --readability --writeability
+    --remove-node                                     Remove a storage node from the cluster.
+                                                      Requires: --url --cluster --storage-node
+    --replicas-of-store                               List the location and status of all replicas for a store.
+                                                      Requires: --url --store --version
+                                                      Optional args: --cluster
+    --replicas-on-storage-node                        List the store and status of all replicas on a storage node.
+                                                      Requires: --url --cluster --storage-node
+    --replicate-meta-data                             Copy a cluster's all stores schemas and store level configs from source fabric to
+                                                      destination fabric.
+                                                      Requires: --url --cluster --source-fabric --dest-fabric
+    --request-based-metadata                          Get the store's metadata using request based metadata endpoint via a transport client
+                                                      and a server URL.
+                                                      Requires: --url --server-url --store
+    --schemas                                         Show the key and value schemas for a store.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster
+    --send-end-of-push                                Send this message after Samza reprocessing job to close offline batch push.
+                                                      Requires: --url --store --version
+                                                      Optional args: --cluster
+    --set-migration-push-strategy                     Setup migration push strategy for the specified voldemort store.
+                                                      Requires: --url --cluster --voldemort-store --migration-push-strategy
+    --set-owner                                       Update owner info of an existing store.
+                                                      Requires: --url --store --owner
+                                                      Optional args: --cluster
+    --set-partition-count                             Update the number of partitions of an existing store.
+                                                      Requires: --url --store --partition-count
+                                                      Optional args: --cluster
+    --set-version                                     Set the version that will be served.
+                                                      Requires: --url --store --version
+                                                      Optional args: --cluster
+    --skip-admin                                      Skip an admin message.
+                                                      Requires: --url --cluster --offset
+                                                      Optional args: --skip-div
+    --start-fabric-buildout                           Start building a cluster in destination fabric by copying stores metadata and data
+                                                      from source fabric.
+                                                      Requires: --url --cluster --source-fabric --dest-fabric
+                                                      Optional args: --retry
+    --update-cluster-config                           Update live cluster configs.
+                                                      Requires: --url --cluster
+                                                      Optional args: --fabric --server.kafka.fetch.quota.records.per.second
+                                                      --allow.store.migration --child.controller.admin.topic.consumption.enabled
+    --update-kafka-topic-log-compaction               Update log compaction config of a topic through controllers.
+                                                      Requires: --url --kafka-topic-name --kafka-topic-log-compaction-enabled
+                                                      Optional args: --cluster
+    --update-kafka-topic-min-in-sync-replica          Update minISR of a topic through controllers.
+                                                      Requires: --url --kafka-topic-name --kafka-topic-min-in-sync-replica
+                                                      Optional args: --cluster
+    --update-kafka-topic-retention                    Update retention config of a topic through controllers.
+                                                      Requires: --url --kafka-topic-name --kafka-topic-retention-in-ms
+                                                      Optional args: --cluster
+    --update-storage-persona                          Updates an existing storage persona.
+                                                      Requires: --url --cluster --storage-persona
+                                                      Optional args: --storage-quota --store --owner
+    --update-store                                    update store metadata.
+                                                      Requires: --url --store
+                                                      Optional args: --cluster --owner --version --largest-used-version --partition-count
+                                                      --partitioner-class --partitioner-params --readability --writeability --storage-quota
+                                                      --storage-node-read-quota-enabled --hybrid-store-overhead-bypass --read-quota
+                                                      --hybrid-rewind-seconds --hybrid-offset-lag --hybrid-time-lag
+                                                      --hybrid-data-replication-policy --hybrid-buffer-replay-policy --access-control
+                                                      --compression-strategy --client-decompression-enabled --chunking-enabled
+                                                      --rmd-chunking-enabled --batch-get-limit --num-versions-to-preserve
+                                                      --write-computation-enabled --read-computation-enabled --backup-strategy
+                                                      --auto-schema-register-push-job-enabled --incremental-push-enabled
+                                                      --bootstrap-to-online-timeout --hybrid-store-disk-quota-enabled
+                                                      --regular-version-etl-enabled --future-version-etl-enabled --etled-proxy-user-account
+                                                      --native-replication-enabled --push-stream-source-address
+                                                      --backup-version-retention-day --replication-factor --native-replication-source-fabric
+                                                      --replicate-all-configs --active-active-replication-enabled --regions-filter
+                                                      --disable-meta-store --disable-davinci-push-status-store --storage-persona
+                                                      --storage-view-configs --latest-superset-schema-id --min-compaction-lag-seconds
+                                                      --max-compaction-lag-seconds --max-record-size-bytes --enable-unused-schema-deletion
+                                                      --blob-transfer-enabled
+    --update-store-acl                                Update ACL's for an existing store.
+                                                      Requires: --url --store --acl-perms
+                                                      Optional args: --cluster
+    --wipe-cluster                                    Delete data and metadata of a cluster/store/version in a child fabric.
+                                                      Requires: --url --cluster --fabric
+                                                      Optional args: --store --version
 usage: Parameters:
- -c,--cluster <arg>                  Name of Venice cluster
- -e,--execution <arg>                Execution ID of async admin command
- -f,--filter-json <arg>              Comma-delimited list of fields to
-                                     display from the json output.  Omit
-                                     to display all fields
- -fj,--flat-json                     Display output as flat json, without
-                                     pretty-print indentation and line
-                                     breaks
- -h,--help                           Show usage
- -ho,--hybrid-offset-lag <arg>       for hybrid stores, what is the offset
-                                     lag threshold for the storage nodes'
-                                     consumption to be considered ONLINE
- -hr,--hybrid-rewind-seconds <arg>   for hybrid stores, how far back to
-                                     rewind in the nearline stream after a
-                                     batch push completes
- -k,--key <arg>                      Plain-text key for identifying a
-                                     record in a store
- -ks,--key-schema-file <arg>         Path to text file with key schema
- -n,--storage-node <arg>             Helix instance ID for a storage node,
-                                     eg. lva1-app1234_1690
- -o,--owner <arg>                    Owner email for new store creation
- -of,--offset <arg>                  Kafka offset number
- -pid,--push-id <arg>                Push Id
- -pn,--partition-count <arg>         number of partitions a store has
- -rb,--readability <arg>             store's readability
- -rq,--read-quota <arg>              quota for read request hit this
-                                     store. Measurement is capacity unit
- -s,--store <arg>                    Name of Venice store
- -sq,--storage-quota <arg>           maximum capacity a store version
-                                     could have
- -ss,--store-size <arg>              Size of the store in bytes, used to
-                                     calculate partitioning
- -u,--url <arg>                      Venice url, eg. http://localhost:1689
-                                     This can be a router or a controller
- -v,--version <arg>                  Venice store version number
- -vs,--value-schema-file <arg>       Path to text file with value schema
- -wb,--writeability <arg>            store's writeability
+ -aa,--active-active-replication-enabled <arg>                   A parameter flag to enable/disable Active/Active replication feature for a
+                                                                 store
+ -acl,--access-control <arg>                                     Enable/disable store-level access control
+ -ap,--acl-perms <arg>                                           Acl permissions for the store
+ -asm,--allow.store.migration <arg>                              whether stores are allowed to be migrated from/to a cluster
+ -asp,--auto-schema-register-push-job-enabled <arg>              whether or not to use auto-schema register for pushjob
+ -atc,--child.controller.admin.topic.consumption.enabled <arg>   whether child controller consumes admin topic
+ -bf,--backup-folder <arg>                                       Backup folder path
+ -bgl,--batch-get-limit <arg>                                    Key number limit inside one batch-get request
+ -bp,--base-path <arg>                                           Base path for ZK, eg. /venice-parent
+ -bt,--blob-transfer-enabled                                     Flag to indicate if the blob transfer is allowed or not
+ -btot,--bootstrap-to-online-timeout <arg>                       Set the maximum number of hours allowed for the store to transition from
+                                                                 bootstrap to online
+ -bus,--backup-strategy <arg>                                    Strategies to preserve backup versions, eg KEEP_MIN_VERSIONS,
+                                                                 DELETE_ON_NEW_PUSH_START. Default is KEEP_MIN_VERSIONS
+ -bvrd,--backup-version-retention-day <arg>                      Backup version retention time in day after a new version is promoted to the
+                                                                 current version, if not specified, Venice will use the configured retention
+                                                                 as the default policy
+ -c,--cluster <arg>                                              Name of Venice cluster
+ -cd,--cluster-dest <arg>                                        Store migration destination Venice cluster name
+ -ce,--chunking-enabled <arg>                                    Enable/Disable value chunking, mostly for large value store support
+ -cl,--cluster-list <arg>                                        Comma separated list of cluster names, eg. venice-0, venice-1, ...
+ -cs,--compression-strategy <arg>                                strategies used to compress/decompress Record's value
+ -csd,--client-decompression-enabled <arg>                       Enable/Disable client-side record decompression (default: true)
+ -d,--debug                                                      Print debugging messages for execute-data-recovery
+ -ddvc,--disable-davinci-push-status-store                       disable davinci push status store. This command sets
+                                                                 daVinciPushStatusStoreEnabled flag to false but does not delete any
+                                                                 resources associated with the push status store. Please use this option
+                                                                 with caution
+ -df,--dest-fabric <arg>                                         The fabric where metadata/data gets copy over into
+ -did,--derived-schema-id <arg>                                  derived schema id
+ -div,--skip-div <arg>                                           Whether or not to only skip DIV for skip admin
+ -dl,--disable-log                                               Disable logs from internal classes. Only print command output on console
+ -dms,--disable-meta-store                                       disable meta system store. This command sets storeMetaSystemStoreEnabled
+                                                                 flag to false but does not delete any resources associated with the meta
+                                                                 store. Please use this option with caution
+ -ds,--derived-schema-file <arg>                                 Path to text file with derived schema
+ -dtm,--datetime <arg>                                           Date and time stamp (YYYY-MM-DDTHH:MM:SS) in UTC time zone for data
+                                                                 recovery
+ -e,--execution <arg>                                            Execution ID of async admin command
+ -eca,--extra-command-args <arg>                                 extra command arguments
+ -ed,--end-date <arg>                                            End date in PST. Example: 2020-10-10 10:10:10
+ -edr,--enable-disabled-replicas <arg>                           Reenable disabled replicas
+ -epu,--etled-proxy-user-account <arg>                           if enabled ETL, the proxy user account for HDFS file directory where the
+                                                                 ETLed snapshots will go.
+ -erc,--expected-router-count <arg>                              How many routers that a cluster should have.
+ -f,--force                                                      Force execute this operation
+ -fa,--fabric-a <arg>                                            The name of the first fabric in store comparison.
+ -fb,--fabric-b <arg>                                            The name of the second fabric in store comparison.
+ -fc,--fabric <arg>                                              Which fabric to execute the admin command.
+ -flj,--flat-json                                                Display output as flat json, without pretty-print indentation and line
+                                                                 breaks
+ -fve,--future-version-etl-enabled <arg>                         whether or not to enable future version etl for this store.
+ -gc,--graveyard-clusters <arg>                                  Clusters to scan store graveyard to retrieve metadata, eg.
+                                                                 cluster-1,cluster-2
+ -h,--help                                                       Show usage
+ -hbrp,--hybrid-buffer-replay-policy <arg>                       for hybrid stores, how buffer replay start timestamps are calculated.
+ -hdrp,--hybrid-data-replication-policy <arg>                    for hybrid stores, how real-time Samza data is replicated
+ -ho,--hybrid-offset-lag <arg>                                   for hybrid stores, what is the offset lag threshold for the storage nodes'
+                                                                 consumption to be considered ONLINE
+ -hr,--hybrid-rewind-seconds <arg>                               for hybrid stores, how far back to rewind in the nearline stream after a
+                                                                 batch push completes
+ -hsq,--hybrid-store-disk-quota-enabled <arg>                    whether or not enable disk quota for a hybrid store
+ -ht,--hybrid-time-lag <arg>                                     for hybrid stores, servers cannot report ready-to-serve until they see a
+                                                                 message with producer timestamp bigger than (current time - this threshold)
+ -if,--infile <arg>                                              Path to input text file
+ -ipe,--incremental-push-enabled <arg>                           a flag to see if the store supports incremental push or not
+ -iss,--include-system-stores <arg>                              Include internal stores maintained by the system.
+ -itv,--interval <arg>                                           monitor data recovery progress at seconds close to the number specified by
+                                                                 the interval parameter until tasks are finished
+ -k,--key <arg>                                                  Plain-text key for identifying a record in a store
+ -kbs,--kafka-bootstrap-servers <arg>                            Kafka bootstrap server URL(s)
+ -kcc,--kafka-consumer-config-file <arg>                         Configuration file for SSL (optional, if plain-text is available)
+ -kfq,--server.kafka.fetch.quota.records.per.second <arg>        The quota of records to fetch from Kafka for the specified fabric.
+ -kot,--kafka-operation-timeout <arg>                            Timeout in seconds for Kafka operations (default: 30 sec)
+ -ks,--key-schema-file <arg>                                     Path to text file with key schema
+ -ktlce,--kafka-topic-log-compaction-enabled <arg>               Enable/disable Kafka log compaction for a topic
+ -ktmisr,--kafka-topic-min-in-sync-replica <arg>                 Kafka topic minISR config
+ -ktn,--kafka-topic-name <arg>                                   Kafka topic name
+ -ktp,--kafka-topic-partition <arg>                              Kafka topic partition number
+ -ktrim,--kafka-topic-retention-in-ms <arg>                      Kafka topic retention time in milliseconds
+ -ldr,--log-data-record                                          Log the data record for each kafka message on console
+ -lm,--log-metadata                                              Log the metadata for each kafka message on console
+ -lrr,--log-rmd-record                                           Log the RMD record for each kafka message on console
+ -lssi,--latest-superset-schema-id <arg>                         the latest superset schema id for this store
+ -luv,--largest-used-version <arg>                               Largest used store version number (whether active or not)
+ -mc,--message_count <arg>                                       Max message count when dumping admin messages
+ -mcls,--min-compaction-lag-seconds <arg>                        Min compaction lag seconds for version topic of hybrid stores
+ -mpa,--max_poll_attempts <arg>                                  The max amount of attempts to poll new data from a Kafka topic (should no
+                                                                 new data be available).
+ -mrsb,--max-record-size-bytes <arg>                             Store-level max record size in bytes. Used by VeniceWriter to fail batch
+                                                                 push jobs and pause consumption on nearline jobs.
+ -mxcls,--max-compaction-lag-seconds <arg>                       Max compaction lag seconds for version topic of hybrid stores
+ -n,--storage-node <arg>                                         Helix instance ID for a storage node, eg. lva1-app1234_1690
+ -nita,--non-interactive                                         non-interactive mode
+ -nr,--native-replication-enabled <arg>                          whether or not native replication is enabled for this store.  Leader Follow
+                                                                 must also be enabled.
+ -nrsf,--native-replication-source-fabric <arg>                  The source fabric name to be used in native replication. Remote consumption
+                                                                 will happen from kafka in this fabric.
+ -nvp,--num-versions-to-preserve <arg>                           Number of version that store should preserve.
+ -o,--owner <arg>                                                Owner email for new store creation
+ -ob,--hybrid-store-overhead-bypass <arg>                        for hybrid stores, if set to false, updating storage quota will be
+                                                                 multiplied by store db overhead ratio.
+ -of,--offset <arg>                                              Kafka offset number
+ -p,--partition <arg>                                            Partition Id
+ -pc,--partitioner-class <arg>                                   Name of chosen partitioner class
+ -pde,--partition-detail-enabled <arg>                           A flag to indicate whether to retrieve partition details
+ -pi,--progress-interval <arg>                                   Dump progress after processing this number of messages
+ -pid,--push-id <arg>                                            Push Id
+ -pn,--partition-count <arg>                                     number of partitions a store has
+ -pod,--parent_output_directory <arg>                            A directory where output can be dumped to.  If dumping a kafka topic, the
+                                                                 output will be dumped under this directory.
+ -pp,--partitioner-params <arg>                                  Additional parameters for partitioner.
+ -ps,--migration-push-strategy <arg>                             Migration push strategy, valid values: [RunBnPOnlyStrategy,
+                                                                 RunVPJOnlyStrategy, RunBnPAndVPJWaitForBothStrategy,
+                                                                 RunBnPAndVPJWaitForBnPOnlyStrategy, RunBnPAndVPJWaitForVPJOnlyStrategy]
+ -pssa,--push-stream-source-address <arg>                        The url address for the kafka broker which hosts the topic which contains
+                                                                 the push data for this store.
+ -r,--retry                                                      Retry this operation
+ -rac,--replicate-all-configs                                    Whether all unchanged store configs in parent controller will be replicated
+                                                                 to child controllers
+ -rb,--readability <arg>                                         store's readability
+ -rc,--recover-cluster <arg>                                     Cluster to recover from
+ -rce,--rmd-chunking-enabled <arg>                               Enable/Disable replication metadata chunking, mostly for Active/Active
+                                                                 replication enabled store with partial update requirement support
+ -rco,--recovery-command <arg>                                   command to execute the data recovery
+ -re,--repair <arg>                                              Repair the store
+ -regf,--regions-filter <arg>                                    A list of regions that will be impacted by the command; can be used by
+                                                                 UpdateStore command
+ -rf,--replication-factor <arg>                                  the number of replica each store version will have
+ -rq,--read-quota <arg>                                          quota for read request hit this store. Measurement is capacity unit
+ -rv,--remove-view                                               Optional config to specify to disable certain store view
+ -rve,--regular-version-etl-enabled <arg>                        whether or not to enable regular version etl for this store.
+ -s,--store <arg>                                                Name of Venice store
+ -scnf,--store-config-name-filter <arg>                          An optional argument in list-store command; pass in a store config to
+                                                                 select stores. If the config name argument is used in the command, users
+                                                                 must specify the config value filter too.
+ -scp,--ssl-config-path <arg>                                    SSl config file path
+ -scvf,--store-config-value-filter <arg>                         n optional argument in list-store command; if the config name argument is
+                                                                 used in the command, users must specify the config value filter too.
+ -sd,--start-date <arg>                                          Start date in PST. Example: 2020-10-10 10:10:10
+ -sf,--source-fabric <arg>                                       The fabric where metadata/data copy over starts from
+ -slsc,--skip-last-store-creation <arg>                          Skip last round of store creation and the following schema manipulation
+ -snrqe,--storage-node-read-quota-enabled <arg>                  whether storage node read quota is enabled for this store
+ -so,--starting_offset <arg>                                     Starting offset when dumping admin messages, inclusive
+ -sp,--storage-persona <arg>                                     Name of Storage Persona
+ -sq,--storage-quota <arg>                                       maximum capacity a store version or storage persona could have
+ -ss,--store-size <arg>                                          Size of the store in bytes, used to calculate partitioning
+ -sst,--system-store-type <arg>                                  Type of system store to backfill. Supported types are
+                                                                 davinci_push_status_store and meta_store
+ -st,--store-type <arg>                                          the type of the stores. The support type are 'batch_only', hybrid_only',
+                                                                 `incremental_push', 'hybrid_or_incremental', 'system', 'all'
+ -sts,--stores <arg>                                             Name of a group of Venice stores
+ -su,--server-url <arg>                                          Venice server url, eg. http://localhost:1690  This has to be a storage node
+ -svc,--storage-view-configs <arg>                               Config that describes views to be added for a store.  Input is a json map.
+                                                                 Example: {"ExampleView": {"viewClassName":
+                                                                 "com.linkedin.venice.views.ChangeCaptureView","params": {}}}
+ -u,--url <arg>                                                  Venice url, eg. http://localhost:1689  This can be a router or a controller
+ -usde,--enable-unused-schema-deletion <arg>                     Enable unused schema deletion
+ -v,--version <arg>                                              Active store version number
+ -vc,--view-class <arg>                                          Name of a store view class
+ -vcsc,--venice-client-ssl-config-file <arg>                     Configuration file for querying key in Venice client through SSL.
+ -vid,--value-schema-id <arg>                                    value schema id
+ -vn,--view-name <arg>                                           Name of a store view
+ -vp,--view-params <arg>                                         Additional parameter map of a store view class
+ -vs,--voldemort-store <arg>                                     Voldemort store name
+ -vson,--vson_store <arg>                                        indicate whether it is Vson store or Avro store
+ -vzu,--venice-zookeeper-url <arg>                               Venice Zookeeper url, eg. localhost:2622
+ -wb,--writeability <arg>                                        store's writeability
+ -wc,--write-computation-enabled <arg>                           Whether or not write computation is enabled for a store
+ -zscf,--zk-ssl-config-file <arg>                                Path to text file with ZK SSL configs
 
 Examples:
-java -jar venice-admin-tool-0.1.jar --list-stores --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --describe-store --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --describe-stores --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --disable-store-write --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --enable-store-write --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --disable-store-read --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --enable-store-read --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --disable-store --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --enable-store --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --job-status --url <url> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --kill-job --url <url> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --skip-admin --url <url> --cluster <cluster> --offset <offset>
-java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file> --owner <owner> --vson_store <vson_store>
-java -jar venice-admin-tool-0.1.jar --delete-store --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --set-version --url <url> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --add-schema --url <url> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
-java -jar venice-admin-tool-0.1.jar --list-storage-nodes --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --cluster-health-instances --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --cluster-health-stores --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --node-removable --url <url> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --white-list-add-node --url <url> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --white-list-remove-node --url <url> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --remove-node --url <url> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --replicas-of-store --url <url> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --query --url <url> --cluster <cluster> --store <store> --key <key>
-java -jar venice-admin-tool-0.1.jar --schemas --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --delete-all-versions --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --get-execution --url <url> --cluster <cluster> --execution <execution>
-java -jar venice-admin-tool-0.1.jar --set-owner --url <url> --cluster <cluster> --store <store> --owner <owner>
-java -jar venice-admin-tool-0.1.jar --set-partition-count --url <url> --cluster <cluster> --store <store> --partition-count <partition-count>
-java -jar venice-admin-tool-0.1.jar --update-store --url <url> --cluster <cluster> --store <store> --owner <owner> --partition-count <partition-count> --version <version> --readability <readability> --writeability <writeability> --storage-quota <storage-quota> --read-quota <read-quota>
-java -jar venice-admin-tool-0.1.jar --empty-push --url <url> --cluster <cluster> --store <store> --push-id <push-id> --store-size <store-size>
-java -jar venice-admin-tool-0.1.jar --enable-throttling --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --disable-throttling --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --enable-max-capacity-protection --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --disable-max-capacity-protection --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --enable-quota-rebalance --url <url> --cluster <cluster> --expected-router-count <expected-router-count>
-java -jar venice-admin-tool-0.1.jar --disable-quota-rebalance --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --get-routers-cluster-config --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --convert-vson-schema --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
-java -jar venice-admin-tool-0.1.jar --get-all-migration-push-strategies --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --get-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store>
-java -jar venice-admin-tool-0.1.jar --set-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store> --migration-push-strategy <migration-push-strategy>
-java -jar venice-admin-tool-0.1.jar --node-replicas-readiness --url <url> --cluster <cluster> --storage-node <storage-node>
-
-
-
-
+java -jar venice-admin-tool-all.jar --abort-migration --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest> [--force ]
+java -jar venice-admin-tool-all.jar --add-derived-schema --url <url> --store <store> --value-schema-id <value-schema-id> --derived-schema-file <derived-schema-file> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --add-schema --url <url> --store <store> --value-schema-file <value-schema-file> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --add-schema-to-zk --venice-zookeeper-url <venice-zookeeper-url> --store <store> --value-schema-file <value-schema-file> --value-schema-id <value-schema-id> --zk-ssl-config-file <zk-ssl-config-file> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --add-to-store-acl --url <url> --store <store> --principal <principal> [--cluster <cluster>] [--readability <readability>] [--writeability <writeability>]
+java -jar venice-admin-tool-all.jar --allow-list-add-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-all.jar --allow-list-remove-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-all.jar --backfill-system-stores --url <url> --cluster <cluster> --system-store-type <system-store-type>
+java -jar venice-admin-tool-all.jar --backup-store-metadata-from-graveyard --venice-zookeeper-url <venice-zookeeper-url> --zk-ssl-config-file <zk-ssl-config-file> --backup-folder <backup-folder>
+java -jar venice-admin-tool-all.jar --check-fabric-buildout-status --url <url> --cluster <cluster> --source-fabric <source-fabric> --dest-fabric <dest-fabric>
+java -jar venice-admin-tool-all.jar --cleanup-instance-customized-states --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --cluster-health-instances --url <url> --cluster <cluster> [--enable-disabled-replicas <enable-disabled-replicas>]
+java -jar venice-admin-tool-all.jar --cluster-health-stores --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --compare-store --url <url> --store <store> --fabric-a <fabric-a> --fabric-b <fabric-b> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --complete-migration --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest> --fabric <fabric>
+java -jar venice-admin-tool-all.jar --configure-store-view --url <url> --store <store> --view-name <view-name> [--cluster <cluster>] [--view-class <view-class>] [--view-params <view-params>] [--remove-view ]
+java -jar venice-admin-tool-all.jar --convert-vson-schema --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
+java -jar venice-admin-tool-all.jar --delete-all-versions --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --delete-kafka-topic --kafka-bootstrap-servers <kafka-bootstrap-servers> --kafka-topic-name <kafka-topic-name> [--kafka-operation-timeout <kafka-operation-timeout>] [--kafka-consumer-config-file <kafka-consumer-config-file>]
+java -jar venice-admin-tool-all.jar --delete-old-version --url <url> --store <store> --version <version> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --delete-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona>
+java -jar venice-admin-tool-all.jar --delete-store --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --delete-store-acl --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --describe-store --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --describe-stores --url <url> --cluster <cluster> [--include-system-stores <include-system-stores>]
+java -jar venice-admin-tool-all.jar --disable-active-active-replication-for-cluster --url <url> --cluster <cluster> --store-type <store-type> [--regions-filter <regions-filter>]
+java -jar venice-admin-tool-all.jar --disable-max-capacity-protection --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --disable-quota-rebalance --url <url> --cluster <cluster> --expected-router-count <expected-router-count>
+java -jar venice-admin-tool-all.jar --disable-store --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --disable-store-read --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --disable-store-write --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --disable-throttling --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --dump-admin-messages --cluster <cluster> --kafka-bootstrap-servers <kafka-bootstrap-servers> --starting_offset <starting_offset> --message_count <message_count> --kafka-consumer-config-file <kafka-consumer-config-file>
+java -jar venice-admin-tool-all.jar --dump-control-messages --kafka-bootstrap-servers <kafka-bootstrap-servers> --kafka-consumer-config-file <kafka-consumer-config-file> --kafka-topic-name <kafka-topic-name> --kafka-topic-partition <kafka-topic-partition> --starting_offset <starting_offset> --message_count <message_count>
+java -jar venice-admin-tool-all.jar --dump-ingestion-state --server-url <server-url> --store <store> --version <version> [--partition <partition>]
+java -jar venice-admin-tool-all.jar --dump-kafka-topic --kafka-bootstrap-servers <kafka-bootstrap-servers> --kafka-consumer-config-file <kafka-consumer-config-file> --kafka-topic-name <kafka-topic-name> --cluster <cluster> --url <url>
+java -jar venice-admin-tool-all.jar --dump-topic-partition-ingestion-context --server-url <server-url> --store <store> --version <version> --kafka-topic-name <kafka-topic-name> --kafka-topic-partition <kafka-topic-partition>
+java -jar venice-admin-tool-all.jar --empty-push --url <url> --store <store> --push-id <push-id> --store-size <store-size> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --enable-active-active-replication-for-cluster --url <url> --cluster <cluster> --store-type <store-type> [--regions-filter <regions-filter>]
+java -jar venice-admin-tool-all.jar --enable-max-capacity-protection --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --enable-quota-rebalance --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --enable-store --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --enable-store-read --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --enable-store-write --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --enable-throttling --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --end-fabric-buildout --url <url> --cluster <cluster> --source-fabric <source-fabric> --dest-fabric <dest-fabric>
+java -jar venice-admin-tool-all.jar --end-migration --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
+java -jar venice-admin-tool-all.jar --estimate-data-recovery-time --url <url> --dest-fabric <dest-fabric> [--stores <stores>] [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --execute-data-recovery --url <url> --recovery-command <recovery-command> --source-fabric <source-fabric> --dest-fabric <dest-fabric> --datetime <datetime> [--stores <stores>] [--cluster <cluster>] [--extra-command-args <extra-command-args>] [--debug ] [--non-interactive ]
+java -jar venice-admin-tool-all.jar --extract-venice-zk-paths --infile <infile> --outfile <outfile> --cluster-list <cluster-list> --base-path <base-path>
+java -jar venice-admin-tool-all.jar --get-all-migration-push-strategies --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --get-deletable-store-topics --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --get-execution --url <url> --cluster <cluster> --execution <execution>
+java -jar venice-admin-tool-all.jar --get-kafka-topic-configs --url <url> --kafka-topic-name <kafka-topic-name>
+java -jar venice-admin-tool-all.jar --get-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store>
+java -jar venice-admin-tool-all.jar --get-routers-cluster-config --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --get-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona>
+java -jar venice-admin-tool-all.jar --get-storage-persona-for-store --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --get-store-acl --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --job-status --url <url> --store <store> [--cluster <cluster>] [--version <version>]
+java -jar venice-admin-tool-all.jar --kill-job --url <url> --store <store> --version <version> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --list-bootstrapping-versions --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --list-cluster-stale-stores --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --list-cluster-storage-personas --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --list-storage-nodes --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --list-store-push-info --url <url> --store <store> [--cluster <cluster>] [--partition-detail-enabled <partition-detail-enabled>]
+java -jar venice-admin-tool-all.jar --list-stores --url <url> --cluster <cluster> [--include-system-stores <include-system-stores>]
+java -jar venice-admin-tool-all.jar --migrate-store --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
+java -jar venice-admin-tool-all.jar --migration-status --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
+java -jar venice-admin-tool-all.jar --monitor-data-recovery --url <url> --dest-fabric <dest-fabric> --datetime <datetime> [--stores <stores>] [--cluster <cluster>] [--interval <interval>]
+java -jar venice-admin-tool-all.jar --new-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona> --storage-quota <storage-quota> --store <store> --owner <owner>
+java -jar venice-admin-tool-all.jar --new-store --url <url> --cluster <cluster> --store <store> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file> [--owner <owner>] [--vson_store <vson_store>]
+java -jar venice-admin-tool-all.jar --new-store-acl --url <url> --store <store> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file> --acl-perms <acl-perms> [--cluster <cluster>] [--owner <owner>] [--vson_store <vson_store>]
+java -jar venice-admin-tool-all.jar --node-removable --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-all.jar --node-replicas-readiness --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-all.jar --query --url <url> --store <store> --key <key> [--cluster <cluster>] [--vson_store <vson_store>] [--venice-client-ssl-config-file <venice-client-ssl-config-file>]
+java -jar venice-admin-tool-all.jar --query-kafka-topic --kafka-bootstrap-servers <kafka-bootstrap-servers> --kafka-consumer-config-file <kafka-consumer-config-file> --kafka-topic-name <kafka-topic-name> --cluster <cluster> --url <url> --start-date <start-date> --key <key> [--end-date <end-date>] [--progress-interval <progress-interval>]
+java -jar venice-admin-tool-all.jar --recover-store-metadata --url <url> --store <store> --venice-zookeeper-url <venice-zookeeper-url> --kafka-bootstrap-servers <kafka-bootstrap-servers> --graveyard-clusters <graveyard-clusters> [--zk-ssl-config-file <zk-ssl-config-file>] [--kafka-consumer-config-file <kafka-consumer-config-file>] [--recover-cluster <recover-cluster>] [--skip-last-store-creation <skip-last-store-creation>] [--repair <repair>]
+java -jar venice-admin-tool-all.jar --remove-derived-schema --url <url> --store <store> --value-schema-id <value-schema-id> --derived-schema-id <derived-schema-id> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --remove-from-store-acl --url <url> --store <store> --principal <principal> [--cluster <cluster>] [--readability <readability>] [--writeability <writeability>]
+java -jar venice-admin-tool-all.jar --remove-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-all.jar --replicas-of-store --url <url> --store <store> --version <version> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-all.jar --replicate-meta-data --url <url> --cluster <cluster> --source-fabric <source-fabric> --dest-fabric <dest-fabric>
+java -jar venice-admin-tool-all.jar --request-based-metadata --url <url> --server-url <server-url> --store <store>
+java -jar venice-admin-tool-all.jar --schemas --url <url> --store <store> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --send-end-of-push --url <url> --store <store> --version <version> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --set-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store> --migration-push-strategy <migration-push-strategy>
+java -jar venice-admin-tool-all.jar --set-owner --url <url> --store <store> --owner <owner> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --set-partition-count --url <url> --store <store> --partition-count <partition-count> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --set-version --url <url> --store <store> --version <version> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --skip-admin --url <url> --cluster <cluster> --offset <offset> [--skip-div <skip-div>]
+java -jar venice-admin-tool-all.jar --start-fabric-buildout --url <url> --cluster <cluster> --source-fabric <source-fabric> --dest-fabric <dest-fabric> [--retry ]
+java -jar venice-admin-tool-all.jar --update-cluster-config --url <url> --cluster <cluster> [--fabric <fabric>] [--server.kafka.fetch.quota.records.per.second <server.kafka.fetch.quota.records.per.second>] [--allow.store.migration <allow.store.migration>] [--child.controller.admin.topic.consumption.enabled <child.controller.admin.topic.consumption.enabled>]
+java -jar venice-admin-tool-all.jar --update-kafka-topic-log-compaction --url <url> --kafka-topic-name <kafka-topic-name> --kafka-topic-log-compaction-enabled <kafka-topic-log-compaction-enabled> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --update-kafka-topic-min-in-sync-replica --url <url> --kafka-topic-name <kafka-topic-name> --kafka-topic-min-in-sync-replica <kafka-topic-min-in-sync-replica> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --update-kafka-topic-retention --url <url> --kafka-topic-name <kafka-topic-name> --kafka-topic-retention-in-ms <kafka-topic-retention-in-ms> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --update-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona> [--storage-quota <storage-quota>] [--store <store>] [--owner <owner>]
+java -jar venice-admin-tool-all.jar --update-store --url <url> --store <store> [--cluster <cluster>] [--owner <owner>] [--version <version>] [--largest-used-version <largest-used-version>] [--partition-count <partition-count>] [--partitioner-class <partitioner-class>] [--partitioner-params <partitioner-params>] [--readability <readability>] [--writeability <writeability>] [--storage-quota <storage-quota>] [--storage-node-read-quota-enabled <storage-node-read-quota-enabled>] [--hybrid-store-overhead-bypass <hybrid-store-overhead-bypass>] [--read-quota <read-quota>] [--hybrid-rewind-seconds <hybrid-rewind-seconds>] [--hybrid-offset-lag <hybrid-offset-lag>] [--hybrid-time-lag <hybrid-time-lag>] [--hybrid-data-replication-policy <hybrid-data-replication-policy>] [--hybrid-buffer-replay-policy <hybrid-buffer-replay-policy>] [--access-control <access-control>] [--compression-strategy <compression-strategy>] [--client-decompression-enabled <client-decompression-enabled>] [--chunking-enabled <chunking-enabled>] [--rmd-chunking-enabled <rmd-chunking-enabled>] [--batch-get-limit <batch-get-limit>] [--num-versions-to-preserve <num-versions-to-preserve>] [--write-computation-enabled <write-computation-enabled>] [--read-computation-enabled <read-computation-enabled>] [--backup-strategy <backup-strategy>] [--auto-schema-register-push-job-enabled <auto-schema-register-push-job-enabled>] [--incremental-push-enabled <incremental-push-enabled>] [--bootstrap-to-online-timeout <bootstrap-to-online-timeout>] [--hybrid-store-disk-quota-enabled <hybrid-store-disk-quota-enabled>] [--regular-version-etl-enabled <regular-version-etl-enabled>] [--future-version-etl-enabled <future-version-etl-enabled>] [--etled-proxy-user-account <etled-proxy-user-account>] [--native-replication-enabled <native-replication-enabled>] [--push-stream-source-address <push-stream-source-address>] [--backup-version-retention-day <backup-version-retention-day>] [--replication-factor <replication-factor>] [--native-replication-source-fabric <native-replication-source-fabric>] [--replicate-all-configs ] [--active-active-replication-enabled <active-active-replication-enabled>] [--regions-filter <regions-filter>] [--disable-meta-store ] [--disable-davinci-push-status-store ] [--storage-persona <storage-persona>] [--storage-view-configs <storage-view-configs>] [--latest-superset-schema-id <latest-superset-schema-id>] [--min-compaction-lag-seconds <min-compaction-lag-seconds>] [--max-compaction-lag-seconds <max-compaction-lag-seconds>] [--max-record-size-bytes <max-record-size-bytes>] [--enable-unused-schema-deletion <enable-unused-schema-deletion>] [--blob-transfer-enabled ]
+java -jar venice-admin-tool-all.jar --update-store-acl --url <url> --store <store> --acl-perms <acl-perms> [--cluster <cluster>]
+java -jar venice-admin-tool-all.jar --wipe-cluster --url <url> --cluster <cluster> --fabric <fabric> [--store <store>] [--version <version>]
 ```
 
 Summarize the replicas status from the result of command "--replicas-on-storage-node" or "--replicas-of-store":
