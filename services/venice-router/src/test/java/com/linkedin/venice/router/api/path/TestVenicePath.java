@@ -215,8 +215,10 @@ public class TestVenicePath {
       retryPath.setupRetryRelatedInfo(orgPath);
       if (i < 5) {
         assertTrue(retryPath.isLongTailRetryAllowedForNewRequest());
+        assertTrue(retryPath.isLongTailRetryWithinBudget(1));
       } else {
-        assertFalse(retryPath.isLongTailRetryAllowedForNewRequest());
+        assertTrue(retryPath.isLongTailRetryAllowedForNewRequest());
+        assertFalse(retryPath.isLongTailRetryWithinBudget(1));
       }
     }
   }

@@ -86,7 +86,6 @@ public class TestRouterRetry {
         .numberOfRouters(1)
         .replicationFactor(2)
         .partitionSize(100)
-        .minActiveReplica(1)
         .sslToStorageNodes(true)
         .sslToKafka(false)
         .extraProperties(extraProperties)
