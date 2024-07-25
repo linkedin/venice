@@ -158,15 +158,16 @@ public class KafkaConsumerServiceTest {
     when(task.isHybridMode()).thenReturn(true);
     PubSubTopic versionTopic = task.getVersionTopic();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
-    TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
-        true,
-        TopicPartitionReplicaRole.VersionRole.CURRENT,
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        versionTopic,
         topicPartition,
-        versionTopic);
+        true,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
 
     ConsumedDataReceiver consumedDataReceiver = mock(ConsumedDataReceiver.class);
     when(consumedDataReceiver.destinationIdentifier()).thenReturn(versionTopic);
-    consumerService.startConsumptionIntoDataReceiver(topicPartitionReplicaRole, 0, consumedDataReceiver);
+    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, consumedDataReceiver);
 
     SharedKafkaConsumer assignedConsumer = consumerService.assignConsumerFor(versionTopic, topicPartition);
     Set<PubSubTopicPartition> consumerAssignedPartitions = new HashSet<>();

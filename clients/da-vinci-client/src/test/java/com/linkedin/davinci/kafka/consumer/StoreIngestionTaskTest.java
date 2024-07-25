@@ -11,24 +11,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
 import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
-import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
-import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
-import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestUtils.getOffsetRecord;
@@ -424,6 +407,7 @@ public abstract class StoreIngestionTaskTest {
   private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
+  private MockStoreVersionConfigs storeAndVersionConfigsUnderTest;
 
   private static byte[] getRandomKey(Integer partition) {
     String randomString = Utils.getUniqueString("KeyForPartition" + partition);
@@ -769,7 +753,7 @@ public abstract class StoreIngestionTaskTest {
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
 
-    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
+    storeAndVersionConfigsUnderTest = setupStoreAndVersionMocks(
         partitionCount,
         partitionerConfig,
         hybridStoreConfig,
@@ -777,9 +761,9 @@ public abstract class StoreIngestionTaskTest {
         true,
         aaConfig,
         storeVersionConfigOverride);
-    Store mockStore = storeAndVersionConfigs.store;
-    Version version = storeAndVersionConfigs.version;
-    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+    Store mockStore = storeAndVersionConfigsUnderTest.store;
+    Version version = storeAndVersionConfigsUnderTest.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigsUnderTest.storeVersionConfig;
 
     StoreIngestionTaskFactory ingestionTaskFactory =
         getIngestionTaskFactoryBuilder(pollStrategy, partitions, diskUsageForTest, extraServerProperties, false)
@@ -799,7 +783,6 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             getRecordTransformer));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -1028,7 +1011,8 @@ public abstract class StoreIngestionTaskTest {
     doAnswer(invocation -> {
       String kafkaUrl = invocation.getArgument(0, String.class);
       StoreIngestionTask storeIngestionTask = invocation.getArgument(1, StoreIngestionTask.class);
-      TopicPartitionReplicaRole topicPartitionReplicaRole = invocation.getArgument(2, TopicPartitionReplicaRole.class);
+      PartitionReplicaIngestionContext partitionReplicaIngestionContext =
+          invocation.getArgument(2, PartitionReplicaIngestionContext.class);
       long offset = invocation.getArgument(3, Long.class);
       KafkaConsumerService kafkaConsumerService;
       int kafkaClusterId;
@@ -1042,10 +1026,10 @@ public abstract class StoreIngestionTaskTest {
       }
       StorePartitionDataReceiver dataReceiver = new StorePartitionDataReceiver(
           storeIngestionTask,
-          topicPartitionReplicaRole.getPubSubTopicPartition(),
+          partitionReplicaIngestionContext.getPubSubTopicPartition(),
           kafkaUrl,
           kafkaClusterId);
-      kafkaConsumerService.startConsumptionIntoDataReceiver(topicPartitionReplicaRole, offset, dataReceiver);
+      kafkaConsumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, offset, dataReceiver);
 
       if (local) {
         localConsumedDataReceiver = dataReceiver;
@@ -1931,6 +1915,7 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
+      doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(1).when(mockStore).getCurrentVersion();
       doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
@@ -1954,8 +1939,10 @@ public abstract class StoreIngestionTaskTest {
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
       storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
+      doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
+      doReturn(new VersionImpl(storeNameWithoutVersionInfo, 1, Version.numberBasedDummyPushId(1))).when(mockStore)
+          .getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     },
@@ -2507,6 +2494,7 @@ public abstract class StoreIngestionTaskTest {
     // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
+      doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(true).when(mockStore).isReadComputationEnabled();
       doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
@@ -2592,6 +2580,7 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, VeniceProperties.empty());
     propertyBuilder.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 1000);
     propertyBuilder.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 1000);
+    propertyBuilder.put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -2694,18 +2683,16 @@ public abstract class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
-    storeIngestionTaskUnderTest = spy(
-        ingestionTaskFactory.getNewIngestionTask(
-            mockStore,
-            version,
-            kafkaProps,
-            isCurrentVersion,
-            storeConfig,
-            PARTITION_FOO,
-            false,
-            Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        PARTITION_FOO,
+        false,
+        Optional.empty(),
+        null);
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
@@ -2731,21 +2718,24 @@ public abstract class StoreIngestionTaskTest {
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
     PubSubTopicPartition fooRtPartition = new PubSubTopicPartitionImpl(rtPubSubTopic, PARTITION_FOO);
 
-    TopicPartitionReplicaRole fooRtPartitionRole =
-        new TopicPartitionReplicaRole(true, TopicPartitionReplicaRole.VersionRole.CURRENT, fooRtPartition, pubSubTopic);
-
+    PartitionReplicaIngestionContext fooRtPartitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        pubSubTopic,
+        fooRtPartition,
+        true,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     inMemoryLocalKafkaBroker.createTopic(rtTopic, partitionCount);
     inMemoryRemoteKafkaBroker.createTopic(rtTopic, partitionCount);
 
     aggKafkaConsumerService.subscribeConsumerFor(
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         storeIngestionTaskUnderTest,
-        fooRtPartitionRole,
+        fooRtPartitionReplicaIngestionContext,
         0);
     aggKafkaConsumerService.subscribeConsumerFor(
         inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(),
         storeIngestionTaskUnderTest,
-        fooRtPartitionRole,
+        fooRtPartitionReplicaIngestionContext,
         0);
 
     VeniceWriter localRtWriter = getVeniceWriter(rtTopic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
@@ -2841,19 +2831,16 @@ public abstract class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
-    storeIngestionTaskUnderTest = spy(
-        ingestionTaskFactory.getNewIngestionTask(
-            mockStore,
-            version,
-            kafkaProps,
-            isCurrentVersion,
-            storeConfig,
-            PARTITION_FOO,
-            false,
-            Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
-
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        PARTITION_FOO,
+        false,
+        Optional.empty(),
+        null);
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
     TopicSwitch topicSwitchWithSourceRealTimeTopic = new TopicSwitch();
@@ -3056,18 +3043,16 @@ public abstract class StoreIngestionTaskTest {
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
-    storeIngestionTaskUnderTest = spy(
-        ingestionTaskFactory.getNewIngestionTask(
-            mockStore,
-            version,
-            kafkaProps,
-            isCurrentVersion,
-            storeConfig,
-            PARTITION_FOO,
-            false,
-            Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        PARTITION_FOO,
+        false,
+        Optional.empty(),
+        null);
 
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
@@ -3185,18 +3170,16 @@ public abstract class StoreIngestionTaskTest {
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
-    storeIngestionTaskUnderTest = spy(
-        ingestionTaskFactory.getNewIngestionTask(
-            mockStore,
-            version,
-            kafkaProps,
-            isCurrentVersion,
-            storeConfig,
-            PARTITION_FOO,
-            false,
-            Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        PARTITION_FOO,
+        false,
+        Optional.empty(),
+        null);
 
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
@@ -3337,7 +3320,7 @@ public abstract class StoreIngestionTaskTest {
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
-    LeaderFollowerStoreIngestionTask ingestionTask = spy(
+    LeaderFollowerStoreIngestionTask ingestionTask =
         (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
             mockStore,
             version,
@@ -3347,8 +3330,7 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(ingestionTask).getStoreVersionRole();
+            null);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     PartitionConsumptionState partitionConsumptionState =
@@ -3433,18 +3415,16 @@ public abstract class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
-    storeIngestionTaskUnderTest = spy(
-        ingestionTaskFactory.getNewIngestionTask(
-            mockStore,
-            version,
-            kafkaProps,
-            isCurrentVersion,
-            storeConfig,
-            PARTITION_FOO,
-            false,
-            Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        PARTITION_FOO,
+        false,
+        Optional.empty(),
+        null);
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
@@ -3480,6 +3460,7 @@ public abstract class StoreIngestionTaskTest {
 
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
+    doReturn(storeName).when(mockStore).getName();
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(mockVersion).when(mockStore).getVersion(1);
@@ -3505,7 +3486,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build();
 
-    LeaderFollowerStoreIngestionTask ingestionTask = spy(
+    LeaderFollowerStoreIngestionTask ingestionTask =
         (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
             mockStore,
             mockVersion,
@@ -3515,8 +3496,7 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(ingestionTask).getStoreVersionRole();
+            null);
 
     TopicSwitch topicSwitch = new TopicSwitch();
     topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");
@@ -3617,6 +3597,7 @@ public abstract class StoreIngestionTaskTest {
 
     String versionTopicName = "testStore_v1";
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
     doReturn(versionTopicName).when(storeConfig).getStoreVersionName();
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = spy(
         new LeaderFollowerStoreIngestionTask(
@@ -3630,8 +3611,6 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(leaderFollowerStoreIngestionTask)
-        .getStoreVersionRole();
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
@@ -3654,13 +3633,13 @@ public abstract class StoreIngestionTaskTest {
     partitionConsumptionState.setConsumeRemotely(false);
     leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
     verify(leaderFollowerStoreIngestionTask, times(1))
-        .consumerSubscribe(any(), eq(localVersionTopicOffset), anyString());
+        .consumerSubscribe(any(), anyBoolean(), eq(localVersionTopicOffset), anyString());
 
     // Test 2: if leader is consuming remotely, leader must subscribe to the remote VT offset
     partitionConsumptionState.setConsumeRemotely(true);
     leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
     verify(leaderFollowerStoreIngestionTask, times(1))
-        .consumerSubscribe(any(), eq(remoteVersionTopicOffset), anyString());
+        .consumerSubscribe(any(), anyBoolean(), eq(remoteVersionTopicOffset), anyString());
   }
 
   private void produceRecordsUsingSpecificWriter(
@@ -3681,8 +3660,10 @@ public abstract class StoreIngestionTaskTest {
 
   private Consumer<PubSubTopicPartitionOffset> getObserver(
       List<Long> resubscriptionOffsetForVT,
-      List<Long> resubscriptionOffsetForRT) {
+      List<Long> resubscriptionOffsetForRT,
+      AtomicInteger flip) {
     return topicPartitionOffset -> {
+
       if (topicPartitionOffset == null || topicPartitionOffset.getOffset() == null) {
         LOGGER.info("Received null OffsetRecord!");
       } else {
@@ -3693,19 +3674,17 @@ public abstract class StoreIngestionTaskTest {
             topicPartitionOffset.getPubSubTopicPartition(),
             topicPartitionOffset.getOffset());
         if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(offset)) {
+          storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
           LOGGER.info(
-              "Trigger re-subscription after consuming message for {} at offset {}.",
+              "Trigger re-subscription after consuming message for {} at offset {} ",
               pubSubTopicPartition,
               offset);
-          storeIngestionTaskUnderTest
-              .versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.CURRENT);
         } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(offset)) {
+          storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
           LOGGER.info(
               "Trigger re-subscription after consuming message for {} at offset {}.",
               pubSubTopicPartition,
               offset);
-          storeIngestionTaskUnderTest
-              .versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.CURRENT);
         }
       }
     };
@@ -3746,7 +3725,7 @@ public abstract class StoreIngestionTaskTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     final int batchMessagesNum = 100;
-    final List<Long> resubscriptionOffsetForLocalVT = Arrays.asList(30L, 40L);
+    final List<Long> resubscriptionOffsetForLocalVT = Arrays.asList(30L, 70L);
     final List<Long> resubscriptionOffsetForLocalRT = Arrays.asList(40L);
     final List<Long> resubscriptionOffsetForRemoteRT = Arrays.asList(50L);
 
@@ -3761,12 +3740,13 @@ public abstract class StoreIngestionTaskTest {
     vtWriter.broadcastStartOfPush(new HashMap<>());
 
     produceRecordsUsingSpecificWriter(localVeniceWriter, 0, batchMessagesNum, this::getNumberedKeyForPartitionBar);
-    vtWriter.broadcastEndOfPush(new HashMap<>());
+
     // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
+    AtomicInteger flip = new AtomicInteger(-1);
     Consumer<PubSubTopicPartitionOffset> localObserver =
-        getObserver(resubscriptionOffsetForLocalVT, resubscriptionOffsetForLocalRT);
+        getObserver(resubscriptionOffsetForLocalVT, resubscriptionOffsetForLocalRT, flip);
     Consumer<PubSubTopicPartitionOffset> remoteObserver =
-        getObserver(Collections.emptyList(), resubscriptionOffsetForRemoteRT);
+        getObserver(Collections.emptyList(), resubscriptionOffsetForRemoteRT, flip);
 
     PollStrategy localPollStrategy = new BlockingObserverPollStrategy(new RandomPollStrategy(false), localObserver);
     remotePollStrategy = Optional.of(new BlockingObserverPollStrategy(new RandomPollStrategy(false), remoteObserver));
@@ -3781,28 +3761,33 @@ public abstract class StoreIngestionTaskTest {
       List<CharSequence> kafkaBootstrapServers = new ArrayList<>();
       kafkaBootstrapServers.add(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
       kafkaBootstrapServers.add(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+      verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum))
+          .put(eq(PARTITION_BAR), any(), (ByteBuffer) any());
+
+      vtWriter.broadcastEndOfPush(new HashMap<>());
       vtWriter.broadcastTopicSwitch(
           kafkaBootstrapServers,
           Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
           System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
           new HashMap<>());
-
       storeIngestionTaskUnderTest.promoteToLeader(
           fooTopicPartition,
           new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
       produceRecordsUsingSpecificWriter(localRtWriter, 0, batchMessagesNum, this::getNumberedKey);
       produceRecordsUsingSpecificWriter(remoteRtWriter, batchMessagesNum, batchMessagesNum, this::getNumberedKey);
-      verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum))
-          .put(eq(PARTITION_BAR), any(), (ByteBuffer) any());
 
-      // Both Colo RT ingestion, avoid DCR collision by purpose.
+      // Both Colo RT ingestion, avoid DCR collision intentionally.
       verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum * 2))
           .putWithReplicationMetadata(eq(PARTITION_FOO), any(), any(), any());
 
-      verify(storeIngestionTaskUnderTest, times(totalResubscriptionTriggered))
-          .versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.CURRENT);
-      verify(mockLocalKafkaConsumer, times(totalLocalVtResubscriptionTriggered + 1)).unSubscribe(fooTopicPartition);
-      verify(mockLocalKafkaConsumer, times(totalLocalVtResubscriptionTriggered + 2)).unSubscribe(barTopicPartition);
+      try {
+        verify(storeIngestionTaskUnderTest, times(totalResubscriptionTriggered)).resubscribeForAllPartitions();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+      verify(mockLocalKafkaConsumer, times(totalLocalVtResubscriptionTriggered + 1)).unSubscribe(eq(fooTopicPartition));
+      verify(mockLocalKafkaConsumer, times(totalLocalVtResubscriptionTriggered + 2)).unSubscribe(eq(barTopicPartition));
       PubSubTopicPartition fooRtTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, PARTITION_FOO);
       verify(mockLocalKafkaConsumer, times(totalLocalRtResubscriptionTriggered)).unSubscribe(fooRtTopicPartition);
       verify(mockRemoteKafkaConsumer, times(totalRemoteRtResubscriptionTriggered)).unSubscribe(fooRtTopicPartition);
@@ -4112,6 +4097,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
 
     Store store = mock(Store.class);
+
     doReturn(version).when(store).getVersion(eq(1));
 
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
@@ -4123,18 +4109,17 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         Collections.emptyMap(),
         true).build();
-    storeIngestionTaskUnderTest = spy(
-        ingestionTaskFactory.getNewIngestionTask(
-            store,
-            version,
-            new Properties(),
-            isCurrentVersion,
-            storeConfig,
-            1,
-            false,
-            Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTaskUnderTest).getStoreVersionRole();
+    doReturn(Version.parseStoreFromVersionTopic(topic)).when(store).getName();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        store,
+        version,
+        new Properties(),
+        isCurrentVersion,
+        storeConfig,
+        1,
+        false,
+        Optional.empty(),
+        null);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
     PartitionConsumptionState partitionConsumptionState =
@@ -4186,6 +4171,7 @@ public abstract class StoreIngestionTaskTest {
       HybridConfig hybridConfig) {
     String storeName = Utils.getUniqueString("store");
     Store mockStore = mock(Store.class);
+    doReturn(storeName).when(mockStore).getName();
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
@@ -4236,7 +4222,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setVeniceWriterFactory(veniceWriterFactory)
         .build();
-    LeaderFollowerStoreIngestionTask ingestionTask = spy(
+    LeaderFollowerStoreIngestionTask ingestionTask =
         (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
             mockStore,
             mockVersion,
@@ -4246,8 +4232,7 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(ingestionTask).getStoreVersionRole();
+            null);
 
     ingestionTask.setPartitionConsumptionState(0, pcs);
     ingestionTask.maybeSendIngestionHeartbeat();
@@ -4273,6 +4258,7 @@ public abstract class StoreIngestionTaskTest {
   public void testMaybeSendIngestionHeartbeatWithHBSuccessOrFailure() throws InterruptedException {
     String storeName = Utils.getUniqueString("store");
     Store mockStore = mock(Store.class);
+    doReturn(storeName).when(mockStore).getName();
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
@@ -4320,7 +4306,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setVeniceWriterFactory(veniceWriterFactory)
         .build();
-    LeaderFollowerStoreIngestionTask ingestionTask = spy(
+    LeaderFollowerStoreIngestionTask ingestionTask =
         (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
             mockStore,
             mockVersion,
@@ -4330,8 +4316,7 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null));
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(ingestionTask).getStoreVersionRole();
+            null);
 
     ingestionTask.setPartitionConsumptionState(0, pcs0);
     ingestionTask.setPartitionConsumptionState(1, pcs1);

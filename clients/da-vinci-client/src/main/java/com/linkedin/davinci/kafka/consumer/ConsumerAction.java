@@ -27,8 +27,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private boolean isHelixTriggeredAction = true;
   private CompletableFuture<Void> future = new CompletableFuture<>();
 
-  private TopicPartitionReplicaRole.VersionRole versionRole;
-
   public ConsumerAction(
       ConsumerActionType type,
       PubSubTopicPartition topicPartition,
@@ -43,22 +41,11 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
       int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
       boolean isHelixTriggeredAction) {
-    this(type, topicPartition, sequenceNumber, checker, isHelixTriggeredAction, null);
-  }
-
-  public ConsumerAction(
-      ConsumerActionType type,
-      PubSubTopicPartition topicPartition,
-      int sequenceNumber,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
-      boolean isHelixTriggeredAction,
-      TopicPartitionReplicaRole.VersionRole versionRole) {
     this.type = type;
     this.topicPartition = Utils.notNull(topicPartition);
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
     this.isHelixTriggeredAction = isHelixTriggeredAction;
-    this.versionRole = versionRole;
   }
 
   public ConsumerActionType getType() {
@@ -103,10 +90,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public boolean isHelixTriggeredAction() {
     return isHelixTriggeredAction;
-  }
-
-  public TopicPartitionReplicaRole.VersionRole getVersionRole() {
-    return versionRole;
   }
 
   @Override

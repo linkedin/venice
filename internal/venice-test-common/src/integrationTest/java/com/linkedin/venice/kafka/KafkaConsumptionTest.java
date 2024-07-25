@@ -12,10 +12,10 @@ import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.IngestionThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
 import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
-import com.linkedin.davinci.kafka.consumer.TopicPartitionReplicaRole;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -212,13 +212,14 @@ public class KafkaConsumptionTest {
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
-    TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
-        true,
-        TopicPartitionReplicaRole.VersionRole.CURRENT,
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        versionTopic,
         pubSubTopicPartition,
-        versionTopic);
+        true,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
     StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, topicPartitionReplicaRole, -1);
+        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, pubSubTopicPartition));
 
@@ -230,7 +231,7 @@ public class KafkaConsumptionTest {
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
     StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, topicPartitionReplicaRole, -1);
+        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, pubSubTopicPartition));
 

@@ -5,7 +5,6 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -330,10 +329,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
-
-  private final StoreVersionRoleChangedListener storeVersionRoleChangedListener;
-
-  protected TopicPartitionReplicaRole.VersionRole versionRole;
+  protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
+  protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -477,8 +474,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.storeVersionRoleChangedListener = new StoreVersionRoleChangedListener(this, store, versionNumber);
-    this.storeRepository.registerStoreDataChangedListener(storeVersionRoleChangedListener);
+    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -566,20 +563,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     subscribePartition(topicPartition, true);
   }
 
-  // TODO: ensure thread safety for version role change.
-  public synchronized void versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole versionRole) {
+  void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
-    for (int partition: partitionConsumptionStateMap.keySet()) {
-      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
-      partitionToPendingConsumerActionCountMap.computeIfAbsent(partition, x -> new AtomicInteger(0)).incrementAndGet();
-      consumerActionsQueue.add(
-          new ConsumerAction(
-              VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE,
-              pubSubTopicPartition,
-              nextSeqNum(),
-              null,
-              false,
-              versionRole));
+    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      resubscribe(partitionConsumptionState);
     }
   }
 
@@ -1297,6 +1284,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Thread.sleep(readCycleDelayMs);
   }
 
+  protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+    PartitionReplicaIngestionContext.VersionRole newVersionRole =
+        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
+        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
+      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
+        LOGGER.info(
+            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
+                + "changed to New: version role: {}, workload type: {}",
+            versionTopic,
+            versionRole,
+            workloadType,
+            newVersionRole,
+            newWorkloadType);
+        versionRole = newVersionRole;
+        workloadType = newWorkloadType;
+        resubscribeForAllPartitions();
+      }
+    }
+  }
+
   private void maybeUnsubscribeCompletedPartitions(Store store) {
     if (hybridStoreConfig.isPresent() || (!serverConfig.isUnsubscribeAfterBatchpushEnabled())) {
       return;
@@ -1368,6 +1377,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
+        updateIngestionRoleIfStoreChanged(store);
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
@@ -1861,9 +1871,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Subscribe to local version topic.
         PubSubTopicPartition pubSubTopicPartition =
             newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
-        TopicPartitionReplicaRole topicPartitionReplicaRole =
-            new TopicPartitionReplicaRole(false, versionRole, pubSubTopicPartition, versionTopic);
-        consumerSubscribe(topicPartitionReplicaRole, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
+        consumerSubscribe(pubSubTopicPartition, false, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
@@ -3154,12 +3162,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(TopicPartitionReplicaRole topicPartition, long startOffset, String kafkaURL) {
+  public void consumerSubscribe(
+      PubSubTopicPartition pubSubTopicPartition,
+      boolean isLeader,
+      long startOffset,
+      String kafkaURL) {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext =
+        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, isLeader, versionRole, workloadType);
+    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
@@ -3734,6 +3748,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportCompleted(partitionConsumptionState, false);
   }
 
+  protected abstract void resubscribe(PartitionConsumptionState partitionConsumptionState) throws InterruptedException;
+
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     ingestionNotificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
     LOGGER.info("Replica: {} is ready to serve", partitionConsumptionState.getReplicaId());
@@ -4057,11 +4073,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return true;
   }
 
-  public void setVersionRole(TopicPartitionReplicaRole.VersionRole versionRole) {
+  // For unit test purpose.
+  void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
     this.versionRole = versionRole;
-  }
-
-  public TopicPartitionReplicaRole.VersionRole getStoreVersionRole() {
-    return versionRole;
   }
 }

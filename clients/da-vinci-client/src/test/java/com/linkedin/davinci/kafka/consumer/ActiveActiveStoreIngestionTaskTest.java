@@ -93,6 +93,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -233,6 +234,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setHybridStoreConfig(hybridStoreConfig);
+    store.setVersions(Collections.singletonList(mockVersion));
 
     Properties kafkaConsumerProperties = new Properties();
     kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);

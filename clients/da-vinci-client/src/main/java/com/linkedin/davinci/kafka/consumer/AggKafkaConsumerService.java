@@ -376,10 +376,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   public ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> subscribeConsumerFor(
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
-      TopicPartitionReplicaRole topicPartitionReplicaRole,
+      PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       long lastOffset) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
-    PubSubTopicPartition pubSubTopicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
+    PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService == null) {
       throw new VeniceException(
@@ -394,7 +394,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1));
 
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
-    consumerService.startConsumptionIntoDataReceiver(topicPartitionReplicaRole, lastOffset, dataReceiver);
+    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver);
     TopicManager topicManager = storeIngestionTask.getTopicManager(kafkaURL);
 
     /*

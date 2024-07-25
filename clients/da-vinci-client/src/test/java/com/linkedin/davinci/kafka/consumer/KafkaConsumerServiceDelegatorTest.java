@@ -250,16 +250,18 @@ public class KafkaConsumerServiceDelegatorTest {
         new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
-    TopicPartitionReplicaRole topicPartitionForVT = new TopicPartitionReplicaRole(
-        true,
-        TopicPartitionReplicaRole.VersionRole.CURRENT,
+    PartitionReplicaIngestionContext topicPartitionForVT = new PartitionReplicaIngestionContext(
+        versionTopic,
         new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID),
-        versionTopic);
-    TopicPartitionReplicaRole topicPartitionForRT = new TopicPartitionReplicaRole(
         true,
-        TopicPartitionReplicaRole.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
+    PartitionReplicaIngestionContext topicPartitionForRT = new PartitionReplicaIngestionContext(
+        versionTopic,
         new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
-        versionTopic);
+        true,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
 
     ConsumedDataReceiver dataReceiver = mock(ConsumedDataReceiver.class);
     doReturn(versionTopic).when(dataReceiver).destinationIdentifier();

@@ -59,7 +59,7 @@ import org.apache.logging.log4j.Logger;
  *    c) {@link ConsumerSubscriptionCleaner}
  * 2. Receive various calls to interrogate or mutate consumer state, and delegate them to the correct unit, by
  *    maintaining a mapping of which unit belongs to which version-topic and subscribed topic-partition. Notably,
- *    the {@link #startConsumptionIntoDataReceiver(PubSubTopicPartition, long, ConsumedDataReceiver)} function allows the
+ *    the {@link #startConsumptionIntoDataReceiver(PartitionReplicaIngestionContext, long, ConsumedDataReceiver)} function allows the
  *    caller to start funneling consumed data into a receiver (i.e. into another task).
  * 3. Provide a single abstract function that must be overridden by subclasses in order to implement a consumption
  *    load balancing strategy: {@link #pickConsumerForPartition(PubSubTopic, PubSubTopicPartition)}
@@ -367,11 +367,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   @Override
   public void startConsumptionIntoDataReceiver(
-      TopicPartitionReplicaRole topicPartitionReplicaRole,
+      PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
-    PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
+    PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
 
     if (consumer == null) {
