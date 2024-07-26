@@ -1375,8 +1375,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (ingestionCheckpointDuringGracefulShutdownEnabled) {
             PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
             try {
-              StoreBufferService.QueueNode cmd = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
-              waitForSyncOffsetCmd(cmd, topicPartition);
+              CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
+              waitForSyncOffsetCmd(cmdFuture, topicPartition);
               waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
             } catch (InterruptedException e) {
               throw new VeniceException(e);
@@ -1449,38 +1449,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void waitForSyncOffsetCmd(StoreBufferService.QueueNode node, PubSubTopicPartition topicPartition)
+  private void waitForSyncOffsetCmd(CompletableFuture<Void> cmdFuture, PubSubTopicPartition topicPartition)
       throws InterruptedException {
-    if (!(node instanceof StoreBufferService.CommandQueueNode)) {
-      return;
-    }
-
-    StoreBufferService.CommandQueueNode cmd = (StoreBufferService.CommandQueueNode) node;
     try {
-      if (cmd.getCmdExecutedFuture() != null) {
-        cmd.getCmdExecutedFuture().get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
-      }
+      cmdFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
     } catch (InterruptedException e) {
       LOGGER.warn(
-          "Got interrupted while waiting for the sync offset command for {}" + "Will throw the interrupt exception.",
+          "Got interrupted while waiting for the sync offset command for {}. Cancel command and throw the interrupt exception.",
           topicPartition,
           e);
       throw e;
     } catch (TimeoutException e) {
-      LOGGER.warn(
-          "Timeout while waiting for the sync offset command for {}. Invalidate SyncOffset command.",
-          topicPartition,
-          e);
+      LOGGER.warn("Timeout while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
     } catch (Exception e) {
-      LOGGER.error("Got exception while waiting for the sync offset command for {}. Will swallow.", topicPartition, e);
+      LOGGER
+          .error("Got exception while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
     } finally {
       /**
        * If exception happens, async command has to be invalidated because the SIT is going to be closed in SIT thread
        * and its internal state is not reliable anymore. Notice that if the async command is already in the process of
-       * execution, invalidation will wait for command to finish and not affect its execution. It is also safe to
-       * invalidate a already finished command, so we can put it in finally block.
+       * execution, cancel will wait for command to finish and not affect its execution. It is also safe to
+       * cancel an already finished command, so we can put it in finally block.
        */
-      cmd.invalidate();
+      cmdFuture.cancel(true);
     }
   }
 

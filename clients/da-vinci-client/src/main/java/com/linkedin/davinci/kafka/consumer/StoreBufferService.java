@@ -5,6 +5,7 @@ import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
+import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -271,13 +272,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  QueueNode execSyncOffsetCommandAsync(PubSubTopicPartition topicPartition, StoreIngestionTask ingestionTask)
-      throws InterruptedException {
+  public CompletableFuture<Void> execSyncOffsetCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
     CommandQueueNode syncOffsetCmd =
         new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
-    return syncOffsetCmd;
+    return syncOffsetCmd.getCmdExecutedFuture();
   }
 
   @Override
@@ -375,7 +377,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
-  static class QueueNode implements Measurable {
+  private static class QueueNode implements Measurable {
     /**
      * Considering the overhead of {@link PubSubMessage} and its internal structures.
      */
@@ -544,17 +546,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  static class CommandQueueNode extends QueueNode {
+  private static class CommandQueueNode extends QueueNode {
     enum CommandType {
       // only supports SYNC_OFFSET command today.
       SYNC_OFFSET
     }
 
-    private final CompletableFuture<Void> cmdExecutedFuture = new CompletableFuture<>();
+    private final LockAssistedCompletableFuture<Void> cmdExecutedFuture;
 
     private final CommandType commandType;
-
-    private boolean valid;
 
     public CommandQueueNode(
         CommandType commandType,
@@ -562,7 +562,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         StoreIngestionTask ingestionTask) {
       super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
       this.commandType = commandType;
-      this.valid = true;
+      this.cmdExecutedFuture = new LockAssistedCompletableFuture<>(this);
     }
 
     public CompletableFuture<Void> getCmdExecutedFuture() {
@@ -573,16 +573,26 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return commandType;
     }
 
-    public synchronized void invalidate() {
-      valid = false;
-    }
-
-    // This method is used to execute the command synchronously. Once it is in execution, it cannot be invalidated.
-    public synchronized void executeSync(Runnable runnable) {
-      if (valid) {
+    /*
+     * This method is used to execute the command synchronously. We use a customized LockAssistedCompletableFuture to
+     * ensure that once it is in execution, it cannot be cancelled.
+     */
+    public void executeSync(Runnable runnable) {
+      synchronized (cmdExecutedFuture.getLock()) {
+        if (cmdExecutedFuture.isDone() || cmdExecutedFuture.isCancelled()) {
+          LOGGER.warn(
+              "Command {} for {} in drainer queue is already done or cancelled",
+              commandType,
+              getConsumerRecord().getTopicPartition());
+          return;
+        }
         runnable.run();
+        cmdExecutedFuture.complete(null);
+        LOGGER.info(
+            "Command {} for {} in drainer queue is executed successfully",
+            commandType,
+            getConsumerRecord().getTopicPartition());
       }
-      cmdExecutedFuture.complete(null);
     }
 
     @Override
