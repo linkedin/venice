@@ -5,6 +5,7 @@ import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -61,6 +62,8 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceDelegateMode {
+  private RetryManager retryManager;
+
   private VenicePath getVenicePath(
       String storeName,
       int version,
@@ -77,7 +80,8 @@ public class TestVeniceDelegateMode {
       RequestType requestType,
       List<RouterKey> keys,
       Set<String> slowStorageNodeSet) {
-    return new VenicePath(storeName, version, resourceName, false, -1, mock(RetryManager.class)) {
+    retryManager = mock(RetryManager.class);
+    return new VenicePath(storeName, version, resourceName, false, -1, retryManager) {
       private final String ROUTER_REQUEST_VERSION =
           Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
@@ -279,6 +283,21 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
     Instance selectedHost = hosts.get(0);
     Assert.assertTrue(instanceList.contains(selectedHost));
+    verify(retryManager, times(1)).recordRequest();
+    verify(retryManager, never()).isRetryAllowed(anyInt());
+
+    // Verify retry manager behavior for retry request
+    path = getVenicePath(storeName, version, resourceName, RequestType.SINGLE_GET, keys);
+    doReturn(true).when(retryManager).isRetryAllowed(anyInt());
+    path.setRetryRequest();
+    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    RouterStats routerStats = mock(RouterStats.class);
+    doReturn(mock(AggRouterHttpRequestStats.class)).when(routerStats).getStatsByType(any());
+    scatterMode = new VeniceDelegateMode(config, routerStats, mock(RouteHttpRequestStats.class));
+    scatterMode.initReadRequestThrottler(getReadRequestThrottle(false));
+    scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
+    verify(retryManager, never()).recordRequest();
+    verify(retryManager, times(1)).isRetryAllowed(anyInt());
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available to serve request of type: SINGLE_GET")
@@ -488,6 +507,21 @@ public class TestVeniceDelegateMode {
     Assert.assertTrue(
         instanceSet.contains(instance3) || instanceSet.contains(instance5),
         "One of instance3/instance5 should be selected");
+    verify(retryManager, times(3)).recordRequest();
+    verify(retryManager, never()).isRetryAllowed(anyInt());
+
+    // Verify retry manager behavior for retry request
+    path = getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET, keys);
+    doReturn(true).when(retryManager).isRetryAllowed(anyInt());
+    path.setRetryRequest();
+    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    RouterStats routerStats = mock(RouterStats.class);
+    doReturn(mock(AggRouterHttpRequestStats.class)).when(routerStats).getStatsByType(any());
+    scatterMode = new VeniceDelegateMode(config, routerStats, mock(RouteHttpRequestStats.class));
+    scatterMode.initReadRequestThrottler(getReadRequestThrottle(false));
+    scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
+    verify(retryManager, never()).recordRequest();
+    verify(retryManager, atLeastOnce()).isRetryAllowed(eq(3));
   }
 
   @Test
