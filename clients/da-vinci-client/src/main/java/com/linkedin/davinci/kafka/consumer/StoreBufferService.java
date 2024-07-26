@@ -586,12 +586,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
               getConsumerRecord().getTopicPartition());
           return;
         }
-        runnable.run();
-        cmdExecutedFuture.complete(null);
-        LOGGER.info(
-            "Command {} for {} in drainer queue is executed successfully",
-            commandType,
-            getConsumerRecord().getTopicPartition());
+        try {
+          runnable.run();
+          cmdExecutedFuture.complete(null);
+          LOGGER.info(
+              "Command {} for {} in drainer queue is executed successfully",
+              commandType,
+              getConsumerRecord().getTopicPartition());
+        } catch (Exception e) {
+          cmdExecutedFuture.completeExceptionally(e);
+          LOGGER.error(
+              "Command {} for {} in drainer queue failed",
+              commandType,
+              getConsumerRecord().getTopicPartition(),
+              e);
+        }
       }
     }
 
