@@ -135,6 +135,29 @@ public class TestVeniceChunkedPayloadTTLFilter {
             MapperValueType.PUT));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 10L));
+    values = Collections.singletonList(
+        createRegularValue(
+            valueSerializer.serialize(valueRecord),
+            rmdSerializer.serialize(rmdRecord),
+            1,
+            1,
+            MapperValueType.PUT));
+    Assert.assertFalse(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 9L));
+    values = Collections.singletonList(
+        createRegularValue(
+            valueSerializer.serialize(valueRecord),
+            rmdSerializer.serialize(rmdRecord),
+            1,
+            1,
+            MapperValueType.PUT));
+    Assert.assertTrue(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
   }
 
   @Test
