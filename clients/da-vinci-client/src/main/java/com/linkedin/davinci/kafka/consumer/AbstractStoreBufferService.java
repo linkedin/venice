@@ -5,6 +5,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
+import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -33,4 +34,8 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract long getMaxMemoryUsagePerDrainer();
 
   public abstract long getMinMemoryUsagePerDrainer();
+
+  public abstract CompletableFuture<Void> execSyncOffsetCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException;
 }

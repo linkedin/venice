@@ -133,6 +133,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -161,6 +162,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private static final long SCHEMA_POLLING_TIMEOUT_MS = MINUTES.toMillis(5);
   private static final long SOP_POLLING_TIMEOUT_MS = HOURS.toMillis(1);
+
+  protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
@@ -1370,18 +1373,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerUnSubscribeAllTopics(partitionConsumptionState);
 
           if (ingestionCheckpointDuringGracefulShutdownEnabled) {
+            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
             try {
-              waitForAllMessageToBeProcessedFromTopicPartition(
-                  new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
-                  partitionConsumptionState);
+              CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
+              waitForSyncOffsetCmd(cmdFuture, topicPartition);
+              waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
             } catch (InterruptedException e) {
               throw new VeniceException(e);
             }
-
-            this.kafkaDataIntegrityValidator
-                .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-            updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-            syncOffset(kafkaVersionTopic, partitionConsumptionState);
           }
         };
 
@@ -1448,6 +1447,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } finally {
       internalClose(doFlush);
     }
+  }
+
+  private void waitForSyncOffsetCmd(CompletableFuture<Void> cmdFuture, PubSubTopicPartition topicPartition)
+      throws InterruptedException {
+    try {
+      cmdFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+    } catch (InterruptedException e) {
+      LOGGER.warn(
+          "Got interrupted while waiting for the sync offset command for {}. Cancel command and throw the interrupt exception.",
+          topicPartition,
+          e);
+      throw e;
+    } catch (TimeoutException e) {
+      LOGGER.warn("Timeout while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
+    } catch (Exception e) {
+      LOGGER
+          .error("Got exception while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
+    } finally {
+      /**
+       * If exception happens, async command has to be invalidated because the SIT is going to be closed in SIT thread
+       * and its internal state is not reliable anymore. Notice that if the async command is already in the process of
+       * execution, cancel will wait for command to finish and not affect its execution. It is also safe to
+       * cancel an already finished command, so we can put it in finally block.
+       */
+      cmdFuture.cancel(true);
+    }
+  }
+
+  protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
+    /**
+     * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
+     * could be ahead of the other.
+     *
+     * The reason to transform the internal state only during checkpointing is that the intermediate checksum
+     * generation is an expensive operation.
+     */
+    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(pcs.getPartition(), pcs.getOffsetRecord());
+    // update the offset metadata in the OffsetRecord.
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(kafkaVersionTopic, pcs);
   }
 
   private void handleIngestionException(Exception e) {
@@ -2219,23 +2258,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
-    boolean syncOffset =
-        shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext);
-
-    if (syncOffset) {
-      /**
-       * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
-       * could be ahead of the other.
-       */
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-      /**
-       * The reason to transform the internal state only during checkpointing is that
-       * the intermediate checksum generation is an expensive operation.
-       */
-      this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(partition, offsetRecord);
-      // update the offset metadata in the OffsetRecord
-      updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-      syncOffset(kafkaVersionTopic, partitionConsumptionState);
+    if (shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext)) {
+      updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
   }
 
