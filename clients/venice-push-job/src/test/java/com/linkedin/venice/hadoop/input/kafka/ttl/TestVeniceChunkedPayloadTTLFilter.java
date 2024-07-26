@@ -79,35 +79,61 @@ public class TestVeniceChunkedPayloadTTLFilter {
   }
 
   @Test
-  public void testTTLFilterHandlesDelete() {
+  public void testTTLFilterHandlesRecord() {
     final byte[] serializedKey = createChunkBytes(0, 5);
-    MapOrderPreservingSerializer serializer = MapOrderPreservingSerDeFactory.getSerializer(RMD_SCHEMA);
+    MapOrderPreservingSerializer valueSerializer = MapOrderPreservingSerDeFactory.getSerializer(VALUE_SCHEMA);
+    MapOrderPreservingSerializer rmdSerializer = MapOrderPreservingSerDeFactory.getSerializer(RMD_SCHEMA);
 
     // For field level TS, it will always retain even though field level TS is not fresh enough, as it will be a bit
     // complicated to check through.
     GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 10L));
     List<byte[]> values = Collections
-        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 9L));
     values = Collections
-        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     // For value level TS, it will filter based on RMD timestamp.
     rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 10L);
     values = Collections
-        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 9L);
     values = Collections
-        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
     Assert.assertTrue(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    // Handle PUT case.
+    GenericRecord valueRecord = new GenericData.Record(VALUE_SCHEMA);
+    valueRecord.put("name", "abc");
+    rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 9L);
+    values = Collections.singletonList(
+        createRegularValue(
+            valueSerializer.serialize(valueRecord),
+            rmdSerializer.serialize(rmdRecord),
+            1,
+            1,
+            MapperValueType.PUT));
+    Assert.assertTrue(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 10L);
+    values = Collections.singletonList(
+        createRegularValue(
+            valueSerializer.serialize(valueRecord),
+            rmdSerializer.serialize(rmdRecord),
+            1,
+            1,
+            MapperValueType.PUT));
+    Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
   }
 
