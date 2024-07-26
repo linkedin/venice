@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 import static com.linkedin.venice.controller.server.CreateVersion.overrideSourceRegionAddressForIncrementalPushJob;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HOSTNAME;
@@ -251,6 +252,7 @@ public class CreateVersionTest {
     doReturn("dc-0").when(admin).getRegionName();
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doReturn(true).when(admin).isParent();
+    doReturn(ACTIVE).when(admin).getParentControllerRegionState();
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
     doReturn("default-src.region.io").when(admin).getKafkaBootstrapServers(anyBoolean());
