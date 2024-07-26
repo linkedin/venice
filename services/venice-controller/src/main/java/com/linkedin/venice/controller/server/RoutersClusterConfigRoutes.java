@@ -27,91 +27,99 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
    * Enable throttling by updating the cluster level for all routers.
    */
   public Route enableThrottling(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, ENABLE_THROTTLING.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableThrottling");
-        admin.updateRoutersClusterConfig(
-            clusterName,
-            Optional.of(status),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty());
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+          @Override
+          public void internalHandle(Request request, ControllerResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, ENABLE_THROTTLING.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            veniceResponse.setCluster(clusterName);
+            boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableThrottling");
+            admin.updateRoutersClusterConfig(
+                clusterName,
+                Optional.of(status),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+          }
+        });
   }
 
   /**
    * Enable max capacity protection by updating the cluster level for all routers.
    */
   public Route enableMaxCapacityProtection(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, ENABLE_MAX_CAPACITY_PROTECTION.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableMaxCapacityProtection");
-        admin.updateRoutersClusterConfig(
-            clusterName,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.of(status),
-            Optional.empty());
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+          @Override
+          public void internalHandle(Request request, ControllerResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, ENABLE_MAX_CAPACITY_PROTECTION.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            veniceResponse.setCluster(clusterName);
+            boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableMaxCapacityProtection");
+            admin.updateRoutersClusterConfig(
+                clusterName,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(status),
+                Optional.empty());
+          }
+        });
   }
 
   /**
    * Enable quota rebalanced by updating the cluster level for all routers.
    */
   public Route enableQuotaRebalanced(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, ENABLE_QUOTA_REBALANCED.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableQuotaRebalance");
-        int expectedRouterCount =
-            Utils.parseIntFromString(request.queryParams(EXPECTED_ROUTER_COUNT), "expectedRouterCount");
-        admin.updateRoutersClusterConfig(
-            clusterName,
-            Optional.empty(),
-            Optional.of(status),
-            Optional.empty(),
-            Optional.of(expectedRouterCount));
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+          @Override
+          public void internalHandle(Request request, ControllerResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, ENABLE_QUOTA_REBALANCED.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            veniceResponse.setCluster(clusterName);
+            boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableQuotaRebalance");
+            int expectedRouterCount =
+                Utils.parseIntFromString(request.queryParams(EXPECTED_ROUTER_COUNT), "expectedRouterCount");
+            admin.updateRoutersClusterConfig(
+                clusterName,
+                Optional.empty(),
+                Optional.of(status),
+                Optional.empty(),
+                Optional.of(expectedRouterCount));
+          }
+        });
   }
 
   /**
    * No ACL check; any user is allowed to check router cluster configs.
    */
   public Route getRoutersClusterConfig(Admin admin) {
-    return new VeniceRouteHandler<RoutersClusterConfigResponse>(RoutersClusterConfigResponse.class) {
-      @Override
-      public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, GET_ROUTERS_CLUSTER_CONFIG.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setConfig(admin.getRoutersClusterConfig(clusterName));
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<RoutersClusterConfigResponse>(RoutersClusterConfigResponse.class) {
+          @Override
+          public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
+            AdminSparkServer.validateParams(request, GET_ROUTERS_CLUSTER_CONFIG.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            veniceResponse.setCluster(clusterName);
+            veniceResponse.setConfig(admin.getRoutersClusterConfig(clusterName));
+          }
+        });
   }
 }

@@ -25,7 +25,7 @@ public class SkipAdminRoute extends AbstractRoute {
    * @see Admin#skipAdminMessage(String, long, boolean)
    */
   public Route skipAdminMessage(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -46,6 +46,6 @@ public class SkipAdminRoute extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 }

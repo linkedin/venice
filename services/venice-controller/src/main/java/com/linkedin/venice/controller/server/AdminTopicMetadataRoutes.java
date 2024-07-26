@@ -32,7 +32,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
    * @see Admin#getAdminTopicMetadata(String, Optional)
    */
   public Route getAdminTopicMetadata(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       AdminTopicMetadataResponse responseObject = new AdminTopicMetadataResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -57,14 +57,14 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#updateAdminTopicMetadata(String, long, Optional, Optional, Optional)
    */
   public Route updateAdminTopicMetadata(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -101,6 +101,6 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 }

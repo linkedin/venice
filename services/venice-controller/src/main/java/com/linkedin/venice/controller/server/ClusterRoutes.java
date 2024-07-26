@@ -31,29 +31,32 @@ public class ClusterRoutes extends AbstractRoute {
    * @see Admin#updateClusterConfig(String, UpdateClusterConfigQueryParams)
    */
   public Route updateClusterConfig(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, UPDATE_CLUSTER_CONFIG.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+          @Override
+          public void internalHandle(Request request, ControllerResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, UPDATE_CLUSTER_CONFIG.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
 
-        veniceResponse.setCluster(clusterName);
+            veniceResponse.setCluster(clusterName);
 
-        Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
+            Map<String, String> params =
+                Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
 
-        try {
-          admin.updateClusterConfig(clusterName, new UpdateClusterConfigQueryParams(params));
-        } catch (Exception e) {
-          veniceResponse.setError(
-              "Failed when updating configs for cluster: " + clusterName + ". Exception type: "
-                  + e.getClass().toString() + ". Detailed message = " + e.getMessage());
-        }
-      }
-    };
+            try {
+              admin.updateClusterConfig(clusterName, new UpdateClusterConfigQueryParams(params));
+            } catch (Exception e) {
+              veniceResponse.setError(
+                  "Failed when updating configs for cluster: " + clusterName + ". Exception type: "
+                      + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+            }
+          }
+        });
   }
 
   /**
@@ -61,38 +64,42 @@ public class ClusterRoutes extends AbstractRoute {
    * @see Admin#isStoreMigrationAllowed(String)
    */
   public Route isStoreMigrationAllowed(Admin admin) {
-    return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
-      @Override
-      public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, STORE_MIGRATION_ALLOWED.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setStoreMigrationAllowed(admin.isStoreMigrationAllowed(clusterName));
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
+          @Override
+          public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
+            AdminSparkServer.validateParams(request, STORE_MIGRATION_ALLOWED.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            veniceResponse.setCluster(clusterName);
+            veniceResponse.setStoreMigrationAllowed(admin.isStoreMigrationAllowed(clusterName));
+          }
+        });
   }
 
   /**
    * @see Admin#wipeCluster(String, String, Optional, Optional)
    */
   public Route wipeCluster(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, WIPE_CLUSTER.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String fabric = request.queryParams(FABRIC);
-        Optional<String> storeName = Optional.ofNullable(request.queryParams(NAME));
-        Optional<Integer> versionNum = Optional.ofNullable(request.queryParams(VERSION)).map(Integer::parseInt);
-        veniceResponse.setCluster(cluster);
-        storeName.ifPresent(veniceResponse::setName);
-        admin.wipeCluster(cluster, fabric, storeName, versionNum);
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+          @Override
+          public void internalHandle(Request request, ControllerResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, WIPE_CLUSTER.getParams(), admin);
+            String cluster = request.queryParams(CLUSTER);
+            String fabric = request.queryParams(FABRIC);
+            Optional<String> storeName = Optional.ofNullable(request.queryParams(NAME));
+            Optional<Integer> versionNum = Optional.ofNullable(request.queryParams(VERSION)).map(Integer::parseInt);
+            veniceResponse.setCluster(cluster);
+            storeName.ifPresent(veniceResponse::setName);
+            admin.wipeCluster(cluster, fabric, storeName, versionNum);
+          }
+        });
   }
 
   /**
@@ -101,14 +108,16 @@ public class ClusterRoutes extends AbstractRoute {
    * @see Admin#cleanupInstanceCustomizedStates(String)
    */
   public Route cleanupInstanceCustomizedStates(Admin admin) {
-    return new VeniceRouteHandler<MultiStoreTopicsResponse>(MultiStoreTopicsResponse.class) {
-      @Override
-      public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, CLEANUP_INSTANCE_CUSTOMIZED_STATES.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setTopics(admin.cleanupInstanceCustomizedStates(clusterName));
-      }
-    };
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<MultiStoreTopicsResponse>(MultiStoreTopicsResponse.class) {
+          @Override
+          public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
+            AdminSparkServer.validateParams(request, CLEANUP_INSTANCE_CUSTOMIZED_STATES.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            veniceResponse.setCluster(clusterName);
+            veniceResponse.setTopics(admin.cleanupInstanceCustomizedStates(clusterName));
+          }
+        });
   }
 }

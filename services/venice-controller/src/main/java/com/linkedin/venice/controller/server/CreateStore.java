@@ -32,41 +32,43 @@ public class CreateStore extends AbstractRoute {
    * @see Admin#createStore(String, String, String, String, String, boolean, Optional)
    */
   public Route createStore(Admin admin) {
-    return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
-      @Override
-      public void internalHandle(Request request, NewStoreResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String keySchema = request.queryParams(KEY_SCHEMA);
-        String valueSchema = request.queryParams(VALUE_SCHEMA);
-        boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
+          @Override
+          public void internalHandle(Request request, NewStoreResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            String storeName = request.queryParams(NAME);
+            String keySchema = request.queryParams(KEY_SCHEMA);
+            String valueSchema = request.queryParams(VALUE_SCHEMA);
+            boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
 
-        String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
-        if (owner == null) {
-          owner = "";
-        }
+            String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
+            if (owner == null) {
+              owner = "";
+            }
 
-        String accessPerm = request.queryParams(ACCESS_PERMISSION);
-        Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
+            String accessPerm = request.queryParams(ACCESS_PERMISSION);
+            Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
 
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        veniceResponse.setOwner(owner);
-        admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
-      }
-    };
+            veniceResponse.setCluster(clusterName);
+            veniceResponse.setName(storeName);
+            veniceResponse.setOwner(owner);
+            admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+          }
+        });
   }
 
   /**
    * @see Admin#updateAclForStore(String, String, String)
    */
   public Route updateAclForStore(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       AclResponse responseObject = new AclResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -83,14 +85,14 @@ public class CreateStore extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#getAclForStore(String, String)
    */
   public Route getAclForStore(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       AclResponse responseObject = new AclResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -108,14 +110,14 @@ public class CreateStore extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#deleteAclForStore(String, String)
    */
   public Route deleteAclForStore(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       AclResponse responseObject = new AclResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -131,14 +133,14 @@ public class CreateStore extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#checkResourceCleanupBeforeStoreCreation(String, String)
    */
   public Route checkResourceCleanupForStoreCreation(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -153,7 +155,7 @@ public class CreateStore extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
-    };
+    });
   }
 
 }

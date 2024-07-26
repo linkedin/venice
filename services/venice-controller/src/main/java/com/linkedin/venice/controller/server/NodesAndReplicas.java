@@ -64,7 +64,7 @@ public class NodesAndReplicas extends AbstractRoute {
    * @see Admin#getStorageNodes(String)
    */
   public Route listAllNodes(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       MultiNodeResponse responseObject = new MultiNodeResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -81,7 +81,7 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
@@ -89,7 +89,7 @@ public class NodesAndReplicas extends AbstractRoute {
    * @see Admin#getStorageNodesStatus(String, boolean)
    */
   public Route listAllNodesStatus(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       MultiNodesStatusResponse responseObject = new MultiNodesStatusResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -104,7 +104,7 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
@@ -112,7 +112,7 @@ public class NodesAndReplicas extends AbstractRoute {
    * @see Admin#getReplicas(String, String)
    */
   public Route listReplicasForStore(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -131,7 +131,7 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
@@ -139,7 +139,7 @@ public class NodesAndReplicas extends AbstractRoute {
    * @see Admin#getReplicasOfStorageNode(String, String)
    */
   public Route listReplicasForStorageNode(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -157,7 +157,7 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
@@ -165,7 +165,7 @@ public class NodesAndReplicas extends AbstractRoute {
    * @see Admin#isInstanceRemovable(String, String, List, boolean)
    */
   public Route isNodeRemovable(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       NodeStatusResponse responseObject = new NodeStatusResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -208,14 +208,14 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#removeStorageNode(String, String)
    */
   public Route removeNodeFromCluster(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -236,14 +236,14 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#addInstanceToAllowlist(String, String)
    */
   public Route addNodeIntoAllowList(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -264,14 +264,14 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
    * @see Admin#removeInstanceFromAllowList(String, String)
    */
   public Route removeNodeFromAllowList(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -292,7 +292,7 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
+    });
   }
 
   /**
@@ -300,7 +300,7 @@ public class NodesAndReplicas extends AbstractRoute {
    * @see Admin#nodeReplicaReadiness(String, String)
    */
   public Route nodeReplicasReadiness(Admin admin) {
-    return (request, response) -> {
+    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
       NodeReplicasReadinessResponse responseObj = new NodeReplicasReadinessResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -317,6 +317,6 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObj);
-    };
+    });
   }
 }

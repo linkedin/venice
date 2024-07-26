@@ -24,24 +24,26 @@ public class NewClusterBuildOutRoutes extends AbstractRoute {
    * @see Admin#copyOverStoreSchemasAndConfigs(String, String, String, String)
    */
   public Route copyOverStoreSchemasAndConfigs(Admin admin) {
-    return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
-      @Override
-      public void internalHandle(Request request, StoreResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, REPLICATE_META_DATA.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String srcFabric = request.queryParams(SOURCE_FABRIC);
-        String destFabric = request.queryParams(DEST_FABRIC);
-        String storeName = request.queryParams(NAME);
+    return new VeniceParentControllerRegionStateHandler(
+        admin,
+        new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
+          @Override
+          public void internalHandle(Request request, StoreResponse veniceResponse) {
+            // Only allow allowlist users to run this command
+            if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+              return;
+            }
+            AdminSparkServer.validateParams(request, REPLICATE_META_DATA.getParams(), admin);
+            String clusterName = request.queryParams(CLUSTER);
+            String srcFabric = request.queryParams(SOURCE_FABRIC);
+            String destFabric = request.queryParams(DEST_FABRIC);
+            String storeName = request.queryParams(NAME);
 
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        StoreInfo storeInfo = admin.copyOverStoreSchemasAndConfigs(clusterName, srcFabric, destFabric, storeName);
-        veniceResponse.setStore(storeInfo);
-      }
-    };
+            veniceResponse.setCluster(clusterName);
+            veniceResponse.setName(storeName);
+            StoreInfo storeInfo = admin.copyOverStoreSchemasAndConfigs(clusterName, srcFabric, destFabric, storeName);
+            veniceResponse.setStore(storeInfo);
+          }
+        });
   }
 }
