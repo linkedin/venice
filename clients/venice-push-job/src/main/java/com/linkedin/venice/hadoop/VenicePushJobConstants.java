@@ -201,11 +201,6 @@ public final class VenicePushJobConstants {
       "rewind.epoch.time.buffer.in.seconds.override";
 
   /**
-   * This config specifies if Venice is deployed in a multi-region mode
-   */
-  public static final String MULTI_REGION = "multi.region";
-
-  /**
    * In single-region mode, this must be a comma-separated list of child controller URLs or {@literal d2://<d2ServiceNameForChildController>}
    * In multi-region mode, it must be a comma-separated list of parent controller URLs or {@literal d2://<d2ServiceNameForParentController>}
    */

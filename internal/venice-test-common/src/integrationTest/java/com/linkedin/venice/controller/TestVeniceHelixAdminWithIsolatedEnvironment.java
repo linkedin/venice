@@ -42,7 +42,7 @@ import org.testng.annotations.Test;
 public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVeniceHelixAdmin {
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(false);
+    setupCluster(false, new MetricsRepository());
   }
 
   @AfterMethod(alwaysRun = true)

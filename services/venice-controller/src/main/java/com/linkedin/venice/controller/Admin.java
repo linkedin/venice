@@ -801,18 +801,6 @@ public interface Admin extends AutoCloseable, Closeable {
   List<String> getClustersLeaderOf();
 
   /**
-   * Enable/disable native replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
-   * all) in a cluster. If storeName is not empty, only the specified store might be updated.
-   */
-  void configureNativeReplication(
-      String cluster,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableNativeReplicationForCluster,
-      Optional<String> newSourceFabric,
-      Optional<String> regionsFilter);
-
-  /**
    * Enable/disable active active replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
    * all) in a cluster. If storeName is not empty, only the specified store might be updated.
    */

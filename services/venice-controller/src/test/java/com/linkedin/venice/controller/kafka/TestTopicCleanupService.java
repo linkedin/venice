@@ -80,7 +80,7 @@ public class TestTopicCleanupService {
 
     VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn("local,remote").when(controllerConfig).getChildDatacenters();
+    doReturn(Utils.setOf("local", "remote")).when(controllerConfig).getChildDatacenters();
     Map<String, String> dataCenterToBootstrapServerMap = new HashMap<>();
     dataCenterToBootstrapServerMap.put("local", "local");
     dataCenterToBootstrapServerMap.put("remote", "remote");
@@ -445,7 +445,7 @@ public class TestTopicCleanupService {
     // Mis-configured where local data center is not in the child data centers list
     VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn("remote").when(controllerConfig).getChildDatacenters();
+    doReturn(Collections.singleton("remote")).when(controllerConfig).getChildDatacenters();
     TopicCleanupService blockedTopicCleanupService = new TopicCleanupService(
         admin,
         veniceControllerMultiClusterConfig,
