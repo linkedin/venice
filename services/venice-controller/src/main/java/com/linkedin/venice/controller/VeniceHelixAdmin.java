@@ -6544,6 +6544,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
 
+    if (!isSafeToKillOfflinePush(clusterName, kafkaTopic, isForcedKill)) {
+      LOGGER.info("Aborting killOfflinePush for: {} in cluster: {}", kafkaTopic, clusterName);
+      return;
+    }
+
     deleteHelixResource(clusterName, kafkaTopic);
 
     LOGGER.info("Killing offline push for: {} in cluster: {}", kafkaTopic, clusterName);
@@ -6611,7 +6616,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     StatusMessageChannel messageChannel = resources.getMessageChannel();
-    // As we should already have retry outside of this function call, so we do not need to retry again inside.
+    // As we should already have retry outside this function call, so we do not need to retry again inside.
     int retryCount = 1;
     // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
     // message to the live instances.
@@ -6630,6 +6635,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         && participantMessageStoreRTTMap.containsKey(clusterName)) {
       sendKillMessageToParticipantStore(clusterName, kafkaTopic);
     }
+  }
+
+  /**
+   * If the child controllers are using the killJob topic as their current version, the killOfflinePush job should be aborted
+   */
+  public boolean isSafeToKillOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
+    if (isForcedKill) {
+      return true;
+    }
+
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+
+      if (storeResponse.isError()) {
+        LOGGER.error(
+            "Could not query store from region: {} for cluster: {}. Error: {}",
+            region,
+            clusterName,
+            storeResponse.getError());
+        return false;
+      }
+
+      StoreInfo storeInfo = storeResponse.getStore();
+      if (storeInfo == null) {
+        LOGGER.error("Received null store response from region: {} for cluster: {}", region, clusterName);
+        return false;
+      }
+
+      if (versionNumber == storeInfo.getCurrentVersion()) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /**
