@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
@@ -66,7 +67,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
     Properties validProps = new Properties();
     validProps.put(REPUSH_TTL_ENABLE, true);
     validProps.put(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
-    validProps.put(REPUSH_TTL_START_TIMESTAMP, 9L);
+    validProps.put(REPUSH_TTL_START_TIMESTAMP, 10L);
     validProps.put(RMD_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VENICE_STORE_NAME_PROP, TEST_STORE);
@@ -78,25 +79,42 @@ public class TestVeniceChunkedPayloadTTLFilter {
   }
 
   @Test
-  public void testTTLFilterRetainsDeleteWithFieldLevelTs() {
-    List<byte[]> values = new ArrayList<>(1);
-    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 10L));
-
-    byte[] rmdBytes = MapOrderPreservingSerDeFactory.getSerializer(RMD_SCHEMA).serialize(rmdRecord);
-    values.add(createRegularValue(null, rmdBytes, 1, 1, MapperValueType.DELETE));
-    Collections.reverse(values); // value wins
+  public void testTTLFilterHandlesDelete() {
     final byte[] serializedKey = createChunkBytes(0, 5);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
-        chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
-    Assert.assertFalse(filter.checkAndMaybeFilterValue(assembledValue));
+    MapOrderPreservingSerializer serializer = MapOrderPreservingSerDeFactory.getSerializer(RMD_SCHEMA);
+
+    // For field level TS, it will always retain even though field level TS is not fresh enough, as it will be a bit
+    // complicated to check through.
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 10L));
+    List<byte[]> values = Collections
+        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    Assert.assertFalse(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 9L));
+    values = Collections
+        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    Assert.assertFalse(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    // For value level TS, it will filter based on RMD timestamp.
+    rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 10L);
+    values = Collections
+        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    Assert.assertFalse(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
+
+    rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 9L);
+    values = Collections
+        .singletonList(createRegularValue(null, serializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    Assert.assertTrue(
+        filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
   }
 
   @Test
   public void testTTLFilterHandleValuePayloadOfDelete() {
-    List<byte[]> values = new ArrayList<>(1);
     byte[] rmdBytes = "dummyString".getBytes();
-    values.add(createRegularValue(null, rmdBytes, 1, 1, MapperValueType.DELETE));
-    Collections.reverse(values); // value wins
+    List<byte[]> values = Collections.singletonList(createRegularValue(null, rmdBytes, 1, 1, MapperValueType.DELETE));
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -194,6 +212,13 @@ public class TestVeniceChunkedPayloadTTLFilter {
       }
     });
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
+    return rmdRecord;
+  }
+
+  protected GenericRecord createRmdWithValueLevelTimestamp(Schema rmdSchema, long valueLevelTimestamp) {
+    final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
+    rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, valueLevelTimestamp);
     rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
     return rmdRecord;
   }
