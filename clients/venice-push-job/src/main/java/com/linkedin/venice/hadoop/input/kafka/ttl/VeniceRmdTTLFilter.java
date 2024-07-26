@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -58,7 +57,6 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     this.schemaSource = new HDFSSchemaSource(props.getString(VALUE_SCHEMA_DIR), props.getString(RMD_SCHEMA_DIR));
     this.rmdSchemaMap = schemaSource.fetchRmdSchemas();
     this.valueSchemaMap = schemaSource.fetchValueSchemas();
-    LogManager.getLogger(VeniceRmdTTLFilter.class).info("DEBUGGING: {}", rmdSchemaMap);
     this.rmdDeserializerCache = new VeniceConcurrentHashMap<>();
     this.valueDeserializerCache = new VeniceConcurrentHashMap<>();
     this.rmdSerializerCache = new VeniceConcurrentHashMap<>();
@@ -83,7 +81,6 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
   boolean filterByTTLandMaybeUpdateValue(final INPUT_VALUE value) {
     ByteBuffer rmdPayload = getRmdPayload(value);
-    LogManager.getLogger(VeniceRmdTTLFilter.class).info("DEBUGGING WE ARE HERE");
     if (rmdPayload == null || !rmdPayload.hasRemaining()) {
       throw new IllegalStateException(
           "The record doesn't contain required RMD field. Please check if your store has A/A enabled");
@@ -100,8 +97,6 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
       return (long) rmdTimestampObject <= filterTimestamp;
     }
     ByteBuffer valuePayload = getValuePayload(value);
-    LogManager.getLogger(VeniceRmdTTLFilter.class).info("DEBUGGING: {} {}", rmdRecord, valuePayload);
-
     if (valuePayload == null || valuePayload.remaining() == 0) {
       /**
        * We do not need check the field level TS for DELETE. If a field has TS older than TTL, it does not matter as it
@@ -134,7 +129,6 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
   RecordDeserializer<GenericRecord> generateRmdDeserializer(RmdVersionId rmdVersionId) {
     Schema schema = rmdSchemaMap.get(rmdVersionId);
-    LogManager.getLogger(VeniceRmdTTLFilter.class).info("DEBUGGING: {} {}", schema, rmdVersionId);
     return MapOrderPreservingSerDeFactory.getDeserializer(schema, schema);
   }
 
