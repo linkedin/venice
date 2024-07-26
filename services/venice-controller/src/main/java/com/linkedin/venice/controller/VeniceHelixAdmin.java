@@ -7554,6 +7554,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * @see Admin#getParentControllerRegionState()
+   */
+  @Override
+  public ParentControllerRegionState getParentControllerRegionState() {
+    return multiClusterConfigs.getParentControllerRegionState();
+  }
+
+  /**
    * @see Admin#getChildDataCenterControllerUrlMap(String)
    */
   @Override

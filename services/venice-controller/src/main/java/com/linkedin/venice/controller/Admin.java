@@ -756,6 +756,13 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean isParent();
 
   /**
+   * Return the state of the region of the parent controller.
+   * @return {@link ParentControllerRegionState#ACTIVE} which means that the parent controller in the region is serving requests.
+   * Otherwise, return {@link ParentControllerRegionState#PASSIVE}
+   */
+  ParentControllerRegionState getParentControllerRegionState();
+
+  /**
    * Get child datacenter to child controller url mapping.
    * @return A map of child datacenter -> child controller url
    */

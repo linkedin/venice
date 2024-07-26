@@ -67,6 +67,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isParent();
   }
 
+  public ParentControllerRegionState getParentControllerRegionState() {
+    return getCommonConfig().getParentControllerRegionState();
+  }
+
   public String getControllerName() {
     return getCommonConfig().getControllerName();
   }

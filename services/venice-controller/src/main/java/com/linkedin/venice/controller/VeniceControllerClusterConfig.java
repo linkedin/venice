@@ -53,6 +53,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_REGION_STATE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
@@ -157,6 +158,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -221,6 +223,7 @@ public class VeniceControllerClusterConfig {
   private final String controllerClusterZkAddress;
   private final boolean multiRegion;
   private final boolean parent;
+  private final ParentControllerRegionState parentControllerRegionState;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
   private final String clusterDiscoveryD2ServiceName;
@@ -631,6 +634,8 @@ public class VeniceControllerClusterConfig {
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
+    this.parentControllerRegionState =
+        ParentControllerRegionState.valueOf(props.getString(CONTROLLER_PARENT_REGION_STATE, ACTIVE.name()));
 
     if (childDatacenters.isEmpty()) {
       this.childDataCenterControllerUrlMap = Collections.emptyMap();
@@ -1160,6 +1165,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isParent() {
     return parent;
+  }
+
+  public ParentControllerRegionState getParentControllerRegionState() {
+    return parentControllerRegionState;
   }
 
   public long getDeprecatedJobTopicRetentionMs() {

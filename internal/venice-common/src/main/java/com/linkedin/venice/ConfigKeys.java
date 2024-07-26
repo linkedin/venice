@@ -1067,6 +1067,17 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
 
   /**
+   * This config specifies the state of the region of the parent controller.
+   *
+   * The region can be in one of the following states:
+   * ACTIVE: the parent controller in the region is serving requests.
+   * PASSIVE: the parent controller in the region is rejecting requests.
+   *
+   * By default, this is set to ACTIVE.
+   */
+  public static final String CONTROLLER_PARENT_REGION_STATE = "controller.parent.region.state";
+
+  /**
    * This config is used to control how many errored topics we are going to keep in parent cluster.
    * This is mostly used to investigate the Kafka missing message issue.
    * If the issue gets resolved, we could change this config to be '0'.
