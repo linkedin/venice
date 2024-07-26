@@ -2085,4 +2085,31 @@ public class ConfigKeys {
    * Only used in batch push jobs and partial updates.
    */
   public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
+
+  /**g
+   * Percentage of total single get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the
+   * total single get requests are allowed for long tail retry. This is to prevent retry storm and cascading failures.
+   */
+  public static final String ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL =
+      "router.single.key.long.tail.retry.budget.percent.decimal";
+
+  /**
+   * Percentage of total multi get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the
+   * total multi get requests are allowed for long tail retry. This is to prevent retry storm and cascading failures.
+   */
+  public static final String ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL =
+      "router.multi.key.long.tail.retry.budget.percent.decimal";
+
+  /**
+   * Enforcement window for router long tail retry budget token bucket. This applies to both single get and multi get
+   * retry managers.
+   */
+  public static final String ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS =
+      "router.long.tail.retry.budget.enforcement.window.ms";
+
+  /**
+   * The core pool size for the thread pool executor which contains threads responsible for measuring and updating all
+   * retry managers in router periodically to provide retry budget based on a percentage of the original requests.
+   */
+  public static final String ROUTER_RETRY_MANAGER_CORE_POOL_SIZE = "router.retry.manager.core.pool.size";
 }
