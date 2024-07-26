@@ -9,6 +9,7 @@ import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -35,6 +36,9 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceMultiGetPath {
+  private final RetryManager disabledRetryManager =
+      new RetryManager(new MetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
+
   @BeforeClass
   public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(
@@ -115,7 +119,8 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        1);
+        1,
+        disabledRetryManager);
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
@@ -143,7 +148,8 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        1);
+        1,
+        disabledRetryManager);
   }
 
   @Test
@@ -162,7 +168,6 @@ public class TestVeniceMultiGetPath {
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
-
     VenicePath path = new VeniceMultiGetPath(
         storeName,
         version,
@@ -173,9 +178,10 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        1);
-    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
-    Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
+        1,
+        disabledRetryManager);
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
+    Assert.assertFalse(path.isLongTailRetryAllowedForNewRequest());
 
     request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
@@ -190,8 +196,9 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        -1);
-    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
-    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
+        -1,
+        disabledRetryManager);
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
   }
 }

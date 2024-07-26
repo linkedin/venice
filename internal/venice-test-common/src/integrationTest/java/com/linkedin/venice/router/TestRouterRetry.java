@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Version;
@@ -35,8 +36,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -50,6 +51,9 @@ public class TestRouterRetry {
   private int valueSchemaId;
   private String storeName;
 
+  // default extraProperties
+  private Properties extraProperties;
+
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
   private static final String VALUE_SCHEMA_STR =
@@ -58,15 +62,14 @@ public class TestRouterRetry {
   private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
   private static final String KEY_PREFIX = "key_";
 
-  @BeforeClass(alwaysRun = true)
-  public void setUp() throws VeniceClientException, ExecutionException, InterruptedException {
-    Utils.thisIsLocalhost();
-    Properties extraProperties = new Properties();
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    extraProperties = new Properties();
     // Add the following specific configs for Router
     // To trigger long-tail retry
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
     extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a
-                                                                                         // batch-get request
+    // batch-get request
     extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
     extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, true);
 
@@ -74,8 +77,20 @@ public class TestRouterRetry {
     extraProperties.put(
         ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
+  }
 
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, extraProperties);
+  private void initCluster() throws VeniceClientException, ExecutionException, InterruptedException {
+    Utils.thisIsLocalhost();
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
     // Create test store
@@ -123,7 +138,7 @@ public class TestRouterRetry {
     veniceCluster.stopVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
@@ -139,6 +154,7 @@ public class TestRouterRetry {
 
   @Test(timeOut = 60000)
   public void testRouterRetry() throws ExecutionException, InterruptedException {
+    initCluster();
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerAddr)
@@ -213,5 +229,70 @@ public class TestRouterRetry {
         unhealthyRequestMetricForForComputeStreaming,
         0.0,
         "Unhealthy request for compute streaming is unexpected");
+  }
+
+  @Test(timeOut = 60000)
+  public void testRouterMultiGetRetryManager() throws ExecutionException, InterruptedException {
+    extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, "1000");
+    extraProperties.put(ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    initCluster();
+    try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerAddr)
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
+      Set<String> keySet = new HashSet<>();
+      for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
+        keySet.add(KEY_PREFIX + i);
+      }
+      Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
+      Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
+      // Retry manager should eventually be initialized for multi-get
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        double multiGetRetryLimit = MetricsUtils.getSum(
+            ".multi-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+            veniceCluster.getVeniceRouters());
+        Assert.assertTrue(multiGetRetryLimit > 0);
+      });
+      double multiGetRejectedRetry = MetricsUtils.getSum(
+          ".multi-key-long-tail-retry-manager-" + storeName + "--rejected_retry.OccurrenceRate",
+          veniceCluster.getVeniceRouters());
+      double singleGetRetryLimit = MetricsUtils.getSum(
+          "single-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+          veniceCluster.getVeniceRouters());
+      Assert.assertEquals(multiGetRejectedRetry, 0.0, "Rejected retry is unexpected");
+      Assert.assertEquals(singleGetRetryLimit, 0.0, "Single-key retry manager shouldn't be initialized");
+    }
+  }
+
+  @Test(timeOut = 60000)
+  public void testRouterSingleGetRetryManager() throws ExecutionException, InterruptedException {
+    extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, "1000");
+    extraProperties.put(ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL, "0.1");
+    initCluster();
+    try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerAddr)
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
+      String key = KEY_PREFIX + 1;
+      GenericRecord result = storeClient.get(key).get();
+      Assert.assertNotNull(result, "Value should not be null");
+      // Retry manager should eventually be initialized for single-get
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        double singleGetRetryLimit = MetricsUtils.getSum(
+            ".single-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+            veniceCluster.getVeniceRouters());
+        Assert.assertTrue(singleGetRetryLimit > 0);
+      });
+      double singleGetRejectedRetry = MetricsUtils.getSum(
+          ".single-key-long-tail-retry-manager-" + storeName + "--rejected_retry.OccurrenceRate",
+          veniceCluster.getVeniceRouters());
+      double multiGetRetryLimit = MetricsUtils.getSum(
+          "multi-key-long-tail-retry-manager-" + storeName + "--retry_limit_per_seconds.Gauge",
+          veniceCluster.getVeniceRouters());
+      Assert.assertEquals(singleGetRejectedRetry, 0.0, "Rejected retry is unexpected");
+      Assert.assertEquals(multiGetRetryLimit, 0.0, "Multi-key retry manager shouldn't be initialized");
+    }
   }
 }
