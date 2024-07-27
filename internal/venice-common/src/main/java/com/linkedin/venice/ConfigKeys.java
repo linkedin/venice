@@ -339,8 +339,15 @@ public class ConfigKeys {
       "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
 
   /**
-   * Whether the superset schema generation in Parent Controller should be done via passed callback or not.
+   * Whether the superset schema generation in Primary Controller should be done via passed callback or not.
    */
+  public static final String CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
+      "controller.external.superset.schema.generation.enabled";
+
+  /**
+   * Whether the superset schema generation in Primary Controller should be done via passed callback or not.
+   */
+  @Deprecated
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
@@ -1164,6 +1171,7 @@ public class ConfigKeys {
    */
   public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
       "enable.incremental.push.for.hybrid.active.active.user.stores";
+
   /**
    * We will use this config to determine whether we should enable partial update for hybrid active-active user stores.
    * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value

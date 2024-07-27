@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.controller.SchemaConstants.BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2;
@@ -33,7 +33,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
@@ -346,7 +345,7 @@ public class VeniceParentHelixAdminTest {
       Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
       Assert.assertTrue(
           controllerResponse.getError()
-              .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
+              .contains("Cannot enable ETL for this store because etled user proxy account is not set"));
 
       // test enabling ETL with empty proxy account, expected failure
       params = new UpdateStoreQueryParams();
@@ -358,7 +357,7 @@ public class VeniceParentHelixAdminTest {
       Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
       Assert.assertTrue(
           controllerResponse.getError()
-              .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
+              .contains("Cannot enable ETL for this store because etled user proxy account is not set"));
 
       // test enabling ETL with etl proxy account, expected success
       params = new UpdateStoreQueryParams();
@@ -405,22 +404,20 @@ public class VeniceParentHelixAdminTest {
     // This cluster setup don't have server, we cannot perform push here.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
-    properties.setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
-    properties
-        .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
+    properties.setProperty(CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
 
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            1,
-            Optional.of(properties),
-            Optional.empty(),
-            Optional.empty())) {
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(0)
+                .numberOfRouters(0)
+                .replicationFactor(1)
+                .parentControllerProperties(properties)
+                .supersetSchemaGenerator(new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP))
+                .build())) {
       String parentControllerUrl = twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString();
       try (ControllerClient parentControllerClient =
           new ControllerClient(twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {
@@ -440,8 +437,11 @@ public class VeniceParentHelixAdminTest {
         Assert.assertNotNull(newStoreResponse);
         Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
         // Enable write compute
-        ControllerResponse updateStoreResponse = parentControllerClient
-            .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        ControllerResponse updateStoreResponse = parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(86400)
+                .setHybridOffsetLagThreshold(1000)
+                .setWriteComputationEnabled(true));
         Assert.assertFalse(updateStoreResponse.isError());
 
         MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
@@ -562,25 +562,26 @@ public class VeniceParentHelixAdminTest {
     parentControllerProps
         .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     if (isSupersetSchemaGeneratorEnabled) {
-      parentControllerProps
-          .setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
-      parentControllerProps.put(
-          VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR,
-          new SupersetSchemaGeneratorWithCustomProp("test_prop"));
+      parentControllerProps.setProperty(CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
+    }
+
+    VeniceMultiRegionClusterCreateOptions.Builder options =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(1)
+            .parentControllerProperties(parentControllerProps)
+            .sslToKafka(isControllerSslEnabled);
+
+    if (isSupersetSchemaGeneratorEnabled) {
+      options = options.supersetSchemaGenerator(new SupersetSchemaGeneratorWithCustomProp("test_prop"));
     }
 
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
-                .numberOfClusters(1)
-                .numberOfParentControllers(1)
-                .numberOfChildControllers(1)
-                .numberOfServers(0)
-                .numberOfRouters(0)
-                .replicationFactor(1)
-                .parentControllerProperties(parentControllerProps)
-                .sslToKafka(isControllerSslEnabled)
-                .build())) {
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(options.build())) {
       String childControllerUrl = venice.getChildRegions().get(0).getControllerConnectString();
       String parentControllerUrl = venice.getControllerConnectString();
       Optional<SSLFactory> sslFactory =
@@ -1013,7 +1014,9 @@ public class VeniceParentHelixAdminTest {
 
   private void validateEnablingWriteComputeFailed(String storeName, ControllerClient parentControllerClient) {
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
-    updateStoreQueryParams.setWriteComputationEnabled(true);
+    updateStoreQueryParams.setHybridRewindSeconds(86400)
+        .setHybridOffsetLagThreshold(1000)
+        .setWriteComputationEnabled(true);
     ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
     Assert.assertTrue(
         response.isError(),
@@ -1040,7 +1043,9 @@ public class VeniceParentHelixAdminTest {
 
     // Step 2. Update this store to enable write compute.
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
-    updateStoreQueryParams.setWriteComputationEnabled(true);
+    updateStoreQueryParams.setHybridOffsetLagThreshold(1000)
+        .setHybridRewindSeconds(86400)
+        .setWriteComputationEnabled(true);
     parentControllerClient.updateStore(storeName, updateStoreQueryParams);
 
     // Step 3. Get value schema and write compute schema generated by the controller.
@@ -1103,7 +1108,9 @@ public class VeniceParentHelixAdminTest {
 
     // Step 2. Update this store to enable write compute.
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
-    updateStoreQueryParams.setWriteComputationEnabled(true);
+    updateStoreQueryParams.setHybridOffsetLagThreshold(1000)
+        .setHybridRewindSeconds(86400)
+        .setWriteComputationEnabled(true);
     parentControllerClient.updateStore(storeName, updateStoreQueryParams);
 
     // Could not enable write compute bad schema did not have defaults

@@ -194,9 +194,12 @@ public class TestActiveActiveReplicationForIncPush {
           dc1ControllerClient,
           dc2ControllerClient);
 
+      // Incremental push is not allowed for NON_AGGREGATE DataReplicationPolicy
+      boolean incrementalPushAllowed = !overrideDataReplicationPolicy;
+
       verifyHybridAndIncPushConfig(
           storeName,
-          true,
+          incrementalPushAllowed,
           true,
           parentControllerClient,
           dc0ControllerClient,
@@ -208,10 +211,18 @@ public class TestActiveActiveReplicationForIncPush {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
+
       // Run inc push with source fabric preference taking effect.
       try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
         job.run();
+        if (!incrementalPushAllowed) {
+          Assert.fail("Incremental push should throw an exception for NON_AGGREGATE data replication policy");
+        }
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      } catch (Exception e) {
+        if (incrementalPushAllowed) {
+          throw e;
+        }
       }
 
       // Verify
@@ -222,14 +233,26 @@ public class TestActiveActiveReplicationForIncPush {
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
         Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
       }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+      if (incrementalPushAllowed) {
+        NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+      }
 
       // Run another inc push with a different source fabric preference taking effect.
       try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
         job.run();
+        if (!incrementalPushAllowed) {
+          Assert.fail("Incremental push should throw an exception for NON_AGGREGATE data replication policy");
+        }
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      } catch (Exception e) {
+        if (incrementalPushAllowed) {
+          throw e;
+        }
       }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+
+      if (incrementalPushAllowed) {
+        NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+      }
     }
   }
 

@@ -190,7 +190,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           .sslToStorageNodes(options.isSslToStorageNodes())
           .sslToKafka(options.isSslToKafka())
           .forkServer(options.isForkServer())
-          .kafkaClusterMap(kafkaClusterMap);
+          .kafkaClusterMap(kafkaClusterMap)
+          .supersetSchemaGenerator(options.getSupersetSchemaGenerator());
       // Create multi-clusters
       for (int i = 0; i < options.getNumberOfRegions(); i++) {
         String regionName = childRegionName.get(i);
@@ -221,6 +222,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .clusterToServerD2(clusterToServerD2)
               .regionName(parentRegionName)
               .authorizerService(options.getParentAuthorizerService())
+              .supersetSchemaGenerator(options.getSupersetSchemaGenerator())
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < options.getNumberOfParentControllers(); i++) {

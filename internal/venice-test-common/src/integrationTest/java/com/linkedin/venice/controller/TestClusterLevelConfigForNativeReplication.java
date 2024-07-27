@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -89,6 +90,7 @@ public class TestClusterLevelConfigForNativeReplication {
         parentControllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+                .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
                 .setHybridRewindSeconds(1L)
                 .setHybridOffsetLagThreshold(10)));
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {

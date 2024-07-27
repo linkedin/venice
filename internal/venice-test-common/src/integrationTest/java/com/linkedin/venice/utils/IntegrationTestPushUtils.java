@@ -25,12 +25,12 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -175,9 +175,7 @@ public class IntegrationTestPushUtils {
         keySchemaStr,
         valueSchema,
         props,
-        CompressionStrategy.NO_OP,
-        false,
-        false);
+        CompressionStrategy.NO_OP);
   }
 
   public static void makeStoreHybrid(
@@ -258,9 +256,7 @@ public class IntegrationTestPushUtils {
         recordSchema.getField(props.getProperty(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP)).schema().toString(),
         recordSchema.getField(props.getProperty(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP)).schema().toString(),
         props,
-        CompressionStrategy.NO_OP,
-        false,
-        false);
+        CompressionStrategy.NO_OP);
   }
 
   public static ControllerClient createStoreForJob(
@@ -268,17 +264,13 @@ public class IntegrationTestPushUtils {
       String keySchemaStr,
       String valueSchemaStr,
       Properties props,
-      CompressionStrategy compressionStrategy,
-      boolean chunkingEnabled,
-      boolean incrementalPushEnabled) {
+      CompressionStrategy compressionStrategy) {
 
     UpdateStoreQueryParams storeParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setCompressionStrategy(compressionStrategy)
             .setBatchGetLimit(2000)
-            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
-            .setChunkingEnabled(chunkingEnabled)
-            .setIncrementalPushEnabled(incrementalPushEnabled);
+            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA);
 
     return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams);
   }
@@ -290,12 +282,12 @@ public class IntegrationTestPushUtils {
       Properties props,
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
-    NewStoreResponse newStoreResponse = controllerClient
-        .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
-
-    if (newStoreResponse.isError()) {
-      throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
-    }
+    assertCommand(
+        controllerClient.createNewStore(
+            props.getProperty(VENICE_STORE_NAME_PROP),
+            "test@linkedin.com",
+            keySchemaStr,
+            valueSchemaStr));
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     return controllerClient;
