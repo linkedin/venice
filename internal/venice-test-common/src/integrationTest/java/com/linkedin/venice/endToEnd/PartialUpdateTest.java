@@ -78,6 +78,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -345,6 +346,7 @@ public class PartialUpdateTest {
               .setWriteComputationEnabled(true)
               .setChunkingEnabled(true)
               .setIncrementalPushEnabled(true)
+              .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
@@ -413,6 +415,7 @@ public class PartialUpdateTest {
               .setWriteComputationEnabled(true)
               .setChunkingEnabled(true)
               .setIncrementalPushEnabled(true)
+              .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =

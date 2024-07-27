@@ -90,6 +90,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         sslConfig,
         accessController,
         icProvider,
+        externalSupersetSchemaGenerator,
         pubSubTopicRepository,
         pubSubClientsFactory,
         Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));

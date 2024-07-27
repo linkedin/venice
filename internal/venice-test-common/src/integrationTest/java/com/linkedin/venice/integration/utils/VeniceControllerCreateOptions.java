@@ -11,6 +11,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
@@ -38,6 +39,7 @@ public class VeniceControllerCreateOptions {
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
+  private final SupersetSchemaGenerator supersetSchemaGenerator;
 
   private VeniceControllerCreateOptions(Builder builder) {
     multiRegion = builder.multiRegion;
@@ -59,6 +61,7 @@ public class VeniceControllerCreateOptions {
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
     regionName = builder.regionName;
+    supersetSchemaGenerator = builder.supersetSchemaGenerator;
   }
 
   @Override
@@ -116,6 +119,9 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("childControllers:")
         .append(getAddressesOfChildControllers())
+        .append(", ")
+        .append("supersetSchemaGenerator:")
+        .append(supersetSchemaGenerator)
         .toString();
   }
 
@@ -205,6 +211,10 @@ public class VeniceControllerCreateOptions {
     return regionName;
   }
 
+  public SupersetSchemaGenerator getSupersetSchemaGenerator() {
+    return supersetSchemaGenerator;
+  }
+
   public static class Builder {
     private boolean multiRegion = false;
     private final String[] clusterNames;
@@ -224,6 +234,7 @@ public class VeniceControllerCreateOptions {
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String regionName;
+    private SupersetSchemaGenerator supersetSchemaGenerator;
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
@@ -312,6 +323,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder regionName(String regionName) {
       this.regionName = regionName;
+      return this;
+    }
+
+    public Builder supersetSchemaGenerator(SupersetSchemaGenerator supersetSchemaGenerator) {
+      this.supersetSchemaGenerator = supersetSchemaGenerator;
       return this;
     }
 

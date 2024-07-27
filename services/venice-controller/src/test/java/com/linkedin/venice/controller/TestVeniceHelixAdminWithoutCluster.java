@@ -10,10 +10,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -36,58 +32,6 @@ import org.testng.annotations.Test;
 
 public class TestVeniceHelixAdminWithoutCluster {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-
-  @Test
-  public void canMergeNewHybridConfigValuesToOldStore() {
-    String storeName = Utils.getUniqueString("storeName");
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    Assert.assertFalse(store.isHybrid());
-
-    Optional<Long> rewind = Optional.of(123L);
-    Optional<Long> lagOffset = Optional.of(1500L);
-    Optional<Long> timeLag = Optional.of(300L);
-    Optional<DataReplicationPolicy> dataReplicationPolicy = Optional.of(DataReplicationPolicy.AGGREGATE);
-    Optional<BufferReplayPolicy> bufferReplayPolicy = Optional.of(BufferReplayPolicy.REWIND_FROM_EOP);
-    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
-        store,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty());
-    Assert.assertNull(
-        hybridStoreConfig,
-        "passing empty optionals and a non-hybrid store should generate a null hybrid config");
-
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
-        store,
-        rewind,
-        lagOffset,
-        timeLag,
-        dataReplicationPolicy,
-        bufferReplayPolicy);
-    Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
-    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
-    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
-    Assert.assertEquals(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(), 300L);
-    Assert.assertEquals(hybridStoreConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
-
-    // It's okay that time lag threshold or data replication policy is not specified
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
-        store,
-        rewind,
-        lagOffset,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty());
-    Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
-    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
-    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
-    Assert.assertEquals(
-        hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
-    Assert.assertEquals(hybridStoreConfig.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
-  }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*still exists in cluster.*")
   public void testCheckResourceCleanupBeforeStoreCreationWhenExistsInOtherCluster() {
