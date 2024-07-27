@@ -8,6 +8,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import java.util.Properties;
 
 
@@ -28,6 +29,7 @@ public class VeniceMultiRegionClusterCreateOptions {
   private final AuthorizerService parentAuthorizerService;
   private final String parentVeniceZkBasePath;
   private final String childVeniceZkBasePath;
+  private final SupersetSchemaGenerator supersetSchemaGenerator;
 
   public int getNumberOfRegions() {
     return numberOfRegions;
@@ -93,6 +95,10 @@ public class VeniceMultiRegionClusterCreateOptions {
     return childVeniceZkBasePath;
   }
 
+  public SupersetSchemaGenerator getSupersetSchemaGenerator() {
+    return supersetSchemaGenerator;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -143,6 +149,9 @@ public class VeniceMultiRegionClusterCreateOptions {
         .append(", ")
         .append("childVeniceZkBasePath:")
         .append(childVeniceZkBasePath)
+        .append(", ")
+        .append("supersetSchemaGenerator:")
+        .append(supersetSchemaGenerator)
         .toString();
   }
 
@@ -163,6 +172,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     parentAuthorizerService = builder.parentAuthorizerService;
     parentVeniceZkBasePath = builder.parentVeniceZkBasePath;
     childVeniceZkBasePath = builder.childVeniceZkBasePath;
+    supersetSchemaGenerator = builder.supersetSchemaGenerator;
   }
 
   public static class Builder {
@@ -182,6 +192,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     private AuthorizerService parentAuthorizerService;
     private String parentVeniceZkBasePath = "/";
     private String childVeniceZkBasePath = "/";
+    private SupersetSchemaGenerator supersetSchemaGenerator;
 
     public Builder numberOfRegions(int numberOfRegions) {
       this.numberOfRegions = numberOfRegions;
@@ -268,6 +279,11 @@ public class VeniceMultiRegionClusterCreateOptions {
       }
 
       this.childVeniceZkBasePath = veniceZkBasePath;
+      return this;
+    }
+
+    public Builder supersetSchemaGenerator(SupersetSchemaGenerator supersetSchemaGenerator) {
+      this.supersetSchemaGenerator = supersetSchemaGenerator;
       return this;
     }
 

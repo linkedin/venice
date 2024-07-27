@@ -472,8 +472,10 @@ public class TestParentControllerWithMultiDataCenter {
       Assert.assertFalse(schemaResponse2.isError(), "addValeSchema returned error: " + schemaResponse2.getError());
 
       // Enable AA on store
-      UpdateStoreQueryParams updateStoreToEnableAARepl =
-          new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
+      UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+          .setActiveActiveReplicationEnabled(true)
+          .setHybridOffsetLagThreshold(1000)
+          .setHybridRewindSeconds(1000);
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.

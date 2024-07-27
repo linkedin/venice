@@ -9,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -64,7 +65,15 @@ public class MaterializedViewTest {
     existingViewConfigParams.put(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(12));
     doReturn(existingViewConfigParams).when(viewConfig).getViewParameters();
     doReturn(MaterializedView.class.getCanonicalName()).when(viewConfig).getViewClassName();
-    doReturn(Collections.singletonMap("old-view", viewConfig)).when(storeWithExistingViews).getViewConfigs();
+    Map<String, ViewConfig> viewConfigMap = new HashMap() {
+      {
+        put("old-view", viewConfig);
+        put(
+            viewParams.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()),
+            new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParams));
+      }
+    };
+    doReturn(viewConfigMap).when(storeWithExistingViews).getViewConfigs();
     // Fail due to existing identical view config
     assertThrows(() -> new MaterializedView(properties, storeWithExistingViews, viewParams).validateConfigs());
     existingViewConfigParams.put(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(36));

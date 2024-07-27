@@ -323,6 +323,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     while (isRunning.get()) {
       try {
         Utils.sleep(READ_CYCLE_DELAY_MS);
+        // We don't really need to check if the controller is the leader for the cluster here, because it is checked in
+        // isAdminTopicConsumptionEnabled. However, we still check it here because it helps in testing.
         if (!admin.isLeaderControllerFor(clusterName) || !admin.isAdminTopicConsumptionEnabled(clusterName)) {
           unSubscribe();
           continue;
