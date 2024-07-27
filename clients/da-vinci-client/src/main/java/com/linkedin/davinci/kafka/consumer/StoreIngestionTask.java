@@ -108,6 +108,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -2956,13 +2957,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  protected void recordWriterStats(
+  protected abstract void recordWriterStats(
       long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
-      PartitionConsumptionState partitionConsumptionState) {
-
-  }
+      PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Message validation using DIV. Leaders should pass in the validator instance from {@link LeaderFollowerStoreIngestionTask};
@@ -3241,10 +3240,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
                 ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
                 AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-            hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
-
-            // Ideally, the record size calculation should include rmd, but it's too difficult to keep track of it
-            recordAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize(), currentTimeMs);
+            ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
+            boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
+            if (isValueManifest) {
+              hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
+              recordAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize(), currentTimeMs);
+            } else { // the manifest pertains to a chunked rmd
+              hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);
+            }
           } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
             LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
           }

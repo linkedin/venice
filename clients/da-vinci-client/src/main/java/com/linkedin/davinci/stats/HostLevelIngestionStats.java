@@ -33,6 +33,7 @@ import java.util.Map;
  */
 public class HostLevelIngestionStats extends AbstractVeniceStats {
   public static final String ASSEMBLED_RECORD_SIZE_RATIO = "assembled_record_size_ratio";
+  public static final String ASSEMBLED_RECORD_RMD_SIZE_IN_BYTES = "assembled_record_rmd_size_in_bytes";
   public static final String ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES = "assembled_record_value_size_in_bytes";
 
   // The aggregated bytes ingested rate for the entire host
@@ -51,6 +52,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor keySizeSensor;
   private final Sensor valueSizeSensor;
   private final Sensor assembledValueSizeSensor;
+  private final Sensor assembledRmdSizeSensor;
   private final Sensor assembledRecordSizeRatioSensor;
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
@@ -282,6 +284,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.assembledValueSizeSensor = registerSensor(ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, avgAndMax());
 
+    this.assembledRmdSizeSensor = registerSensor(ASSEMBLED_RECORD_RMD_SIZE_IN_BYTES, avgAndMax());
+
     this.assembledRecordSizeRatioSensor = registerSensor(ASSEMBLED_RECORD_SIZE_RATIO, new Max());
 
     String viewTimerSensorName = "total_view_writer_latency";
@@ -469,6 +473,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordAssembledValueSize(long bytes, long currentTimeMs) {
     assembledValueSizeSensor.record(bytes, currentTimeMs);
+  }
+
+  public void recordAssembledRmdSize(long bytes, long currentTimeMs) {
+    assembledRmdSizeSensor.record(bytes, currentTimeMs);
   }
 
   public void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {

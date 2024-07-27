@@ -19,6 +19,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
@@ -94,7 +95,7 @@ public final class ChunkingTestUtils {
     put.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
     byte[] valueBytes = createChunkBytes(chunkIndex * CHUNK_LENGTH, CHUNK_LENGTH);
     put.putValue = prependSchemaId(valueBytes, put.schemaId);
-    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    put.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;
     messageEnvelope.payloadUnion = put;
     return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, newOffset, 0, 20);
   }
@@ -123,7 +124,7 @@ public final class ChunkingTestUtils {
     Put put = new Put();
     put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
     put.putValue = prependSchemaId(valueBytes, put.schemaId);
-    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    put.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;
     messageEnvelope.payloadUnion = put;
     return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, newOffset, 0, 20);
   }
