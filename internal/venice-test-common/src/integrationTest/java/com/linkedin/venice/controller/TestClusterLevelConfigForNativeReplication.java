@@ -13,6 +13,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
@@ -97,6 +98,7 @@ public class TestClusterLevelConfigForNativeReplication {
         parentControllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+                .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
                 .setHybridRewindSeconds(1L)
                 .setHybridOffsetLagThreshold(10)));
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -107,7 +109,7 @@ public class TestClusterLevelConfigForNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testConvertHybridDuringPushjob() {
+  public void testConvertHybridDuringPushJob() {
     String storeName = Utils.getUniqueString("test-store");
     parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
     parentControllerClient.requestTopicForWrites(
@@ -128,7 +130,7 @@ public class TestClusterLevelConfigForNativeReplication {
         storeName,
         new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L));
     Assert.assertTrue(response.isError());
-    Assert.assertTrue(response.getError().contains("Cannot convert to hybrid as there is already a pushjob running"));
+    Assert.assertTrue(response.getError().contains("Cannot convert to hybrid as there is already a push job running"));
     parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
   }
 

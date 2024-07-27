@@ -1,10 +1,13 @@
 package com.linkedin.venice.controller.supersetschema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import org.apache.avro.Schema;
 
 
@@ -41,12 +44,30 @@ public class SupersetSchemaGeneratorWithCustomProp implements SupersetSchemaGene
      * Check whether the latest value schema contains {@link #customProp} or not.
      */
     String customPropInLatestValueSchema = latestValueSchemaEntry.getSchema().getProp(customProp);
-    if (customPropInLatestValueSchema != null && supersetSchemaEntry.getSchema().getProp(customProp) == null) {
+    Schema existingSupersetSchema = supersetSchemaEntry.getSchema();
+    if (customPropInLatestValueSchema != null
+        && !customPropInLatestValueSchema.equals(existingSupersetSchema.getProp(customProp))) {
+      List<Schema.Field> existingSupersetSchemaFields = existingSupersetSchema.getFields();
+      List<Schema.Field> fieldList = new ArrayList<>(existingSupersetSchemaFields.size());
+      for (Schema.Field field: existingSupersetSchemaFields) {
+        fieldList.add(AvroCompatibilityHelper.newField(field).build());
+      }
+      Schema newSupersetSchema = Schema.createRecord(
+          existingSupersetSchema.getName(),
+          existingSupersetSchema.getDoc(),
+          existingSupersetSchema.getNamespace(),
+          existingSupersetSchema.isError(),
+          fieldList);
+
       /**
-       * The 'supersetSchemaEntry' can contain a different custom prop value than the latest value schema, and
-       * custom prop value is not mutable.
+       * Custom props are not mutable, hence we need to copy all the existing props to the new schema
        */
-      Schema newSupersetSchema = supersetSchemaEntry.clone().getSchema();
+      AvroCompatibilityHelper.getAllPropNames(existingSupersetSchema).forEach(prop -> {
+        if (!prop.equals(customProp)) {
+          newSupersetSchema.addProp(prop, existingSupersetSchema.getProp(prop));
+        }
+      });
+
       // Not empty, then copy it to the superset schema
       newSupersetSchema.addProp(customProp, customPropInLatestValueSchema);
       // Check whether this new schema exists or not

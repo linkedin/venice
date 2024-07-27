@@ -114,8 +114,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-//TODO: write a VPJWrapper that can handle the whole flow
-
 
 @Test(singleThreaded = true)
 public abstract class TestBatch {
@@ -225,18 +223,12 @@ public abstract class TestBatch {
           inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithASchemaWithAWrongDefaultValue(inputDir, recordCnt)),
           properties -> {},
           (avroClient, vsonClient, metricsRepository) -> {
-            for (int i = 0; i < recordCnt; i++) {
-              Object valueObject = avroClient.get(Integer.toString(i)).get();
-              Assert.assertTrue(
-                  valueObject instanceof GenericRecord,
-                  "The returned value must be a ''GenericRecord' for key: " + i);
-              GenericRecord value = (GenericRecord) valueObject;
-              Assert.assertEquals(value.get(DEFAULT_KEY_FIELD_PROP).toString(), Integer.toString(i));
-              Assert.assertEquals(Float.valueOf(value.get("score").toString()), 100.0f);
-            }
+            Assert.fail("Store creation should have failed");
           });
+    } catch (AssertionError e) {
+      Assert.assertTrue(e.getMessage().contains("Invalid default for field"));
     } catch (Exception e) {
-      Assert.assertTrue(e.getMessage().contains("Could not create store"));
+      Assert.fail("Unexpected exception", e);
     }
   }
 
@@ -471,7 +463,7 @@ public abstract class TestBatch {
           }
         },
         storeName,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        null);
 
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
@@ -483,7 +475,7 @@ public abstract class TestBatch {
           }
         },
         storeName,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        null);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -523,59 +515,6 @@ public abstract class TestBatch {
         },
         storeName,
         null);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
-    double randomNumber = Math.random();
-    String classAndFunctionName = getClass().getSimpleName() + ".testIncrementalPushWritesToRealTimeTopicWithPolicy()";
-    String uniqueTestId = "attempt [" + randomNumber + "] of " + classAndFunctionName;
-    LOGGER.info("Start of {}", uniqueTestId);
-    try {
-      String storeName = testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-          properties -> {},
-          (avroClient, vsonClient, metricsRepository) -> {
-            for (int i = 1; i <= 100; i++) {
-              Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-            }
-          },
-          new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-              .setChunkingEnabled(true)
-              .setHybridOffsetLagThreshold(10)
-              .setHybridRewindSeconds(0));
-
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema2(inputDir)),
-          properties -> properties.setProperty(INCREMENTAL_PUSH, "true"),
-          (avroClient, vsonClient, metricsRepository) -> {
-            for (int i = 51; i <= 150; i++) {
-              Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
-            }
-          },
-          storeName,
-          null);
-
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-          properties -> {},
-          (avroClient, vsonClient, metricsRepository) -> {
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-              for (int i = 1; i <= 100; i++) {
-                Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-              }
-              for (int i = 101; i <= 150; i++) {
-                Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-              }
-            });
-          },
-          storeName,
-          null);
-      LOGGER.info("Successful end of {}", uniqueTestId);
-    } catch (Throwable e) {
-      LOGGER.error("Caught throwable in {}", uniqueTestId, e);
-      throw e;
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

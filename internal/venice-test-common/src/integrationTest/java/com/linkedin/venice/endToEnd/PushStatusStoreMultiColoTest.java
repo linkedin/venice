@@ -111,7 +111,7 @@ public class PushStatusStoreMultiColoTest {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  public void setUpStore() {
+  private void setUpStore() {
     storeName = Utils.getUniqueString("store");
     String owner = "test";
     // set up push status store.

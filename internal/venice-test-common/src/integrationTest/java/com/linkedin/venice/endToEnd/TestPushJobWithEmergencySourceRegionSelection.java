@@ -129,8 +129,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setPartitionCount(partitionCount)
             .setNativeReplicationEnabled(true)
-            .setNativeReplicationSourceFabric("dc-1")
-            .setActiveActiveReplicationEnabled(true);
+            .setNativeReplicationSourceFabric("dc-1");
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
@@ -150,7 +149,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
        * Check the update store command in parent controller has been propagated into child controllers, before
        * sending any commands directly into child controllers, which can help avoid race conditions.
        */
-      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, true, dc0Client, dc1Client, dc2Client);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client, dc2Client);
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {

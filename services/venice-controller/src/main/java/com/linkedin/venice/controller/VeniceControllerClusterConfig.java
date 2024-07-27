@@ -47,6 +47,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRU
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
@@ -396,7 +397,7 @@ public class VeniceControllerClusterConfig {
 
   private final int parentSystemStoreRepairRetryCount;
 
-  private final boolean parentExternalSupersetSchemaGenerationEnabled;
+  private final boolean externalSupersetSchemaGenerationEnabled;
 
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
@@ -956,8 +957,10 @@ public class VeniceControllerClusterConfig {
     this.parentSystemStoreRepairRetryCount = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT, 1);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-    this.parentExternalSupersetSchemaGenerationEnabled =
-        props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
+    this.externalSupersetSchemaGenerationEnabled = props.getBooleanWithAlternative(
+        CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED,
+        CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED,
+        false);
     this.systemSchemaInitializationAtStartTimeEnabled =
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
     this.isKMERegistrationFromMessageHeaderEnabled =
@@ -1643,8 +1646,8 @@ public class VeniceControllerClusterConfig {
     return parentSystemStoreRepairRetryCount;
   }
 
-  public boolean isParentExternalSupersetSchemaGenerationEnabled() {
-    return parentExternalSupersetSchemaGenerationEnabled;
+  public boolean isExternalSupersetSchemaGenerationEnabled() {
+    return externalSupersetSchemaGenerationEnabled;
   }
 
   public boolean isSystemSchemaInitializationAtStartTimeEnabled() {

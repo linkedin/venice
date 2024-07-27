@@ -426,8 +426,6 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
     int version = message.currentVersion;
     admin.setStoreCurrentVersion(clusterName, storeName, version);
-
-    LOGGER.info("Set store: {} version to {} in cluster: {}", storeName, version, clusterName);
   }
 
   private void handleSetStoreOwner(SetStoreOwner message) {

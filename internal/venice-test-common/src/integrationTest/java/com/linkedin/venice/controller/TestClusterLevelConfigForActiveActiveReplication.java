@@ -98,4 +98,40 @@ public class TestClusterLevelConfigForActiveActiveReplication {
       assertFalse(parentControllerClient.getStore(storeName).getStore().isActiveActiveReplicationEnabled());
     });
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testClusterLevelActiveActiveReplicationConfigForNewIncrementalPushStores() throws IOException {
+    String storeName = Utils.getUniqueString("test-store-incremental");
+    String pushJobId1 = "test-push-job-id-1";
+    parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
+    parentControllerClient.emptyPush(storeName, pushJobId1, 1);
+
+    // Version 1 should exist.
+    StoreInfo store = assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    assertEquals(store.getVersions().size(), 1);
+
+    // Check store level Active/Active is enabled or not
+    assertFalse(store.isActiveActiveReplicationEnabled());
+    assertFalse(store.isIncrementalPushEnabled());
+    assertFalse(store.isActiveActiveReplicationEnabled());
+
+    // Convert to incremental push store
+    assertCommand(
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      StoreInfo storeToTest = parentControllerClient.getStore(storeName).getStore();
+      assertTrue(storeToTest.isIncrementalPushEnabled());
+      assertTrue(storeToTest.isActiveActiveReplicationEnabled());
+    });
+
+    // After inc push is disabled, even default A/A config for pure hybrid store is false,
+    // original store A/A config is enabled.
+    assertCommand(
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(false)));
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      StoreInfo storeToTest = parentControllerClient.getStore(storeName).getStore();
+      assertFalse(storeToTest.isIncrementalPushEnabled());
+      assertTrue(storeToTest.isActiveActiveReplicationEnabled());
+    });
+  }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.views;
 
+import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.tuple.Pair;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -7,6 +8,7 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
@@ -43,9 +45,6 @@ public class MaterializedView extends VeniceView {
       throw new VeniceException(
           String.format(MISSING_PARAMETER_MESSAGE, ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
     }
-    if (store.getViewConfigs().containsKey(viewName)) {
-      throw new VeniceException("A view config with the same view name already exist, view name: " + viewName);
-    }
     String viewPartitioner = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
     if (viewPartitioner == null) {
       throw new VeniceException(
@@ -68,7 +67,8 @@ public class MaterializedView extends VeniceView {
       throw new VeniceException(
           "A materialized view with the same partitioner and partition count as the original store is not allowed!");
     }
-    // Check if there is already a materialized view with identical configs
+    // Check if multiple materialized views share identical configs
+    Map<Pair<String, Integer>, String> partitionerAndCounts = new HashMap<>(store.getViewConfigs().size());
     for (Map.Entry<String, ViewConfig> viewConfigEntries: store.getViewConfigs().entrySet()) {
       ViewConfig viewConfig = viewConfigEntries.getValue();
       if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
@@ -76,10 +76,12 @@ public class MaterializedView extends VeniceView {
             viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
         int configPartitionCount = Integer
             .parseInt(viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()));
-        if (configPartitionCount == viewPartitionCount && configPartitioner.equals(viewPartitioner)) {
+        Pair<String, Integer> partitionerAndCount = Pair.of(configPartitioner, configPartitionCount);
+        if ((viewName = partitionerAndCounts.get(partitionerAndCount)) != null) {
           throw new VeniceException(
-              "A view with identical view configs already exist, view name: " + viewConfigEntries.getKey());
+              String.format("Views '%s' and '%s' have identical view configs", viewName, viewConfigEntries.getKey()));
         }
+        partitionerAndCounts.put(partitionerAndCount, viewConfigEntries.getKey());
       }
     }
   }

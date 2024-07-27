@@ -39,6 +39,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -338,7 +339,9 @@ public class PushJobDetailsTest {
       // because hadoop job client cannot fetch counters properly.
       parentControllerClient.updateStore(
           testStoreName,
-          new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2).setIncrementalPushEnabled(true));
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(2)
+              .setIncrementalPushEnabled(true));
       Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
       pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
@@ -374,7 +377,7 @@ public class PushJobDetailsTest {
 
       // case 3: failed batch push job, non-user error:
       // setting the quota to be 0, hadoop job client cannot fetch counters properly and should fail the job
-      parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
+      parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(1));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v2", pushJobProps)) {
         assertThrows(VeniceException.class, testPushJob::run);
       }
@@ -413,7 +416,8 @@ public class PushJobDetailsTest {
       validatePushJobMetrics(false, false, true, metricsExpectedCount);
 
       // case 5: failed batch push job, user error: data with duplicate keys
-      UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1);
+      UpdateStoreQueryParams queryParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA);
       parentControllerClient.updateStore(testStoreName, queryParams);
 
       pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);

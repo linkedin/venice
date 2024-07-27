@@ -5,6 +5,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirec
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
@@ -468,11 +469,14 @@ public class TestVenicePushJob {
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setWriteComputationEnabled(true);
-    params.setIncrementalPushEnabled(false);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+        .setHybridOffsetLagThreshold(1000)
+        .setWriteComputationEnabled(true)
+        .setIncrementalPushEnabled(false);
 
-    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
+    String valueSchemaStr = loadFileAsString("UserValue.avsc");
+
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", valueSchemaStr, params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
@@ -630,7 +634,7 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
-                .setWriteComputationEnabled(true)));
+                .setChunkingEnabled(true)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.
@@ -653,13 +657,27 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
                 .setHybridRewindSeconds(0)
                 .setChunkingEnabled(chunkingEnabled)));
-    // Run the repush job, it should still pass
-    TestWriteUtils.runPushJob("Test push job", props);
 
-    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+    try {
+      // Run the repush job, it should still pass
+      TestWriteUtils.runPushJob("Test push job", props);
+
+      if (!chunkingEnabled) {
+        Assert.fail("Expected an exception since chunking was disabled in store config");
+      }
+
+      try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+        for (int i = 1; i <= 100; i++) {
+          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+        }
+      }
+    } catch (VeniceException e) {
+      if (!chunkingEnabled) {
+        Assert.assertTrue(
+            e.getMessage().contains("Source version has chunking enabled while chunking is disabled in store config"));
+      } else {
+        Assert.fail("Unexpected exception: " + e.getMessage(), e);
       }
     }
   }

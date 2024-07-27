@@ -31,6 +31,10 @@ public class TestSupersetSchemaGeneratorWithCustomProp {
       AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("superset_schema_test/v3.avsc"));
   private Schema schemaV4 = AvroCompatibilityHelper
       .parse(TestWriteUtils.loadFileAsString("superset_schema_test/v4_without_custom_prop.avsc"));
+  private Schema schemaV5 =
+      AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("superset_schema_test/v5.avsc"));
+  private Schema schemaV6 =
+      AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("superset_schema_test/v6.avsc"));
 
   private SupersetSchemaGenerator generator;
 
@@ -75,6 +79,39 @@ public class TestSupersetSchemaGeneratorWithCustomProp {
     assertNotNull(supersetSchema3.getField("f1"));
     assertNotNull(supersetSchema3.getField("f2"));
     assertNotNull(supersetSchema3.getField("f3"));
+
+    // v5 contains all fields in superset schema and a custom prop
+    Collection<SchemaEntry> schemaEntryCollection4 = Arrays.asList(
+        new SchemaEntry(1, schemaV1),
+        new SchemaEntry(2, schemaV2),
+        new SchemaEntry(3, schemaV3),
+        new SchemaEntry(4, schemaV4),
+        new SchemaEntry(5, schemaV5));
+    SchemaEntry supersetSchemaEntry4 = generator.generateSupersetSchemaFromSchemas(schemaEntryCollection4);
+    assertEquals(supersetSchemaEntry4.getId(), 5);
+    Schema supersetSchema4 = supersetSchemaEntry4.getSchema();
+    assertEquals(supersetSchema4.getProp(CUSTOM_PROP), "custom_prop_value_for_v5");
+    assertNotNull(supersetSchema4.getField("f0"));
+    assertNotNull(supersetSchema4.getField("f1"));
+    assertNotNull(supersetSchema4.getField("f2"));
+    assertNotNull(supersetSchema4.getField("f3"));
+
+    // v6 contains a subset of fields, but with a different custom prop
+    Collection<SchemaEntry> schemaEntryCollection5 = Arrays.asList(
+        new SchemaEntry(1, schemaV1),
+        new SchemaEntry(2, schemaV2),
+        new SchemaEntry(3, schemaV3),
+        new SchemaEntry(4, schemaV4),
+        new SchemaEntry(5, schemaV5),
+        new SchemaEntry(6, schemaV6));
+    SchemaEntry supersetSchemaEntry5 = generator.generateSupersetSchemaFromSchemas(schemaEntryCollection5);
+    assertEquals(supersetSchemaEntry5.getId(), 7);
+    Schema supersetSchema5 = supersetSchemaEntry5.getSchema();
+    assertEquals(supersetSchema5.getProp(CUSTOM_PROP), "custom_prop_value_for_v6");
+    assertNotNull(supersetSchema5.getField("f0"));
+    assertNotNull(supersetSchema5.getField("f1"));
+    assertNotNull(supersetSchema5.getField("f2"));
+    assertNotNull(supersetSchema5.getField("f3"));
   }
 
   @Test

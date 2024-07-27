@@ -72,11 +72,13 @@ public class SystemStoreInitializationHelperTest {
     int replicationFactor = 3;
     doReturn(1).when(firstVersion).getNumber();
     doReturn(VersionStatus.ONLINE).when(firstVersion).getStatus();
+    doReturn(partitionCount).when(firstVersion).getPartitionCount();
 
     Store storeForTest = mock(Store.class);
 
     Store storeForTestAfterUpdateStore = mock(Store.class);
     doReturn(true).when(storeForTestAfterUpdateStore).isHybrid();
+    doReturn(partitionCount).when(storeForTestAfterUpdateStore).getPartitionCount();
 
     Store storeForTestAfterCreatingVersion = mock(Store.class);
     doReturn(true).when(storeForTestAfterCreatingVersion).isHybrid();
@@ -84,6 +86,7 @@ public class SystemStoreInitializationHelperTest {
       // The parent controller always has a current version of zero, so this info is not available there.
       doReturn(versionNumber).when(storeForTestAfterCreatingVersion).getCurrentVersion();
     }
+    doReturn(partitionCount).when(storeForTestAfterCreatingVersion).getPartitionCount();
     doReturn(firstVersion).when(storeForTestAfterCreatingVersion).getVersion(versionNumber);
     doReturn(Collections.singletonList(firstVersion)).when(storeForTestAfterCreatingVersion).getVersions();
 

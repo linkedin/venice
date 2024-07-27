@@ -481,7 +481,8 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
             .setHybridRewindSeconds(2L)
-            .setIncrementalPushEnabled(true),
+            .setIncrementalPushEnabled(true)
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
@@ -614,11 +615,7 @@ public class TestPushJobWithNativeReplication {
             String incPushToRTVersion = System.currentTimeMillis() + "_test_inc_push_to_rt";
             VeniceControllerWrapper parentController =
                 parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-            incPushToRTWriter = startIncrementalPush(
-                parentControllerClient,
-                storeName,
-                parentController.getVeniceAdmin().getVeniceWriterFactory(),
-                incPushToRTVersion);
+            incPushToRTWriter = startIncrementalPush(parentControllerClient, storeName, incPushToRTVersion);
             final String newVersionTopic = Version.composeKafkaTopic(
                 storeName,
                 parentControllerClient.getStore(storeName).getStore().getLargestUsedVersionNumber());
@@ -1007,7 +1004,6 @@ public class TestPushJobWithNativeReplication {
   private VeniceWriter<String, String, byte[]> startIncrementalPush(
       ControllerClient controllerClient,
       String storeName,
-      VeniceWriterFactory veniceWriterFactory,
       String incrementalPushVersion) {
     VersionCreationResponse response = controllerClient.requestTopicForWrites(
         storeName,
@@ -1024,8 +1020,9 @@ public class TestPushJobWithNativeReplication {
         -1);
     assertFalse(response.isError());
     Assert.assertNotNull(response.getKafkaTopic());
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(new Properties(), null, null);
     VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(response.getKafkaTopic())
+        new VeniceWriterOptions.Builder(response.getKafkaTopic()).setBrokerAddress(response.getKafkaBootstrapServers())
             .setKeySerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
             .setValueSerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
             .build());

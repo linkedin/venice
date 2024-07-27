@@ -209,7 +209,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
     setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
-    setEtlStoreConfig(store.getEtlStoreConfig());
+    setEtlStoreConfig(store.getEtlStoreConfig().clone());
     setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
@@ -220,7 +220,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setRmdVersion(store.getRmdVersion());
-    setViewConfigs(store.getViewConfigs());
+    setViewConfigs(new HashMap<>(store.getViewConfigs()));
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
@@ -368,11 +368,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
   public long getStorageQuotaInByte() {
-    // This is a safeguard in case that some old stores do not have storage quota field
-    return (this.storeProperties.storageQuotaInByte <= 0
-        && this.storeProperties.storageQuotaInByte != UNLIMITED_STORAGE_QUOTA)
-            ? DEFAULT_STORAGE_QUOTA
-            : this.storeProperties.storageQuotaInByte;
+    return this.storeProperties.storageQuotaInByte;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper

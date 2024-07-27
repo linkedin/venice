@@ -440,7 +440,6 @@ public class VenicePushJobTest {
     storeInfo.setChunkingEnabled(false);
     storeInfo.setCompressionStrategy(CompressionStrategy.NO_OP);
     storeInfo.setWriteComputationEnabled(false);
-    storeInfo.setIncrementalPushEnabled(false);
     storeInfo.setNativeReplicationSourceFabric("dc-0");
     Map<String, Integer> coloMaps = new HashMap<String, Integer>() {
       {
