@@ -27,4 +27,9 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
   BufferReplayPolicy getBufferReplayPolicy();
 
   HybridStoreConfig clone();
+
+  default boolean isHybrid() {
+    return getRewindTimeInSeconds() >= 0
+        && (getOffsetLagThresholdToGoOnline() >= 0 || getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
+  }
 }
