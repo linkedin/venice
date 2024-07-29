@@ -67,8 +67,6 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -76,8 +74,6 @@ import org.testng.annotations.Test;
 
 
 public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
-  private static final Logger LOGGER = LogManager.getLogger(TestAdminSparkServer.class);
-
   /**
    * Seems that Helix has limit on the number of resource each node is able to handle.
    * If the test case needs more than one storage node like testing failover etc, please put it into {@link TestAdminSparkServerWithMultiServers}
@@ -327,14 +323,15 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       String[] allSchemas = new String[100];
       allSchemas[0] = schema1;
       allSchemas[1] = schema2;
-      String prefixForLotsOfSchemas = schemaPrefix + salaryFieldWithDefault;
+      StringBuilder prefixForLotsOfSchemas = new StringBuilder(schemaPrefix + salaryFieldWithDefault);
 
       // add incorrect schema
       sr1 = parentControllerClient.addValueSchema(storeToCreate, schemaStr);
       Assert.assertTrue(sr1.isError());
       for (int i = 3; i < allSchemas.length; i++) {
-        prefixForLotsOfSchemas +=
-            "," + "               {\"name\": \"newField" + i + "\", \"type\": \"long\", \"default\": 123 }\n";
+        prefixForLotsOfSchemas.append("," + "               {\"name\": \"newField")
+            .append(i)
+            .append("\", \"type\": \"long\", \"default\": 123 }\n");
         String schema = formatSchema(prefixForLotsOfSchemas + schemaSuffix);
         allSchemas[i - 1] = schema;
         SchemaResponse sr = parentControllerClient.addValueSchema(storeToCreate, schema);
@@ -554,16 +551,20 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientCanDeleteOldVersion() {
     String storeName = Utils.getUniqueString("test-store");
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
-    VersionCreationResponse versionCreationResponse =
-        parentControllerClient.emptyPush(storeName, Utils.getUniqueString(storeName), 1024);
-    Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
+
+    // Create two versions. version 1 will be backup, and version 2 will be current
+    assertCommand(
+        parentControllerClient
+            .sendEmptyPushAndWait(storeName, Utils.getUniqueString(storeName), 1024, 10 * Time.MS_PER_SECOND));
+    assertCommand(
+        parentControllerClient
+            .sendEmptyPushAndWait(storeName, Utils.getUniqueString(storeName), 1024, 10 * Time.MS_PER_SECOND));
     try {
-      VersionResponse response = controllerClient.deleteOldVersion(storeName, 1);
-      Assert.assertFalse(response.isError(), response.getError());
+      VersionResponse response = assertCommand(controllerClient.deleteOldVersion(storeName, 1));
       Assert.assertEquals(response.getVersion(), 1);
 
       StoreInfo store = controllerClient.getStore(storeName).getStore();
-      Assert.assertEquals(store.getVersions().size(), 0);
+      Assert.assertEquals(store.getVersions().size(), 1);
     } finally {
       deleteStore(storeName);
     }
@@ -585,8 +586,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     parentController.getVeniceAdmin()
         .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
-    try (ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl())) {
+    try {
       parentControllerClient.enableStoreReads(storeName, false);
       parentControllerClient.enableStoreWrites(storeName, false);
 
@@ -652,8 +652,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     String clusterName = venice.getClusterNames()[0];
     List<String> storeNames = new ArrayList<>();
     try {
-      ControllerClient parentControllerClient =
-          ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
       String storeName = Utils.getUniqueString("testStore");
       NewStoreResponse newStoreResponse =
           assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
@@ -693,8 +691,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     boolean enableReads = false;
     boolean enableWrite = true;
     boolean accessControlled = true;
-    long storageQuotaInByte = 100l;
-    long readQuotaInCU = 200l;
+    long storageQuotaInByte = 100L;
+    long readQuotaInCU = 200L;
     int numVersionToPreserve = 100;
 
     String storeName = Utils.getUniqueString("test-store");
@@ -855,8 +853,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     parentController.getVeniceAdmin().incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
 
-    try (ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl())) {
+    try {
       parentControllerClient.enableStoreReads(storeName, false);
       parentControllerClient.enableStoreWrites(storeName, false);
 
@@ -984,49 +981,40 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerCanGetDeletableStoreTopics() {
     String storeName = Utils.getUniqueString("canGetDeletableStoreTopics");
-    String clusterName = venice.getClusterNames()[0];
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
     try {
       assertCommand(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\""));
       String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
       // Add some system store and RT topics in the mix to make sure the request can still return the right values.
-      assertCommand(parentControllerClient.emptyPush(metaSystemStoreName, "meta-store-push-1", 1024000L));
+      assertCommand(
+          parentControllerClient
+              .sendEmptyPushAndWait(metaSystemStoreName, "meta-store-push-1", 1024000L, 10 * Time.MS_PER_SECOND));
 
-      assertCommand(parentControllerClient.emptyPush(storeName, "push-1", 1024000L));
       // Store version topic v1 should be truncated after polling for completion by parent controller.
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
-          10,
-          TimeUnit.SECONDS);
+      assertCommand(
+          parentControllerClient.sendEmptyPushAndWait(storeName, "push-1", 1024000L, 10 * Time.MS_PER_SECOND));
 
-      assertCommand(parentControllerClient.emptyPush(storeName, "push-2", 1024000L));
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 2),
-          parentControllerClient,
-          10,
-          TimeUnit.SECONDS);
+      assertCommand(
+          parentControllerClient.sendEmptyPushAndWait(storeName, "push-2", 1024000L, 10 * Time.MS_PER_SECOND));
+
       assertCommand(parentControllerClient.deleteOldVersion(storeName, 1));
       // Wait for resource of v1 to be cleaned up since for child fabric we only consider a topic is deletable if its
       // resource is deleted.
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Assert.assertFalse(
-            venice.getChildRegions()
-                .get(0)
-                .getLeaderController(clusterName)
-                .getVeniceAdmin()
-                .isResourceStillAlive(Version.composeKafkaTopic(storeName, 1)));
+        StoreInfo storeInChildRegion = assertCommand(controllerClient.getStore(storeName)).getStore();
+        Assert.assertFalse(storeInChildRegion.getVersion(1).isPresent());
       });
-      MultiStoreTopicsResponse childMultiStoreTopicResponse = assertCommand(controllerClient.getDeletableStoreTopics());
-      Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
-      Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
-      Assert.assertFalse(
-          childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
-      Assert.assertFalse(
-          childMultiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        MultiStoreTopicsResponse childMultiStoreTopicResponse =
+            assertCommand(controllerClient.getDeletableStoreTopics());
+        Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
+        Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+        Assert.assertFalse(
+            childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
+        Assert.assertFalse(
+            childMultiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+      });
     } finally {
-      deleteStore(parentControllerClient, storeName);
-      parentControllerClient.close();
+      deleteStore(storeName);
     }
   }
 
@@ -1051,9 +1039,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     VeniceHelixAdmin childControllerAdmin =
         venice.getChildRegions().get(0).getLeaderController(clusterName).getVeniceHelixAdmin();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      LOGGER.info(
-          "childControllerAdmin.getTopicManager().listTopics(): {}",
-          childControllerAdmin.getTopicManager().listTopics());
       Assert.assertTrue(
           childControllerAdmin.getTopicManager()
               .containsTopic(
@@ -1084,11 +1069,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   private void deleteStore(String storeName) {
-    deleteStore(controllerClient, storeName);
-  }
-
-  private void deleteStore(ControllerClient controllerClient, String storeName) {
-    controllerClient.enableStoreReadWrites(storeName, false);
-    controllerClient.deleteStore(storeName);
+    parentControllerClient.enableStoreReadWrites(storeName, false);
+    parentControllerClient.deleteStore(storeName);
   }
 }
