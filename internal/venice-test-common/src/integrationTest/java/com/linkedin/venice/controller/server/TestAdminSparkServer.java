@@ -7,7 +7,6 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.ParentControllerRegionState;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -99,7 +98,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     extraProperties
         .put(ConfigKeys.CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES, Integer.toString(TEST_MAX_RECORD_SIZE_BYTES));
     extraProperties.put(ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, Integer.toString(1));
-    extraProperties.put(ConfigKeys.CONTROLLER_PARENT_REGION_STATE, ParentControllerRegionState.ACTIVE.name());
     super.setUp(false, Optional.empty(), extraProperties);
   }
 

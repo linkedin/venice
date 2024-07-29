@@ -4,9 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.controller.ParentControllerRegionState;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.QueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -19,7 +17,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
@@ -30,8 +27,6 @@ public class TestBackupControllerResponse {
   @Test
   public void backupControllerThrows421() throws Exception {
     String clusterName = "backupControllerThrows421";
-    Properties extraProperties = new Properties();
-    extraProperties.put(ConfigKeys.CONTROLLER_PARENT_REGION_STATE, ParentControllerRegionState.ACTIVE.name());
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
@@ -41,12 +36,10 @@ public class TestBackupControllerResponse {
         VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                 .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
-                .extraProperties(extraProperties)
                 .build());
         VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                 .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
-                .extraProperties(extraProperties)
                 .build())) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
