@@ -77,7 +77,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -136,6 +135,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   private final AbstractAvroChunkingAdapter<V> chunkingAdapter;
 
+  private final DaVinciRecordTransformer recordTransformer;
+
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
@@ -175,6 +176,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.managedClients = managedClients;
     this.icProvider = icProvider;
     this.chunkingAdapter = chunkingAdapter;
+
+    this.recordTransformer = daVinciConfig.isRecordTransformerEnabled() ? daVinciConfig.getRecordTransformer(0) : null;
+
+    if (this.recordTransformer != null) {
+      this.clientConfig.setSpecificValueClass(recordTransformer.getOutputValueClass());
+    }
+
     preValidation.run();
   }
 
@@ -677,6 +685,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     if (kafkaBootstrapServers == null) {
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
+
     VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
@@ -692,10 +701,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(
             RECORD_TRANSFORMER_VALUE_SCHEMA,
-            daVinciConfig.isRecordTransformerEnabled()
-                // We're creating a new record transformer here just to get the schema
-                ? daVinciConfig.getRecordTransformer(0).getValueOutputSchema().toString()
-                : "null")
+            recordTransformer != null ? recordTransformer.getValueOutputSchema().toString() : "null")
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
                                                                                    // in Isolated Process
         .build();
@@ -709,7 +715,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
@@ -784,12 +790,21 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
       this.genericRecordStoreDeserializerCache =
           new AvroStoreDeserializerCache(daVinciBackend.get().getSchemaRepository(), getStoreName(), true);
-      this.storeDeserializerCache = clientConfig.isSpecificClient()
-          ? new AvroSpecificStoreDeserializerCache<>(
+
+      if (clientConfig.isSpecificClient()) {
+        if (recordTransformer != null) {
+          this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
+              recordTransformer.getValueOutputSchema(),
+              clientConfig.getSpecificValueClass());
+        } else {
+          this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
               daVinciBackend.get().getSchemaRepository(),
               getStoreName(),
-              clientConfig.getSpecificValueClass())
-          : (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
+              clientConfig.getSpecificValueClass());
+        }
+      } else {
+        this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
+      }
 
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());

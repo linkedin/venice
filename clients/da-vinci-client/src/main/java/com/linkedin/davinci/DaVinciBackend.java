@@ -7,7 +7,9 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -110,6 +112,7 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final DaVinciRecordTransformer recordTransformer;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -117,7 +120,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -248,6 +251,20 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
+      String storeName = clientConfig.getStoreName();
+      storeRepository.refreshOneStore(storeName);
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      int version = store.getCurrentVersion();
+
+      // Ensure getRecordTransformer does not return null
+      DaVinciRecordTransformer clientRecordTransformer =
+          getRecordTransformer != null ? getRecordTransformer.apply(version) : null;
+      recordTransformer = clientRecordTransformer != null
+          ? new BlockingDaVinciRecordTransformer(
+              clientRecordTransformer,
+              clientRecordTransformer.getStoreRecordsInDaVinci())
+          : null;
+
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,
@@ -265,7 +282,7 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          getRecordTransformer,
+          recordTransformer,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
@@ -275,9 +292,10 @@ public class DaVinciBackend implements Closeable {
           null);
 
       ingestionService.start();
+
       ingestionService.addIngestionNotifier(ingestionListener);
 
-      boolean isBlobTransferEnabled = configLoader.getStoreConfig(clientConfig.getStoreName()).isBlobTransferEnabled();
+      boolean isBlobTransferEnabled = configLoader.getStoreConfig(storeName).isBlobTransferEnabled();
       if (isBlobTransferEnabled) {
         int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
         String rocksDBPath = backendConfig.getRocksDBPath();
@@ -381,6 +399,7 @@ public class DaVinciBackend implements Closeable {
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
+
     for (AbstractStorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -460,9 +479,16 @@ public class DaVinciBackend implements Closeable {
       List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
       String versionTopic = version.kafkaTopicName();
       LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageService.getStorageEngine(versionTopic));
+      AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
+      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
       StoreBackend storeBackend = getStoreOrThrow(storeName);
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+
+      if (recordTransformer != null) {
+        for (Integer partition: partitions) {
+          recordTransformer.onRecovery(storageEngine.getRocksDBIterator(partition), storeBackend, partition);
+        }
+      }
     });
   }
 

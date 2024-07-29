@@ -17,7 +17,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -337,7 +336,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
+      DaVinciRecordTransformer recordTransformer,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -436,11 +435,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
-    // Ensure getRecordTransformer does not return null
-    DaVinciRecordTransformer clientRecordTransformer =
-        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
-    this.recordTransformer =
-        clientRecordTransformer != null ? new BlockingDaVinciRecordTransformer(clientRecordTransformer) : null;
+    this.recordTransformer = recordTransformer;
     if (this.recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
@@ -1330,7 +1325,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       if (recordTransformer != null) {
         long startTime = System.currentTimeMillis();
-        recordTransformer.onStartIngestionTask();
+        recordTransformer.onStart();
         long endTime = System.currentTimeMillis();
         versionedIngestionStats.recordTransformerLifecycleStartLatency(
             storeName,
@@ -3216,15 +3211,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           Object transformedRecord = null;
           try {
-            transformedRecord = recordTransformer.put(lazyKey, lazyValue);
+            transformedRecord = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
           } catch (Exception e) {
             versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
             String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }
-          ByteBuffer transformedBytes =
-              recordTransformer.getValueBytes(recordTransformer.getValueOutputSchema(), transformedRecord);
+          ByteBuffer transformedBytes = recordTransformer.getValueBytes(transformedRecord);
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
@@ -3262,6 +3256,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           keyBytes = leaderProducedRecordContext.getKeyBytes();
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
+
+        if (recordTransformer != null) {
+          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          Object record = recordTransformer.processDelete(lazyKey);
+
+          if (record != null) {
+            break;
+          }
+        }
+
         keyLen = keyBytes.length;
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
@@ -3537,7 +3542,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();
-      recordTransformer.onEndIngestionTask();
+      recordTransformer.onEnd();
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleEndLatency(
           storeName,

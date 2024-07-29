@@ -6,8 +6,8 @@ import org.apache.avro.Schema;
 
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public TestStringRecordTransformer(int storeVersion) {
-    super(storeVersion);
+  public TestStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+    super(storeVersion, storeRecordsInDaVinci);
   }
 
   public Schema getKeyOutputSchema() {
@@ -18,7 +18,11 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     return Schema.create(Schema.Type.STRING);
   }
 
-  public String put(Lazy<Integer> key, Lazy<String> value) {
+  public String transform(Lazy<Integer> key, Lazy<String> value) {
     return value.get() + "Transformed";
+  }
+
+  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+    return;
   }
 }

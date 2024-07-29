@@ -1,7 +1,7 @@
 package com.linkedin.davinci.transformer;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
+import static org.testng.AssertJUnit.*;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -12,7 +12,7 @@ import org.testng.annotations.Test;
 public class RecordTransformerTest {
   @Test
   public void testRecordTransformer() {
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0);
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
 
     assertEquals(recordTransformer.getStoreVersion(), 0);
 
@@ -24,11 +24,21 @@ public class RecordTransformerTest {
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
-    String transformedRecord = recordTransformer.put(lazyKey, lazyValue);
+    String transformedRecord = recordTransformer.transform(lazyKey, lazyValue);
+    recordTransformer.processPut(lazyKey, lazyValue);
     assertEquals(transformedRecord, "SampleValueTransformed");
 
-    String deletedRecord = recordTransformer.delete(lazyKey);
+    recordTransformer.processDelete(lazyKey);
+    String deletedRecord = recordTransformer.processDelete(lazyKey);
     assertNull(deletedRecord);
+
+    assertTrue(recordTransformer.getStoreRecordsInDaVinci());
+
+    assertEquals(recordTransformer.getOutputValueClass(), String.class);
+
+    int classHash = recordTransformer.getClassHash();
+    assertNotNull(classHash);
+    assertEquals(recordTransformer.hasTransformationLogicChanged(classHash), false);
   }
 
 }
