@@ -1,7 +1,6 @@
 package com.linkedin.davinci.transformer;
 
 import static org.testng.Assert.*;
-import static org.testng.AssertJUnit.assertNotNull;
 import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
 
@@ -36,16 +35,13 @@ public class RecordTransformerTest {
     assertNull(deletedRecord);
 
     assertTrue(recordTransformer.getStoreRecordsInDaVinci());
-
     assertEquals(recordTransformer.getOutputValueClass(), String.class);
-
-    int classHash = recordTransformer.getClassHash();
-    assertNotNull(classHash);
 
     File file = new File("./classHash-0.txt");
     if (file.exists()) {
-      file.delete();
+      assertTrue(file.delete());
     }
+    int classHash = recordTransformer.getClassHash();
     assertTrue(recordTransformer.hasTransformationLogicChanged(classHash));
   }
 
