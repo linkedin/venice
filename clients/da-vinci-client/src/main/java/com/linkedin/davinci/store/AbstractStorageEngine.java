@@ -424,7 +424,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  protected void executeWithSafeGuard(int partitionId, Runnable runnable) {
+  private void executeWithSafeGuard(int partitionId, Runnable runnable) {
     executeWithSafeGuard(partitionId, () -> {
       runnable.run();
       return null;

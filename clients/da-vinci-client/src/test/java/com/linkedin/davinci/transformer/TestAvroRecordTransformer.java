@@ -19,7 +19,7 @@ public class TestAvroRecordTransformer extends DaVinciRecordTransformer<Integer,
   }
 
   public Object transform(Lazy<Integer> key, Lazy<Object> value) {
-    return value.get() + "Transformed1";
+    return value.get() + "Transformed";
   }
 
   public void processPut(Lazy<Integer> key, Lazy<Object> value) {
