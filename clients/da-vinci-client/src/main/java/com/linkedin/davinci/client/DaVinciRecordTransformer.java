@@ -51,10 +51,6 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
-  private AvroGenericDeserializer<K> keyDeserializer;
-  private AvroGenericDeserializer<O> outputValueDeserializer;
-  private AvroSerializer<O> outputValueSerializer;
-
   public DaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
@@ -148,12 +144,8 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
    */
   public final ByteBuffer getValueBytes(O value) {
-    // This is initialized here instead of the constructor due
-    // to circular dependencies with subclasses that causes NPE
-    if (outputValueSerializer == null) {
-      Schema outputValueSchema = getValueOutputSchema();
-      outputValueSerializer = new AvroSerializer<>(outputValueSchema);
-    }
+    Schema outputValueSchema = getValueOutputSchema();
+    AvroSerializer<O> outputValueSerializer = new AvroSerializer<>(outputValueSchema);
     ByteBuffer transformedBytes = ByteBuffer.wrap(outputValueSerializer.serialize(value));
     ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
     newBuffer.putInt(1);
@@ -231,17 +223,12 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
     } else {
       // Bootstrap from local storage
 
-      // This is initialized here instead of the constructor due
-      // to circular dependencies with subclasses that causes NPE
-      if (keyDeserializer == null) {
-        Schema keySchema = getKeyOutputSchema();
-        keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
-      }
+      Schema keySchema = getKeyOutputSchema();
+      AvroGenericDeserializer<K> keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
 
-      if (outputValueDeserializer == null) {
-        Schema outputValueSchema = getValueOutputSchema();
-        outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
-      }
+      Schema outputValueSchema = getValueOutputSchema();
+      AvroGenericDeserializer<O> outputValueDeserializer =
+          new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
 
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
