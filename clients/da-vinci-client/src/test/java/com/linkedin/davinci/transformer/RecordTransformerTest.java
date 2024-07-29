@@ -1,12 +1,13 @@
 package com.linkedin.davinci.transformer;
 
-import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.*;
 import static org.testng.AssertJUnit.assertNotNull;
 import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.File;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
@@ -40,7 +41,12 @@ public class RecordTransformerTest {
 
     int classHash = recordTransformer.getClassHash();
     assertNotNull(classHash);
-    assertNotNull(recordTransformer.hasTransformationLogicChanged(classHash));
+
+    File file = new File("./classHash-0.txt");
+    if (file.exists()) {
+      file.delete();
+    }
+    assertTrue(recordTransformer.hasTransformationLogicChanged(classHash));
   }
 
 }
