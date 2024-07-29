@@ -77,7 +77,7 @@ public class CreateVersion extends AbstractRoute {
    * to be idempotent.
    */
   public Route requestTopicForPushing(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -404,7 +404,7 @@ public class CreateVersion extends AbstractRoute {
       }
 
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -496,7 +496,7 @@ public class CreateVersion extends AbstractRoute {
    * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, PushType, String, long, int, boolean, int)
    */
   public Route addVersionAndStartIngestion(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       VersionResponse responseObject = new VersionResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -565,12 +565,12 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   @Deprecated
   public Route uploadPushInfo(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -595,14 +595,14 @@ public class CreateVersion extends AbstractRoute {
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
 
-    });
+    };
   }
 
   /**
    * @see Admin#writeEndOfPush(String, String, int, boolean)
    */
   public Route writeEndOfPush(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -632,11 +632,11 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   public Route emptyPush(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       response.type(HttpConstants.JSON);
       String clusterName = null;
@@ -687,6 +687,6 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 }

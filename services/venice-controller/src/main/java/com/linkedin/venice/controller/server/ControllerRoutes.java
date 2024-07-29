@@ -47,7 +47,7 @@ public class ControllerRoutes extends AbstractRoute {
    * @see Admin#getLeaderController(String)
    */
   public Route getLeaderController(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       LeaderControllerResponse responseObject = new LeaderControllerResponse();
       try {
         AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
@@ -65,7 +65,7 @@ public class ControllerRoutes extends AbstractRoute {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -74,30 +74,28 @@ public class ControllerRoutes extends AbstractRoute {
    * @see Admin#getChildControllerD2ServiceName(String)
    */
   public Route getChildControllers(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(
-        admin,
-        new VeniceRouteHandler<ChildAwareResponse>(ChildAwareResponse.class) {
-          @Override
-          public void internalHandle(Request request, ChildAwareResponse veniceResponse) {
-            AdminSparkServer.validateParams(request, LIST_CHILD_CLUSTERS.getParams(), admin);
-            String clusterName = request.queryParams(CLUSTER);
+    return new VeniceRouteHandler<ChildAwareResponse>(ChildAwareResponse.class) {
+      @Override
+      public void internalHandle(Request request, ChildAwareResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, LIST_CHILD_CLUSTERS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
 
-            veniceResponse.setCluster(clusterName);
+        veniceResponse.setCluster(clusterName);
 
-            if (admin.isParent()) {
-              veniceResponse.setChildDataCenterControllerUrlMap(admin.getChildDataCenterControllerUrlMap(clusterName));
-              veniceResponse.setChildDataCenterControllerD2Map(admin.getChildDataCenterControllerD2Map(clusterName));
-              veniceResponse.setD2ServiceName(admin.getChildControllerD2ServiceName(clusterName));
-            }
-          }
-        });
+        if (admin.isParent()) {
+          veniceResponse.setChildDataCenterControllerUrlMap(admin.getChildDataCenterControllerUrlMap(clusterName));
+          veniceResponse.setChildDataCenterControllerD2Map(admin.getChildDataCenterControllerD2Map(clusterName));
+          veniceResponse.setD2ServiceName(admin.getChildControllerD2ServiceName(clusterName));
+        }
+      }
+    };
   }
 
   /**
    * @see TopicManager#updateTopicCompactionPolicy(PubSubTopic, boolean)
    */
   public Route updateKafkaTopicLogCompaction(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, updateKafkaTopicConfig(admin, adminRequest -> {
+    return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
@@ -106,14 +104,14 @@ public class ControllerRoutes extends AbstractRoute {
 
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicCompactionPolicy(topicName, kafkaTopicLogCompactionEnabled);
-    }));
+    });
   }
 
   /**
    * No ACL check; any user is allowed to check topic configs.
    */
   public Route getKafkaTopicConfigs(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       PubSubTopicConfigResponse responseObject = new PubSubTopicConfigResponse();
       response.type(HttpConstants.JSON);
 
@@ -129,25 +127,25 @@ public class ControllerRoutes extends AbstractRoute {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
    * @see TopicManager#updateTopicRetention(PubSubTopic, long)
    */
   public Route updateKafkaTopicRetention(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, updateKafkaTopicConfig(admin, adminRequest -> {
+    return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_RETENTION.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       long kafkaTopicRetentionIsMs =
           Utils.parseLongFromString(adminRequest.queryParams(KAFKA_TOPIC_RETENTION_IN_MS), KAFKA_TOPIC_RETENTION_IN_MS);
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicRetention(topicName, kafkaTopicRetentionIsMs);
-    }));
+    });
   }
 
   public Route updateKafkaTopicMinInSyncReplica(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, updateKafkaTopicConfig(admin, adminRequest -> {
+    return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       int kafkaTopicMinISR = Utils.parseIntFromString(
@@ -155,11 +153,11 @@ public class ControllerRoutes extends AbstractRoute {
           KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicMinInSyncReplica(topicName, kafkaTopicMinISR);
-    }));
+    });
   }
 
   private Route updateKafkaTopicConfig(Admin admin, UpdateTopicConfigFunction updateTopicConfigFunction) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       // Only allow allowlist users to run this command
@@ -178,7 +176,7 @@ public class ControllerRoutes extends AbstractRoute {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   @FunctionalInterface

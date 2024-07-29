@@ -51,7 +51,7 @@ public class JobRoutes extends AbstractRoute {
    * @see Admin#getOffLinePushStatus(String, String)
    */
   public Route jobStatus(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -76,7 +76,7 @@ public class JobRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   JobStatusQueryResponse populateJobStatus(
@@ -111,7 +111,7 @@ public class JobRoutes extends AbstractRoute {
    * @see Admin#killOfflinePush(String, String, boolean)
    */
   public Route killOfflinePushJob(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -135,23 +135,23 @@ public class JobRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   public Route uploadPushJobStatus(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       response.type(HttpConstants.JSON);
       // TODO: remove once all vpj plugin deployments have updated and no longer calling into this for reporting.
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
    * @see Admin#sendPushJobDetails(PushJobStatusRecordKey, PushJobDetails)
    */
   public Route sendPushJobDetails(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return ((request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -199,7 +199,7 @@ public class JobRoutes extends AbstractRoute {
 
   // TODO: remove the below API after the same version of codes is released to Venice Push Job.
   public Route getOngoingIncrementalPushVersions(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return ((request, response) -> {
       IncrementalPushVersionsResponse incrementalPushVersionsResponse = new IncrementalPushVersionsResponse();
       response.type(HttpConstants.JSON);
       try {

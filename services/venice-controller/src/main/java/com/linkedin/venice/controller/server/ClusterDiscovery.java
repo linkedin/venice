@@ -15,7 +15,7 @@ public class ClusterDiscovery {
    * No ACL check; any user is allowed to discover cluster
    */
   public static Route discoverCluster(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
       try {
         AdminSparkServer.validateParams(request, CLUSTER_DISCOVERY.getParams(), admin);
@@ -30,6 +30,6 @@ public class ClusterDiscovery {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 }

@@ -21,16 +21,14 @@ public class VersionRoute extends AbstractRoute {
    * @see Admin#findAllBootstrappingVersions(String)
    */
   public Route listBootstrappingVersions(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(
-        admin,
-        new VeniceRouteHandler<MultiVersionStatusResponse>(MultiVersionStatusResponse.class) {
-          @Override
-          public void internalHandle(Request request, MultiVersionStatusResponse veniceResponse) {
-            AdminSparkServer.validateParams(request, LIST_BOOTSTRAPPING_VERSIONS.getParams(), admin);
-            String cluster = request.queryParams(CLUSTER);
-            veniceResponse.setCluster(cluster);
-            veniceResponse.setVersionStatusMap(admin.findAllBootstrappingVersions(cluster));
-          }
-        });
+    return new VeniceRouteHandler<MultiVersionStatusResponse>(MultiVersionStatusResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiVersionStatusResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, LIST_BOOTSTRAPPING_VERSIONS.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(cluster);
+        veniceResponse.setVersionStatusMap(admin.findAllBootstrappingVersions(cluster));
+      }
+    };
   }
 }

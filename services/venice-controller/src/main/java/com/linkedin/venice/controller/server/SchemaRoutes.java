@@ -55,7 +55,7 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getKeySchema(String, String)
    */
   public Route getKeySchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -74,7 +74,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -83,7 +83,7 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#addValueSchema(String, String, String, DirectionalSchemaCompatibilityType)
    */
   public Route addValueSchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -128,14 +128,14 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
    * @see Admin#addDerivedSchema(String, String, int, int, String)
    */
   public Route addDerivedSchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -184,7 +184,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -192,7 +192,7 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getValueSchema(String, String, int)
    */
   public Route getValueSchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -216,7 +216,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -224,7 +224,7 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getValueSchemaId(String, String, String)
    */
   public Route getValueSchemaID(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -252,14 +252,14 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
    * @see Admin#getValueSchemaId(String, String, String)
    */
   public Route getValueOrDerivedSchemaID(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -275,7 +275,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   SchemaResponse populateSchemaResponseForValueOrDerivedSchemaID(
@@ -320,7 +320,7 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getValueSchemas(String, String)
    */
   public Route getAllValueSchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -351,7 +351,7 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -359,7 +359,7 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getDerivedSchemas(String, String)
    */
   public Route getAllValueAndDerivedSchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -396,14 +396,14 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
    * @see Admin#removeDerivedSchema(String, String, int, int)
    */
   public Route removeDerivedSchema(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -440,14 +440,14 @@ public class SchemaRoutes extends AbstractRoute {
       }
 
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
    * @see Admin#getReplicationMetadataSchemas(String, String)
    */
   public Route getAllReplicationMetadataSchemas(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -474,6 +474,6 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 }

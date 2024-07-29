@@ -26,7 +26,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
    * @see Admin#getAdminCommandExecutionTracker(String)
    */
   public Route getExecution(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       AdminCommandExecutionResponse responseObject = new AdminCommandExecutionResponse();
       response.type(HttpConstants.JSON);
       // This request should only hit the parent controller. If a PROD controller get this kind of request, a empty
@@ -50,7 +50,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
             "Could not track execution in this controller. Make sure you send the command to a correct parent controller.");
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 
   /**
@@ -58,7 +58,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
    * @see Admin#getLastSucceedExecutionId(String)
    */
   public Route getLastSucceedExecutionId(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       LastSucceedExecutionIdResponse responseObject = new LastSucceedExecutionIdResponse();
       response.type(HttpConstants.JSON);
       AdminSparkServer.validateParams(request, LAST_SUCCEED_EXECUTION_ID.getParams(), admin);
@@ -71,6 +71,6 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    });
+    };
   }
 }

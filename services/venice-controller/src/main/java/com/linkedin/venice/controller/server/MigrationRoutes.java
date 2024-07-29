@@ -25,7 +25,7 @@ public class MigrationRoutes extends AbstractRoute {
    * @see Admin#getAllStorePushStrategyForMigration()
    */
   public Route getAllMigrationPushStrategies(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       MigrationPushStrategyResponse strategyResponse = new MigrationPushStrategyResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -34,14 +34,14 @@ public class MigrationRoutes extends AbstractRoute {
         strategyResponse.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(strategyResponse);
-    });
+    };
   }
 
   /**
    * @see Admin#setStorePushStrategyForMigration(String, String)
    */
   public Route setMigrationPushStrategy(Admin admin) {
-    return new VeniceParentControllerRegionStateHandler(admin, (request, response) -> {
+    return (request, response) -> {
       ControllerResponse updateResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
@@ -61,6 +61,6 @@ public class MigrationRoutes extends AbstractRoute {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(updateResponse);
-    });
+    };
   }
 }
