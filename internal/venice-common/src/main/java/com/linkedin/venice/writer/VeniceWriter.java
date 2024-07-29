@@ -907,7 +907,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
      */
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      if (isChunkingEnabled && !isRecordTooLarge(veniceRecordSize)) {
+      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
+      if (isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) {
         return putLargeValue(
             serializedKey,
             serializedValue,
