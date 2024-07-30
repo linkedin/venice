@@ -614,29 +614,7 @@ public class DaVinciBackend implements Closeable {
       Version version = versionBackend.getVersion();
       if (writeBatchingPushStatus && !incrementalPushVersion.isPresent()) {
         // Batching the push statuses from all partitions for batch pushes
-        versionBackend.updatePartitionStatus(partition, status);
-        if (status == ExecutionStatus.COMPLETED) {
-          if (!versionBackend.isBatchPushEndSignalSent()
-              && versionBackend.areAllPartitionsOnSameTerminalStatus(status)) {
-            pushStatusStoreWriter.writeVersionLevelPushStatus(
-                version.getStoreName(),
-                version.getNumber(),
-                status,
-                versionBackend.getTrackedPartitions());
-            versionBackend.batchPushEndSignalSent();
-          }
-          // Otherwise, don't send any update
-        } else {
-          // STARTED status
-          if (!versionBackend.isBatchPushStartSignalSent()) {
-            pushStatusStoreWriter.writeVersionLevelPushStatus(
-                version.getStoreName(),
-                version.getNumber(),
-                status,
-                versionBackend.getTrackedPartitions());
-            versionBackend.batchPushStartSignalSent();
-          } // Otherwise, don't send any update
-        }
+        versionBackend.updatePartitionStatusAndMaybeSendBatchingStatus(partition, status, pushStatusStoreWriter);
       } else {
         pushStatusStoreWriter
             .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
