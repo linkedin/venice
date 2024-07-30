@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.IngestionThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
@@ -145,8 +146,7 @@ public class KafkaConsumptionTest {
   public void testLocalAndRemoteConsumption(boolean isTopicWiseSharedConsumerAssignmentStrategy)
       throws ExecutionException, InterruptedException {
     // Prepare Aggregate Kafka Consumer Service.
-    EventThrottler mockBandwidthThrottler = mock(EventThrottler.class);
-    EventThrottler mockRecordsThrottler = mock(EventThrottler.class);
+    IngestionThrottler mockIngestionThrottler = mock(IngestionThrottler.class);
     Map<String, EventThrottler> kafkaUrlToRecordsThrottler = new HashMap<>();
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
@@ -189,8 +189,7 @@ public class KafkaConsumptionTest {
         pubSubConsumerAdapterFactory,
         k -> VeniceProperties.empty(),
         veniceServerConfig,
-        mockBandwidthThrottler,
-        mockRecordsThrottler,
+        mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         topicExistenceChecker,

@@ -77,6 +77,26 @@ public class ConfigKeys {
   public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND =
       "server.kafka.fetch.quota.records.per.second";
 
+  /**
+   * Whether to speed up DaVinci current version bootstrapping or not.
+   */
+  public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED =
+      "da.vinci.current.version.bootstrapping.speedup.enabled";
+
+  /**
+   * When {@link #DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED} is true, the following throttler
+   * will be applied when any current version is bootstrapping.
+   */
+  public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND =
+      "da.vinci.current.version.bootstrapping.quota.records.per.second";
+
+  /**
+   * When {@link #DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED} is true, the following throttler
+   * will be applied when any current version is bootstrapping.
+   */
+  public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND =
+      "da.vinci.current.version.bootstrapping.quota.bytes.per.second";
+
   // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND =
       "kafka.fetch.quota.unordered.bytes.per.second";

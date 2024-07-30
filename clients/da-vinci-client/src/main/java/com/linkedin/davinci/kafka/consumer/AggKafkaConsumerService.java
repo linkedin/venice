@@ -20,7 +20,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
@@ -59,8 +58,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final VeniceServerConfig serverConfig;
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
-  private final EventThrottler bandwidthThrottler;
-  private final EventThrottler recordsThrottler;
+  private final IngestionThrottler ingestionThrottler;
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private final MetricsRepository metricsRepository;
   private final TopicExistenceChecker topicExistenceChecker;
@@ -91,8 +89,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final PubSubConsumerAdapterFactory consumerFactory,
       final PubSubPropertiesSupplier pubSubPropertiesSupplier,
       final VeniceServerConfig serverConfig,
-      final EventThrottler bandwidthThrottler,
-      final EventThrottler recordsThrottler,
+      final IngestionThrottler ingestionThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       TopicExistenceChecker topicExistenceChecker,
@@ -104,8 +101,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
-    this.bandwidthThrottler = bandwidthThrottler;
-    this.recordsThrottler = recordsThrottler;
+    this.ingestionThrottler = ingestionThrottler;
     this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
     this.metricsRepository = metricsRepository;
     this.topicExistenceChecker = topicExistenceChecker;
@@ -303,8 +299,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 consumerProperties,
                 readCycleDelayMs,
                 consumerPoolSize,
-                bandwidthThrottler,
-                recordsThrottler,
+                ingestionThrottler,
                 kafkaClusterBasedRecordThrottler,
                 metricsRepository,
                 kafkaClusterUrlToAliasMap.getOrDefault(url, url) + statsSuffix,

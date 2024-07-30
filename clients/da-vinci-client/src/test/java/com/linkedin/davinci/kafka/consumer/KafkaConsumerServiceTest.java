@@ -24,7 +24,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -84,8 +83,7 @@ public class KafkaConsumerServiceTest {
         properties,
         1000l,
         2,
-        mock(EventThrottler.class),
-        mock(EventThrottler.class),
+        mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
         "test_kafka_cluster_alias",
@@ -201,8 +199,7 @@ public class KafkaConsumerServiceTest {
         properties,
         1000l,
         1,
-        mock(EventThrottler.class),
-        mock(EventThrottler.class),
+        mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
         "test_kafka_cluster_alias",
@@ -255,8 +252,7 @@ public class KafkaConsumerServiceTest {
         properties,
         1000l,
         2,
-        mock(EventThrottler.class),
-        mock(EventThrottler.class),
+        mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
         "test_kafka_cluster_alias",
@@ -355,8 +351,7 @@ public class KafkaConsumerServiceTest {
         properties,
         1000l,
         2,
-        mock(EventThrottler.class),
-        mock(EventThrottler.class),
+        mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
         "test_kafka_cluster_alias",
