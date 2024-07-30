@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,6 +60,9 @@ public class VeniceController {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
+  private final Thread serviceDiscoveryAnnouncerRetryThread;
+  private final BlockingQueue<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncerRetryQueue =
+      new LinkedBlockingQueue<>();
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
@@ -127,6 +132,9 @@ public class VeniceController {
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
+    ServiceDiscoveryAnnouncerRetryTask retryTask =
+        new ServiceDiscoveryAnnouncerRetryTask(serviceDiscoveryAnnouncerRetryQueue);
+    this.serviceDiscoveryAnnouncerRetryThread = new Thread(retryTask);
     createServices();
   }
 
@@ -250,9 +258,15 @@ public class VeniceController {
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
-      serviceDiscoveryAnnouncer.register();
-      LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
+      try {
+        serviceDiscoveryAnnouncer.register();
+        LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
+      } catch (Exception e) {
+        LOGGER.error("Failed to register to service discovery: {}", serviceDiscoveryAnnouncer, e);
+        serviceDiscoveryAnnouncerRetryQueue.add(serviceDiscoveryAnnouncer);
+      }
     });
+    serviceDiscoveryAnnouncerRetryThread.start();
     LOGGER.info("Controller is started.");
   }
 
@@ -301,10 +315,15 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
+    serviceDiscoveryAnnouncerRetryThread.interrupt();
     // unregister from service discovery first
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
-      serviceDiscoveryAnnouncer.unregister();
-      LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
+      try {
+        serviceDiscoveryAnnouncer.unregister();
+        LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
+      } catch (Exception e) {
+        LOGGER.error("Failed to unregister from service discovery: {}", serviceDiscoveryAnnouncer, e);
+      }
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
