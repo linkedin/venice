@@ -654,7 +654,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return GenericRecordChunkingAdapter.INSTANCE;
   }
 
-  private D2ServiceDiscoveryResponse discoverService() {
+  // Visible for testing
+  public D2ServiceDiscoveryResponse discoverService() {
     try (TransportClient client = getTransportClient(clientConfig)) {
       if (!(client instanceof D2TransportClient)) {
         throw new VeniceClientException(
@@ -709,7 +710,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return new VeniceConfigLoader(config, config);
   }
 
-  private void initBackend(
+  // Visible for testing
+  public void initBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
