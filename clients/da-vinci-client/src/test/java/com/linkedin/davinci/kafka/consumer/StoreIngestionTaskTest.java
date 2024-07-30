@@ -76,6 +76,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -793,6 +794,8 @@ public abstract class StoreIngestionTaskTest {
 
     if (getRecordTransformer != null) {
       recordTransformer = getRecordTransformer.apply(version.getNumber());
+      recordTransformer =
+          new BlockingDaVinciRecordTransformer(recordTransformer, recordTransformer.getStoreRecordsInDaVinci());
     }
 
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
