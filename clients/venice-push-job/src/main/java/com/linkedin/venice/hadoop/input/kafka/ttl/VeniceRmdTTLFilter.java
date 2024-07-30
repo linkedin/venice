@@ -99,12 +99,11 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     }
     ByteBuffer valuePayload = getValuePayload(value);
     GenericRecord valueRecord;
-    /**
-     * We do not need check the field level TS for DELETE. If a field has TS older than TTL, it does not matter as it
-     * will still be overwritten by new PUT/UPDATE.
-     */
-
     if (valuePayload == null || valuePayload.remaining() == 0) {
+      /**
+       * If it is a DELETE, then we need to create a default value and pass with old timestamp and perform the TTL delete
+       * operation and check the result.
+       */
       valueRecord = AvroSchemaUtils.createGenericRecord(valueSchemaMap.get(valueSchemaId));
     } else {
       RecordDeserializer<GenericRecord> valueDeserializer =
