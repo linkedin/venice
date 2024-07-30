@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVA
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.notifier.PushStatusDelayedUpdateTask;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -17,6 +18,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -32,7 +34,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -70,10 +71,7 @@ public class VersionBackend {
    */
   private Future heartbeat;
   private final int heartbeatInterval;
-
-  private boolean batchPushStartSignalSent;
-  private boolean batchPushEndSignalSent;
-  private final Map<Integer, ExecutionStatus> partitionStatus = new VeniceConcurrentHashMap<>();
+  private final PushStatusDelayedUpdateTask pushStatusDelayedUpdateTask;
 
   VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
@@ -104,6 +102,7 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
+    this.pushStatusDelayedUpdateTask = new PushStatusDelayedUpdateTask(version);
   }
 
   synchronized void close() {
@@ -122,6 +121,7 @@ public class VersionBackend {
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when killing consumption task: {}", version.kafkaTopicName(), e);
     }
+    pushStatusDelayedUpdateTask.shutdown();
   }
 
   synchronized void delete() {
@@ -376,37 +376,11 @@ public class VersionBackend {
         .collect(Collectors.toList());
   }
 
-  public boolean isBatchPushStartSignalSent() {
-    return batchPushStartSignalSent;
-  }
-
-  public boolean isBatchPushEndSignalSent() {
-    return batchPushEndSignalSent;
-  }
-
-  public void batchPushStartSignalSent() {
-    this.batchPushStartSignalSent = true;
-  }
-
-  public void batchPushEndSignalSent() {
-    this.batchPushEndSignalSent = true;
-  }
-
-  public void updatePartitionStatus(int partition, ExecutionStatus status) {
-    partitionStatus.put(partition, status);
-  }
-
-  public boolean areAllPartitionsOnSameTerminalStatus(ExecutionStatus status) {
-    if (partitionStatus.isEmpty()) {
-      return false;
-    }
-    return partitionStatus.values().stream().allMatch(status::equals);
-  }
-
-  /**
-   * Get the partition id set that is being tracked
-   */
-  public Set<Integer> getTrackedPartitions() {
-    return partitionStatus.keySet();
+  public void updatePartitionStatusAndMaybeSendBatchingStatus(
+      int partition,
+      ExecutionStatus status,
+      PushStatusStoreWriter pushStatusStoreWriter) {
+    pushStatusDelayedUpdateTask
+        .updatePartitionStatusAndMaybeSendBatchingStatus(partition, status, pushStatusStoreWriter);
   }
 }
