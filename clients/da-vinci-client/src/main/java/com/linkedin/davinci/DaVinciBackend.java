@@ -112,7 +112,7 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
-  private final DaVinciRecordTransformer recordTransformer;
+  private DaVinciRecordTransformer recordTransformer;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -252,18 +252,17 @@ public class DaVinciBackend implements Closeable {
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
       String storeName = clientConfig.getStoreName();
-      storeRepository.refreshOneStore(storeName);
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      int version = store.getCurrentVersion();
 
-      // Ensure getRecordTransformer does not return null
-      DaVinciRecordTransformer clientRecordTransformer =
-          getRecordTransformer != null ? getRecordTransformer.apply(version) : null;
-      recordTransformer = clientRecordTransformer != null
-          ? new BlockingDaVinciRecordTransformer(
-              clientRecordTransformer,
-              clientRecordTransformer.getStoreRecordsInDaVinci())
-          : null;
+      if (getRecordTransformer.apply(0) != null) {
+        storeRepository.refreshOneStore(storeName);
+        Store store = storeRepository.getStoreOrThrow(storeName);
+        int version = store.getCurrentVersion();
+
+        DaVinciRecordTransformer clientRecordTransformer = getRecordTransformer.apply(version);
+        recordTransformer = new BlockingDaVinciRecordTransformer(
+            clientRecordTransformer,
+            clientRecordTransformer.getStoreRecordsInDaVinci());
+      }
 
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
