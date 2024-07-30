@@ -95,7 +95,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
     rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 9L));
     values = Collections
         .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
-    Assert.assertFalse(
+    Assert.assertTrue(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     // For value level TS, it will filter based on RMD timestamp.
