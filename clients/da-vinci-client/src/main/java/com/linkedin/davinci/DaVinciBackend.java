@@ -253,7 +253,7 @@ public class DaVinciBackend implements Closeable {
 
       String storeName = clientConfig.getStoreName();
 
-      if (getRecordTransformer.apply(0) != null) {
+      if (getRecordTransformer != null && getRecordTransformer.apply(0) != null) {
         storeRepository.refreshOneStore(storeName);
         Store store = storeRepository.getStoreOrThrow(storeName);
         int version = store.getCurrentVersion();
