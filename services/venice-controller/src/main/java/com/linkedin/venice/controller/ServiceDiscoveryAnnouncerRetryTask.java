@@ -6,6 +6,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class is responsible for retrying the registration of a {@link ServiceDiscoveryAnnouncer} in case of registration failure.
+ */
 public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
   private static final Logger LOGGER = LogManager.getLogger(ServiceDiscoveryAnnouncerRetryTask.class);
   private final BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue;
