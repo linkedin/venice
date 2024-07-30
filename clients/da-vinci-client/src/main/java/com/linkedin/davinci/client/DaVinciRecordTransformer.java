@@ -168,9 +168,6 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   public final int getClassHash() {
     String className = this.getClass().getName().replace('.', '/') + ".class";
     try (InputStream inputStream = this.getClass().getClassLoader().getResourceAsStream(className)) {
-      if (inputStream == null) {
-        throw new IOException("Class resource not found for " + className);
-      }
       ClassReader classReader = new ClassReader(inputStream);
       byte[] bytecode = classReader.b;
       return Arrays.hashCode(bytecode);

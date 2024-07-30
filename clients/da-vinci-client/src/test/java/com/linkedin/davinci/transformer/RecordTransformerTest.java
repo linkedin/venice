@@ -6,6 +6,7 @@ import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
@@ -76,6 +77,32 @@ public class RecordTransformerTest {
 
     // Execute the onRecovery method again to test the case where the classHash file exists
     recordTransformer.onRecovery(iterator, storeBackend, 1);
+  }
+
+  @Test
+  public void testBlockingRecordTransformer() {
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
+    recordTransformer =
+        new BlockingDaVinciRecordTransformer<>(recordTransformer, recordTransformer.getStoreRecordsInDaVinci());
+    recordTransformer.onStart();
+
+    assertTrue(recordTransformer.getStoreRecordsInDaVinci());
+
+    Schema keyOutputSchema = recordTransformer.getKeyOutputSchema();
+    assertEquals(keyOutputSchema.getType(), Schema.Type.INT);
+
+    Schema valueOutputSchema = recordTransformer.getValueOutputSchema();
+    assertEquals(valueOutputSchema.getType(), Schema.Type.STRING);
+
+    Lazy<Integer> lazyKey = Lazy.of(() -> 42);
+    Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
+    assertEquals(recordTransformer.transformAndProcessPut(lazyKey, lazyValue), "SampleValueTransformed");
+
+    recordTransformer.processDelete(lazyKey);
+    String deletedRecord = recordTransformer.processDelete(lazyKey);
+    assertNull(deletedRecord);
+
+    recordTransformer.onEnd();
   }
 
 }
