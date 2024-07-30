@@ -163,7 +163,7 @@ public class TestStoreBackupVersionCleanupService {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
@@ -223,7 +223,7 @@ public class TestStoreBackupVersionCleanupService {
 
     doReturn(new ByteArrayInputStream(OBJECT_MAPPER.writeValueAsBytes(currentVersionResponse))).when(entity)
         .getContent();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     doReturn(true).when(controllerConfig).isBackupVersionMetadataFetchBasedCleanupEnabled();
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
@@ -267,7 +267,7 @@ public class TestStoreBackupVersionCleanupService {
     LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(any());
     doReturn(true).when(controllerConfig).isBackupVersionRetentionBasedCleanupEnabled();
     doReturn(true).when(admin).isLeaderControllerFor(any());

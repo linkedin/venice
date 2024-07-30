@@ -109,11 +109,6 @@ public class ConfigKeys {
   public static final String KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES = "kafka.log.compaction.for.hybrid.stores";
 
   /**
-   * For log compaction enabled topics, this config will define the minimum time a message will remain uncompacted in the log.
-   */
-  public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
-
-  /**
    * The minimum number of in sync replicas to set for store version topics.
    *
    * Will use the Kafka cluster's default if not set.
@@ -145,39 +140,6 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR_RT_TOPICS = "kafka.replication.factor.rt.topics";
 
   /**
-   * TODO: the following 3 configs will be deprecated after the native replication migration is changed to a two-step
-   *       process: 1. Turn on the cluster level config that takes care of newly created stores; 2. Run admin command
-   *       to convert existing stores to native replication.
-   */
-  /**
-   * Cluster-level config to enable native replication for all batch-only stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY = "enable.native.replication.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for all hybrid stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
-
-  /**
-   * Cluster-level config to enable native replication for new batch-only stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
-      "enable.native.replication.as.default.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for new hybrid stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID =
-      "enable.native.replication.as.default.for.hybrid";
-
-  /**
-   * Cluster-level config to enable active-active replication for new batch-only stores.
-   */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE =
-      "enable.active.active.replication.as.default.for.batch.only.store";
-
-  /**
    * Cluster-level config to enable active-active replication for new hybrid stores.
    */
   public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
@@ -189,7 +151,7 @@ public class ConfigKeys {
   public static final String ENABLE_BLOB_TRANSFER = "enable.blob.transfer";
 
   /**
-   * Sets the default for whether or not do schema validation for all stores
+   * Sets the default for whether to do schema validation or not for all stores
    */
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
 
@@ -216,7 +178,6 @@ public class ConfigKeys {
   public static final String PARTITION_COUNT_ROUND_UP_SIZE = "partition.count.round.up.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
-  public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
   public static final String CLUSTER_TO_D2 = "cluster.to.d2";
   public static final String CLUSTER_TO_SERVER_D2 = "cluster.to.server.d2";
   public static final String HELIX_SEND_MESSAGE_TIMEOUT_MS = "helix.send.message.timeout.ms";
@@ -231,7 +192,7 @@ public class ConfigKeys {
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
-  /** Cluster name for all parent controllers */
+  // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
 
   /** List of forbidden admin paths */
@@ -262,13 +223,6 @@ public class ConfigKeys {
   public static final String TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS =
       "topic.cleanup.sleep.interval.between.topic.list.fetch.ms";
   public static final String TOPIC_CLEANUP_DELAY_FACTOR = "topic.cleanup.delay.factor";
-  public static final String TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS =
-      "topic.cleanup.send.concurrent.delete.requests.enabled";
-
-  /**
-   * Sleep interval for polling topic deletion status from ZK.
-   */
-  public static final String TOPIC_DELETION_STATUS_POLL_INTERVAL_MS = "topic.deletion.status.poll.interval.ms";
 
   /**
    * The following config is to control the default retention time in milliseconds if it is not specified in store level.
@@ -304,9 +258,9 @@ public class ConfigKeys {
   public static final String CONTROLLER_ENFORCE_SSL = "controller.enforce.ssl";
 
   /**
-   * Whether child controllers will directly consume the source admin topic in the parent Kafka cluster.
+   * This config specifies if Venice is deployed in a multi-region mode
    */
-  public static final String ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED = "admin.topic.remote.consumption.enabled";
+  public static final String MULTI_REGION = "multi.region";
 
   /**
    * This config defines the source region name of the admin topic
@@ -314,7 +268,8 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
 
   /**
-   * This following config defines whether admin consumption should be enabled or not, and this config will only control the behavior in Child Controller.
+   * This following config defines whether admin consumption should be enabled or not, and this config will only control
+   * the behavior in Child Controller. This is used for store migration.
    */
   public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED =
       "child.controller.admin.topic.consumption.enabled";
@@ -745,12 +700,6 @@ public class ConfigKeys {
       "server.ingestion.isolation.heartbeat.request.timeout.seconds";
 
   /**
-   * Timeout for single metric request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.metric.request.timeout.seconds";
-
-  /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
    * verify it against the key/values saved in the database persistency layer.
@@ -1088,15 +1037,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_REPLICA = "controller.cluster.replica";
 
   /**
-   * The time window in ms used to throttle the Kafka topic creation, during the time window, only 1 topic is allowed to
-   * be created.
-   */
-  public static final String TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS = "topic.creation.throttling.time.window.ms";
-
-  /** Timeout for create topic and delete topic operations. */
-  public static final String TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS = "topic.manager.kafka.operation.timeout.ms";
-
-  /**
    * This is the minimum number of Kafka topics that are guaranteed to be preserved by the leaky topic clean
    * up routine. The topics with the highest version numbers will be favored by this preservative behavior.
    * All other topics (i.e.: those with smaller version numbers) which Venice does not otherwise know about
@@ -1125,6 +1065,17 @@ public class ConfigKeys {
 
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
+
+  /**
+   * This config specifies the state of the region of the parent controller.
+   *
+   * The region can be in one of the following states:
+   * ACTIVE: the parent controller in the region is serving requests.
+   * PASSIVE: the parent controller in the region is rejecting requests.
+   *
+   * By default, this is set to ACTIVE.
+   */
+  public static final String CONTROLLER_PARENT_REGION_STATE = "controller.parent.region.state";
 
   /**
    * This config is used to control how many errored topics we are going to keep in parent cluster.
@@ -1255,15 +1206,9 @@ public class ConfigKeys {
   public static final String PARENT_KAFKA_CLUSTER_FABRIC_LIST = "parent.kafka.cluster.fabric.list";
 
   /**
-   * Whether A/A is enabled on the controller. When it is true, all A/A required config (e.g.
-   * {@link #ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST}) must be set.
-   */
-  public static final String ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER = "active.active.enabled.on.controller";
-
-  /**
-   * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
-   * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
-   * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
+   * A list of regions that are source(s) of the Active/Active real time replication. When running in a multi-region
+   * mode, this list should contain region names where the Venice server should consume from when it accepts the
+   * TS (TopicSwitch) message.
    * Example value of this config: "dc-0, dc-1, dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
@@ -1275,12 +1220,6 @@ public class ConfigKeys {
    * */
   public static final String PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS =
       "parent.controller.waiting.time.for.consumption.ms";
-
-  /**
-   * If there is a failure in consuming from the admin topic, skip the message after retrying for this many minutes
-   * Default 5 days
-   */
-  public static final String ADMIN_CONSUMPTION_TIMEOUT_MINUTES = "admin.consumption.timeout.minute";
 
   /**
    * The maximum time allowed for worker threads to execute admin messages in one cycle. A cycle is the processing of
@@ -1562,16 +1501,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
 
   /**
-   * Whether to enable batch push (including GF job) from Admin in Child Controller.
-   * In theory, we should disable batch push in Child Controller no matter what, but the fact is that today there are
-   * many tests, which are doing batch pushes to an individual cluster setup (only Child Controller), so disabling batch push from Admin
-   * in Child Controller will require a lot of refactoring.
-   * So the current strategy is to enable it by default, but disable it in EI and PROD.
-   */
-  public static final String CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD =
-      "controller.enable.batch.push.from.admin.in.child";
-
-  /**
    * A config that turns the key/value profiling stats on and off. This config can be placed in both Router and SNs and it
    * is off by default. When switching it on, We will emit a fine grained histogram that reflects the distribution of
    * key and value size. Since this will be run in the critical read path and it will emit additional ~20 stats, please
@@ -1589,11 +1518,6 @@ public class ConfigKeys {
    * A config specifies which partitioning scheme should be used by VenicePushJob.
    */
   public static final String PARTITIONER_CLASS = "partitioner.class";
-  /**
-   * A configs of over-partitioning factor
-   * number of Kafka partitions in each partition
-   */
-  public static final String AMPLIFICATION_FACTOR = "amplification.factor";
 
   /**
    * A unique id that can represent this instance
@@ -1739,8 +1663,12 @@ public class ConfigKeys {
   // Config to control how much percentage of DVC replica instances are allowed to be offline before failing VPJ push.
   public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO =
       "davinci.push.status.scan.max.offline.instance.ratio";
-  // Port used by peer-to-peer transfer service
-  public static final String DAVINCI_P2P_BLOB_TRANSFER_PORT = "davinci.p2p.blob.transfer.port";
+  // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
+  public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  // Port used by peer-to-peer transfer service. It should be used by both server and client
+  public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
+  // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
+  public static final String DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT = "davinci.p2p.blob.transfer.client.port";
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
@@ -2162,4 +2090,37 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
+
+  /**
+   * Controller config for the default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes}.
+   * Only used in batch push jobs and partial updates.
+   */
+  public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
+
+  /**g
+   * Percentage of total single get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the
+   * total single get requests are allowed for long tail retry. This is to prevent retry storm and cascading failures.
+   */
+  public static final String ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL =
+      "router.single.key.long.tail.retry.budget.percent.decimal";
+
+  /**
+   * Percentage of total multi get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the
+   * total multi get requests are allowed for long tail retry. This is to prevent retry storm and cascading failures.
+   */
+  public static final String ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL =
+      "router.multi.key.long.tail.retry.budget.percent.decimal";
+
+  /**
+   * Enforcement window for router long tail retry budget token bucket. This applies to both single get and multi get
+   * retry managers.
+   */
+  public static final String ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS =
+      "router.long.tail.retry.budget.enforcement.window.ms";
+
+  /**
+   * The core pool size for the thread pool executor which contains threads responsible for measuring and updating all
+   * retry managers in router periodically to provide retry budget based on a percentage of the original requests.
+   */
+  public static final String ROUTER_RETRY_MANAGER_CORE_POOL_SIZE = "router.retry.manager.core.pool.size";
 }

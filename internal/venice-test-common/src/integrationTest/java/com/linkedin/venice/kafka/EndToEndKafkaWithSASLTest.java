@@ -75,7 +75,6 @@ public class EndToEndKafkaWithSASLTest {
         .numberOfRouters(1)
         .replicationFactor(1)
         .partitionSize(1)
-        .minActiveReplica(0)
         .sslToStorageNodes(false)
         .sslToKafka(false)
         .zkServerWrapper(zkServer)

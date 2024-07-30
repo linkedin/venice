@@ -75,6 +75,12 @@ public class TestNettyP2PBlobTransferManager {
   }
 
   @Test
+  public void testFailedConnectPeer() {
+    CompletionStage<InputStream> future = client.get("remotehost123", "test_store", 1, 1);
+    Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
+  }
+
+  @Test
   public void testFailedRequestFromFinder() {
     doReturn(null).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
     try {

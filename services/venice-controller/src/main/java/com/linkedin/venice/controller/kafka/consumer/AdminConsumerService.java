@@ -5,7 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
 
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
@@ -30,7 +30,7 @@ import java.util.concurrent.ThreadFactory;
 public class AdminConsumerService extends AbstractVeniceService {
   private static final long WAITING_TIME_FOR_STOP_IN_MS = 5000;
 
-  private final VeniceControllerConfig config;
+  private final VeniceControllerClusterConfig config;
   private final VeniceHelixAdmin admin;
   private final ZkAdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final PubSubConsumerAdapterFactory consumerFactory;
@@ -48,7 +48,7 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
-      VeniceControllerConfig config,
+      VeniceControllerClusterConfig config,
       MetricsRepository metricsRepository,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {

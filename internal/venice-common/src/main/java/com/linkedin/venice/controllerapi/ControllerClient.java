@@ -29,7 +29,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -1099,19 +1098,6 @@ public class ControllerClient implements Closeable {
         ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE,
         params,
         SystemStoreHeartbeatResponse.class);
-  }
-
-  public ControllerResponse configureNativeReplicationForCluster(
-      boolean enableNativeReplication,
-      String storeType,
-      Optional<String> sourceFabric,
-      Optional<String> regionsFilter) {
-    // Verify the input storeType is valid
-    VeniceUserStoreType.valueOf(storeType.toUpperCase());
-    QueryParams params = newParams().add(STATUS, enableNativeReplication).add(STORE_TYPE, storeType);
-    sourceFabric.ifPresent(s -> params.add(NATIVE_REPLICATION_SOURCE_FABRIC, s));
-    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
-    return request(ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
   public ControllerResponse configureActiveActiveReplicationForCluster(
