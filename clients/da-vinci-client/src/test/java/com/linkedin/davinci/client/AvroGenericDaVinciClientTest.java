@@ -51,18 +51,20 @@ public class AvroGenericDaVinciClientTest {
     ClientConfig clientConfig = mock(ClientConfig.class);
     when(clientConfig.getStoreName()).thenReturn("test_store");
     when(clientConfig.isSpecificClient()).thenReturn(true);
+
     VeniceProperties backendConfig = mock(VeniceProperties.class);
     when(backendConfig.toProperties()).thenReturn(new java.util.Properties());
 
     AvroGenericDaVinciClient<Integer, String> dvcClient =
         spy(new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty()));
-    D2ServiceDiscoveryResponse mockResponse = mock(D2ServiceDiscoveryResponse.class);
-    when(mockResponse.getCluster()).thenReturn("test_cluster");
-    when(mockResponse.getZkAddress()).thenReturn("mock_zk_address");
-    when(mockResponse.getKafkaBootstrapServers()).thenReturn("mock_kafka_bootstrap_servers");
     doReturn(false).when(dvcClient).isReady();
-    doReturn(mockResponse).when(dvcClient).discoverService();
     doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any(), any());
+
+    D2ServiceDiscoveryResponse mockDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
+    when(mockDiscoveryResponse.getCluster()).thenReturn("test_cluster");
+    when(mockDiscoveryResponse.getZkAddress()).thenReturn("mock_zk_address");
+    when(mockDiscoveryResponse.getKafkaBootstrapServers()).thenReturn("mock_kafka_bootstrap_servers");
+    doReturn(mockDiscoveryResponse).when(dvcClient).discoverService();
 
     DaVinciBackend mockBackend = mock(DaVinciBackend.class);
     when(mockBackend.compareCacheConfig(any())).thenReturn(true);
@@ -71,7 +73,7 @@ public class AvroGenericDaVinciClientTest {
     when(mockBackend.getObjectCache()).thenReturn(null);
 
     ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
-    Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"string\"}");
+    Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"int\"}");
     when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
     when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
 
