@@ -46,7 +46,6 @@ public class TestControllerEnforceSSL {
             new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, zkServer, pubSubBrokerWrapper).replicationFactor(1)
                 .partitionSize(10)
                 .rebalanceDelayMs(0)
-                .minActiveReplica(1)
                 .sslToKafka(true)
                 .extraProperties(extraProperties)
                 .regionName(STANDALONE_REGION_NAME)

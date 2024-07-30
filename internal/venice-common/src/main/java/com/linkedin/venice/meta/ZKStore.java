@@ -885,7 +885,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */
   private void setPushedVersionsOnline() {
-    // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as
+    // TODO, if the PUSHED version is the latest version, after store is enabled to write, shall we put this version as
     // the current version?
     for (StoreVersion storeVersion: this.storeProperties.versions) {
       Version version = new VersionImpl(storeVersion);

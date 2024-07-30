@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -14,7 +13,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -52,14 +51,13 @@ public class TestAdminConsumerService {
         .put(
             CLUSTER_TO_SERVER_D2,
             TestUtils.getClusterToD2String(Collections.singletonMap(someClusterName, "dummy_server_d2")))
-        .put(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, true)
         .put(ADMIN_TOPIC_SOURCE_REGION, adminTopicSourceRegion)
         .put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, adminTopicSourceRegion)
         .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + adminTopicSourceRegion, "blah")
         .put(CHILD_CLUSTER_ALLOWLIST, someClusterName)
         .put(SslUtils.getVeniceLocalSslProperties())
         .build();
-    VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
+    VeniceControllerClusterConfig controllerConfig = new VeniceControllerClusterConfig(props);
 
     PubSubConsumerAdapterFactory consumerFactory = mock(PubSubConsumerAdapterFactory.class);
 

@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api.path;
 import com.linkedin.alpini.router.api.ResourcePath;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceResponseDecompressor;
@@ -33,6 +34,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private Collection<RouterKey> partitionKeys;
   protected final String storeName;
   protected final int versionNumber;
+  protected final RetryManager retryManager;
   private final Time time;
   private boolean retryRequest = false;
   private final boolean smartLongTailRetryEnabled;
@@ -65,14 +67,16 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       int versionNumber,
       String resourceName,
       boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs) {
+      int smartLongTailRetryAbortThresholdMs,
+      RetryManager retryManager) {
     this(
         storeName,
         versionNumber,
         resourceName,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
-        new SystemTime());
+        new SystemTime(),
+        retryManager);
   }
 
   public VenicePath(
@@ -81,13 +85,15 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       String resourceName,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
-      Time time) {
+      Time time,
+      RetryManager retryManager) {
     this.resourceName = resourceName;
     this.storeName = storeName;
     this.versionNumber = versionNumber;
     this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
     this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
     this.time = time;
+    this.retryManager = retryManager;
   }
 
   public synchronized long getRequestId() {
@@ -333,7 +339,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return getChunkedResponse() != null;
   }
 
-  public boolean isLongTailRetryAllowedForNewRoute() {
+  public boolean isLongTailRetryAllowedForNewRequest() {
     return true;
   }
 
@@ -354,4 +360,12 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   public abstract byte[] getBody();
 
   public abstract String getVeniceApiVersionHeader();
+
+  public void recordRequest() {
+    retryManager.recordRequest();
+  }
+
+  public boolean isLongTailRetryWithinBudget(int numberOfRoutes) {
+    return retryManager.isRetryAllowed(numberOfRoutes);
+  }
 }

@@ -30,8 +30,8 @@ public class ParentControllerConfigUpdateUtilsTest {
     when(parentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
     when(veniceHelixAdmin.getStore(anyString(), anyString())).thenReturn(store);
     HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
-    VeniceControllerClusterConfig veniceControllerClusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(helixVeniceClusterResources.getConfig()).thenReturn(veniceControllerClusterConfig);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    when(helixVeniceClusterResources.getConfig()).thenReturn(controllerConfig);
     when(veniceHelixAdmin.getHelixVeniceClusterResources(anyString())).thenReturn(helixVeniceClusterResources);
     SchemaEntry schemaEntry = new SchemaEntry(1, TestWriteUtils.USER_WITH_DEFAULT_SCHEMA);
     when(veniceHelixAdmin.getValueSchemas(anyString(), anyString())).thenReturn(Collections.singletonList(schemaEntry));
@@ -89,8 +89,8 @@ public class ParentControllerConfigUpdateUtilsTest {
      * No request.
      */
     partialUpdateRequest = Optional.empty();
-    when(veniceControllerClusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()).thenReturn(false);
-    when(veniceControllerClusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores()).thenReturn(false);
+    when(controllerConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()).thenReturn(false);
+    when(controllerConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores()).thenReturn(false);
     // Case 1: partial update config not updated.
     setStore = new UpdateStore();
     Assert.assertFalse(
@@ -111,8 +111,8 @@ public class ParentControllerConfigUpdateUtilsTest {
             setStore,
             true));
     // Case 2: partial update config updated.
-    when(veniceControllerClusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()).thenReturn(true);
-    when(veniceControllerClusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores()).thenReturn(true);
+    when(controllerConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()).thenReturn(true);
+    when(controllerConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores()).thenReturn(true);
     setStore = new UpdateStore();
     Assert.assertTrue(
         ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig(

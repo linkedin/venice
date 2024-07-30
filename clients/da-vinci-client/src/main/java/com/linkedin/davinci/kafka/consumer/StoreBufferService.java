@@ -5,6 +5,7 @@ import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
+import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -29,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -211,6 +213,18 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
+  private static void processCommand(
+      CommandQueueNode cmd,
+      StoreIngestionTask ingestionTask,
+      PartitionConsumptionState pcs) {
+    // We only support SYNC_OFFSET command for now.
+    if (cmd.getCommandType() != CommandQueueNode.CommandType.SYNC_OFFSET) {
+      throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
+    }
+
+    cmd.executeSync(() -> ingestionTask.updateOffsetMetadataAndSyncOffset(pcs));
+  }
+
   /**
    * This function is used to drain all the records for the specified topic + partition.
    * The reason is that we don't want overlap Kafka messages between two different subscriptions,
@@ -255,6 +269,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
         + retryNum + " times";
     LOGGER.error(errorMessage);
     throw new VeniceException(errorMessage);
+  }
+
+  @Override
+  public CompletableFuture<Void> execSyncOffsetCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    CommandQueueNode syncOffsetCmd =
+        new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
+    return syncOffsetCmd.getCmdExecutedFuture();
   }
 
   @Override
@@ -423,6 +448,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public int getSize() {
+      // For FakePubSubMessage, the key and the value are null, return 0.
+      if (consumerRecord instanceof FakePubSubMessage) {
+        return 0;
+      }
+
       // N.B.: This is just an estimate. TODO: Consider if it is really useful, and whether to get rid of it.
       return this.consumerRecord.getKey().getEstimatedObjectSizeOnHeap()
           + getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue()) + QUEUE_NODE_OVERHEAD_IN_BYTE;
@@ -516,6 +546,75 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
+  private static class CommandQueueNode extends QueueNode {
+    enum CommandType {
+      // only supports SYNC_OFFSET command today.
+      SYNC_OFFSET
+    }
+
+    private final LockAssistedCompletableFuture<Void> cmdExecutedFuture;
+
+    private final CommandType commandType;
+
+    public CommandQueueNode(
+        CommandType commandType,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      this.commandType = commandType;
+      this.cmdExecutedFuture = new LockAssistedCompletableFuture<>(this);
+    }
+
+    public CompletableFuture<Void> getCmdExecutedFuture() {
+      return cmdExecutedFuture;
+    }
+
+    public CommandType getCommandType() {
+      return commandType;
+    }
+
+    /*
+     * This method is used to execute the command synchronously. We use a customized LockAssistedCompletableFuture to
+     * ensure that once it is in execution, it cannot be cancelled.
+     */
+    public void executeSync(Runnable runnable) {
+      synchronized (cmdExecutedFuture.getLock()) {
+        if (cmdExecutedFuture.isDone() || cmdExecutedFuture.isCancelled()) {
+          LOGGER.warn(
+              "Command {} for {} in drainer queue is already done or cancelled",
+              commandType,
+              getConsumerRecord().getTopicPartition());
+          return;
+        }
+        try {
+          runnable.run();
+          cmdExecutedFuture.complete(null);
+          LOGGER.info(
+              "Command {} for {} in drainer queue is executed successfully",
+              commandType,
+              getConsumerRecord().getTopicPartition());
+        } catch (Exception e) {
+          cmdExecutedFuture.completeExceptionally(e);
+          LOGGER.error(
+              "Command {} for {} in drainer queue failed",
+              commandType,
+              getConsumerRecord().getTopicPartition(),
+              e);
+        }
+      }
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+  }
+
   /**
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
@@ -551,11 +650,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
           node = blockingQueue.take();
 
           consumerRecord = node.getConsumerRecord();
+          int partitionNum = consumerRecord.getTopicPartition().getPartitionNumber();
           leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
 
           long startTime = System.currentTimeMillis();
+
+          if (node instanceof CommandQueueNode) {
+            processCommand(
+                (CommandQueueNode) node,
+                ingestionTask,
+                ingestionTask.getPartitionConsumptionState(partitionNum));
+            continue;
+          }
+
           processRecord(
               consumerRecord,
               ingestionTask,

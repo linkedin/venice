@@ -1,7 +1,6 @@
-package com.linkedin.venice.fastclient.stats;
+package com.linkedin.venice.stats;
 
-import com.linkedin.venice.fastclient.meta.RetryManager;
-import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -35,7 +34,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
     rejectedRetrySensor = registerSensorIfAbsent("rejected_retry", new OccurrenceRate());
   }
 
-  public void recordRejectedRetry() {
-    rejectedRetrySensor.record();
+  public void recordRejectedRetry(int count) {
+    rejectedRetrySensor.record(count);
   }
 }
