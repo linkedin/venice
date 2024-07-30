@@ -31,7 +31,7 @@ import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -545,8 +545,8 @@ public class TestUtils {
   }
 
   public static VeniceControllerMultiClusterConfig getMultiClusterConfigFromOneCluster(
-      VeniceControllerClusterConfig controllerConfig) {
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+      VeniceControllerConfig controllerConfig) {
+    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
     configMap.put(controllerConfig.getClusterName(), controllerConfig);
     return new VeniceControllerMultiClusterConfig(configMap);
   }

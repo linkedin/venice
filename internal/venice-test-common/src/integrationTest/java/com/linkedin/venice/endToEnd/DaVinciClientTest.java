@@ -1,19 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
@@ -75,7 +67,6 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -93,8 +84,6 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -135,14 +124,10 @@ public class DaVinciClientTest {
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
-  private File inputDir;
-  private String inputDirPath;
 
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    inputDir = getTempDataDirectory();
-    inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, false, false, clusterConfig);
@@ -999,77 +984,6 @@ public class DaVinciClientTest {
     }
   }
 
-  /**
-   * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
-   * to avoid conflicts.
-   */
-  @Test(timeOut = 2 * TEST_TIMEOUT, enabled = false)
-  public void testBlobP2PTransferAmongDVC() throws Exception {
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    // backend config for first DVC client
-    int port1 = TestUtils.getFreePort();
-    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
-        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
-        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, dvcPath1)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
-        .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
-    MetricsRepository metricsRepository = new MetricsRepository();
-    VeniceProperties backendConfig1 = configBuilder.build();
-    // must be isolated otherwise the store backend would be shared
-    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
-    DaVinciClient<Integer, Object> client1, client2;
-
-    CachingDaVinciClientFactory factory1 = new CachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
-        backendConfig1);
-    client1 = factory1.getAndStartGenericAvroClient(storeName, dvcConfig);
-    client1.subscribeAll().get();
-
-    // Verify all 3 partitions of DVC client 1 have created the snapshots
-    for (int i = 0; i < 3; i++) {
-      String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
-    }
-
-    // Setup another DVC client with a different directory and ports
-    // Specifically ask dvc client 2 to talk to the port 1 used by dvc client 1
-    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-    configBuilder.put(DATA_BASE_PATH, dvcPath2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, TestUtils.getFreePort())
-        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1);
-    VeniceProperties backendConfig2 = configBuilder.build();
-
-    // TODO: we need to spin up the second DVC client in a different process as a single JVM can only have one
-    // StoreBackend
-    // and backendConfig is shared among them, causing server/client port conflicts
-    CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
-        backendConfig2);
-    client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
-    client2.subscribeAll().get();
-
-    // verify both DVC clients have the same key and values
-    for (int i = 1; i <= 100; i++) {
-      assertEquals(client1.get(i).get(), client2.get(i).get());
-    }
-
-    factory1.close();
-    factory2.close();
-  }
-
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
     setupHybridStore(storeName, paramsConsumer, KEY_COUNT);
   }
@@ -1118,15 +1032,9 @@ public class DaVinciClientTest {
       String storeName,
       Consumer<UpdateStoreQueryParams> paramsConsumer,
       Consumer<Properties> propertiesConsumer) throws Exception {
-    setUpStore(storeName, paramsConsumer, propertiesConsumer, false);
-  }
-
-  private void setUpStore(
-      String storeName,
-      Consumer<UpdateStoreQueryParams> paramsConsumer,
-      Consumer<Properties> propertiesConsumer,
-      boolean useDVCPushStatusStore) throws Exception {
     // Produce input data.
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
     writeSimpleAvroFileWithIntToStringSchema(inputDir);
 
     // Setup VPJ job properties.
@@ -1135,15 +1043,11 @@ public class DaVinciClientTest {
     // Create & update store for test.
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions); // Update the
-    // partition count.
+                                                                                                   // partition count.
     paramsConsumer.accept(params);
-
     try (ControllerClient controllerClient =
         createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
       cluster.createMetaSystemStore(storeName);
-      if (useDVCPushStatusStore) {
-        cluster.createPushStatusSystemStore(storeName);
-      }
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       runVPJ(vpjProperties, 1, cluster);
     }

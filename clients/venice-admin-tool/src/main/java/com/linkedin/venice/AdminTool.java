@@ -471,6 +471,12 @@ public class AdminTool {
         case REMOVE_FROM_STORE_ACL:
           removeFromStoreAcl(cmd);
           break;
+        case ENABLE_NATIVE_REPLICATION_FOR_CLUSTER:
+          enableNativeReplicationForCluster(cmd);
+          break;
+        case DISABLE_NATIVE_REPLICATION_FOR_CLUSTER:
+          disableNativeReplicationForCluster(cmd);
+          break;
         case ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
           enableActiveActiveReplicationForCluster(cmd);
           break;
@@ -566,9 +572,6 @@ public class AdminTool {
           break;
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
-          break;
-        case MIGRATE_VENICE_ZK_PATHS:
-          migrateVeniceZKPaths(cmd);
           break;
         case EXTRACT_VENICE_ZK_PATHS:
           extractVeniceZKPaths(cmd);
@@ -1807,7 +1810,7 @@ public class AdminTool {
       printSystemStoreMigrationStatus(destControllerClient, storeName, printFunction);
     } else {
       // This is a parent controller
-      printFunction.apply("\n=================== Parent Controllers ====================");
+      System.err.println("\n=================== Parent Controllers ====================");
       printMigrationStatus(srcControllerClient, storeName, printFunction);
       printMigrationStatus(destControllerClient, storeName, printFunction);
 
@@ -1818,7 +1821,7 @@ public class AdminTool {
       Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName, response);
 
       for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
-        printFunction.apply("\n\n=================== Child Datacenter " + entry.getKey() + " ====================");
+        System.err.println("\n\n=================== Child Datacenter " + entry.getKey() + " ====================");
 
         ControllerClient srcChildController = entry.getValue();
         ControllerClient destChildController = destChildControllerClientMap.get(entry.getKey());
@@ -2583,6 +2586,34 @@ public class AdminTool {
     }
   }
 
+  private static void enableNativeReplicationForCluster(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String sourceRegionParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
+    Optional<String> sourceRegion =
+        StringUtils.isEmpty(sourceRegionParam) ? Optional.empty() : Optional.of(sourceRegionParam);
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+
+    ControllerResponse response =
+        controllerClient.configureNativeReplicationForCluster(true, storeType, sourceRegion, regionsFilter);
+    printObject(response);
+  }
+
+  private static void disableNativeReplicationForCluster(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String sourceFabricParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
+    Optional<String> sourceFabric =
+        StringUtils.isEmpty(sourceFabricParam) ? Optional.empty() : Optional.of(sourceFabricParam);
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+
+    ControllerResponse response =
+        controllerClient.configureNativeReplicationForCluster(false, storeType, sourceFabric, regionsFilter);
+    printObject(response);
+  }
+
   private static void enableActiveActiveReplicationForCluster(CommandLine cmd) {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
     String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
@@ -3060,22 +3091,6 @@ public class AdminTool {
           getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
-    }
-  }
-
-  private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
-    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
-    String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
-    String srcZKSSLConfigs = getRequiredArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE);
-    String destZKUrl = getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL);
-    String destZKSSLConfigs = getRequiredArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE);
-    ZkClient srcZkClient = readZKConfigAndBuildZKClient(srcZKUrl, srcZKSSLConfigs);
-    ZkClient destZkClient = readZKConfigAndBuildZKClient(destZKUrl, destZKSSLConfigs);
-    try {
-      ZkCopier.migrateVenicePaths(srcZkClient, destZkClient, clusterNames, getRequiredArgument(cmd, Arg.BASE_PATH));
-    } finally {
-      srcZkClient.close();
-      destZkClient.close();
     }
   }
 

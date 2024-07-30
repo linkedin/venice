@@ -68,10 +68,6 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
     return this.blobTransferEnabled;
   }
 
-  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
-    this.blobTransferEnabled = blobTransferEnabled;
-  }
-
   public PersistenceType getStorePersistenceType() {
     if (!storePersistenceType.isPresent()) {
       throw new VeniceException(

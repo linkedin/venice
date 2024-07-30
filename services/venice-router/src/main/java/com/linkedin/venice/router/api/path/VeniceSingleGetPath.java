@@ -8,7 +8,6 @@ import com.linkedin.alpini.base.misc.QueryStringDecoder;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
-import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
@@ -42,9 +41,8 @@ public class VeniceSingleGetPath extends VenicePath {
       String key,
       String uri,
       VenicePartitionFinder partitionFinder,
-      RouterStats<AggRouterHttpRequestStats> stats,
-      RetryManager retryManager) throws RouterException {
-    super(storeName, versionNumber, resourceName, false, -1, retryManager);
+      RouterStats<AggRouterHttpRequestStats> stats) throws RouterException {
+    super(storeName, versionNumber, resourceName, false, -1);
     if (StringUtils.isEmpty(key)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.empty(),

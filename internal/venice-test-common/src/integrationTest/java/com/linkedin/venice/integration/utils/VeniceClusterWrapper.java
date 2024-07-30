@@ -220,12 +220,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
-                .multiRegion(options.isMultiRegion())
                 .replicationFactor(options.getReplicationFactor())
                 .partitionSize(options.getPartitionSize())
                 .numberOfPartitions(options.getNumberOfPartitions())
                 .maxNumberOfPartitions(options.getMaxNumberOfPartitions())
                 .rebalanceDelayMs(options.getRebalanceDelayMs())
+                .minActiveReplica(options.getMinActiveReplica())
                 .clusterToD2(clusterToD2)
                 .clusterToServerD2(clusterToServerD2)
                 .sslToKafka(options.isSslToKafka())
@@ -553,6 +553,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               .numberOfPartitions(options.getNumberOfPartitions())
               .maxNumberOfPartitions(options.getMaxNumberOfPartitions())
               .rebalanceDelayMs(options.getRebalanceDelayMs())
+              .minActiveReplica(options.getMinActiveReplica())
               .sslToKafka(options.isSslToKafka())
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)

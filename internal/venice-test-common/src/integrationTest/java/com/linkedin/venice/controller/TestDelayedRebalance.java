@@ -30,6 +30,7 @@ public class TestDelayedRebalance {
   // Ensure delayed rebalance time out is larger than test timeout to avoid doing rebalance due to
   // waitForNonDeterministicCompletion
   long delayRebalanceMS = testTimeOutMS * 2;
+  int minActiveReplica = replicaFactor - 1;
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
@@ -40,6 +41,7 @@ public class TestDelayedRebalance {
         .replicationFactor(replicaFactor)
         .partitionSize(partitionSize)
         .rebalanceDelayMs(delayRebalanceMS)
+        .minActiveReplica(minActiveReplica)
         .build();
     cluster = ServiceFactory.getVeniceCluster(options);
   }

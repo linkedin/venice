@@ -109,14 +109,14 @@ public class VeniceConfigLoader {
     return combinedProperties;
   }
 
-  public VeniceStoreVersionConfig getStoreConfig(String pubsubTopicName) {
-    VeniceProperties storeProperties = combinedProperties.getStoreProperties(pubsubTopicName);
-    return new VeniceStoreVersionConfig(pubsubTopicName, storeProperties, veniceServerConfig.getKafkaClusterMap());
+  public VeniceStoreVersionConfig getStoreConfig(String storeName) {
+    VeniceProperties storeProperties = combinedProperties.getStoreProperties(storeName);
+    return new VeniceStoreVersionConfig(storeName, storeProperties, veniceServerConfig.getKafkaClusterMap());
   }
 
-  public VeniceStoreVersionConfig getStoreConfig(String pubsubTopicName, PersistenceType storePersistenceType) {
-    VeniceProperties storeProperties = combinedProperties.getStoreProperties(pubsubTopicName);
-    return new VeniceStoreVersionConfig(pubsubTopicName, storeProperties, storePersistenceType);
+  public VeniceStoreVersionConfig getStoreConfig(String storeName, PersistenceType storePersistenceType) {
+    VeniceProperties storeProperties = combinedProperties.getStoreProperties(storeName);
+    return new VeniceStoreVersionConfig(storeName, storeProperties, storePersistenceType);
   }
 
   /**

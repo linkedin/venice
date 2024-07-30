@@ -133,7 +133,7 @@ public class VeniceControllerService extends AbstractVeniceService {
      * consumes the admin topics.
      */
     String systemClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerClusterConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
     newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
       try {
@@ -172,19 +172,15 @@ public class VeniceControllerService extends AbstractVeniceService {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     for (String cluster: multiClusterConfigs.getClusters()) {
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(cluster);
-      if (clusterConfig.isMultiRegion()) {
-        // Enable admin channel consumption only for multi-region setups
-        AdminConsumerService adminConsumerService = new AdminConsumerService(
-            internalAdmin,
-            clusterConfig,
-            metricsRepository,
-            pubSubTopicRepository,
-            pubSubMessageDeserializer);
-        this.consumerServicesByClusters.put(cluster, adminConsumerService);
+      AdminConsumerService adminConsumerService = new AdminConsumerService(
+          internalAdmin,
+          multiClusterConfigs.getControllerConfig(cluster),
+          metricsRepository,
+          pubSubTopicRepository,
+          pubSubMessageDeserializer);
+      this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
-        this.admin.setAdminConsumerService(cluster, adminConsumerService);
-      }
+      this.admin.setAdminConsumerService(cluster, adminConsumerService);
     }
 
   }
@@ -213,9 +209,7 @@ public class VeniceControllerService extends AbstractVeniceService {
   public boolean startInner() {
     for (String clusterName: multiClusterConfigs.getClusters()) {
       admin.initStorageCluster(clusterName);
-      if (multiClusterConfigs.isMultiRegion()) {
-        consumerServicesByClusters.get(clusterName).start();
-      }
+      consumerServicesByClusters.get(clusterName).start();
       LOGGER.info("started cluster: {}", clusterName);
     }
     LOGGER.info("Started Venice controller.");
@@ -232,12 +226,10 @@ public class VeniceControllerService extends AbstractVeniceService {
       // We don't need to lock resources here, as we will acquire the lock during the ST leader->standby, which would
       // prevent the partial updates.
       admin.stop(clusterName);
-      if (multiClusterConfigs.isMultiRegion()) {
-        try {
-          consumerServicesByClusters.get(clusterName).stop();
-        } catch (Exception e) {
-          LOGGER.error("Got exception when stop AdminConsumerService", e);
-        }
+      try {
+        consumerServicesByClusters.get(clusterName).stop();
+      } catch (Exception e) {
+        LOGGER.error("Got exception when stop AdminConsumerService", e);
       }
       LOGGER.info("Stopped cluster: {}", clusterName);
     }

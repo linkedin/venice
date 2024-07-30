@@ -33,7 +33,10 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
-import com.linkedin.venice.blobtransfer.BlobTransferUtil;
+import com.linkedin.venice.blobtransfer.DvcBlobFinder;
+import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
+import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -90,6 +93,7 @@ import org.apache.logging.log4j.Logger;
 
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
+  private final BlobTransferManager blobTransferManager;
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -109,8 +113,6 @@ public class DaVinciBackend implements Closeable {
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private DaVinciRecordTransformer recordTransformer;
-  private final ClientConfig clientConfig;
-  private BlobTransferManager<Void> blobTransferManager;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -124,7 +126,6 @@ public class DaVinciBackend implements Closeable {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       this.configLoader = configLoader;
-      this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
@@ -293,7 +294,6 @@ public class DaVinciBackend implements Closeable {
 
       ingestionService.addIngestionNotifier(ingestionListener);
 
-
       boolean isBlobTransferEnabled = configLoader.getStoreConfig(storeName).isBlobTransferEnabled();
       if (isBlobTransferEnabled) {
         int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
@@ -315,16 +315,6 @@ public class DaVinciBackend implements Closeable {
         // a correct view of the data.
         throw new IllegalArgumentException(
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
-      }
-
-      if (backendConfig.isBlobTransferManagerEnabled()) {
-        blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
-            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
-            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
-            configLoader.getVeniceServerConfig().getRocksDBPath(),
-            clientConfig);
-      } else {
-        blobTransferManager = null;
       }
 
       bootstrap();
@@ -527,6 +517,7 @@ public class DaVinciBackend implements Closeable {
     storeByNameMap.clear();
     versionByTopicMap.clear();
     compressorFactory.close();
+
     executor.shutdown();
     try {
       if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {

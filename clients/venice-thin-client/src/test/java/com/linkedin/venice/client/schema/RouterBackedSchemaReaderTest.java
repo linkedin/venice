@@ -161,14 +161,14 @@ public class RouterBackedSchemaReaderTest {
       Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
       Schema cachedSchema = schemaReader.getValueSchema(3);
       Assert.assertNull(cachedSchema);
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
 
       Schema newSchema = schemaReader.getValueSchema(1);
       Assert.assertEquals(newSchema.toString(), VALUE_SCHEMA_1.toString());
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
 
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), VALUE_SCHEMA_2.toString());
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(5)).getRaw(Mockito.anyString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(4)).getRaw(Mockito.anyString());
     }
   }
 
@@ -311,7 +311,7 @@ public class RouterBackedSchemaReaderTest {
        * 1. Fetch value schemas on start up, which takes 2 + 1 = 3 individual call.
        * 2. Fetch update schemas in one of the futures
        */
-      Mockito.verify(storeClient, Mockito.timeout(TIMEOUT).times(5)).getRaw(Mockito.anyString());
+      Mockito.verify(storeClient, Mockito.timeout(TIMEOUT).times(4)).getRaw(Mockito.anyString());
     }
   }
 
@@ -369,7 +369,7 @@ public class RouterBackedSchemaReaderTest {
       Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
       Assert.assertNotNull(schemaReader.getLatestValueSchema());
       // Should not be checked again
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(4)).getRaw(Mockito.anyString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
     }
   }
 

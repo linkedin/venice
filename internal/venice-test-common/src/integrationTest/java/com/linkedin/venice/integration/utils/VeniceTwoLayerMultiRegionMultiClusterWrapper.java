@@ -1,9 +1,14 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
+import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
@@ -77,6 +82,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
      */
     Properties defaultParentControllerProps = new Properties();
     defaultParentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    defaultParentControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "false");
 
     ZkServerWrapper zkServer = null;
     PubSubBrokerWrapper parentPubSubBrokerWrapper = null;
@@ -117,6 +123,10 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       Map<String, ZkServerWrapper> zkServerByRegionName = new HashMap<>(childRegionName.size());
       Map<String, PubSubBrokerWrapper> pubSubBrokerByRegionName = new HashMap<>(childRegionName.size());
 
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, true);
       defaultParentControllerProps
           .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childRegionName.get(0));
       defaultParentControllerProps
@@ -153,6 +163,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       defaultChildControllerProps.putAll(finalParentControllerProperties);
       defaultChildControllerProps.putAll(nativeReplicationRequiredChildControllerProps);
       defaultChildControllerProps.putAll(activeActiveRequiredChildControllerProps);
+      defaultChildControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+      defaultChildControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "true");
 
       final Properties finalChildControllerProperties = new Properties();
       finalChildControllerProperties.putAll(defaultChildControllerProps);
@@ -178,19 +190,20 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       }
       additionalServerProps.putAll(pubSubBrokerProps);
 
-      VeniceMultiClusterCreateOptions.Builder builder = new VeniceMultiClusterCreateOptions.Builder().multiRegion(true)
-          .numberOfClusters(options.getNumberOfClusters())
-          .numberOfControllers(options.getNumberOfChildControllers())
-          .numberOfServers(options.getNumberOfServers())
-          .numberOfRouters(options.getNumberOfRouters())
-          .replicationFactor(options.getReplicationFactor())
-          .randomizeClusterName(false)
-          .childControllerProperties(finalChildControllerProperties)
-          .extraProperties(additionalServerProps)
-          .sslToStorageNodes(options.isSslToStorageNodes())
-          .sslToKafka(options.isSslToKafka())
-          .forkServer(options.isForkServer())
-          .kafkaClusterMap(kafkaClusterMap);
+      VeniceMultiClusterCreateOptions.Builder builder =
+          new VeniceMultiClusterCreateOptions.Builder().numberOfClusters(options.getNumberOfClusters())
+              .numberOfControllers(options.getNumberOfChildControllers())
+              .numberOfServers(options.getNumberOfServers())
+              .numberOfRouters(options.getNumberOfRouters())
+              .replicationFactor(options.getReplicationFactor())
+              .randomizeClusterName(false)
+              .multiRegionSetup(true)
+              .childControllerProperties(finalChildControllerProperties)
+              .extraProperties(additionalServerProps)
+              .sslToStorageNodes(options.isSslToStorageNodes())
+              .sslToKafka(options.isSslToKafka())
+              .forkServer(options.isForkServer())
+              .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
       for (int i = 0; i < options.getNumberOfRegions(); i++) {
         String regionName = childRegionName.get(i);
@@ -213,7 +226,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
       VeniceControllerCreateOptions parentControllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper).multiRegion(true)
+          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper)
               .replicationFactor(options.getReplicationFactor())
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)

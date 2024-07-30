@@ -892,7 +892,7 @@ public abstract class StoreIngestionTaskTest {
 
     doReturn(1).when(mockStore).getPartitionCount();
 
-    doReturn(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE).when(mockStore).getMaxRecordSizeBytes();
+    doReturn(-1).when(mockStore).getMaxRecordSizeBytes();
 
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
@@ -3783,8 +3783,6 @@ public abstract class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 2L);
 
-      // Verify that the underlying storage engine sync function is invoked.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(1)).sync(eq(PARTITION_FOO));
     }, aaConfig, configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();

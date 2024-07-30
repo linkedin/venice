@@ -45,7 +45,7 @@ public class ParentControllerConfigUpdateUtils {
       UpdateStore setStore,
       boolean storeBeingConvertedToHybrid) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
-    VeniceControllerClusterConfig controllerConfig =
+    VeniceControllerClusterConfig clusterConfig =
         parentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
     boolean partialUpdateConfigChanged = false;
     setStore.writeComputationEnabled = currentStore.isWriteComputationEnabled();
@@ -69,8 +69,8 @@ public class ParentControllerConfigUpdateUtils {
      */
     final boolean shouldEnablePartialUpdateBasedOnClusterConfig =
         storeBeingConvertedToHybrid && (setStore.activeActiveReplicationEnabled
-            ? controllerConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
-            : controllerConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
+            ? clusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
+            : clusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
     if (!currentStore.isWriteComputationEnabled() && shouldEnablePartialUpdateBasedOnClusterConfig) {
       LOGGER.info("Controller will try to enable partial update based on cluster config for store: " + storeName);
       /**

@@ -756,13 +756,6 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean isParent();
 
   /**
-   * Return the state of the region of the parent controller.
-   * @return {@link ParentControllerRegionState#ACTIVE} which means that the parent controller in the region is serving requests.
-   * Otherwise, return {@link ParentControllerRegionState#PASSIVE}
-   */
-  ParentControllerRegionState getParentControllerRegionState();
-
-  /**
    * Get child datacenter to child controller url mapping.
    * @return A map of child datacenter -> child controller url
    */
@@ -808,6 +801,18 @@ public interface Admin extends AutoCloseable, Closeable {
   List<String> getClustersLeaderOf();
 
   /**
+   * Enable/disable native replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
+   * all) in a cluster. If storeName is not empty, only the specified store might be updated.
+   */
+  void configureNativeReplication(
+      String cluster,
+      VeniceUserStoreType storeType,
+      Optional<String> storeName,
+      boolean enableNativeReplicationForCluster,
+      Optional<String> newSourceFabric,
+      Optional<String> regionsFilter);
+
+  /**
    * Enable/disable active active replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
    * all) in a cluster. If storeName is not empty, only the specified store might be updated.
    */
@@ -847,12 +852,6 @@ public interface Admin extends AutoCloseable, Closeable {
    * Returns default backup version retention time.
    */
   long getBackupVersionDefaultRetentionMs();
-
-  /**
-   * @return The default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} which is
-   * provided to the VPJ and Consumer as a controller config to dynamically control the setting per cluster.
-   */
-  int getDefaultMaxRecordSizeBytes();
 
   void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
 

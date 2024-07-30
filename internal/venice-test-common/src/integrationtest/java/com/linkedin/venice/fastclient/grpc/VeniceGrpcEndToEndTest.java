@@ -75,6 +75,7 @@ public class VeniceGrpcEndToEndTest {
             .partitionSize(1000)
             .numberOfPartitions(2)
             .maxNumberOfPartitions(5)
+            .minActiveReplica(1)
             .numberOfRouters(1)
             .numberOfServers(2)
             .sslToStorageNodes(true)

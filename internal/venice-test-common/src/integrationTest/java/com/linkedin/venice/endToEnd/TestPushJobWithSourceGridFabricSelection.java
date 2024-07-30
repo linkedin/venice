@@ -102,9 +102,18 @@ public class TestPushJobWithSourceGridFabricSelection {
     String storeName = Utils.getUniqueString("store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    // Enable A/A in parent region and 1 child region only
-    // The NR source fabric cluster level config is dc-0 by default.
+    // Enable NR in all regions and A/A in parent region and 1 child region only. The NR source fabric cluster level
+    // config is
+    // dc-0 by default.
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
+      Assert.assertFalse(
+          parentControllerClient
+              .configureNativeReplicationForCluster(
+                  true,
+                  VeniceUserStoreType.BATCH_ONLY.toString(),
+                  Optional.empty(),
+                  Optional.of(String.join(",", parentControllerRegionName, dcNames[0], dcNames[1])))
+              .isError());
       Assert.assertFalse(
           parentControllerClient
               .configureActiveActiveReplicationForCluster(

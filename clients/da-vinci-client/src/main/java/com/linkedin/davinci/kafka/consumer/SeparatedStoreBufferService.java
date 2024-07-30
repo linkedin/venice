@@ -6,7 +6,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -84,15 +83,6 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
     sortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
     unsortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
-  }
-
-  @Override
-  public CompletableFuture<Void> execSyncOffsetCommandAsync(
-      PubSubTopicPartition topicPartition,
-      StoreIngestionTask ingestionTask) throws InterruptedException {
-    StoreBufferService chosenSBS =
-        ingestionTask.isHybridMode() ? unsortedStoreBufferServiceDelegate : sortedStoreBufferServiceDelegate;
-    return chosenSBS.execSyncOffsetCommandAsync(topicPartition, ingestionTask);
   }
 
   @Override

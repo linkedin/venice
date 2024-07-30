@@ -3,10 +3,8 @@ package com.linkedin.davinci.config;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -469,9 +467,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
-  private final boolean blobTransferManagerEnabled;
-  private final int dvcP2pBlobTransferServerPort;
-  private final int dvcP2pBlobTransferClientPort;
+  private final int dvcP2pBlobTransferPort;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -494,10 +490,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     maxLeaderFollowerStateTransitionThreadNumber =
         serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
-    blobTransferManagerEnabled = serverProperties.getBoolean(BLOB_TRANSFER_MANAGER_ENABLED, false);
-    dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);
-    dvcP2pBlobTransferClientPort =
-        serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, dvcP2pBlobTransferServerPort);
+    dvcP2pBlobTransferPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_PORT, -1);
 
     String lfThreadPoolStrategyStr = serverProperties.getString(
         LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
@@ -867,16 +860,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return listenerHostname;
   }
 
-  public int getDvcP2pBlobTransferServerPort() {
-    return dvcP2pBlobTransferServerPort;
-  }
-
-  public int getDvcP2pBlobTransferClientPort() {
-    return dvcP2pBlobTransferClientPort;
-  }
-
-  public boolean isBlobTransferManagerEnabled() {
-    return blobTransferManagerEnabled;
+  public int getDvcP2pBlobTransferPort() {
+    return dvcP2pBlobTransferPort;
   }
 
   /**

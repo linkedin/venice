@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -8,6 +7,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_ZSTD_COMPRESSION_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;

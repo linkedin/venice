@@ -261,6 +261,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             INTERNAL_SERVER_ERROR,
             "Ready-to-serve host must be an 'Instance'");
       }
+      Instance veniceInstance = (Instance) host;
 
       if (!venicePath.isRetryRequest()) {
         /**
@@ -285,16 +286,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
               "Quota exceeded for '" + storeName + "' while serving a " + venicePath.getRequestType()
                   + " request! msg: " + e.getMessage());
         }
-        // Only record route(s) of the original request for retry manager purposes.
-        venicePath.recordRequest();
       }
     }
 
     if (venicePath.isRetryRequest()) {
-      // Check whether the retry request is allowed or not according to the max allowed retry route config and retry
-      // manager's retry budget. Retry is only allowed if both conditions are true.
-      if (!venicePath.isLongTailRetryAllowedForNewRequest()
-          || !venicePath.isLongTailRetryWithinBudget(onlineRequestNum)) {
+      // Check whether the retry request is allowed or not according to the max allowed retry route config
+      if (!venicePath.isLongTailRetryAllowedForNewRoute()) {
         routerStats.getStatsByType(venicePath.getRequestType()).recordDisallowedRetryRequest(storeName);
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(storeName),

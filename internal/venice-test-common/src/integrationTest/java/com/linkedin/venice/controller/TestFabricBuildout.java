@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
 import com.linkedin.venice.AdminTool;
@@ -27,17 +29,9 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
 
-/**
- * Note: These tests use an unsupported mode during setup - by creating stores and running pushes
- * to them directly in child regions. This is not how new regions will be added. We need the test setup to support
- * adding blank regions so that we can simulate the true fabric buildout process. Because of this, I've disabled these
- * tests for now.
- */
-@Ignore
 public class TestFabricBuildout {
   private static final int TEST_TIMEOUT = 90_000; // ms
 
@@ -53,7 +47,9 @@ public class TestFabricBuildout {
   @BeforeClass
   public void setUp() {
     Properties childControllerProperties = new Properties();
+    childControllerProperties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
+    childControllerProperties.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(

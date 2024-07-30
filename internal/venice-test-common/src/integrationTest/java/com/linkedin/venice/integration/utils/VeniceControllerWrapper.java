@@ -34,7 +34,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
-import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
@@ -49,7 +49,9 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 
@@ -171,7 +173,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         // TODO: Validate that these configs are all still used.
         // TODO: Centralize default config values in a single place
         PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
-            .put(MULTI_REGION, options.isMultiRegion())
             .put(KAFKA_REPLICATION_FACTOR, 1)
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
@@ -183,6 +184,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, options.getMaxNumberOfPartitions())
             .put(CONTROLLER_PARENT_MODE, options.isParent())
             .put(DELAY_TO_REBALANCE_MS, options.getRebalanceDelayMs())
+            .put(MIN_ACTIVE_REPLICA, options.getMinActiveReplica())
+            .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
             .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(clusterToD2))
             .put(CLUSTER_TO_SERVER_D2, TestUtils.getClusterToD2String(clusterToServerD2))
@@ -201,6 +204,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
             // The first cluster will always be the one to host system schemas...
             .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, options.getClusterNames()[0])
+            .put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false)
             .put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
@@ -232,6 +236,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         if (options.isParent()) {
           // Parent controller needs config to route per-cluster requests such as job status
           // This dummy parent controller won't support such requests until we make this config configurable.
+          // go/inclusivecode deferred(Reference will be removed when clients have migrated)
           fabricAllowList =
               extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, StringUtils.EMPTY);
         } else {

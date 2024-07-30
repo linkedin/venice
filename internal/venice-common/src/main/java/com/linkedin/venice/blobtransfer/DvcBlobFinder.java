@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class DvcBlobFinder implements BlobFinder {
   private static final Logger LOGGER = LogManager.getLogger(DvcBlobFinder.class);
-  private static final String TYPE_BLOB_DISCOVERY = "blob_discovery";
+  private static final String TYPE_BLOB_DISCOVERY = "TYPE_BLOB_DISCOVERY";
   private static final String ERROR_DISCOVERY_MESSAGE =
       "Error finding DVC peers for blob transfer in store: %s, version: %d, partition: %d";
   private final TransportClient transportClient;
@@ -57,7 +57,7 @@ public class DvcBlobFinder implements BlobFinder {
     queryParams.add(new BasicNameValuePair(STORE_PARTITION, Integer.toString(partition)));
     String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
 
-    return String.format("%s?%s", TYPE_BLOB_DISCOVERY, queryString);
+    return String.format("/%s?%s", TYPE_BLOB_DISCOVERY, queryString);
   }
 
   private BlobPeersDiscoveryResponse handleError(

@@ -187,9 +187,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getValueSchema(int id) {
-    // Should call with refresh as any router transient error can lead to null schema stored in the map
-    // `valueSchemaEntryMap`
-    SchemaEntry valueSchemaEntry = maybeFetchValueSchemaEntryById(id, true);
+    SchemaEntry valueSchemaEntry = maybeFetchValueSchemaEntryById(id, false);
     if (!isValidSchemaEntry(valueSchemaEntry)) {
       LOGGER.warn("Got null value schema from Venice for store: {} and id: {}", storeName, id);
       return null;
@@ -238,7 +236,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getUpdateSchema(int valueSchemaId) {
-    DerivedSchemaEntry updateSchemaEntry = maybeUpdateAndFetchUpdateSchemaEntryById(valueSchemaId, true);
+    DerivedSchemaEntry updateSchemaEntry = maybeUpdateAndFetchUpdateSchemaEntryById(valueSchemaId, false);
     if (isValidSchemaEntry(updateSchemaEntry)) {
       return updateSchemaEntry.getSchema();
     }
@@ -477,7 +475,6 @@ public class RouterBackedSchemaReader implements SchemaReader {
         return NOT_EXIST_VALUE_SCHEMA_ENTRY;
       } else {
         valueSchemaEntryMap.put(valueSchemaId, entry);
-        shouldRefreshLatestValueSchemaEntry.compareAndSet(false, true);
         cacheValueAndCanonicalSchemas(entry.getSchema(), valueSchemaId);
         return entry;
       }
@@ -666,8 +663,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
       response = RetryUtils.executeWithMaxAttempt(
           () -> (responseFuture.get()),
-          5,
-          Duration.ofMillis(100),
+          3,
+          Duration.ofNanos(1),
           Collections.singletonList(ExecutionException.class));
     } catch (Exception e) {
       throw new VeniceClientException(

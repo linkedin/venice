@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
@@ -14,6 +13,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -27,7 +27,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
-import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
 import static org.mockito.ArgumentMatchers.any;
@@ -67,8 +66,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
-import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -77,12 +74,10 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
-import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -882,46 +877,6 @@ public class VenicePushJobTest {
     }
   }
 
-  /**
-   * Tests that the error message for the {@link VenicePushJob.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
-   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testUpdatePushJobDetailsWithJobDetailsRecordTooLarge(boolean chunkingEnabled) {
-    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
-      // Setup push job settings and mocks
-      PushJobDetails pushJobDetails = vpj.getPushJobDetails();
-      pushJobDetails.chunkingEnabled = chunkingEnabled;
-      setPushJobSettingDefaults(vpj.getPushJobSetting());
-      vpj.setInputStorageQuotaTracker(mock(InputStorageQuotaTracker.class));
-      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
-      doReturn(1L).when(dataWriterTaskTracker).getRecordTooLargeFailureCount();
-
-      // The value of chunkingEnabled should dictate the error message returned
-      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
-      final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
-      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "100.0 MiB" : "950.0 KiB"), errorMessage);
-      Assert.assertEquals(latestCheckpoint, VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
-    }
-  }
-
-  /**
-   * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
-   * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
-   */
-  @Test
-  public void testGetVeniceWriter() {
-    Properties props = getVpjRequiredProperties();
-    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 1000);
-    try (final VenicePushJob vpj = getSpyVenicePushJob(props, getClient())) {
-      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
-      setPushJobSettingDefaults(pushJobSetting);
-      final VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = vpj.getVeniceWriter(pushJobSetting);
-      Assert.assertNotNull(veniceWriter, "VeniceWriter should've been constructed and returned");
-      Assert.assertEquals(veniceWriter, vpj.getVeniceWriter(pushJobSetting), "Second get() should return same object");
-    }
-  }
-
   private JobStatusQueryResponse mockJobStatusQuery() {
     JobStatusQueryResponse response = new JobStatusQueryResponse();
     response.setStatus(ExecutionStatus.COMPLETED.toString());
@@ -998,16 +953,5 @@ public class VenicePushJobTest {
     doNothing().when(pushJob).validateKeySchema(any());
     doNothing().when(pushJob).validateValueSchema(any(), any(), anyBoolean());
     doNothing().when(pushJob).runJobAndUpdateStatus();
-  }
-
-  /** Sets basic values for the given {@link PushJobSetting} object in order for VeniceWriter to be constructed. */
-  private void setPushJobSettingDefaults(PushJobSetting setting) {
-    setting.storeName = TEST_STORE;
-    setting.kafkaUrl = "localhost:9092";
-    setting.partitionerParams = new HashMap<>();
-    setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
-    setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
-    setting.partitionCount = 1;
-    setting.maxRecordSizeBytes = 100 * BYTES_PER_MB;
   }
 }

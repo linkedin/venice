@@ -65,7 +65,7 @@ public class AbstractTestVeniceParentHelixAdmin {
 
   TopicManager topicManager;
   VeniceHelixAdmin internalAdmin;
-  VeniceControllerClusterConfig config;
+  VeniceControllerConfig config;
   ZkClient zkClient;
   VeniceWriter veniceWriter;
   VeniceParentHelixAdmin parentAdmin = null;
@@ -186,8 +186,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     }
   }
 
-  VeniceControllerClusterConfig mockConfig(String clusterName) {
-    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+  VeniceControllerConfig mockConfig(String clusterName) {
+    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
     doReturn(clusterName).when(config).getClusterName();
     doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicationFactor();
     doReturn(KAFKA_REPLICA_FACTOR).when(config).getAdminTopicReplicationFactor();
@@ -207,7 +207,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     return config;
   }
 
-  HelixVeniceClusterResources mockResources(VeniceControllerClusterConfig config, String clusterName) {
+  HelixVeniceClusterResources mockResources(VeniceControllerConfig config, String clusterName) {
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     doReturn(config).when(resources).getConfig();
     doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);

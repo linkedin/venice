@@ -33,6 +33,8 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -82,7 +84,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
-      VeniceControllerClusterConfig config,
+      VeniceControllerConfig config,
       VeniceHelixAdmin admin,
       MetricsRepository metricsRepository,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
@@ -161,7 +163,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
         realTimeTopicSwitcher,
         clusterLockManager,
         aggregateRealTimeSourceKafkaUrl,
-        config.getActiveActiveRealTimeSourceKafkaURLs(),
+        getActiveActiveRealTimeSourceKafkaURLs(config),
         helixAdminClient,
         config,
         admin.getPushStatusStoreReader(),
@@ -205,6 +207,22 @@ public class HelixVeniceClusterResources implements VeniceResource {
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
+  }
+
+  private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
+    List<String> kafkaURLs = new ArrayList<>(config.getActiveActiveRealTimeSourceFabrics().size());
+    for (String fabric: config.getActiveActiveRealTimeSourceFabrics()) {
+      String kafkaURL = config.getChildDataCenterKafkaUrlMap().get(fabric);
+      if (kafkaURL == null) {
+        throw new VeniceException(
+            String.format(
+                "No A/A source Kafka URL found for fabric %s in %s",
+                fabric,
+                config.getChildDataCenterKafkaUrlMap()));
+      }
+      kafkaURLs.add(kafkaURL);
+    }
+    return Collections.unmodifiableList(kafkaURLs);
   }
 
   /**

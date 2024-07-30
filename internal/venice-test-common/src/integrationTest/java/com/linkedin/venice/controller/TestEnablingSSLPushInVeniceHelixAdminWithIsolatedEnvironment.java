@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.utils.TestUtils;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +23,7 @@ public class TestEnablingSSLPushInVeniceHelixAdminWithIsolatedEnvironment extend
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(false, new MetricsRepository());
+    setupCluster(false);
   }
 
   @AfterMethod(alwaysRun = true)

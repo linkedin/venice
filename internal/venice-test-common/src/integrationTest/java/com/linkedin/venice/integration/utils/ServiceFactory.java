@@ -345,6 +345,7 @@ public class ServiceFactory {
             .numberOfServers(numberOfServers)
             .numberOfRouters(numberOfRouters)
             .replicationFactor(replicationFactor)
+            .minActiveReplica(replicationFactor - 1)
             .build();
     return getVeniceCluster(options);
   }
@@ -365,6 +366,7 @@ public class ServiceFactory {
             .numberOfRouters(numberOfRouters)
             .replicationFactor(replicationFactor)
             .partitionSize(partitionSize)
+            .minActiveReplica(replicationFactor - 1)
             .sslToStorageNodes(sslToStorageNodes)
             .sslToKafka(sslToKafka)
             .extraProperties(extraProperties)
@@ -387,6 +389,7 @@ public class ServiceFactory {
             .numberOfRouters(numberOfRouters)
             .replicationFactor(replicationFactor)
             .partitionSize(partitionSize)
+            .minActiveReplica(replicationFactor - 1)
             .sslToStorageNodes(sslToStorageNodes)
             .sslToKafka(sslToKafka)
             .build();

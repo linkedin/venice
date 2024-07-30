@@ -5,7 +5,6 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -313,7 +312,7 @@ public class StoreInfo {
 
   private long maxCompactionLagSeconds;
 
-  private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+  private int maxRecordSizeBytes;
 
   private boolean unusedSchemaDeletionEnabled;
 

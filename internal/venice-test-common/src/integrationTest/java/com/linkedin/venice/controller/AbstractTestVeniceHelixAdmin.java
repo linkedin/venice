@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
@@ -12,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
@@ -66,7 +68,7 @@ class AbstractTestVeniceHelixAdmin {
   VeniceHelixAdmin veniceAdmin;
   String clusterName;
   String storeOwner = "Doge of Venice";
-  VeniceControllerClusterConfig controllerConfig;
+  VeniceControllerConfig controllerConfig;
   String zkAddress;
   ZkServerWrapper zkServerWrapper;
   PubSubBrokerWrapper pubSubBrokerWrapper;
@@ -79,6 +81,14 @@ class AbstractTestVeniceHelixAdmin {
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  public void setupCluster() throws Exception {
+    setupCluster(true, new MetricsRepository());
+  }
+
+  public void setupCluster(boolean createParticipantStore) throws Exception {
+    setupCluster(createParticipantStore, new MetricsRepository());
+  }
 
   public void setupCluster(boolean createParticipantStore, MetricsRepository metricsRepository) throws Exception {
     Utils.thisIsLocalhost();
@@ -94,7 +104,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
     controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
-    controllerConfig = new VeniceControllerClusterConfig(controllerProps);
+    controllerConfig = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
     veniceAdmin = new VeniceHelixAdmin(
         multiClusterConfig,
@@ -108,7 +118,12 @@ class AbstractTestVeniceHelixAdmin {
 
     if (createParticipantStore) {
       // Wait for participant store to finish materializing
-      verifyParticipantMessageStoreSetup();
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Store store =
+            veniceAdmin.getStore(clusterName, VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
+        Assert.assertNotNull(store);
+        Assert.assertEquals(store.getCurrentVersion(), 1);
+      });
     }
   }
 
@@ -195,7 +210,9 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true);
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
+    properties.put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, true);
     properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
+    properties.put(CHILD_CLUSTER_ALLOWLIST, "dc-0");
     properties.put(CONTROLLER_SSL_ENABLED, false);
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     return properties;
@@ -246,7 +263,7 @@ class AbstractTestVeniceHelixAdmin {
   /**
    * Participant store should be set up by child controller.
    */
-  private void verifyParticipantMessageStoreSetup() {
+  void verifyParticipantMessageStoreSetup() {
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);

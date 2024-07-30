@@ -16,26 +16,26 @@ import java.util.Set;
 
 
 public class VeniceControllerMultiClusterConfig {
-  private final Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap;
+  private final Map<String, VeniceControllerConfig> clusterToControllerConfigMap;
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
     for (VeniceProperties properties: controllerClusterProperties) {
-      final VeniceControllerClusterConfig controllerConfig = new VeniceControllerClusterConfig(properties);
-      clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
+      final VeniceControllerConfig controllerClusterConfig = new VeniceControllerConfig(properties);
+      clusterToControllerConfigMap.put(controllerClusterConfig.getClusterName(), controllerClusterConfig);
     }
   }
 
   // This contructor is used for testing.
-  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
+  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
 
-  public void addClusterConfig(VeniceControllerClusterConfig controllerConfig) {
+  public void addClusterConfig(VeniceControllerConfig controllerConfig) {
     clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
   }
 
-  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
+  public VeniceControllerConfig getControllerConfig(String clusterName) {
     if (clusterToControllerConfigMap.containsKey(clusterName)) {
       return clusterToControllerConfigMap.get(clusterName);
     } else {
@@ -59,16 +59,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().adminCheckReadMethodForKafka();
   }
 
-  public boolean isMultiRegion() {
-    return getCommonConfig().isMultiRegion();
-  }
-
   public boolean isParent() {
     return getCommonConfig().isParent();
-  }
-
-  public ParentControllerRegionState getParentControllerRegionState() {
-    return getCommonConfig().getParentControllerRegionState();
   }
 
   public String getControllerName() {
@@ -109,6 +101,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public String getSslFactoryClassName() {
     return getCommonConfig().getSslFactoryClassName();
+  }
+
+  public boolean isDisableParentRequestTopicForStreamPushes() {
+    return getCommonConfig().isDisableParentRequestTopicForStreamPushes();
   }
 
   public long getDeprecatedJobTopicRetentionMs() {
@@ -159,12 +155,32 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBatchJobHeartbeatInitialBufferTime();
   }
 
+  public long getTopicCreationThrottlingTimeWindowMs() {
+    return getCommonConfig().getTopicCreationThrottlingTimeWindowMs();
+  }
+
   public Map<String, String> getClusterToD2Map() {
     return getCommonConfig().getClusterToD2Map();
   }
 
   public Map<String, String> getClusterToServerD2Map() {
     return getCommonConfig().getClusterToServerD2Map();
+  }
+
+  public int getTopicManagerKafkaOperationTimeOutMs() {
+    return getCommonConfig().getTopicManagerKafkaOperationTimeOutMs();
+  }
+
+  public int getTopicDeletionStatusPollIntervalMs() {
+    return getCommonConfig().getTopicDeletionStatusPollIntervalMs();
+  }
+
+  public boolean isConcurrentTopicDeleteRequestsEnabled() {
+    return getCommonConfig().isConcurrentTopicDeleteRequestsEnabled();
+  }
+
+  public long getKafkaMinLogCompactionLagInMs() {
+    return getCommonConfig().getKafkaMinLogCompactionLagInMs();
   }
 
   public int getMinNumberOfUnusedKafkaTopicsToPreserve() {
@@ -179,7 +195,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getParentControllerMaxErroredTopicNumToKeep();
   }
 
-  public VeniceControllerClusterConfig getCommonConfig() {
+  public VeniceControllerConfig getCommonConfig() {
     return clusterToControllerConfigMap.values().iterator().next();
   }
 
@@ -205,6 +221,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public String getSystemSchemaClusterName() {
     return getCommonConfig().getSystemSchemaClusterName();
+  }
+
+  public boolean isEnableBatchPushFromAdminInChildController() {
+    return getCommonConfig().isEnableBatchPushFromAdminInChildController();
   }
 
   public long getBackupVersionDefaultRetentionMs() {
@@ -273,9 +293,5 @@ public class VeniceControllerMultiClusterConfig {
 
   public int getDanglingTopicOccurrenceThresholdForCleanup() {
     return getCommonConfig().getDanglingTopicOccurrenceThresholdForCleanup();
-  }
-
-  public int getDefaultMaxRecordSizeBytes() {
-    return getCommonConfig().getDefaultMaxRecordSizeBytes();
   }
 }

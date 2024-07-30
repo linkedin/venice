@@ -6,7 +6,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
-import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -40,8 +39,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       String resourceName,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
-      int longTailRetryMaxRouteForMultiKeyReq,
-      RetryManager retryManager) {
+      int longTailRetryMaxRouteForMultiKeyReq) {
     // HashMap's performance is better than TreeMap
     this(
         storeName,
@@ -50,8 +48,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
         new HashMap<>(),
-        longTailRetryMaxRouteForMultiKeyReq,
-        retryManager);
+        longTailRetryMaxRouteForMultiKeyReq);
   }
 
   public VeniceMultiKeyPath(
@@ -61,15 +58,8 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
       Map<RouterKey, K> routerKeyMap,
-      int longTailRetryMaxRouteForMultiKeyReq,
-      RetryManager retryManager) {
-    super(
-        storeName,
-        versionNumber,
-        resourceName,
-        smartLongTailRetryEnabled,
-        smartLongTailRetryAbortThresholdMs,
-        retryManager);
+      int longTailRetryMaxRouteForMultiKeyReq) {
+    super(storeName, versionNumber, resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
     this.keyNum = routerKeyMap.size();
     this.routerKeyMap = routerKeyMap;
     this.longTailRetryMaxRouteForMultiKeyReq = longTailRetryMaxRouteForMultiKeyReq;
@@ -239,7 +229,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   }
 
   @Override
-  public boolean isLongTailRetryAllowedForNewRequest() {
+  public boolean isLongTailRetryAllowedForNewRoute() {
     if (longTailRetryMaxRouteForMultiKeyReq == -1) {
       // feature is disabled
       return true;

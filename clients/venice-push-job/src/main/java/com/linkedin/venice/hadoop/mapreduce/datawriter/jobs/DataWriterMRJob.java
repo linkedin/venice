@@ -144,7 +144,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, pushJobSetting.chunkingEnabled);
     conf.setBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, pushJobSetting.rmdChunkingEnabled);
-    conf.setInt(VeniceWriter.MAX_RECORD_SIZE_BYTES, pushJobSetting.maxRecordSizeBytes);
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(pushJobSetting.storeStorageQuota));
 
