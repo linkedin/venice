@@ -25,6 +25,8 @@ import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
+import static com.linkedin.venice.Arg.DEST_ZK_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.DEST_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
 import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
@@ -101,6 +103,8 @@ import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SKIP_LAST_STORE_CREATION;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
+import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
@@ -344,7 +348,8 @@ public enum Command {
   QUERY_KAFKA_TOPIC(
       "query-kafka-topic", "Query some specific keys from the Venice Topic",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL, START_DATE,
-          END_DATE, PROGRESS_INTERVAL, KEY }
+          KEY },
+      new Arg[] { END_DATE, PROGRESS_INTERVAL }
   ),
   MIGRATE_STORE(
       "migrate-store", "Migrate store from one cluster to another within the same fabric",
@@ -387,16 +392,6 @@ public enum Command {
   REMOVE_FROM_STORE_ACL(
       "remove-from-store-acl", "Remove a principal from ACL's for an existing store",
       new Arg[] { URL, STORE, PRINCIPAL }, new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
-  ),
-  ENABLE_NATIVE_REPLICATION_FOR_CLUSTER(
-      "enable-native-replication-for-cluster",
-      "enable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, STORE_TYPE }, new Arg[] { CLUSTER, REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC }
-  ),
-  DISABLE_NATIVE_REPLICATION_FOR_CLUSTER(
-      "disable-native-replication-for-cluster",
-      "disable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC }
   ),
   ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
       "enable-active-active-replication-for-cluster",
@@ -533,6 +528,11 @@ public enum Command {
   BACKUP_STORE_METADATA_FROM_GRAVEYARD(
       "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",
       new Arg[] { VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, BACKUP_FOLDER }
+  ),
+  MIGRATE_VENICE_ZK_PATHS(
+      "migrate-venice-zk-paths", "Migrate Venice-specific metadata from a source ZK to a destination ZK",
+      new Arg[] { SRC_ZOOKEEPER_URL, SRC_ZK_SSL_CONFIG_FILE, DEST_ZOOKEEPER_URL, DEST_ZK_SSL_CONFIG_FILE, CLUSTER_LIST,
+          BASE_PATH }
   ),
   EXTRACT_VENICE_ZK_PATHS(
       "extract-venice-zk-paths",

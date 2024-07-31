@@ -19,8 +19,6 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 
@@ -341,20 +339,15 @@ public class ChunkingUtils {
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 
-    List<byte[]> keys = new ArrayList<>(chunkedValueManifest.keysWithChunkIdSuffix.size());
-    for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
-      keys.add(chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array());
-    }
-    List<byte[]> values =
-        isRmdValue ? store.multiGetReplicationMetadata(partition, keys) : store.multiGet(partition, keys);
-
     for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
       // N.B.: This is done sequentially. Originally, each chunk was fetched concurrently in the same executor
       // as the main queries, but this might cause deadlocks, so we are now doing it sequentially. If we want to
       // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
       // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
       // premature optimization, we are not addressing it right now.
-      byte[] valueChunk = values.get(chunkIndex);
+      byte[] chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array();
+      byte[] valueChunk =
+          isRmdValue ? store.getReplicationMetadata(partition, chunkKey) : store.get(partition, chunkKey);
 
       if (valueChunk == null) {
         throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));

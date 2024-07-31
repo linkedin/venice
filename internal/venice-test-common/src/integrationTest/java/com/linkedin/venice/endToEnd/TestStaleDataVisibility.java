@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.venice.ConfigKeys;
@@ -8,11 +9,13 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -21,10 +24,8 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +49,6 @@ public class TestStaleDataVisibility {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
   private List<VeniceMultiClusterWrapper> childClusters;
-  private List<List<VeniceControllerWrapper>> childControllers;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
@@ -56,8 +56,6 @@ public class TestStaleDataVisibility {
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
-    Properties childControllerProperties = new Properties();
-    childControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -67,14 +65,11 @@ public class TestStaleDataVisibility {
         1,
         1,
         Optional.empty(),
-        Optional.of(childControllerProperties),
+        Optional.empty(),
         Optional.of(serverProperties),
         false);
 
     childClusters = multiRegionMultiClusterWrapper.getChildRegions();
-    childControllers = childClusters.stream()
-        .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
-        .collect(Collectors.toList());
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
     LOGGER.info(
@@ -107,6 +102,7 @@ public class TestStaleDataVisibility {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+    String dc0ControllerUrls = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
 
     // create a store via parent controller url
     Properties props =
@@ -126,37 +122,38 @@ public class TestStaleDataVisibility {
       job.run();
     }
 
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
+      job.run();
+    }
 
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
+        ControllerClient dc0ControllerClient = new ControllerClient(clusterName, dc0ControllerUrls)) {
       // the store should not be appearing in the stale data audit
       ClusterStaleDataAuditResponse emptyResponse =
-          controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
+          parentControllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
       Assert.assertFalse(emptyResponse.isError());
       Assert.assertFalse(emptyResponse.getAuditMap().containsKey(storeName));
 
-      // get single child controller, empty push to it
-      Properties props2 = IntegrationTestPushUtils
-          .defaultVPJProps(multiRegionMultiClusterWrapper.getChildRegions().get(0), inputDirPath, storeName);
-      try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
-        job.run();
-      }
+      // get single child controller, rollback and delete a version. Revert the largest used version.
+      assertCommand(dc0ControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setCurrentVersion(1)));
+      assertCommand(dc0ControllerClient.deleteOldVersion(storeName, 2));
+      assertCommand(
+          dc0ControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setLargestUsedVersionNumber(1)));
 
       // store should now appear as stale
       ClusterStaleDataAuditResponse response =
-          controllerClient.getClusterStaleStores(clusterName, parentControllerUrls);
-      Assert.assertFalse(response.isError());
-      Assert.assertEquals(response.getAuditMap().get(storeName).getStaleRegions().size(), 1);
-      Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
+          assertCommand(parentControllerClient.getClusterStaleStores(clusterName, parentControllerUrls));
+      Assert.assertTrue(response.getAuditMap().containsKey(storeName));
+      StoreDataAudit auditForStore = response.getAuditMap().get(storeName);
+      Assert.assertEquals(auditForStore.getStaleRegions().size(), 1);
+      Assert.assertEquals(auditForStore.getHealthyRegions().size(), 1);
 
       // test store health check
-      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(storeName, true);
-      Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getName()));
-      Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getName()).getStaleRegions();
+      StoreHealthAuditResponse healthResponse = parentControllerClient.listStorePushInfo(storeName, true);
+      Map<String, StoreInfo> auditMapEntry = auditForStore.getStaleRegions();
       for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet()) {
-        if (Objects.equals(entry.getValue().getName(), storeName)) {
-          // verify that the same regions are stale across both responses for the same store.
-          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey()));
-        }
+        // verify that the same regions are stale across both responses for the same store.
+        Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey()));
       }
     }
   }

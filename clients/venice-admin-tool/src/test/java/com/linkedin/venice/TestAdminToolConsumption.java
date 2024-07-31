@@ -112,7 +112,6 @@ public class TestAdminToolConsumption {
 
   @Test
   public void testAdminToolConsumption() {
-
     String topic = Version.composeRealTimeTopic(STORE_NAME);
     ControllerClient controllerClient = mock(ControllerClient.class);
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
@@ -185,19 +184,28 @@ public class TestAdminToolConsumption {
     long endTimestamp = 20;
     when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, startTimestamp)).thenReturn(startOffset);
     when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, endTimestamp)).thenReturn(endOffset);
-    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endOffset);
     long messageCount = TopicMessageFinder
         .find(controllerClient, apacheKafkaConsumer, topic, keyString, startTimestamp, endTimestamp, progressInterval);
     Assert.assertEquals(messageCount, endOffset - startOffset);
 
-    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, new HashMap<>());
+    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
+    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endOffset);
+    long messageCountNoEndOffset = TopicMessageFinder.find(
+        controllerClient,
+        apacheKafkaConsumer,
+        topic,
+        keyString,
+        startTimestamp,
+        Long.MAX_VALUE,
+        progressInterval);
+    Assert.assertEquals(messageCountNoEndOffset, endOffset - startOffset);
 
-    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, new HashMap<>());
+    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
     ControlMessageDumper controlMessageDumper =
         new ControlMessageDumper(apacheKafkaConsumer, topic, 0, 0, pubSubMessageList.size());
     Assert.assertEquals(controlMessageDumper.fetch().display(), 1);
 
-    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, new HashMap<>());
+    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
     int consumedMessageCount = pubSubMessageList.size() - 1;
     KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
         controllerClient,

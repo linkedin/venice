@@ -52,7 +52,6 @@ public class VeniceClientBasedMetadataIntegrationTest {
         .numberOfRouters(1)
         .replicationFactor(2)
         .partitionSize(100)
-        .minActiveReplica(1)
         .sslToStorageNodes(true)
         .sslToKafka(false)
         .build();

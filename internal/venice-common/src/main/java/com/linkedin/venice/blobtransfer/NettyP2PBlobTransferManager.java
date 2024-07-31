@@ -6,8 +6,6 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -16,8 +14,6 @@ import org.apache.logging.log4j.Logger;
  * blobs and in the meanwhile, it can make requests to other peers to fetch blobs.
  */
 public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void> {
-  private static final Logger LOGGER = LogManager.getLogger(NettyP2PBlobTransferManager.class);
-
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
   protected final NettyFileTransferClient nettyClient;
@@ -52,11 +48,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
     try {
       // TODO: add some retry logic or strategy to choose the peers differently in case of failure
-      String chosenHost = discoverPeers.get(0);
+      // instanceName comes as a format of <hostName>_<applicationPort>
+      String chosenHost = discoverPeers.get(0).split("_")[0];
       inputStream = nettyClient.get(chosenHost, storeName, version, partition);
-    } catch (InterruptedException e) {
-      LOGGER.error("The request to fetch the blob was interrupted", e);
-      throw new VenicePeersNotFoundException("The connection to peers is interrupted", e);
+    } catch (Exception e) {
+      throw new VenicePeersNotFoundException("The connection to peers failed", e);
     }
 
     return inputStream;

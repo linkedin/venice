@@ -145,7 +145,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    LOGGER.error("Exception caught in when transferring files for {}", payload.getFullResourceName(), cause);
+    LOGGER.error("Exception caught in when transferring files for {}", payload.getFullResourceName());
     inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     ctx.close();
   }

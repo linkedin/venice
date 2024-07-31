@@ -10,6 +10,7 @@ import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -90,14 +91,16 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       int maxKeyCount,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
-      int longTailRetryMaxRouteForMultiKeyReq) throws RouterException {
+      int longTailRetryMaxRouteForMultiKeyReq,
+      RetryManager retryManager) throws RouterException {
     super(
         storeName,
         versionNumber,
         resourceName,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
-        longTailRetryMaxRouteForMultiKeyReq);
+        longTailRetryMaxRouteForMultiKeyReq,
+        retryManager);
 
     this.valueSchemaIdHeader = request.headers().get(VENICE_COMPUTE_VALUE_SCHEMA_ID, "-1");
 
@@ -152,7 +155,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       String computeRequestVersionHeader,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
-      int longTailRetryMaxRouteForMultiKeyReq) {
+      int longTailRetryMaxRouteForMultiKeyReq,
+      RetryManager retryManager) {
     super(
         storeName,
         versionNumber,
@@ -160,7 +164,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
         routerKeyMap,
-        longTailRetryMaxRouteForMultiKeyReq);
+        longTailRetryMaxRouteForMultiKeyReq,
+        retryManager);
     this.requestContent = requestContent;
     this.valueSchemaIdHeader = valueSchemaIdHeader;
     this.computeRequestLengthInBytes = computeRequestLengthInBytes;
@@ -202,7 +207,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         newRouterKeyMap,
         isSmartLongTailRetryEnabled(),
         getSmartLongTailRetryAbortThresholdMs(),
-        getLongTailRetryMaxRouteForMultiKeyReq());
+        getLongTailRetryMaxRouteForMultiKeyReq(),
+        retryManager);
     newPath.setupRetryRelatedInfo(this);
     return newPath;
   }
@@ -227,7 +233,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         this.computeRequestVersionHeader,
         isSmartLongTailRetryEnabled(),
         getSmartLongTailRetryAbortThresholdMs(),
-        getLongTailRetryMaxRouteForMultiKeyReq());
+        getLongTailRetryMaxRouteForMultiKeyReq(),
+        retryManager);
     subPath.setupRetryRelatedInfo(this);
     return subPath;
   }

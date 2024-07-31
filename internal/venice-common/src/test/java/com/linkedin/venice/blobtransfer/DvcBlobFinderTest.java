@@ -64,11 +64,8 @@ public class DvcBlobFinderTest {
     ArgumentCaptor<String> argumentCaptor = ArgumentCaptor.forClass(String.class);
     verify(transportClient).get(argumentCaptor.capture());
 
-    String expectedUri = String.format(
-        "/TYPE_BLOB_DISCOVERY?store_name=%s&store_version=%d&store_partition=%d",
-        storeName,
-        version,
-        partition);
+    String expectedUri = String
+        .format("blob_discovery?store_name=%s&store_version=%d&store_partition=%d", storeName, version, partition);
     assertEquals(expectedUri, argumentCaptor.getValue());
   }
 
