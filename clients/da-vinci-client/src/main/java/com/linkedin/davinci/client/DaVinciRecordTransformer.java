@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
@@ -17,8 +18,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.concurrent.ExecutionException;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.objectweb.asm.ClassReader;
 import org.rocksdb.RocksIterator;
@@ -51,6 +51,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
+  /**
+   * @param storeVersion the version of the store
+   * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
+   *                              and not in the Da Vinci Client.
+   */
   public DaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
@@ -206,17 +211,16 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * Bootstraps the client after it comes online and {@link #onStart()} completes.
    */
-  public final void onRecovery(RocksIterator iterator, StoreBackend storeBackend, Integer partition) {
+  public final void onRecovery(
+      AbstractStorageEngine storageEngine,
+      StoreBackend storeBackend,
+      List<Integer> partitions) {
     int classHash = getClassHash();
     boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
 
     if (!storeRecordsInDaVinci || transformationLogicChanged) {
       // Bootstrap from VT
-      try {
-        storeBackend.subscribe(ComplementSet.newSet(Collections.singletonList(partition))).get();
-      } catch (InterruptedException | ExecutionException e) {
-        throw new VeniceException(e);
-      }
+      storeBackend.subscribe(ComplementSet.newSet(partitions));
     } else {
       // Bootstrap from local storage
 
@@ -227,12 +231,15 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
       AvroGenericDeserializer<O> outputValueDeserializer =
           new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
 
-      for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
-        byte[] keyBytes = iterator.key();
-        byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(ByteBuffer.wrap(keyBytes)));
-        Lazy<O> lazyValue = Lazy.of(() -> outputValueDeserializer.deserialize(ByteBuffer.wrap(valueBytes)));
-        processPut(lazyKey, lazyValue);
+      for (Integer partition: partitions) {
+        RocksIterator iterator = storageEngine.getRocksDBIterator(partition);
+        for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
+          byte[] keyBytes = iterator.key();
+          byte[] valueBytes = iterator.value();
+          Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(ByteBuffer.wrap(keyBytes)));
+          Lazy<O> lazyValue = Lazy.of(() -> outputValueDeserializer.deserialize(ByteBuffer.wrap(valueBytes)));
+          processPut(lazyKey, lazyValue);
+        }
       }
     }
   }

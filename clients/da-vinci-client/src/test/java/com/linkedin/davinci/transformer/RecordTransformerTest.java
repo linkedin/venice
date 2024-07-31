@@ -8,8 +8,11 @@ import static org.testng.AssertJUnit.assertTrue;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
@@ -60,23 +63,26 @@ public class RecordTransformerTest {
   @Test
   public void testOnRecovery() {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
-    RocksIterator iterator = Mockito.mock(RocksIterator.class);
-    StoreBackend storeBackend = Mockito.mock(StoreBackend.class);
 
-    // Mock the subscribe method to return a non-null CompletableFuture
+    StoreBackend storeBackend = Mockito.mock(StoreBackend.class);
     CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
     Mockito.when(storeBackend.subscribe(Mockito.any())).thenReturn(future);
 
-    // Mock the iterator behavior
+    RocksIterator iterator = Mockito.mock(RocksIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
     when(iterator.key()).thenReturn("mockKey".getBytes());
     when(iterator.value()).thenReturn("mockValue".getBytes());
 
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    when(storageEngine.getRocksDBIterator(Mockito.anyInt())).thenReturn(iterator);
+
     deleteClassHash();
-    recordTransformer.onRecovery(iterator, storeBackend, 1);
+    List<Integer> partitions = new ArrayList<>();
+    partitions.add(1);
+    recordTransformer.onRecovery(storageEngine, storeBackend, partitions);
 
     // Execute the onRecovery method again to test the case where the classHash file exists
-    recordTransformer.onRecovery(iterator, storeBackend, 1);
+    recordTransformer.onRecovery(storageEngine, storeBackend, partitions);
   }
 
   @Test

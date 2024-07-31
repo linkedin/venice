@@ -480,9 +480,7 @@ public class DaVinciBackend implements Closeable {
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
 
       if (recordTransformer != null) {
-        for (Integer partition: partitions) {
-          recordTransformer.onRecovery(storageEngine.getRocksDBIterator(partition), storeBackend, partition);
-        }
+        recordTransformer.onRecovery(storageEngine, storeBackend, partitions);
       }
     });
   }
