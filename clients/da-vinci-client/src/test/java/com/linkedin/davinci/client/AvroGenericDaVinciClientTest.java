@@ -9,7 +9,7 @@ import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-import com.linkedin.davinci.transformer.TestAvroRecordTransformer;
+import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -46,7 +46,7 @@ public class AvroGenericDaVinciClientTest {
   @Test
   public void testRecordTransformerClient() throws NoSuchFieldException, IllegalAccessException {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setRecordTransformerFunction((storeVersion) -> new TestAvroRecordTransformer(storeVersion, true));
+    daVinciConfig.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
 
     ClientConfig clientConfig = mock(ClientConfig.class);
     when(clientConfig.getStoreName()).thenReturn("test_store");

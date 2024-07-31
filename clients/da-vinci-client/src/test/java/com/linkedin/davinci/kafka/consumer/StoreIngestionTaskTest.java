@@ -101,7 +101,6 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-import com.linkedin.davinci.transformer.TestAvroRecordTransformer;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -4312,7 +4311,7 @@ public abstract class StoreIngestionTaskTest {
       } catch (InterruptedException e) {
         throw new VeniceException(e);
       }
-    }, aaConfig, (storeVersion) -> new TestAvroRecordTransformer(storeVersion, true));
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
 
     // Transformer error should never be recorded
     verify(mockVersionedStorageIngestionStats, never())
