@@ -312,15 +312,14 @@ public class MergeConflictResolver {
       long newValueSourceOffset,
       int newValueSourceBrokerID,
       int newValueSchemaID) {
-    if (!(oldTimestampObject instanceof GenericRecord)) {
-      throw new IllegalStateException(
-          "Per-field RMD timestamp must be a GenericRecord. Got: " + oldTimestampObject + " and store name is: "
-              + storeName);
+
+    if (oldTimestampObject instanceof GenericRecord) {
+      final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
+      if (ignoreNewPut(oldValueSchemaID, oldValueFieldTimestampsRecord, newValueSchemaID, putOperationTimestamp)) {
+        return MergeConflictResult.getIgnoredResult();
+      }
     }
-    final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
-    if (ignoreNewPut(oldValueSchemaID, oldValueFieldTimestampsRecord, newValueSchemaID, putOperationTimestamp)) {
-      return MergeConflictResult.getIgnoredResult();
-    }
+
     final SchemaEntry mergeResultValueSchemaEntry =
         mergeResultValueSchemaResolver.getMergeResultValueSchema(oldValueSchemaID, newValueSchemaID);
     /**

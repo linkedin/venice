@@ -31,7 +31,8 @@ public class VeniceChunkedPayloadTTLFilter extends VeniceRmdTTLFilter<ChunkAssem
 
   @Override
   protected ByteBuffer getValuePayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
-    return ByteBuffer.wrap(valueBytesAndSchemaId.getBytes());
+    byte[] valueBytes = valueBytesAndSchemaId.getBytes();
+    return valueBytes == null ? null : ByteBuffer.wrap(valueBytes);
   }
 
   @Override
