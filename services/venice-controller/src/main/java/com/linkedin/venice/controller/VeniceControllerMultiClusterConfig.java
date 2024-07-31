@@ -279,7 +279,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDefaultMaxRecordSizeBytes();
   }
 
-  public Long getRetryRegisterServiceDiscoveryAnnouncerMS() {
+  public long getRetryRegisterServiceDiscoveryAnnouncerMS() {
     return getCommonConfig().getRetryRegisterServiceDiscoveryAnnouncerMS();
   }
 }

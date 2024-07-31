@@ -13,11 +13,11 @@ import org.apache.logging.log4j.Logger;
 public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
   private static final Logger LOGGER = LogManager.getLogger(ServiceDiscoveryAnnouncerRetryTask.class);
   private final BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue;
-  private final Long retryRegisterServiceDiscoveryAnnouncerMS;
+  private final long retryRegisterServiceDiscoveryAnnouncerMS;
 
   public ServiceDiscoveryAnnouncerRetryTask(
       BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue,
-      Long retryRegisterServiceDiscoveryAnnouncerMS) {
+      long retryRegisterServiceDiscoveryAnnouncerMS) {
     this.retryQueue = retryQueue;
     this.retryRegisterServiceDiscoveryAnnouncerMS = retryRegisterServiceDiscoveryAnnouncerMS;
   }

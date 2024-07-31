@@ -505,7 +505,7 @@ public class VeniceControllerClusterConfig {
   private final boolean errorLeaderReplicaFailOverEnabled;
 
   private final Set<String> childDatacenters;
-  private final Long retryRegisterServiceDiscoveryAnnouncerMS;
+  private final long retryRegisterServiceDiscoveryAnnouncerMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1564,7 +1564,7 @@ public class VeniceControllerClusterConfig {
     return sourceOfTruthAdminAdapterFactory;
   }
 
-  public Long getRetryRegisterServiceDiscoveryAnnouncerMS() {
+  public long getRetryRegisterServiceDiscoveryAnnouncerMS() {
     return retryRegisterServiceDiscoveryAnnouncerMS;
   }
 

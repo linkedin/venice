@@ -43,7 +43,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     doThrow(new RuntimeException()).doNothing().when(announcer2).register();
     doNothing().when(announcer3).register();
     doReturn(30000L).when(config).getRetryRegisterServiceDiscoveryAnnouncerMS();
-    Long retryRegisterServiceDiscoveryAnnouncerMS = config.getRetryRegisterServiceDiscoveryAnnouncerMS();
+    long retryRegisterServiceDiscoveryAnnouncerMS = config.getRetryRegisterServiceDiscoveryAnnouncerMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
     ServiceDiscoveryAnnouncerHelper.registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, retryQueue);
