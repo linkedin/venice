@@ -14,8 +14,8 @@ import org.testng.annotations.Test;
 
 public class DaVinciConfigTest {
   public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
-    public TestRecordTransformer(int storeVersion) {
-      super(storeVersion);
+    public TestRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+      super(storeVersion, storeRecordsInDaVinci);
     }
 
     public Schema getKeyOutputSchema() {
@@ -26,8 +26,13 @@ public class DaVinciConfigTest {
       return Schema.create(Schema.Type.INT);
     }
 
-    public Integer put(Lazy<Integer> key, Lazy<Integer> value) {
+    public Integer transform(Lazy<Integer> key, Lazy<Integer> value) {
       return value.get() + 1;
+    }
+
+    @Override
+    public void processPut(Lazy<Integer> key, Lazy<Integer> value) {
+      return;
     }
   }
 
@@ -35,7 +40,7 @@ public class DaVinciConfigTest {
   public void testRecordTransformerEnabled() {
     DaVinciConfig config = new DaVinciConfig();
     assertFalse(config.isRecordTransformerEnabled());
-    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion));
+    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion, true));
     assertTrue(config.isRecordTransformerEnabled());
   }
 
@@ -44,7 +49,7 @@ public class DaVinciConfigTest {
     Integer testStoreVersion = 0;
     DaVinciConfig config = new DaVinciConfig();
     assertNull(config.getRecordTransformer(testStoreVersion));
-    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion));
+    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion, true));
     assertNotNull(config.getRecordTransformer(testStoreVersion));
   }
 

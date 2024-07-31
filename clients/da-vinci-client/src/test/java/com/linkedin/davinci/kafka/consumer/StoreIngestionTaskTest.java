@@ -76,7 +76,9 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -99,7 +101,6 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-import com.linkedin.davinci.transformer.TestAvroRecordTransformer;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -626,7 +627,7 @@ public abstract class StoreIngestionTaskTest {
       Set<Integer> partitions,
       Runnable assertions,
       AAConfig aaConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) throws Exception {
     runTest(partitions, () -> {}, assertions, aaConfig, getRecordTransformer);
   }
 
@@ -635,7 +636,7 @@ public abstract class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       AAConfig aaConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) throws Exception {
     runTest(
         new RandomPollStrategy(),
         partitions,
@@ -695,7 +696,7 @@ public abstract class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       AAConfig aaConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) throws Exception {
     runTest(
         pollStrategy,
         partitions,
@@ -762,7 +763,7 @@ public abstract class StoreIngestionTaskTest {
       AAConfig aaConfig,
       Map<String, Object> extraServerProperties,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) throws Exception {
 
     int partitionCount = PARTITION_COUNT;
     VenicePartitioner partitioner = getVenicePartitioner(); // Only get base venice partitioner
@@ -788,6 +789,14 @@ public abstract class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
+    DaVinciRecordTransformer recordTransformer = null;
+
+    if (getRecordTransformer != null) {
+      recordTransformer = getRecordTransformer.apply(version.getNumber());
+      recordTransformer =
+          new BlockingDaVinciRecordTransformer(recordTransformer, recordTransformer.getStoreRecordsInDaVinci());
+    }
+
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
         mockStore,
         version,
@@ -797,7 +806,7 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        getRecordTransformer);
+        recordTransformer);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -4302,12 +4311,14 @@ public abstract class StoreIngestionTaskTest {
       } catch (InterruptedException e) {
         throw new VeniceException(e);
       }
-    }, aaConfig, (storeVersion) -> new TestAvroRecordTransformer(storeVersion));
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
+
+    // Transformer error should never be recorded
+    verify(mockVersionedStorageIngestionStats, never())
+        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   // Test to throw type error when performing record transformation with incompatible types
-  // @Test(dataProvider = "aaConfigProvider", expectedExceptions = { VeniceException.class, VeniceMessageException.class
-  // })
   @Test(dataProvider = "aaConfigProvider")
   public void testStoreIngestionRecordTransformerError(AAConfig aaConfig) throws Exception {
     byte[] keyBytes = new byte[1];
@@ -4363,7 +4374,7 @@ public abstract class StoreIngestionTaskTest {
       // Verify transformer error was recorded
       verify(mockVersionedStorageIngestionStats, timeout(1000))
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
-    }, aaConfig, TestStringRecordTransformer::new);
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
   }
 
   @DataProvider
