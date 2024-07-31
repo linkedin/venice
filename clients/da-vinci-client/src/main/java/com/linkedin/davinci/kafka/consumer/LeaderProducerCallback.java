@@ -156,7 +156,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               partition,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
-              currentTimeForMetricsMs);
+              currentTimeForMetricsMs,
+              false);
 
           producedRecordNum++;
           producedRecordSize = Math.max(0, produceResult.getSerializedSize());
@@ -194,7 +195,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               partition,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
-              currentTimeForMetricsMs);
+              currentTimeForMetricsMs,
+              false);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
         }
@@ -321,7 +323,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
           partition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          currentTimeForMetricsMs,
+          false);
       totalChunkSize += chunkKey.remaining() + chunkValue.remaining();
     }
     return totalChunkSize;
@@ -347,7 +350,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
           partition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          currentTimeForMetricsMs,
+          true);
     }
   }
 
@@ -357,8 +361,9 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) throws InterruptedException {
-    if (this.syncOffsetsOnlyAfterProducing) {
+      long currentTimeForMetricsMs,
+      boolean chunkDeprecation) throws InterruptedException {
+    if (this.syncOffsetsOnlyAfterProducing && !chunkDeprecation) {
       // sync offsets
       ingestionTask
           .maybeSyncOffsets(consumedRecord, leaderProducedRecordContext, partitionConsumptionState, subPartition);
