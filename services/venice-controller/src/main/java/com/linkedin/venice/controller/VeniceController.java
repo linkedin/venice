@@ -61,7 +61,7 @@ public class VeniceController {
   private final MetricsRepository metricsRepository;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final Thread serviceDiscoveryAnnouncerRetryThread;
-  private final BlockingQueue<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncerRetryQueue =
+  private static final BlockingQueue<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncerRetryQueue =
       new LinkedBlockingQueue<>();
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
@@ -257,15 +257,8 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
-    serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
-      try {
-        serviceDiscoveryAnnouncer.register();
-        LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
-      } catch (Exception e) {
-        LOGGER.error("Failed to register to service discovery: {}", serviceDiscoveryAnnouncer, e);
-        serviceDiscoveryAnnouncerRetryQueue.add(serviceDiscoveryAnnouncer);
-      }
-    });
+    ServiceDiscoveryAnnouncerHelper
+        .registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, serviceDiscoveryAnnouncerRetryQueue);
     serviceDiscoveryAnnouncerRetryThread.start();
     LOGGER.info("Controller is started.");
   }
@@ -317,14 +310,7 @@ public class VeniceController {
   public void stop() {
     serviceDiscoveryAnnouncerRetryThread.interrupt();
     // unregister from service discovery first
-    serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
-      try {
-        serviceDiscoveryAnnouncer.unregister();
-        LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
-      } catch (Exception e) {
-        LOGGER.error("Failed to unregister from service discovery: {}", serviceDiscoveryAnnouncer, e);
-      }
-    });
+    ServiceDiscoveryAnnouncerHelper.unregisterServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers);
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);

@@ -1,10 +1,15 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.utils.Utils.sleep;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.logging.log4j.LogManager;
@@ -15,120 +20,85 @@ import org.testng.annotations.Test;
 
 public class TestServiceDiscoveryAnnouncerRetryTask {
   private static final Logger LOGGER = LogManager.getLogger(TestServiceDiscoveryAnnouncerRetryTask.class);
-
-  @Test
-  public void testOneFailedTask() {
-    BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
-    ServiceDiscoveryAnnouncerRetryTask task = new ServiceDiscoveryAnnouncerRetryTask(retryQueue);
-    Thread thread = new Thread(task);
-    LOGGER.info("Starting thread");
-    thread.start();
-    LOGGER.info("Thread started");
-    MockServiceDiscoveryAnnouncer announcer = new MockServiceDiscoveryAnnouncer("test", true);
-    Assert.assertEquals(retryQueue.size(), 0);
-    Assert.assertTrue(announcer.getShouldFail());
-    if (announcer.getShouldFail()) {
-      announcer.register();
-      LOGGER.info("Service discovery \"{}\" failed so adding it to the retry queue", announcer.getName());
-      retryQueue.add(announcer);
-    }
-    Assert.assertFalse(announcer.getShouldFail());
-    Assert.assertEquals(retryQueue.size(), 1);
-    LOGGER.info("Sleeping for 25 seconds");
-    sleep(25000L);
-    Assert.assertEquals(retryQueue.size(), 1);
-    LOGGER.info("Sleeping for 10 seconds");
-    sleep(10000L);
-    Assert.assertEquals(retryQueue.size(), 0);
-    LOGGER.info("Stopping thread");
-    thread.interrupt();
-    LOGGER.info("Thread stopped");
-  }
-
-  @Test
-  public void testMultipleFailedTasks() {
-    BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
-    ServiceDiscoveryAnnouncerRetryTask task = new ServiceDiscoveryAnnouncerRetryTask(retryQueue);
-    Thread thread = new Thread(task);
-    LOGGER.info("Starting thread");
-    thread.start();
-    LOGGER.info("Thread started");
-    MockServiceDiscoveryAnnouncer announcer1 = new MockServiceDiscoveryAnnouncer("test1", true);
-    MockServiceDiscoveryAnnouncer announcer2 = new MockServiceDiscoveryAnnouncer("test2", true);
-    MockServiceDiscoveryAnnouncer announcer3 = new MockServiceDiscoveryAnnouncer("test3", true);
-    List<MockServiceDiscoveryAnnouncer> announcers = Arrays.asList(announcer1, announcer2, announcer3);
-    Assert.assertEquals(retryQueue.size(), 0);
-    Assert.assertTrue(announcer1.getShouldFail());
-    Assert.assertTrue(announcer2.getShouldFail());
-    Assert.assertTrue(announcer3.getShouldFail());
-    for (MockServiceDiscoveryAnnouncer announcer: announcers) {
-      if (announcer.getShouldFail()) {
-        announcer.register();
-        LOGGER.info("Service discovery \"{}\" failed so adding it to the retry queue", announcer.getName());
-        retryQueue.add(announcer);
-      }
-    }
-    Assert.assertFalse(announcer1.getShouldFail());
-    Assert.assertFalse(announcer2.getShouldFail());
-    Assert.assertFalse(announcer3.getShouldFail());
-    Assert.assertEquals(retryQueue.peek(), announcer1);
-    Assert.assertEquals(retryQueue.size(), 3);
-    LOGGER.info("Sleeping for 25 seconds");
-    sleep(25000L);
-    Assert.assertEquals(retryQueue.size(), 3);
-    LOGGER.info("Sleeping for 10 seconds");
-    sleep(10000L);
-    Assert.assertEquals(retryQueue.peek(), announcer2);
-    Assert.assertEquals(retryQueue.size(), 2);
-    LOGGER.info("Sleeping for 20 seconds");
-    sleep(20000L);
-    Assert.assertEquals(retryQueue.size(), 2);
-    LOGGER.info("Sleeping for 10 seconds");
-    sleep(10000L);
-    Assert.assertEquals(retryQueue.peek(), announcer3);
-    Assert.assertEquals(retryQueue.size(), 1);
-    LOGGER.info("Sleeping for 20 seconds");
-    sleep(20000L);
-    Assert.assertEquals(retryQueue.size(), 1);
-    LOGGER.info("Sleeping for 10 seconds");
-    sleep(10000L);
-    Assert.assertEquals(retryQueue.size(), 0);
-    LOGGER.info("Stopping thread");
-    thread.interrupt();
-    LOGGER.info("Thread stopped");
-  }
+  private ServiceDiscoveryAnnouncer announcer1 = mock(ServiceDiscoveryAnnouncer.class);
+  private ServiceDiscoveryAnnouncer announcer2 = mock(ServiceDiscoveryAnnouncer.class);
+  private ServiceDiscoveryAnnouncer announcer3 = mock(ServiceDiscoveryAnnouncer.class);
+  private final Long retryRegisterServiceDiscoveryAnnouncerMS = 30000L;
 
   /**
-   * This class mocks {@link ServiceDiscoveryAnnouncer} for testing purposes.
+   * Below is the expected workflow of the test: <br>
+   * 1) {@link ServiceDiscoveryAnnouncerHelper#registerServiceDiscoveryAnnouncers(List, BlockingQueue)} is called.
+   * The result of the call is that announcer3 successfully registers, and announcer1 and announcer2 fail to register,
+   * so retryQueue is [announcer1, announcer2] <br>
+   * 2) Retry thread starts and retries registering the announcers in retryQueue <br>
+   * 3) After 30 seconds, announcer1 retries registering and fails, so retryQueue is [announcer2, announcer1] <br>
+   * 4) After 30 seconds, announcer2 retries registering and successfully registers, so retryQueue is [announcer1] <br>
+   * 5) After 30 seconds, announcer1 retries registering and successfully registers, so retryQueue is []
    */
-  static class MockServiceDiscoveryAnnouncer implements ServiceDiscoveryAnnouncer {
-    private String name;
-    private boolean shouldFail;
+  @Test
+  public void testRegisterServiceDiscoveryAnnouncers() {
+    reset(announcer1, announcer2, announcer3);
+    doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer1).register();
+    doThrow(new RuntimeException()).doNothing().when(announcer2).register();
+    doNothing().when(announcer3).register();
+    List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
+    BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
+    ServiceDiscoveryAnnouncerHelper.registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, retryQueue);
+    Assert.assertTrue(retryQueue.contains(announcer1));
+    Assert.assertTrue(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
+    Assert.assertEquals(retryQueue.peek(), announcer1);
+    Assert.assertEquals(retryQueue.size(), 2);
 
-    public MockServiceDiscoveryAnnouncer(String name, boolean shouldFail) {
-      this.name = name;
-      this.shouldFail = shouldFail;
-    }
+    ServiceDiscoveryAnnouncerRetryTask retryTask = new ServiceDiscoveryAnnouncerRetryTask(retryQueue);
+    Thread retryThread = new Thread(retryTask);
+    LOGGER.info("Starting retry thread");
+    retryThread.start();
+    LOGGER.info("Retry thread started");
 
-    @Override
-    public void register() {
-      if (shouldFail) {
-        shouldFail = false;
-        LOGGER.info("Failed to register to service discovery: \"{}\"", name);
-      }
-    }
+    Assert.assertTrue(retryQueue.contains(announcer1));
+    Assert.assertTrue(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
+    Assert.assertEquals(retryQueue.peek(), announcer1);
+    Assert.assertEquals(retryQueue.size(), 2);
 
-    @Override
-    public void unregister() {
-      // no-op
-    }
+    putTestToSleep(retryRegisterServiceDiscoveryAnnouncerMS + 1000);
+    Assert.assertTrue(retryQueue.contains(announcer1));
+    Assert.assertTrue(retryQueue.contains(announcer2));
+    Assert.assertEquals(retryQueue.peek(), announcer2);
+    Assert.assertEquals(retryQueue.size(), 2);
 
-    public String getName() {
-      return name;
-    }
+    putTestToSleep(retryRegisterServiceDiscoveryAnnouncerMS + 1000);
+    Assert.assertTrue(retryQueue.contains(announcer1));
+    Assert.assertFalse(retryQueue.contains(announcer2));
+    Assert.assertEquals(retryQueue.peek(), announcer1);
+    Assert.assertEquals(retryQueue.size(), 1);
 
-    public boolean getShouldFail() {
-      return shouldFail;
-    }
+    putTestToSleep(retryRegisterServiceDiscoveryAnnouncerMS + 1000);
+    Assert.assertFalse(retryQueue.contains(announcer1));
+    Assert.assertEquals(retryQueue.size(), 0);
+
+    LOGGER.info("Stopping retry thread");
+    retryThread.interrupt();
+    LOGGER.info("Retry thread stopped");
+  }
+
+  @Test
+  public void testUnregisterServiceDiscoveryAnnouncers() {
+    doThrow(new RuntimeException()).when(announcer1).unregister();
+    doNothing().when(announcer2).unregister();
+    doNothing().when(announcer3).unregister();
+    List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
+    Map<ServiceDiscoveryAnnouncer, String> map =
+        ServiceDiscoveryAnnouncerHelper.unregisterServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers);
+    Assert.assertEquals(map.get(announcer1), "Failed to unregister from service discovery");
+    Assert.assertEquals(map.get(announcer2), "Unregistered from service discovery");
+    Assert.assertEquals(map.get(announcer3), "Unregistered from service discovery");
+  }
+
+  private void putTestToSleep(long ms) {
+    LOGGER.info("Test sleeping for {} ms", ms);
+    sleep(ms);
+    LOGGER.info("Test woke up");
   }
 }
