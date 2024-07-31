@@ -132,8 +132,10 @@ public class VeniceController {
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
-    ServiceDiscoveryAnnouncerRetryTask retryTask =
-        new ServiceDiscoveryAnnouncerRetryTask(serviceDiscoveryAnnouncerRetryQueue);
+    Long retryRegisterServiceDiscoveryAnnouncerMS = multiClusterConfigs.getRetryRegisterServiceDiscoveryAnnouncerMS();
+    ServiceDiscoveryAnnouncerRetryTask retryTask = new ServiceDiscoveryAnnouncerRetryTask(
+        serviceDiscoveryAnnouncerRetryQueue,
+        retryRegisterServiceDiscoveryAnnouncerMS);
     this.serviceDiscoveryAnnouncerRetryThread = new Thread(retryTask);
     createServices();
   }

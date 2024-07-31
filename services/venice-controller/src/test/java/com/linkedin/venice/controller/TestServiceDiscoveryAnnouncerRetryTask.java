@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.utils.Utils.sleep;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
@@ -23,7 +24,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
   private ServiceDiscoveryAnnouncer announcer1 = mock(ServiceDiscoveryAnnouncer.class);
   private ServiceDiscoveryAnnouncer announcer2 = mock(ServiceDiscoveryAnnouncer.class);
   private ServiceDiscoveryAnnouncer announcer3 = mock(ServiceDiscoveryAnnouncer.class);
-  private final Long retryRegisterServiceDiscoveryAnnouncerMS = 30000L;
+  private VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
 
   /**
    * Below is the expected workflow of the test: <br>
@@ -41,6 +42,8 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer1).register();
     doThrow(new RuntimeException()).doNothing().when(announcer2).register();
     doNothing().when(announcer3).register();
+    doReturn(30000L).when(config).getRetryRegisterServiceDiscoveryAnnouncerMS();
+    Long retryRegisterServiceDiscoveryAnnouncerMS = config.getRetryRegisterServiceDiscoveryAnnouncerMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
     ServiceDiscoveryAnnouncerHelper.registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, retryQueue);
@@ -50,7 +53,8 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     Assert.assertEquals(retryQueue.peek(), announcer1);
     Assert.assertEquals(retryQueue.size(), 2);
 
-    ServiceDiscoveryAnnouncerRetryTask retryTask = new ServiceDiscoveryAnnouncerRetryTask(retryQueue);
+    ServiceDiscoveryAnnouncerRetryTask retryTask =
+        new ServiceDiscoveryAnnouncerRetryTask(retryQueue, retryRegisterServiceDiscoveryAnnouncerMS);
     Thread retryThread = new Thread(retryTask);
     LOGGER.info("Starting retry thread");
     retryThread.start();
