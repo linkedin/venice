@@ -152,7 +152,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   /**
    * A repository mapping each Version Topic to it corresponding Ingestion task responsible
    * for consuming messages and making changes to the local store accordingly.
-   * TODO: change the key to be a PubSubTopic object.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
 

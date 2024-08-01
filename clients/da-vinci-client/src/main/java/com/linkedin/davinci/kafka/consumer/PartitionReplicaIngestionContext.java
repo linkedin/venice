@@ -20,7 +20,6 @@ import org.apache.logging.log4j.Logger;
 
 public class PartitionReplicaIngestionContext {
   private static final Logger LOGGER = LogManager.getLogger(PartitionReplicaIngestionContext.class);
-  private final Boolean isLeader;
   private final PubSubTopicPartition pubSubTopicPartition;
   private final PubSubTopic versionTopic;
   private final VersionRole versionRole;
@@ -38,18 +37,12 @@ public class PartitionReplicaIngestionContext {
   public PartitionReplicaIngestionContext(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition,
-      Boolean isLeader,
       VersionRole versionRole,
       WorkloadType workloadType) {
     this.versionTopic = versionTopic;
     this.pubSubTopicPartition = pubSubTopicPartition;
-    this.isLeader = isLeader;
     this.versionRole = versionRole;
     this.workloadType = workloadType;
-  }
-
-  public boolean isLeaderReplica() {
-    return isLeader;
   }
 
   public VersionRole getVersionRole() {

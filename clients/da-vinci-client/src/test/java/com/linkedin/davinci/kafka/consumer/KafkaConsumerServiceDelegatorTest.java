@@ -253,13 +253,11 @@ public class KafkaConsumerServiceDelegatorTest {
     PartitionReplicaIngestionContext topicPartitionForVT = new PartitionReplicaIngestionContext(
         versionTopic,
         new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID),
-        true,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     PartitionReplicaIngestionContext topicPartitionForRT = new PartitionReplicaIngestionContext(
         versionTopic,
         new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
-        true,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
 

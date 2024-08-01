@@ -92,7 +92,6 @@ public class AggKafkaConsumerServiceTest {
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         topic,
         topicPartition,
-        true,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     aggKafkaConsumerServiceSpy

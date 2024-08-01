@@ -330,7 +330,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
-  protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
+  protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -1290,7 +1290,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
         PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
-      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
+      // TODO: Add support workload type change in the future, as enabling write computing during normal hybrid
+      // ingestion could cause workload type change.
+      if (!newVersionRole.equals(versionRole)) {
         LOGGER.info(
             "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
                 + "changed to New: version role: {}, workload type: {}",
@@ -1300,7 +1302,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newVersionRole,
             newWorkloadType);
         versionRole = newVersionRole;
-        workloadType = newWorkloadType;
         resubscribeForAllPartitions();
       }
     }
@@ -1871,7 +1872,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Subscribe to local version topic.
         PubSubTopicPartition pubSubTopicPartition =
             newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
-        consumerSubscribe(pubSubTopicPartition, false, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
+        consumerSubscribe(pubSubTopicPartition, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
@@ -3162,17 +3163,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(
-      PubSubTopicPartition pubSubTopicPartition,
-      boolean isLeader,
-      long startOffset,
-      String kafkaURL) {
+  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
     PartitionReplicaIngestionContext partitionReplicaIngestionContext =
-        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, isLeader, versionRole, workloadType);
+        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 

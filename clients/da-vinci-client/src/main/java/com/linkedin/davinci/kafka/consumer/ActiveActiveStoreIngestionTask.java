@@ -978,11 +978,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     // subscribe to the new upstream
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
-      consumerSubscribe(
-          partitionConsumptionState.getSourceTopicPartition(leaderTopic),
-          true,
-          leaderStartOffset,
-          kafkaURL);
+      consumerSubscribe(partitionConsumptionState.getSourceTopicPartition(leaderTopic), leaderStartOffset, kafkaURL);
     });
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
@@ -1075,7 +1071,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     upstreamOffsetsByKafkaURLs.forEach((kafkaURL, upstreamStartOffset) -> {
       consumerSubscribe(
           partitionConsumptionState.getSourceTopicPartition(newSourceTopic),
-          true,
           upstreamStartOffset,
           kafkaURL);
     });
@@ -1416,7 +1411,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, sourceTopicPartition, rewindStartTimestamp);
 
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
-      consumerSubscribe(sourceTopicPartition, true, upstreamOffset, sourceKafkaUrl);
+      consumerSubscribe(sourceTopicPartition, upstreamOffset, sourceKafkaUrl);
 
       // syncConsumedUpstreamRTOffsetMapIfNeeded
       Map<String, Long> urlToOffsetMap = new HashMap<>();

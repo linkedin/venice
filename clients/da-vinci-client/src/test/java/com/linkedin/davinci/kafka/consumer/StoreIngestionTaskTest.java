@@ -2721,7 +2721,6 @@ public abstract class StoreIngestionTaskTest {
     PartitionReplicaIngestionContext fooRtPartitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         pubSubTopic,
         fooRtPartition,
-        true,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     inMemoryLocalKafkaBroker.createTopic(rtTopic, partitionCount);
@@ -3633,13 +3632,13 @@ public abstract class StoreIngestionTaskTest {
     partitionConsumptionState.setConsumeRemotely(false);
     leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
     verify(leaderFollowerStoreIngestionTask, times(1))
-        .consumerSubscribe(any(), anyBoolean(), eq(localVersionTopicOffset), anyString());
+        .consumerSubscribe(any(), eq(localVersionTopicOffset), anyString());
 
     // Test 2: if leader is consuming remotely, leader must subscribe to the remote VT offset
     partitionConsumptionState.setConsumeRemotely(true);
     leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
     verify(leaderFollowerStoreIngestionTask, times(1))
-        .consumerSubscribe(any(), anyBoolean(), eq(remoteVersionTopicOffset), anyString());
+        .consumerSubscribe(any(), eq(remoteVersionTopicOffset), anyString());
   }
 
   private void produceRecordsUsingSpecificWriter(

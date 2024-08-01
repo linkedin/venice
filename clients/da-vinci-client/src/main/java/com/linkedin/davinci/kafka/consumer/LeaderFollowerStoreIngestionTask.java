@@ -450,7 +450,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // subscribe back to local VT/partition
           consumerSubscribe(
               partitionConsumptionState.getSourceTopicPartition(topic),
-              false,
               partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
               localKafkaServer);
           /**
@@ -620,7 +619,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 partitionConsumptionState.getSourceTopicPartition(currentLeaderTopic);
             consumerSubscribe(
                 pubSubTopicPartition,
-                true,
                 partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
                 localKafkaServer);
           }
@@ -833,7 +831,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderSourceKafkaURL,
         partitionConsumptionState.consumeRemotely());
 
-    consumerSubscribe(leaderTopicPartition, true, leaderStartOffset, leaderSourceKafkaURL);
+    consumerSubscribe(leaderTopicPartition, leaderStartOffset, leaderSourceKafkaURL);
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(
         partitionConsumptionState,
@@ -915,7 +913,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + sourceKafkaURLs);
     }
     String sourceKafkaURL = sourceKafkaURLs.iterator().next();
-    consumerSubscribe(newSourceTopicPartition, true, upstreamStartOffset, sourceKafkaURL);
+    consumerSubscribe(newSourceTopicPartition, upstreamStartOffset, sourceKafkaURL);
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(
         partitionConsumptionState,
@@ -3535,7 +3533,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.getReplicaId());
     PubSubTopicPartition followerTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     long latestProcessedLocalVersionTopicOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
-    consumerSubscribe(followerTopicPartition, false, latestProcessedLocalVersionTopicOffset, localKafkaServer);
+    consumerSubscribe(followerTopicPartition, latestProcessedLocalVersionTopicOffset, localKafkaServer);
     LOGGER.info(
         "Follower replica: {} resubscribe to offset: {}",
         partitionConsumptionState.getReplicaId(),
@@ -3557,7 +3555,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     for (String leaderSourceKafkaURL: leaderSourceKafkaURLs) {
       long leaderStartOffset = partitionConsumptionState.getLeaderOffset(leaderSourceKafkaURL, pubSubTopicRepository);
-      consumerSubscribe(leaderTopicPartition, true, leaderStartOffset, leaderSourceKafkaURL);
+      consumerSubscribe(leaderTopicPartition, leaderStartOffset, leaderSourceKafkaURL);
       LOGGER.info(
           "Leader replica: {} resubscribe to offset: {}",
           partitionConsumptionState.getReplicaId(),
