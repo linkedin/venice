@@ -839,14 +839,13 @@ public class RouterServer extends AbstractVeniceService {
     // Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (dispatcher.getTotalInFlightRequestCount() != 0) {
+        if (dispatcher.hasInFlightRequests()) {
           throw new VeniceException("There are still in-flight requests in router");
         }
       }, 10, Duration.ofSeconds(10), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       LOGGER.error(
-          "There are still {} in-flight request during router shutdown, still continuing shutdown, it might unhealthy request in client",
-          dispatcher.getTotalInFlightRequestCount());
+          "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
     }
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
