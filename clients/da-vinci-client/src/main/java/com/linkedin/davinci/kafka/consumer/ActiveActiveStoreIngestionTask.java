@@ -702,7 +702,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
    * this function.
    *
-   * @param mergeConflictResult        The result of conflict resolution.
+   * @param mergeConflictResult         The result of conflict resolution.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key                       The key bytes of the incoming record.
    * @param consumerRecord            The {@link PubSubMessage} for the current record.
@@ -788,38 +788,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           oldValueManifest,
           oldRmdManifest,
           valueSchemaId,
+          // TODO: Or should this be consumerRecord.getTopicPartition().getPartitionNumber()?
+          consumerRecord.getTopicPartition().getTopicName(),
           mergeConflictResult.doesResultReuseInput());
-      try {
-        produceToLocalKafka(
-            consumerRecord,
-            partitionConsumptionState,
-            LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
-            produceToTopicFunction,
-            partition,
-            kafkaUrl,
-            kafkaClusterId,
-            beforeProcessingRecordTimestampNs);
-      } catch (RecordTooLargeException e) {
-        // TODO: Or should this be consumerRecord.getTopicPartition().getPartitionNumber()?
-        // TODO: Or should this not be pausing for all partitions for a topic? would this be a performance issue?
-        // pauseConsumption(consumerRecord.getTopicPartition().getTopicName(), partition);
-        if (e.getMessage().contains("950.0 KiB")) { // default value of maxSizeForUserPayloadPerMessageInBytes
-          return; // unlikely, but this means that chunking was not enabled and the record can't fit into Kafka
-        }
-
-        final String topicName = consumerRecord.getTopicPartition().getTopicName();
-        LOGGER.error("Pausing consumption on all partitions for topic {} due to a to large record.", topicName, e);
-        partitionConsumptionStateMap.forEach((partitionId, pcs) -> {
-          String consumingTopic = consumerRecord.getTopicPartition().getTopicName();
-          if (pcs.getLeaderFollowerState().equals(LEADER)) {
-            final OffsetRecord offsetRecord = pcs.getOffsetRecord();
-            if (offsetRecord.getLeaderTopic() != null) {
-              consumingTopic = offsetRecord.getLeaderTopic();
-            }
-          } // TODO: does this need the leaderfollower state / getLeaderTopic / getConsumingTopic?
-          pauseConsumption(consumingTopic, partitionId);
-        });
-      }
+      // TODO: should the try-catching be done here instead of inside the produceToTopicFunction?
+      produceToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
+          produceToTopicFunction,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -1460,6 +1441,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
       int valueSchemaId,
+      String topicName,
       boolean resultReuseInput) {
     return (callback, leaderMetadataWrapper) -> {
       if (resultReuseInput) {
@@ -1471,18 +1453,39 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));
       }
-      // TODO: consider putting try catch should be here?
-      getVeniceWriter().get()
-          .put(
-              key,
-              ByteUtils.extractByteArray(updatedValueBytes),
-              valueSchemaId,
-              callback,
-              leaderMetadataWrapper,
-              APP_DEFAULT_LOGICAL_TS,
-              new PutMetadata(getRmdProtocolVersionId(), updatedRmdBytes),
-              oldValueManifest,
-              oldRmdManifest);
+      try {
+        getVeniceWriter().get()
+            .put(
+                key,
+                ByteUtils.extractByteArray(updatedValueBytes),
+                valueSchemaId,
+                callback,
+                leaderMetadataWrapper,
+                APP_DEFAULT_LOGICAL_TS,
+                new PutMetadata(getRmdProtocolVersionId(), updatedRmdBytes),
+                oldValueManifest,
+                oldRmdManifest);
+      } catch (RecordTooLargeException e) {
+        int kafkaSizeLimit = getVeniceWriter().get().getMaxSizeForUserPayloadPerMessageInBytes();
+        if (e.getMessage().contains(ByteUtils.generateHumanReadableByteCountString(kafkaSizeLimit))) {
+          return; // unlikely, but this means that chunking was not enabled and the record can't fit into Kafka
+        }
+
+        LOGGER.error("Pausing consumption on all partitions for topic: {} due to a too large record.", topicName, e);
+
+        // TODO: does this need the leaderfollower state / getLeaderTopic / getConsumingTopic?
+        // TODO: Or should this not be pausing for all partitions for a topic? Would this be a performance issue?
+        partitionConsumptionStateMap.forEach((partitionId, pcs) -> {
+          String consumingTopic = topicName;
+          if (pcs.getLeaderFollowerState().equals(LEADER)) {
+            final OffsetRecord offsetRecord = pcs.getOffsetRecord();
+            if (offsetRecord.getLeaderTopic() != null) {
+              consumingTopic = offsetRecord.getLeaderTopic();
+            }
+          }
+          pauseConsumption(consumingTopic, partitionId);
+        });
+      }
     };
   }
 

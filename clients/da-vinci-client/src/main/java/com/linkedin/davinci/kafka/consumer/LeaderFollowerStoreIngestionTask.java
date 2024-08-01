@@ -188,8 +188,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
-  protected final int maxRecordSizeBytes; // TODO: move into VeniceWriter when nearline jobs enforce max record size
-
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -269,6 +267,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         nativeReplicationSourceVersionTopicKafkaURL,
         getVersionTopic());
 
+    int storeMaxRecordSize = store.getMaxRecordSizeBytes();
+    int maxRecordSizeBytes =
+        (storeMaxRecordSize < 0) ? serverConfig.getDefaultMaxRecordSizeBytes() : storeMaxRecordSize;
+
     this.veniceWriterFactory = builder.getVeniceWriterFactory();
     /**
      * In general, a partition in version topic follows this pattern:
@@ -284,11 +286,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setChunkingEnabled(isChunked)
             .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
             .setPartitionCount(storeVersionPartitionCount)
+            .setMaxRecordSizeBytes(maxRecordSizeBytes)
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
-    this.maxRecordSizeBytes = (store.getMaxRecordSizeBytes() < 0) // TODO: move to VeniceWriter when nearline supported
-        ? serverConfig.getDefaultMaxRecordSizeBytes()
-        : store.getMaxRecordSizeBytes();
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
@@ -1902,11 +1902,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected final double calculateAssembledRecordSizeRatio(long recordSize) {
-    return (double) recordSize / maxRecordSizeBytes;
+    return (double) recordSize / veniceWriter.get().getMaxRecordSizeBytes();
   }
 
   @Override
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
+    int maxRecordSizeBytes = veniceWriter.get().getMaxRecordSizeBytes();
     if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
       hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
     }

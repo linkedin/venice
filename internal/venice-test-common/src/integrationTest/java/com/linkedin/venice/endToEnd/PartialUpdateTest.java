@@ -1390,8 +1390,7 @@ public class PartialUpdateTest {
     sendStreamingDeleteRecord(veniceProducer, storeName, key1, 10001L);
     sendStreamingRecord(veniceProducer, storeName, key2, updateBuilder.build(), 10001L);
 
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
