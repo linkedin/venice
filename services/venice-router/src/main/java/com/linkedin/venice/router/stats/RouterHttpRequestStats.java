@@ -380,4 +380,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
     return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
   }
+
+  public int getInflightRequests() {
+    return currentInFlightRequest.get();
+  }
 }

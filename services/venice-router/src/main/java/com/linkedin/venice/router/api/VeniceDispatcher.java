@@ -411,4 +411,19 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       }
     }
   }
+
+  public long getTotalInFlightRequestCount() {
+    long total = 0;
+    AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.SINGLE_GET);
+    total += stats.getInFlightRequests();
+    stats = routerStats.getStatsByType(RequestType.MULTI_GET);
+    total += stats.getInFlightRequests();
+    stats = routerStats.getStatsByType(RequestType.MULTI_GET_STREAMING);
+    total += stats.getInFlightRequests();
+    stats = routerStats.getStatsByType(RequestType.COMPUTE);
+    total += stats.getInFlightRequests();
+    stats = routerStats.getStatsByType(RequestType.COMPUTE_STREAMING);
+    total += stats.getInFlightRequests();
+    return total;
+  }
 }

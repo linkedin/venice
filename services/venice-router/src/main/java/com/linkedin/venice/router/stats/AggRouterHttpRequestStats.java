@@ -305,4 +305,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     totalStats.recordRetryDelay(delay);
     getStoreStats(storeName).recordRetryDelay(delay);
   }
+
+  public int getInFlightRequests() {
+    return totalStats.getInflightRequests();
+  }
 }

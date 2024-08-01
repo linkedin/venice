@@ -87,6 +87,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -104,7 +105,9 @@ import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -833,6 +836,18 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
+    // Wait till all the requests are drained
+    try {
+      RetryUtils.executeWithMaxAttempt(() -> {
+        if (dispatcher.getTotalInFlightRequestCount() != 0) {
+          throw new VeniceException("There are still in-flight requests in router");
+        }
+      }, 10, Duration.ofSeconds(10), Collections.singletonList(VeniceException.class));
+    } catch (VeniceException e) {
+      LOGGER.error(
+          "There are still {} in-flight request during router shutdown, still continuing shutdown, it might unhealthy request in client",
+          dispatcher.getTotalInFlightRequestCount());
+    }
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
