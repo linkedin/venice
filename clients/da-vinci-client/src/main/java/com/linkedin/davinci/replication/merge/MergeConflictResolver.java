@@ -37,6 +37,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -630,6 +631,7 @@ public class MergeConflictResolver {
          * case, the value must be retrieved from storage engine, and is prepended with schema ID.
          */
         int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
+        LogManager.getLogger(MergeConflictResolver.class).info("DEBUGGING: SCHEMA ID: {}", schemaId);
         newValue =
             deserializerCacheForFullValue.get(schemaId, readerValueSchemaEntry.getId()).deserialize(oldValueBytes);
       }

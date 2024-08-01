@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "ManyStrings",
+  "namespace": "example.avro",
+  "fields": [
+    {
+      "name": "key",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name": "value",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    },
+    {
+      "name": "age",
+      "type": "int",
+      "default": 0
+    }
+  ]
+}
