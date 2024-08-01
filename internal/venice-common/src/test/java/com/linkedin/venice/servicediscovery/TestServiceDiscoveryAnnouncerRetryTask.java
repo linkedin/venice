@@ -25,12 +25,43 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
   private ServiceDiscoveryAnnouncer announcer3 = mock(ServiceDiscoveryAnnouncer.class);
   private VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
 
+  @Test
+  public void testThreadMethodsDoNotRunIfRetryQueueEmpty() {
+    reset(announcer1, announcer2, announcer3, config);
+    doNothing().when(announcer1).register();
+    doNothing().when(announcer2).register();
+    doNothing().when(announcer3).register();
+    doNothing().when(announcer1).unregister();
+    doNothing().when(announcer2).unregister();
+    doNothing().when(announcer3).unregister();
+    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
+    List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
+    AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
+        new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
+    Thread serviceDiscoveryAnnouncerRetryThread =
+        asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryThread();
+    try {
+      asyncRetryingServiceDiscoveryAnnouncer.register();
+    } catch (Exception e) {
+      Assert.fail("The method call should not throw an exception.");
+    }
+    Assert.assertFalse(serviceDiscoveryAnnouncerRetryThread.isAlive());
+    try {
+      asyncRetryingServiceDiscoveryAnnouncer.unregister();
+    } catch (Exception e) {
+      Assert.fail("The method call should not throw an exception.");
+    }
+    Assert.assertFalse(serviceDiscoveryAnnouncerRetryThread.isAlive());
+    Assert.assertFalse(serviceDiscoveryAnnouncerRetryThread.isInterrupted());
+  }
+
   /**
    * Below is the expected workflow of the test: <br>
    * 1) {@link AsyncRetryingServiceDiscoveryAnnouncer#register()} is called. The result of the call is that announcer3
    * successfully registers, and announcer1 and announcer2 fail to register, so retryQueue is [announcer1, announcer2] <br>
    * 2) Retry thread starts and retries registering the announcers in retryQueue <br>
-   * 3) After 30 seconds, announcer1 retries registering and fails, so retryQueue is [announcer2, announcer1] <br>
+   * 3) announcer1 retries registering and fails, so retryQueue is [announcer2, announcer1] <br>
    * 4) After 30 seconds, announcer2 retries registering and successfully registers, so retryQueue is [announcer1] <br>
    * 5) After 30 seconds, announcer1 retries registering and successfully registers, so retryQueue is []
    */
@@ -53,25 +84,20 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
       Assert.fail("The method call should not throw an exception.");
     }
 
+    sleep(1000);
     Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertTrue(retryQueue.contains(announcer2));
     Assert.assertFalse(retryQueue.contains(announcer3));
-    Assert.assertEquals(retryQueue.peek(), announcer1);
-    Assert.assertEquals(retryQueue.size(), 2);
-
-    putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
-    Assert.assertTrue(retryQueue.contains(announcer1));
-    Assert.assertTrue(retryQueue.contains(announcer2));
     Assert.assertEquals(retryQueue.peek(), announcer2);
     Assert.assertEquals(retryQueue.size(), 2);
 
-    putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertFalse(retryQueue.contains(announcer2));
     Assert.assertEquals(retryQueue.peek(), announcer1);
     Assert.assertEquals(retryQueue.size(), 1);
 
-    putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertFalse(retryQueue.contains(announcer1));
     Assert.assertEquals(retryQueue.size(), 0);
   }
@@ -92,11 +118,5 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     } catch (Exception e) {
       Assert.fail("The method call should not throw an exception.");
     }
-  }
-
-  private void putTestToSleep(long ms) {
-    LOGGER.info("Test sleeping for {} ms", ms);
-    sleep(ms);
-    LOGGER.info("Test woke up");
   }
 }

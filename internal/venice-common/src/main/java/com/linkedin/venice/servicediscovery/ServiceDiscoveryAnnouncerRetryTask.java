@@ -27,9 +27,6 @@ public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
     while (true) {
       ServiceDiscoveryAnnouncer announcer = null;
       try {
-        LOGGER.info("Thread for retry task sleeping for {} ms", serviceDiscoveryRegistrationRetryMS);
-        Thread.sleep(serviceDiscoveryRegistrationRetryMS);
-        LOGGER.info("Thread for retry task woke up");
         announcer = serviceDiscoveryAnnouncerRetryQueue.take();
         announcer.register();
         LOGGER.info("Registered to service discovery: {}", announcer);
@@ -42,6 +39,13 @@ public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
         if (announcer != null) {
           serviceDiscoveryAnnouncerRetryQueue.add(announcer);
         }
+      }
+      try {
+        Thread.sleep(serviceDiscoveryRegistrationRetryMS);
+      } catch (InterruptedException e) {
+        LOGGER.error("ServiceDiscoveryAnnouncerRetryTask interrupted", e);
+        Thread.currentThread().interrupt();
+        break;
       }
     }
   }

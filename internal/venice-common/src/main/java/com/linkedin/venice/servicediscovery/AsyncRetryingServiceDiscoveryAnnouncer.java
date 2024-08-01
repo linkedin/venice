@@ -44,9 +44,10 @@ public class AsyncRetryingServiceDiscoveryAnnouncer implements ServiceDiscoveryA
         serviceDiscoveryAnnouncerRetryQueue.add(serviceDiscoveryAnnouncer);
       }
     });
-    LOGGER.info("Starting service discovery announcer retry thread");
-    serviceDiscoveryAnnouncerRetryThread.start();
-    LOGGER.info("Service discovery announcer retry thread started");
+    if (!serviceDiscoveryAnnouncerRetryQueue.isEmpty()) {
+      LOGGER.info("Starting service discovery announcer retry thread");
+      serviceDiscoveryAnnouncerRetryThread.start();
+    }
   }
 
   /**
@@ -55,9 +56,10 @@ public class AsyncRetryingServiceDiscoveryAnnouncer implements ServiceDiscoveryA
    */
   @Override
   public void unregister() {
-    LOGGER.info("Stopping service discovery announcer retry thread");
-    serviceDiscoveryAnnouncerRetryThread.interrupt();
-    LOGGER.info("Service discovery announcer retry thread stopped");
+    if (serviceDiscoveryAnnouncerRetryThread.isAlive()) {
+      LOGGER.info("Stopping service discovery announcer retry thread");
+      serviceDiscoveryAnnouncerRetryThread.interrupt();
+    }
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       try {
         serviceDiscoveryAnnouncer.unregister();
@@ -66,6 +68,10 @@ public class AsyncRetryingServiceDiscoveryAnnouncer implements ServiceDiscoveryA
         LOGGER.error("Failed to unregister from service discovery: {}", serviceDiscoveryAnnouncer, e);
       }
     });
+  }
+
+  Thread getServiceDiscoveryAnnouncerRetryThread() {
+    return serviceDiscoveryAnnouncerRetryThread;
   }
 
   BlockingQueue<ServiceDiscoveryAnnouncer> getServiceDiscoveryAnnouncerRetryQueue() {
