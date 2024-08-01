@@ -5,6 +5,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
+import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -15,7 +16,7 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException;
 
@@ -33,4 +34,8 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract long getMaxMemoryUsagePerDrainer();
 
   public abstract long getMinMemoryUsagePerDrainer();
+
+  public abstract CompletableFuture<Void> execSyncOffsetCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException;
 }

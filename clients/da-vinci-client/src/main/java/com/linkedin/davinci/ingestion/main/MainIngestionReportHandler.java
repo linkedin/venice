@@ -6,7 +6,6 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDum
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.readHttpRequestContent;
 
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -20,7 +19,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.Optional;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -111,11 +109,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Relay the notification to parent service's listener.
     switch (reportType) {
       case COMPLETED:
-        // Set LeaderState passed from child process to cache.
-        LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
-        notifierHelper(
-            notifier -> notifier
-                .completed(topicName, partitionId, report.offset, message, Optional.of(leaderFollowerStateType)));
+        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset, message));
         break;
       case ERROR:
         mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
@@ -172,9 +166,9 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     int partitionId = report.partitionId;
     // Sync up offset record & store version state before report ingestion complete to parent process.
     if (mainIngestionMonitorService.getStorageMetadataService() != null) {
-      if (!report.offsetRecordArray.isEmpty()) {
+      if (report.offsetRecord != null) {
         mainIngestionMonitorService.getStoreIngestionService()
-            .updatePartitionOffsetRecords(topicName, partitionId, report.offsetRecordArray);
+            .updatePartitionOffsetRecords(topicName, partitionId, report.offsetRecord);
       }
       if (report.storeVersionState != null) {
         StoreVersionState storeVersionState =

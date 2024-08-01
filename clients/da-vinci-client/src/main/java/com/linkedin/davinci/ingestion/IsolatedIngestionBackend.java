@@ -11,18 +11,17 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.main.MainPartitionIngestionStatus;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,8 +57,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       MetricsRepository metricsRepository,
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
-      StorageService storageService) {
-    super(storageMetadataService, storeIngestionService, storageService);
+      StorageService storageService,
+      BlobTransferManager blobTransferManager) {
+    super(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        configLoader.getVeniceServerConfig());
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
@@ -85,17 +90,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void startConsumption(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      Optional<LeaderFollowerStateType> leaderState) {
+  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(
         topicName,
         partition,
         START_CONSUMPTION,
         () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.startConsumption(storeConfig, partition, leaderState));
+        () -> super.startConsumption(storeConfig, partition));
   }
 
   @Override
@@ -234,22 +236,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     return configLoader;
   }
 
-  void startConsumptionLocally(
-      VeniceStoreVersionConfig storeVersionConfig,
-      int partition,
-      Optional<LeaderFollowerStateType> leaderState) {
-    super.startConsumption(storeVersionConfig, partition, leaderState);
+  void startConsumptionLocally(VeniceStoreVersionConfig storeVersionConfig, int partition) {
+    super.startConsumption(storeVersionConfig, partition);
   }
 
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
-      public void completed(
-          String kafkaTopic,
-          int partition,
-          long offset,
-          String message,
-          Optional<LeaderFollowerStateType> leaderState) {
+      public void completed(String kafkaTopic, int partition, long offset, String message) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
@@ -261,7 +255,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
               VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
               config.setRestoreDataPartitions(false);
               config.setRestoreMetadataPartition(false);
-              startConsumptionLocally(config, partition, leaderState);
+              startConsumptionLocally(config, partition);
             } catch (Exception e) {
               notifier.error(
                   kafkaTopic,

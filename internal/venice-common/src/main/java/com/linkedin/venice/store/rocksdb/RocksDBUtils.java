@@ -2,6 +2,10 @@ package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
 
 
 public class RocksDBUtils {
@@ -44,21 +48,26 @@ public class RocksDBUtils {
     return dbDir + "/" + storeName;
   }
 
-  public static String composePartitionDbDir(String dbDir, String storeName, int partitionId) {
-    return dbDir + File.separator + storeName + File.separator + getPartitionDbName(storeName, partitionId);
+  // ex. /db/directory/myStore_v3/myStore_v3_3/
+  public static String composePartitionDbDir(String dbDir, String topicName, int partitionId) {
+    return dbDir + File.separator + topicName + File.separator + getPartitionDbName(topicName, partitionId);
   }
 
-  // ex. /db/directory/storeName/storeName_3/.snapshot_files
-  public static String composeSnapshotDir(String dbDir, String storeName, int partitionId) {
-    return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_SNAPSHOT_DIR;
+  // ex. /db/directory/storeName_v3/storeName_v3_3/.snapshot_files
+  public static String composeSnapshotDir(String dbDir, String topicName, int partitionId) {
+    return composePartitionDbDir(dbDir, topicName, partitionId) + File.separator + TEMP_SNAPSHOT_DIR;
   }
 
-  public static String composeTempSSTFileDir(String dbDir, String storeName, int partitionId) {
-    return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_SST_FILE_DIR;
+  public static String composeSnapshotDir(String composePartitionDbDir) {
+    return composePartitionDbDir + File.separator + TEMP_SNAPSHOT_DIR;
   }
 
-  public static String composeTempRMDSSTFileDir(String dbDir, String storeName, int partitionId) {
-    return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_RMD_SST_FILE_DIR;
+  public static String composeTempSSTFileDir(String dbDir, String topicName, int partitionId) {
+    return composePartitionDbDir(dbDir, topicName, partitionId) + File.separator + TEMP_SST_FILE_DIR;
+  }
+
+  public static String composeTempRMDSSTFileDir(String dbDir, String topicName, int partitionId) {
+    return composePartitionDbDir(dbDir, topicName, partitionId) + File.separator + TEMP_RMD_SST_FILE_DIR;
   }
 
   public static String composeTempSSTFileName(int fileNo) {
@@ -89,5 +98,28 @@ public class RocksDBUtils {
       throw new VeniceException("Temp SST filename should start with prefix: " + TEMP_RMD_SST_FILE_PREFIX);
     }
     return Integer.parseInt(fileName.substring(TEMP_RMD_SST_FILE_PREFIX.length()));
+  }
+
+  /**
+   * Deletes the files associated with the specified store, version, and partition.
+   *
+   * @param storeName the name of the store
+   * @param version the version number of the store
+   * @param partition the partition ID
+   */
+  public static void deletePartitionDir(String baseDir, String storeName, int version, int partition) {
+    String topicName = storeName + "_v" + version;
+    String partitionDir = composePartitionDbDir(baseDir, topicName, partition);
+
+    Path path = null;
+    try {
+      path = Paths.get(partitionDir);
+      if (Files.exists(path)) {
+        Files.walk(path).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+      }
+    } catch (Exception e) {
+      throw new VeniceException(
+          String.format("Error occurred while deleting blobs at path: %s. %s ", path, e.getMessage()));
+    }
   }
 }

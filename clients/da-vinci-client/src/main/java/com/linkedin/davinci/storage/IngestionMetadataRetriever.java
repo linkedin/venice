@@ -14,6 +14,6 @@ public interface IngestionMetadataRetriever {
   TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
       String versionTopic,
       String topicName,
-      Integer partitionNum);
+      int partitionNum);
 
 }

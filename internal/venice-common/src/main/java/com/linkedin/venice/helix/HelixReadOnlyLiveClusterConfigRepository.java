@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_CONFIG;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
@@ -32,7 +34,7 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
   // Listener to handle modifications to cluster config
   private final IZkDataListener clusterConfigListener = new ClusterConfigZkListener();
 
-  private static final String CLUSTER_CONFIG_PATH = "/ClusterConfig";
+  private static final String CLUSTER_CONFIG_PATH = "/" + CLUSTER_CONFIG;
 
   public HelixReadOnlyLiveClusterConfigRepository(
       ZkClient zkClient,

@@ -31,6 +31,7 @@ import io.netty.util.concurrent.EventExecutor;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
@@ -932,27 +933,36 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
     } else {
       // For requests with keys, send an error for each key. TODO: Consider if we could rip all of that out?
-      for (K key: part.getPartitionKeys()) {
-        complete = complete.thenApply(aVoid -> pathParser.substitutePartitionKey(basePath, key))
-            .thenCompose(pathForThisKey -> {
-              contentMsg.append(", PartitionName=")
-                  .append(_scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(), key));
-              return null;
-            })
-            .exceptionally(e -> {
-              LOG.info("Exception in appendErrorForEveryKey, key={}", key, e);
-              return null;
-            })
-            .thenApply(aVoid -> {
-              appendError(
-                  request,
-                  responses,
-                  status,
-                  contentMsg.append(", RoutingPolicy=").append(roles).toString(),
-                  ex);
-              return null;
+      complete = complete.thenCompose(aVoid -> {
+        List<CompletableFuture<String>> list = new ArrayList<>(part.getPartitionKeys().size());
+        for (K partitionKey: part.getPartitionKeys()) {
+          list.add(
+              CompletableFuture.completedFuture(partitionKey)
+                  .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
+                  .thenCompose(
+                      pathForThisKey -> _scatterGatherHelper
+                          .findPartitionName(pathForThisKey.getResourceName(), partitionKey))
+                  .exceptionally(e -> {
+                    LOG.info("Exception in appendErrorForEveryKey, key={}", partitionKey, e);
+                    return null;
+                  }));
+        }
+        return CompletableFuture.allOf(list.toArray(new CompletableFuture[0])).thenAccept(aVoid2 -> {
+          HashSet<String> distinctSet = new HashSet<>();
+          for (CompletableFuture<String> partitionName: list) {
+            partitionName.thenAccept(key -> {
+              if (key != null) {
+                distinctSet.add(key);
+              }
             });
-      }
+          }
+          distinctSet.forEach(partitionName -> {
+            contentMsg.append(", PartitionName=").append(partitionName);
+          });
+        });
+      }).thenAccept(aVoid -> {
+        appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
+      });
     }
     return complete;
   }

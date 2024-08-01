@@ -122,7 +122,6 @@ public class TestParentControllerWithMultiDataCenter {
           .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
           .setChunkingEnabled(true)
           .setRmdChunkingEnabled(true)
-          .setAmplificationFactor(2)
           .setStorageNodeReadQuotaEnabled(true);
 
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
@@ -150,7 +149,6 @@ public class TestParentControllerWithMultiDataCenter {
           assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
           assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
           assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
@@ -181,7 +179,6 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           assertEquals(storeInfo.getPartitionerConfig().getPartitionerParams(), Collections.singletonMap("key", "val"));
         }
       });
@@ -535,7 +532,8 @@ public class TestParentControllerWithMultiDataCenter {
     props.setProperty(DEFER_VERSION_SWAP, "true");
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setPartitionCount(1);
+    UpdateStoreQueryParams storeParms =
+        new UpdateStoreQueryParams().setPartitionCount(1).setBootstrapToOnlineTimeoutInHours(1);
     createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
 
     TestWriteUtils.runPushJob("Test push job 1", props);
@@ -543,7 +541,7 @@ public class TestParentControllerWithMultiDataCenter {
       TestWriteUtils.runPushJob("Test push job 2", props);
       fail("Deferred version swap should fail second push");
     } catch (Exception e) {
-      Assert.assertTrue(e.getMessage().contains("An ongoing push with pushJobId"));
+      Assert.assertTrue(e.getMessage().contains("Unable to start the push with pushJobId"));
     }
   }
 

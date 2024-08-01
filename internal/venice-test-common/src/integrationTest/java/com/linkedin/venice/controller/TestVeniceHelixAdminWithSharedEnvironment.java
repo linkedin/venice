@@ -101,7 +101,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     setupCluster(true, metricsRepository);
-    verifyParticipantMessageStoreSetup();
   }
 
   @AfterClass(alwaysRun = true)
@@ -143,7 +142,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
 
     VeniceProperties newControllerProps = builder.build();
-    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
     VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
@@ -183,7 +182,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         new PropertyBuilder().put(controllerProps.toProperties()).put("cluster.name", newClusterName);
 
     VeniceProperties newClusterProps = builder.build();
-    VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
+    VeniceControllerClusterConfig newClusterConfig = new VeniceControllerClusterConfig(newClusterProps);
     veniceAdmin.addConfig(newClusterConfig);
     veniceAdmin.initStorageCluster(newClusterName);
     waitUntilIsLeader(veniceAdmin, newClusterName, LEADER_CHANGE_TIMEOUT_MS);
@@ -477,18 +476,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
             .getPartitionerConfig()
             .getAmplificationFactor(),
         1);
-    final int amplificationFactor = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(amplificationFactor);
     veniceAdmin.setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
-    Version newVersion = veniceAdmin
-        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, 2);
-    Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeName)
-            .getVersion(newVersion.getNumber())
-            .getPartitionerConfig()
-            .getAmplificationFactor(),
-        amplificationFactor);
 
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled());

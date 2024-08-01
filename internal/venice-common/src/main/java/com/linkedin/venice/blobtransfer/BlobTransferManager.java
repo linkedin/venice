@@ -1,7 +1,7 @@
 package com.linkedin.venice.blobtransfer;
 
 import com.linkedin.venice.annotation.Experimental;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
 
@@ -22,20 +22,19 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Get the blobs for the given storeName and partition
-   *
    * @param storeName
    * @param version
    * @param partition
    * @return the InputStream of the blob. The return type is experimental and may change in the future.
-   * @throws VeniceNoStoreException
+   * @throws VenicePeersNotFoundException when the peers are not found for the requested blob. Other exceptions may be
+   * thrown, but it's wrapped inside the CompletionStage.
    */
   @Experimental
   CompletionStage<? extends InputStream> get(String storeName, int version, int partition)
-      throws VeniceNoStoreException;
+      throws VenicePeersNotFoundException;
 
   /**
    * Put the blob for the given storeName and partition
-   *
    * @param storeName
    * @param version
    * @param partition

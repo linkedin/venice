@@ -133,7 +133,7 @@ public class VersionBackend {
        * The following function is used to forcibly clean up any leaking data partitions, which are not
        * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
        * to open because of DaVinci memory limiter.
-        */
+       */
       backend.getStorageService().forceStorageEngineCleanup(topicName);
       backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
     } catch (VeniceException e) {
@@ -193,8 +193,6 @@ public class VersionBackend {
     return chunkingAdaptor.get(
         getStorageEngineOrThrow(),
         userPartition,
-        partitioner,
-        version.getPartitionerConfig(),
         keyBytes,
         reusableRawValue,
         reusableValue,
@@ -222,8 +220,6 @@ public class VersionBackend {
     reusableValueRecord = chunkingAdaptor.get(
         getStorageEngineOrThrow(),
         userPartition,
-        partitioner,
-        version.getPartitionerConfig(),
         keyBytes,
         reusableRawValue,
         reusableValueRecord,
@@ -278,7 +274,6 @@ public class VersionBackend {
     chunkingAdaptor.getByPartialKey(
         getStorageEngineOrThrow(),
         partition,
-        this.version.getPartitionerConfig(),
         keyPrefix,
         reusableValueRecord,
         reusableBinaryDecoder,
@@ -325,8 +320,7 @@ public class VersionBackend {
       AbstractStorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         LOGGER.info("Partition {} of {}  is subscribed, ignoring subscribe request.", partition, this);
-      } else if (suppressLiveUpdates && engine != null
-          && engine.containsPartition(partition, version.getPartitionerConfig())) {
+      } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition)) {
         // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {

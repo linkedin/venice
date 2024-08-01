@@ -121,7 +121,6 @@ public class PushStatusStoreMultiColoTest {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(PARTITION_COUNT)
-                .setAmplificationFactor(1)
                 .setIncrementalPushEnabled(true)));
     String daVinciPushStatusSystemStoreName =
         VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);

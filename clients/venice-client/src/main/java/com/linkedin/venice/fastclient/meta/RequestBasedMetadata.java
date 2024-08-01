@@ -389,10 +389,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       int partitionCount = versionMetadata.getPartitionCount();
       Properties params = new Properties();
       params.putAll(versionMetadata.getPartitionerParams());
-      VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
-          versionMetadata.getPartitionerClass().toString(),
-          versionMetadata.getAmplificationFactor(),
-          new VeniceProperties(params));
+      VenicePartitioner partitioner = PartitionUtils
+          .getVenicePartitioner(versionMetadata.getPartitionerClass().toString(), new VeniceProperties(params));
       versionPartitionerMap.put(fetchedCurrentVersion, partitioner);
       versionPartitionCountMap.put(fetchedCurrentVersion, partitionCount);
 

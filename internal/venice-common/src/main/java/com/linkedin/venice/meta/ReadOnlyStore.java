@@ -1343,6 +1343,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public int getMaxRecordSizeBytes() {
+    return this.delegate.getMaxRecordSizeBytes();
+  }
+
+  @Override
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     throw new UnsupportedOperationException();
   }

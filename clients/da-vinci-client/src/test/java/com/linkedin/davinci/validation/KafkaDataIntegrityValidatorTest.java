@@ -30,6 +30,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -50,8 +51,8 @@ public class KafkaDataIntegrityValidatorTest {
   private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidatorTest.class);
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  @Test
-  public void testClearExpiredState() throws InterruptedException {
+  @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
+  public void testClearExpiredState(CheckSumType checkSumType) throws InterruptedException {
     final long maxAgeInMs = 1000;
     Time time = new TestMockTime();
     String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
@@ -69,12 +70,17 @@ public class KafkaDataIntegrityValidatorTest {
     if (producerGuid0.equals(producerGuid1)) {
       LOGGER.info("Got two equal producer GUIDs! Buy a lottery ticket!");
       // Extremely unlikely, but theoretically possible... let's just re-run the test
-      testClearExpiredState();
+      testClearExpiredState(checkSumType);
       return;
     }
     assertNotEquals(producerGuid0, producerGuid1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record0 =
-        buildSoSRecord(topicPartition0, offsetForPartition0++, producerGuid0, time.getMilliseconds(), p0offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record0 = buildSoSRecord(
+        topicPartition0,
+        offsetForPartition0++,
+        producerGuid0,
+        time.getMilliseconds(),
+        p0offsetRecord,
+        checkSumType);
     validator.validateMessage(p0g0record0, false, Lazy.FALSE);
 
     time.sleep(10);
@@ -110,8 +116,13 @@ public class KafkaDataIntegrityValidatorTest {
      * be cleared yet, since {@link KafkaDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
      * been called.
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 =
-        buildSoSRecord(topicPartition0, offsetForPartition0++, producerGuid1, time.getMilliseconds(), p0offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 = buildSoSRecord(
+        topicPartition0,
+        offsetForPartition0++,
+        producerGuid1,
+        time.getMilliseconds(),
+        p0offsetRecord,
+        checkSumType);
     validator.validateMessage(p0g1record0, false, Lazy.FALSE);
     assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
@@ -122,8 +133,13 @@ public class KafkaDataIntegrityValidatorTest {
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Start writing into another partition
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p1g0record0 =
-        buildSoSRecord(topicPartition1, offsetForPartition1, producerGuid0, time.getMilliseconds(), p1offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p1g0record0 = buildSoSRecord(
+        topicPartition1,
+        offsetForPartition1,
+        producerGuid0,
+        time.getMilliseconds(),
+        p1offsetRecord,
+        checkSumType);
     validator.validateMessage(p1g0record0, false, Lazy.FALSE);
     assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
@@ -276,11 +292,12 @@ public class KafkaDataIntegrityValidatorTest {
       long offset,
       GUID producerGUID,
       long brokerTimestamp,
-      OffsetRecord offsetRecord) {
+      OffsetRecord offsetRecord,
+      CheckSumType type) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
-    startOfSegment.checksumType = CheckSumType.MD5.getValue();
+    startOfSegment.checksumType = type.getValue();
     startOfSegment.upcomingAggregates = Collections.emptyList();
     controlMessage.controlMessageUnion = startOfSegment;
     return buildRecord(

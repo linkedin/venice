@@ -10,8 +10,7 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
@@ -32,14 +31,11 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -61,6 +57,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -559,40 +556,33 @@ public class VeniceParentHelixAdminTest {
   public void testStoreMetaDataUpdateFromParentToChildController(
       boolean isControllerSslEnabled,
       boolean isSupersetSchemaGeneratorEnabled) throws IOException {
-    Properties properties = new Properties();
+    Properties parentControllerProps = new Properties();
     // This cluster setup don't have server, we cannot perform push here.
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
+    parentControllerProps.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
+    parentControllerProps
+        .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     if (isSupersetSchemaGeneratorEnabled) {
-      properties.setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
-      properties.put(
+      parentControllerProps
+          .setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
+      parentControllerProps.put(
           VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR,
           new SupersetSchemaGeneratorWithCustomProp("test_prop"));
     }
 
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
-            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
-                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
-                .build());
-        VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                .sslToKafka(isControllerSslEnabled)
-                .regionName(CHILD_REGION_NAME_PREFIX + "0")
-                .build());
-        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
-                .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
-                .extraProperties(properties)
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(0)
+                .numberOfRouters(0)
+                .replicationFactor(1)
+                .parentControllerProperties(parentControllerProps)
                 .sslToKafka(isControllerSslEnabled)
                 .build())) {
-      String childControllerUrl = isControllerSslEnabled
-          ? childControllerWrapper.getSecureControllerUrl()
-          : childControllerWrapper.getControllerUrl();
-      String parentControllerUrl = isControllerSslEnabled
-          ? parentControllerWrapper.getSecureControllerUrl()
-          : parentControllerWrapper.getControllerUrl();
+      String childControllerUrl = venice.getChildRegions().get(0).getControllerConnectString();
+      String parentControllerUrl = venice.getControllerConnectString();
       Optional<SSLFactory> sslFactory =
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
@@ -608,7 +598,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
-        testUpdateCompactionLag(parentControllerClient);
+        testUpdateConfigs(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -907,34 +897,76 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(schemaResponse.getSchemas().length, 2);
   }
 
-  private void testUpdateCompactionLag(ControllerClient parentControllerClient) {
-    // Adding store
+  private void testUpdateConfigs(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    testUpdateCompactionLag(parentControllerClient, childControllerClient);
+    testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
+    testUpdateBlobTransfer(parentControllerClient, childControllerClient);
+  }
+
+  /**
+   * Base test flow for updating store configurations by updating the store metadata from parent to child controller.
+   * @param parentControllerClient The parent controller client which will perform the update.
+   * @param childControllerClient The child controller client which will receive the update.
+   * @param paramsConsumer Used to create the UpdateStoreQueryParams to update the configurations for the store.
+   * @param responseConsumer Used to validate the configurations have been updated correctly for both parent and child.
+   */
+  private void testUpdateConfig(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient,
+      Consumer<UpdateStoreQueryParams> paramsConsumer,
+      Consumer<StoreResponse> responseConsumer) {
+    // Step 1. Create a store
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
-    String schemaStr =
-        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\", \"default\": 0.0}]}";
-    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
-    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    String valueSchemaStr = generateSchema(false).toString();
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
 
-    final long expectedMinCompactionLagSeconds = 100;
-    final long expectedMaxCompactionLagSeconds = 200;
+    // Step 2. Update the store configurations
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setMinCompactionLagSeconds(expectedMinCompactionLagSeconds);
-    params.setMaxCompactionLagSeconds(expectedMaxCompactionLagSeconds);
+    paramsConsumer.accept(params);
     parentControllerClient.updateStore(storeName, params);
 
-    // Validate in parent
+    // Step 3. Validate the configurations have been updated correctly for the parent controller
     StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
-    Assert.assertEquals(parentStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
-    Assert.assertEquals(parentStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+    responseConsumer.accept(parentStoreResponse);
 
+    // Step 4. Validate the configurations have been updated correctly for the child controller
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      StoreResponse childStoreResponse = parentControllerClient.getStore(storeName);
-      Assert.assertEquals(childStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
-      Assert.assertEquals(childStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+      responseConsumer.accept(childStoreResponse);
     });
+  }
 
+  private void testUpdateCompactionLag(ControllerClient parentClient, ControllerClient childClient) {
+    final long expectedMinCompactionLagSeconds = 100;
+    final long expectedMaxCompactionLagSeconds = 200;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setMinCompactionLagSeconds(expectedMinCompactionLagSeconds);
+      params.setMaxCompactionLagSeconds(expectedMaxCompactionLagSeconds);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
+      Assert.assertEquals(response.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
+    final int expectedMaxRecordSizeBytes = 7 * BYTES_PER_MB;
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setMaxRecordSizeBytes(expectedMaxRecordSizeBytes),
+        response -> Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), expectedMaxRecordSizeBytes));
+  }
+
+  private void testUpdateBlobTransfer(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setBlobTransferEnabled(true),
+        response -> Assert.assertTrue(response.getStore().isBlobTransferEnabled()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {

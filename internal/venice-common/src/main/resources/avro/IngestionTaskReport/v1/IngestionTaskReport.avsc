@@ -37,21 +37,14 @@
       "default": ""
     },
     {
-      "name": "offsetRecordArray",
-      "type": {
-        "type": "array",
-        "items": "bytes"
-      },
-      "default": []
+      "name": "offsetRecord",
+      "type": ["null", "bytes"],
+      "default": null
     },
     {
       "name": "storeVersionState",
       "type": ["null", "bytes"],
       "default": null
-    },
-    {
-      "name": "leaderFollowerState",
-      "type": "int"
     }
   ]
 }

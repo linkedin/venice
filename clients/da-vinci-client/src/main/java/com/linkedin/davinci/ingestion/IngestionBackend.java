@@ -2,24 +2,15 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import java.io.Closeable;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 
 public interface IngestionBackend extends Closeable {
-  default void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
-    startConsumption(storeConfig, partition, Optional.empty());
-  }
-
-  void startConsumption(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      Optional<LeaderFollowerStateType> leaderState);
+  void startConsumption(VeniceStoreVersionConfig storeConfig, int partition);
 
   CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
 

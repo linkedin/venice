@@ -11,12 +11,10 @@ import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
@@ -504,13 +502,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  public List<byte[]> multiGet(int partitionId, List<byte[]> keys) throws VeniceException {
-    return executeWithSafeGuard(partitionId, () -> {
-      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-      return partition.multiGet(keys);
-    });
-  }
-
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -551,13 +542,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       return partition.getReplicationMetadata(key);
-    });
-  }
-
-  public List<byte[]> multiGetReplicationMetadata(int partitionId, List<byte[]> keys) {
-    return executeWithSafeGuard(partitionId, () -> {
-      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-      return partition.multiGetReplicationMetadata(keys);
     });
   }
 
@@ -681,16 +665,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public synchronized boolean containsPartition(int partitionId) {
     return this.partitionList.get(partitionId) != null;
-  }
-
-  public synchronized boolean containsPartition(int userPartition, PartitionerConfig partitionerConfig) {
-    int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
-    for (int subPartition: PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-      if (!containsPartition(subPartition)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /**

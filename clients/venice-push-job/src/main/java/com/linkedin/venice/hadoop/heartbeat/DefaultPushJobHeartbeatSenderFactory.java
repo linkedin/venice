@@ -127,10 +127,8 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       int partitionNum) {
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(partitionerConfig.getPartitionerParams());
-    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-        partitionerConfig.getPartitionerClass(),
-        partitionerConfig.getAmplificationFactor(),
-        new VeniceProperties(partitionerProperties));
+    VenicePartitioner venicePartitioner = PartitionUtils
+        .getVenicePartitioner(partitionerConfig.getPartitionerClass(), new VeniceProperties(partitionerProperties));
     return new VeniceWriterFactory(veniceWriterProperties).createVeniceWriter(
         new VeniceWriterOptions.Builder(heartbeatKafkaTopicName).setPartitioner(venicePartitioner)
             .setPartitionCount(partitionNum)

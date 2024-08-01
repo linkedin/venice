@@ -12,7 +12,7 @@ import org.apache.avro.Schema;
  *
  * The input is what is consumed from the raw Venice data set, whereas the output is what is stored
  * into Da Vinci's local storage (e.g. RocksDB).
- * 
+ *
  * Please note that your implementation should be thread safe, and that schema evolution is possible.
  *
  * N.B.: The inputs are wrapped inside {@link Lazy} so that if the implementation need not look at
@@ -61,9 +61,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
 
   /**
    * This function is called as a lifecycle event at the beginning of an ingestion task.
-   * 
+   *
    * By default, it performs no operation.
-   * 
+   *
    */
   public void onStartIngestionTask() {
     return;
@@ -71,9 +71,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
 
   /**
    * This function is called as a lifecycle event at the end of an ingestion task
-   * 
+   *
    * By default, it performs no operation.
-   * 
+   *
    */
   public void onEndIngestionTask() {
     return;
@@ -81,7 +81,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
 
   /**
    * Takes a value, serializes it and wrap it in a ByteByffer.
-   * 
+   *
    * @param schema the Avro schema defining the serialization format
    * @param value value the value to be serialized
    * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
@@ -96,7 +96,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * 
+   *
    * @return the storeVersion
    */
   public final int getStoreVersion() {

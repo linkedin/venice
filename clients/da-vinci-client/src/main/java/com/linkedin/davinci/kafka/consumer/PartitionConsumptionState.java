@@ -14,13 +14,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
@@ -33,8 +31,6 @@ import org.apache.avro.generic.GenericRecord;
 public class PartitionConsumptionState {
   private final String replicaId;
   private final int partition;
-  private final int amplificationFactor;
-  private final int userPartition;
   private final boolean hybrid;
   private final OffsetRecord offsetRecord;
 
@@ -134,17 +130,6 @@ public class PartitionConsumptionState {
   private final ConcurrentMap<ByteArrayKey, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
   /**
-   * In-memory hash set which keeps track of all previous status this sub-partition has reported. It is the in-memory
-   * cache of the previousStatuses field in {@link com.linkedin.venice.kafka.protocol.state.PartitionState} inside
-   * {@link OffsetRecord}.
-   * The reason to have this HashSet is to maintain correctness and efficiency for the sub-partition status report
-   * condition checking. The previousStatus is a generated CharSequence to CharSequence map and we need to iterate over
-   * all the records in it to in order to compare with incoming status string. Without explicit locking, this iteration
-   * might throw {@link java.util.ConcurrentModificationException} in multi-thread environments.
-   */
-  private final Set<String> previousStatusSet = VeniceConcurrentHashMap.newKeySet();
-
-  /**
    * This field is used to track whether the last queued record has been fully processed or not.
    * For Leader role, it is redundant from {@literal ProducedRecord#persistedToDBFuture} since it is tracking
    * the completeness end to end, since this field won't be set.
@@ -218,16 +203,9 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
-  public PartitionConsumptionState(
-      String replicaId,
-      int partition,
-      int amplificationFactor,
-      OffsetRecord offsetRecord,
-      boolean hybrid) {
+  public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
-    this.amplificationFactor = amplificationFactor;
-    this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
@@ -246,11 +224,6 @@ public class PartitionConsumptionState {
     this.latestMessageConsumedTimestampInMs = currentTimeInMs;
     this.latestPolledMessageTimestampInMs = currentTimeInMs;
     this.consumptionStartTimeInMs = currentTimeInMs;
-
-    // Restore previous status from offset record.
-    for (CharSequence status: offsetRecord.getSubPartitionStatus().keySet()) {
-      previousStatusSet.add(status.toString());
-    }
 
     // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the
     // checkpoint upstream offset map
@@ -285,14 +258,6 @@ public class PartitionConsumptionState {
 
   public void setLastVTProduceCallFuture(CompletableFuture<Void> lastVTProduceCallFuture) {
     this.lastVTProduceCallFuture = lastVTProduceCallFuture;
-  }
-
-  public int getUserPartition() {
-    return userPartition;
-  }
-
-  public int getAmplificationFactor() {
-    return this.amplificationFactor;
   }
 
   public OffsetRecord getOffsetRecord() {
@@ -587,22 +552,13 @@ public class PartitionConsumptionState {
    * @return
    */
   public TransientRecord mayRemoveTransientRecord(int kafkaClusterId, long kafkaConsumedOffset, byte[] key) {
-    TransientRecord removed = transientRecordMap.computeIfPresent(ByteArrayKey.wrap(key), (k, v) -> {
+    return transientRecordMap.computeIfPresent(ByteArrayKey.wrap(key), (k, v) -> {
       if (v.kafkaClusterId == kafkaClusterId && v.kafkaConsumedOffset == kafkaConsumedOffset) {
         return null;
       } else {
         return v;
       }
     });
-    return removed;
-  }
-
-  public int getSourceTopicPartitionNumber(PubSubTopic topic) {
-    if (topic.isRealTime()) {
-      return getUserPartition();
-    } else {
-      return getPartition();
-    }
   }
 
   public PubSubTopicPartition getSourceTopicPartition(PubSubTopic topic) {
@@ -610,18 +566,11 @@ public class PartitionConsumptionState {
      * TODO: Consider whether the {@link PubSubTopicPartition} instance might be cacheable.
      * It might not be easily cacheable if we pass different topics as input param (which it seems we do).
      */
-    return new PubSubTopicPartitionImpl(topic, getSourceTopicPartitionNumber(topic));
+    return new PubSubTopicPartitionImpl(topic, getPartition());
   }
 
   public int getTransientRecordMapSize() {
     return transientRecordMap.size();
-  }
-
-  public void recordSubPartitionStatus(String subPartitionStatus) {
-    if (this.getOffsetRecord() != null) {
-      this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);
-    }
-    previousStatusSet.add(subPartitionStatus);
   }
 
   public boolean skipKafkaMessage() {

@@ -7,16 +7,31 @@ permalink: /docs/dev_guide/how_to/workspace_setup
 ---
 
 # Venice Workspace Setup
+We recommend using a Unix-based environment for development, such as Linux or macOS.
+If you're on Windows, we recommend using [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install).
 
-## Checking out the code
-Venice's source code is hosted on [GitHub](https://www.github.com/linkedin/venice). Check out the code using:
+## Fork the Venice Repository
+Fork the Venice repo at https://github.com/linkedin/venice
+
+## Setting up the repository locally
 ```shell
-git clone https://github.com/linkedin/venice.git
+git clone https://github.com/${githubUsername}/venice.git
+cd venice
+git remote add upstream https://github.com/linkedin/venice.git
+git fetch upstream
 ```
 
+## Setting up Java
+We use Java 17 for development. You can download it [here](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html).
+
 ## Setting up the IDE
-We recommend using IntelliJ IDEA for development, and provide instructions for it. However, any IDE of your choice
-should work. To set up IntelliJ, run:
+We recommend using IntelliJ IDEA for development to take advantage of the debugger, and provide instructions for it.
+However, any IDE of your choice should work.
+
+To get the free version of IntelliJ IDEA visit the [JetBrains website](https://www.jetbrains.com/idea/download/), and
+download the Community Edition version (not Ultimate). It should be the second download button on the page.
+
+To set up IntelliJ, run:
 ```shell
 ./gradlew idea
 ```

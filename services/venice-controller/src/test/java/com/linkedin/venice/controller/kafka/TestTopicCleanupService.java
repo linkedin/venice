@@ -15,7 +15,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -78,9 +78,9 @@ public class TestTopicCleanupService {
         .getSourceOfTruthAdminAdapterFactory();
     doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
 
-    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(veniceControllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn("local,remote").when(veniceControllerConfig).getChildDatacenters();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
+    doReturn(Utils.setOf("local", "remote")).when(controllerConfig).getChildDatacenters();
     Map<String, String> dataCenterToBootstrapServerMap = new HashMap<>();
     dataCenterToBootstrapServerMap.put("local", "local");
     dataCenterToBootstrapServerMap.put("remote", "remote");
@@ -443,9 +443,9 @@ public class TestTopicCleanupService {
   public void testCleanVeniceTopicsBlockRTTopicDeletionWhenMisconfigured() {
     // RT topic deletion should be blocked when controller is misconfigured
     // Mis-configured where local data center is not in the child data centers list
-    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(veniceControllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn("remote").when(veniceControllerConfig).getChildDatacenters();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
+    doReturn(Collections.singleton("remote")).when(controllerConfig).getChildDatacenters();
     TopicCleanupService blockedTopicCleanupService = new TopicCleanupService(
         admin,
         veniceControllerMultiClusterConfig,

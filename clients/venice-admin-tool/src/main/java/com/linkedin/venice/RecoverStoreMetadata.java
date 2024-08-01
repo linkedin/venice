@@ -215,8 +215,7 @@ public class RecoverStoreMetadata {
         updateParams.setPartitionCount(deletedStore.getPartitionCount());
         if (deletedStore.getPartitionerConfig() != null) {
           updateParams.setPartitionerClass(deletedStore.getPartitionerConfig().getPartitionerClass())
-              .setPartitionerParams(deletedStore.getPartitionerConfig().getPartitionerParams())
-              .setAmplificationFactor(deletedStore.getPartitionerConfig().getAmplificationFactor());
+              .setPartitionerParams(deletedStore.getPartitionerConfig().getPartitionerParams());
         }
         updateParams.setStorageQuotaInByte(deletedStore.getStorageQuotaInByte())
             .setHybridStoreDiskQuotaEnabled(deletedStore.isHybridStoreDiskQuotaEnabled())
@@ -256,6 +255,7 @@ public class RecoverStoreMetadata {
             .setStorageNodeReadQuotaEnabled(deletedStore.isStorageNodeReadQuotaEnabled())
             .setMinCompactionLagSeconds(deletedStore.getMinCompactionLagSeconds())
             .setMaxCompactionLagSeconds(deletedStore.getMaxCompactionLagSeconds())
+            .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "

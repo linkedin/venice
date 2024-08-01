@@ -262,10 +262,8 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
         StorePartitionerConfig partitionerConfig = v.partitionerConfig;
         Properties params = new Properties();
         params.putAll(partitionerConfig.partitionerParams);
-        return PartitionUtils.getVenicePartitioner(
-            partitionerConfig.partitionerClass.toString(),
-            partitionerConfig.amplificationFactor,
-            new VeniceProperties(params));
+        return PartitionUtils
+            .getVenicePartitioner(partitionerConfig.partitionerClass.toString(), new VeniceProperties(params));
       });
 
       if (CompressionStrategy.valueOf(v.compressionStrategy).equals(CompressionStrategy.ZSTD_WITH_DICT)

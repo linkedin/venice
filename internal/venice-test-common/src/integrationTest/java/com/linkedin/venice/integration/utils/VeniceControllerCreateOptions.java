@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 
 
 public class VeniceControllerCreateOptions {
+  private final boolean multiRegion;
   private final boolean isParent;
   private final boolean sslToKafka;
   private final boolean d2Enabled;
@@ -26,7 +27,6 @@ public class VeniceControllerCreateOptions {
   private final int partitionSize;
   private final int numberOfPartitions;
   private final int maxNumberOfPartitions;
-  private final int minActiveReplica;
   private final long rebalanceDelayMs;
   private final String[] clusterNames;
   private final Map<String, String> clusterToD2;
@@ -39,13 +39,13 @@ public class VeniceControllerCreateOptions {
   private final String regionName;
 
   private VeniceControllerCreateOptions(Builder builder) {
+    multiRegion = builder.multiRegion;
     sslToKafka = builder.sslToKafka;
     d2Enabled = builder.d2Enabled;
     replicationFactor = builder.replicationFactor;
     partitionSize = builder.partitionSize;
     numberOfPartitions = builder.numberOfPartitions;
     maxNumberOfPartitions = builder.maxNumberOfPartitions;
-    minActiveReplica = builder.minActiveReplica;
     rebalanceDelayMs = builder.rebalanceDelayMs;
     clusterNames = builder.clusterNames;
     clusterToD2 = builder.clusterToD2;
@@ -64,6 +64,9 @@ public class VeniceControllerCreateOptions {
     return new StringBuilder().append("regionName:")
         .append(regionName)
         .append(", ")
+        .append("multiRegion:")
+        .append(multiRegion)
+        .append(", ")
         .append("isParent:")
         .append(isParent)
         .append(", ")
@@ -81,9 +84,6 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("maxNumberOfPartitions:")
         .append(maxNumberOfPartitions)
-        .append(", ")
-        .append("minActiveReplica:")
-        .append(minActiveReplica)
         .append(", ")
         .append("rebalanceDelayMs:")
         .append(rebalanceDelayMs)
@@ -124,6 +124,10 @@ public class VeniceControllerCreateOptions {
         .toString();
   }
 
+  public boolean isMultiRegion() {
+    return multiRegion;
+  }
+
   public boolean isParent() {
     return isParent;
   }
@@ -150,10 +154,6 @@ public class VeniceControllerCreateOptions {
 
   public int getMaxNumberOfPartitions() {
     return maxNumberOfPartitions;
-  }
-
-  public int getMinActiveReplica() {
-    return minActiveReplica;
   }
 
   public long getRebalanceDelayMs() {
@@ -197,17 +197,16 @@ public class VeniceControllerCreateOptions {
   }
 
   public static class Builder {
+    private boolean multiRegion = false;
     private final String[] clusterNames;
     private final ZkServerWrapper zkServer;
     private final PubSubBrokerWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
-    private boolean isMinActiveReplicaSet = false;
     private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
     private int numberOfPartitions = DEFAULT_NUMBER_OF_PARTITIONS;
     private int maxNumberOfPartitions = DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-    private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private Map<String, String> clusterToD2 = null;
     private Map<String, String> clusterToServerD2 = null;
@@ -225,6 +224,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder(String clusterName, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this(new String[] { clusterName }, zkServer, kafkaBroker);
+    }
+
+    public Builder multiRegion(boolean multiRegion) {
+      this.multiRegion = multiRegion;
+      return this;
     }
 
     public Builder sslToKafka(boolean sslToKafka) {
@@ -254,12 +258,6 @@ public class VeniceControllerCreateOptions {
 
     public Builder maxNumberOfPartitions(int maxNumberOfPartitions) {
       this.maxNumberOfPartitions = maxNumberOfPartitions;
-      return this;
-    }
-
-    public Builder minActiveReplica(int minActiveReplica) {
-      this.minActiveReplica = minActiveReplica;
-      this.isMinActiveReplicaSet = true;
       return this;
     }
 
@@ -299,9 +297,6 @@ public class VeniceControllerCreateOptions {
     }
 
     private void verifyAndAddParentControllerSpecificDefaults() {
-      if (!isMinActiveReplicaSet) {
-        minActiveReplica = replicationFactor > 1 ? replicationFactor - 1 : replicationFactor;
-      }
       extraProperties.setProperty(LOCAL_REGION_NAME, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
       if (!extraProperties.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
         extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
@@ -315,12 +310,6 @@ public class VeniceControllerCreateOptions {
       }
     }
 
-    private void verifyAndAddChildControllerSpecificDefaults() {
-      if (!isMinActiveReplicaSet) {
-        minActiveReplica = replicationFactor;
-      }
-    }
-
     private void addDefaults() {
       if (extraProperties == null) {
         extraProperties = new Properties();
@@ -328,8 +317,6 @@ public class VeniceControllerCreateOptions {
 
       if (childControllers != null && childControllers.length != 0) {
         verifyAndAddParentControllerSpecificDefaults();
-      } else {
-        verifyAndAddChildControllerSpecificDefaults();
       }
 
       if (regionName == null || regionName.isEmpty()) {

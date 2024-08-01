@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -11,7 +10,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import org.testng.Assert;
@@ -106,13 +104,6 @@ public class ConsumerActionTest {
     assertNotEquals(ca2, ca5);
     assertNotEquals(ca3, ca5);
     assertNotEquals(ca4, ca5);
-
-    ConsumerAction ca6 =
-        new ConsumerAction(ConsumerActionType.KILL, pubSubTopicPartition3, 0, Optional.of(LEADER), false);
-    assertNotEquals(ca2, ca6);
-    assertNotEquals(ca3, ca6);
-    assertNotEquals(ca4, ca6);
-    assertNotEquals(ca5, ca6);
   }
 
   private ConsumerAction getRandomAction(String topic, int partition, int sequenceNumber, int priority) {

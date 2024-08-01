@@ -3,12 +3,14 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.writer.VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -208,7 +210,6 @@ public class PushJobDetailsTest {
         }
       });
     }
-
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -247,6 +248,47 @@ public class PushJobDetailsTest {
           START_DATA_WRITER_JOB.getValue(),
           "Unexpected latest push job checkpoint reported");
       assertFalse(value.failureDetails.toString().isEmpty());
+    }
+  }
+
+  /**
+   * Test that the push job details are correctly updated when a large record is pushed.
+   * The settings `MAX_RECORD_SIZE_BYTES` and `MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES` are set to
+   * extremely low values, so that regular records will trigger the "large" condition and fail to be pushed.
+   */
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testPushJobDetailsRecordTooLarge() throws ExecutionException, InterruptedException {
+    String testStoreName = "test-push-store";
+    parentControllerClient.createNewStore(
+        testStoreName,
+        "test-user",
+        recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
+        recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
+    // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException
+    final UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1)
+        .setPartitionCount(2)
+        .setChunkingEnabled(true)
+        .setMaxRecordSizeBytes(0);
+    parentControllerClient.updateStore(testStoreName, queryParams);
+
+    Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
+    pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+    pushJobProps.setProperty(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "0");
+    try (final VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
+      assertThrows(VeniceException.class, testPushJob::run); // Push job should fail due to large record
+    }
+    try (final AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig
+                .defaultSpecificClientConfig(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
+                .setVeniceURL(childRegionClusterWrapper.getRandomRouterURL()))) {
+      final PushJobStatusRecordKey key = new PushJobStatusRecordKey(testStoreName, 1);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertNotNull(client.get(key).get(), "RT writes are not reflected in store yet");
+      });
+      final PushJobDetails value = client.get(key).get();
+      assertEquals(value.pushJobLatestCheckpoint.intValue(), RECORD_TOO_LARGE_FAILED.getValue());
+      assertFalse(value.failureDetails.toString().isEmpty(), "Assert failure recorded in PushJobDetails");
     }
   }
 }

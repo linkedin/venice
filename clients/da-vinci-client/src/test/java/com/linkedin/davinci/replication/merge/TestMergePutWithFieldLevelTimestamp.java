@@ -1,6 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdUtils.getRmdTimestampType;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
@@ -9,6 +11,7 @@ import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchema
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -53,6 +56,49 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         0,
         0);
     Assert.assertTrue(mergeResult.isUpdateIgnored());
+  }
+
+  @Test
+  public void testNewPutConvertsRmdFormat() {
+    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(new SchemaEntry(2, userSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            storeName,
+            true,
+            true);
+
+    GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(userRmdSchemaV1, 10L);
+    final int oldValueSchemaID = 1;
+
+    GenericRecord newValueRecord = new GenericData.Record(userSchemaV1);
+    newValueRecord.put("id", "default_id");
+    newValueRecord.put("name", "default_name");
+    newValueRecord.put("age", 100);
+    ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV1).serialize(newValueRecord));
+
+    MergeConflictResult mergeResult = mergeConflictResolver.put(
+        Lazy.of(() -> null),
+        new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord),
+        newValueBytes,
+        11L,
+        1, // Same as the old value schema ID.
+        1L,
+        0,
+        0);
+    Assert.assertFalse(mergeResult.isUpdateIgnored());
+    Object timestampObject = mergeResult.getRmdRecord().get(TIMESTAMP_FIELD_POS);
+    RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
+    Assert.assertEquals(rmdTimestampType, RmdTimestampType.PER_FIELD_TIMESTAMP);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("id"), 11L);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("name"), 11L);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("age"), 11L);
   }
 
   @Test

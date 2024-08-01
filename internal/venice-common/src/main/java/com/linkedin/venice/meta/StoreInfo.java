@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,7 @@ public class StoreInfo {
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
+    storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     return storeInfo;
@@ -310,6 +312,8 @@ public class StoreInfo {
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
+
+  private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   private boolean unusedSchemaDeletionEnabled;
 
@@ -770,6 +774,14 @@ public class StoreInfo {
 
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     this.maxCompactionLagSeconds = maxCompactionLagSeconds;
+  }
+
+  public int getMaxRecordSizeBytes() {
+    return this.maxRecordSizeBytes;
+  }
+
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
+    this.maxRecordSizeBytes = maxRecordSizeBytes;
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
