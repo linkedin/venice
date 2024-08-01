@@ -47,7 +47,11 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue =
         asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryQueue();
-    asyncRetryingServiceDiscoveryAnnouncer.register();
+    try {
+      asyncRetryingServiceDiscoveryAnnouncer.register();
+    } catch (Exception e) {
+      Assert.fail("The method call should not throw an exception.");
+    }
 
     Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertTrue(retryQueue.contains(announcer2));
@@ -86,7 +90,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     try {
       asyncRetryingServiceDiscoveryAnnouncer.unregister();
     } catch (Exception e) {
-      Assert.fail("The method should not throw an exception.");
+      Assert.fail("The method call should not throw an exception.");
     }
   }
 
