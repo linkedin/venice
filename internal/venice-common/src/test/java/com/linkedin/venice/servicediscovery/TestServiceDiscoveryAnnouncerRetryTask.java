@@ -12,14 +12,11 @@ import com.linkedin.venice.utils.Time;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestServiceDiscoveryAnnouncerRetryTask {
-  private static final Logger LOGGER = LogManager.getLogger(TestServiceDiscoveryAnnouncerRetryTask.class);
   private ServiceDiscoveryAnnouncer announcer1 = mock(ServiceDiscoveryAnnouncer.class);
   private ServiceDiscoveryAnnouncer announcer2 = mock(ServiceDiscoveryAnnouncer.class);
   private ServiceDiscoveryAnnouncer announcer3 = mock(ServiceDiscoveryAnnouncer.class);
