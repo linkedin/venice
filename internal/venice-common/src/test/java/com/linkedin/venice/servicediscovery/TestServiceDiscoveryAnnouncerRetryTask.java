@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.servicediscovery;
 
 import static com.linkedin.venice.utils.Utils.sleep;
 import static org.mockito.Mockito.doNothing;
@@ -7,13 +7,11 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 
-import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.utils.Time;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -29,9 +27,8 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
 
   /**
    * Below is the expected workflow of the test: <br>
-   * 1) {@link ServiceDiscoveryAnnouncerHelper#registerServiceDiscoveryAnnouncers(List, BlockingQueue)} is called.
-   * The result of the call is that announcer3 successfully registers, and announcer1 and announcer2 fail to register,
-   * so retryQueue is [announcer1, announcer2] <br>
+   * 1) {@link AsyncRetryingServiceDiscoveryAnnouncer#register()} is called. The result of the call is that announcer3
+   * successfully registers, and announcer1 and announcer2 fail to register, so retryQueue is [announcer1, announcer2] <br>
    * 2) Retry thread starts and retries registering the announcers in retryQueue <br>
    * 3) After 30 seconds, announcer1 retries registering and fails, so retryQueue is [announcer2, announcer1] <br>
    * 4) After 30 seconds, announcer2 retries registering and successfully registers, so retryQueue is [announcer1] <br>
@@ -39,27 +36,18 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
    */
   @Test
   public void testRegisterServiceDiscoveryAnnouncers() {
-    reset(announcer1, announcer2, announcer3);
+    reset(announcer1, announcer2, announcer3, config);
     doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer1).register();
     doThrow(new RuntimeException()).doNothing().when(announcer2).register();
     doNothing().when(announcer3).register();
     doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
     long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
-    BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
-    ServiceDiscoveryAnnouncerHelper.registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, retryQueue);
-    Assert.assertTrue(retryQueue.contains(announcer1));
-    Assert.assertTrue(retryQueue.contains(announcer2));
-    Assert.assertFalse(retryQueue.contains(announcer3));
-    Assert.assertEquals(retryQueue.peek(), announcer1);
-    Assert.assertEquals(retryQueue.size(), 2);
-
-    ServiceDiscoveryAnnouncerRetryTask retryTask =
-        new ServiceDiscoveryAnnouncerRetryTask(retryQueue, serviceDiscoveryRegistrationRetryMS);
-    Thread retryThread = new Thread(retryTask);
-    LOGGER.info("Starting retry thread");
-    retryThread.start();
-    LOGGER.info("Retry thread started");
+    AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
+        new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
+    BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue =
+        asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryQueue();
+    asyncRetryingServiceDiscoveryAnnouncer.register();
 
     Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertTrue(retryQueue.contains(announcer2));
@@ -82,23 +70,24 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertFalse(retryQueue.contains(announcer1));
     Assert.assertEquals(retryQueue.size(), 0);
-
-    LOGGER.info("Stopping retry thread");
-    retryThread.interrupt();
-    LOGGER.info("Retry thread stopped");
   }
 
   @Test
   public void testUnregisterServiceDiscoveryAnnouncers() {
+    reset(announcer1, announcer2, announcer3, config);
     doThrow(new RuntimeException()).when(announcer1).unregister();
     doNothing().when(announcer2).unregister();
     doNothing().when(announcer3).unregister();
+    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
-    Map<ServiceDiscoveryAnnouncer, String> map =
-        ServiceDiscoveryAnnouncerHelper.unregisterServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers);
-    Assert.assertEquals(map.get(announcer1), "Failed to unregister from service discovery");
-    Assert.assertEquals(map.get(announcer2), "Unregistered from service discovery");
-    Assert.assertEquals(map.get(announcer3), "Unregistered from service discovery");
+    AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
+        new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
+    try {
+      asyncRetryingServiceDiscoveryAnnouncer.unregister();
+    } catch (Exception e) {
+      Assert.fail("The method should not throw an exception.");
+    }
   }
 
   private void putTestToSleep(long ms) {

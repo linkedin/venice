@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -31,8 +32,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -60,9 +59,7 @@ public class VeniceController {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
-  private final Thread serviceDiscoveryAnnouncerRetryThread;
-  private static final BlockingQueue<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncerRetryQueue =
-      new LinkedBlockingQueue<>();
+  private final AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer;
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
@@ -133,10 +130,8 @@ public class VeniceController {
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
     long serviceDiscoveryRegistrationRetryMS = multiClusterConfigs.getServiceDiscoveryRegistrationRetryMS();
-    ServiceDiscoveryAnnouncerRetryTask retryTask = new ServiceDiscoveryAnnouncerRetryTask(
-        serviceDiscoveryAnnouncerRetryQueue,
-        serviceDiscoveryRegistrationRetryMS);
-    this.serviceDiscoveryAnnouncerRetryThread = new Thread(retryTask);
+    this.asyncRetryingServiceDiscoveryAnnouncer =
+        new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     createServices();
   }
 
@@ -259,9 +254,7 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
-    ServiceDiscoveryAnnouncerHelper
-        .registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, serviceDiscoveryAnnouncerRetryQueue);
-    serviceDiscoveryAnnouncerRetryThread.start();
+    asyncRetryingServiceDiscoveryAnnouncer.register();
     LOGGER.info("Controller is started.");
   }
 
@@ -310,9 +303,8 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
-    serviceDiscoveryAnnouncerRetryThread.interrupt();
     // unregister from service discovery first
-    ServiceDiscoveryAnnouncerHelper.unregisterServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers);
+    asyncRetryingServiceDiscoveryAnnouncer.unregister();
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);

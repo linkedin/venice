@@ -1,6 +1,5 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.servicediscovery;
 
-import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import java.util.concurrent.BlockingQueue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -8,18 +7,18 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This class is responsible for retrying the registration of a {@link ServiceDiscoveryAnnouncer} in the case of registration failure.
- * It is a runnable task that is scheduled to register a {@link ServiceDiscoveryAnnouncer} every
+ * It is a runnable task that is scheduled to register a service discovery announcer every
  * {@link ServiceDiscoveryAnnouncerRetryTask#serviceDiscoveryRegistrationRetryMS} milliseconds.
  */
 public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
   private static final Logger LOGGER = LogManager.getLogger(ServiceDiscoveryAnnouncerRetryTask.class);
-  private final BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue;
+  private final BlockingQueue<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncerRetryQueue;
   private final long serviceDiscoveryRegistrationRetryMS;
 
   public ServiceDiscoveryAnnouncerRetryTask(
-      BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue,
+      BlockingQueue<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncerRetryQueue,
       long serviceDiscoveryRegistrationRetryMS) {
-    this.retryQueue = retryQueue;
+    this.serviceDiscoveryAnnouncerRetryQueue = serviceDiscoveryAnnouncerRetryQueue;
     this.serviceDiscoveryRegistrationRetryMS = serviceDiscoveryRegistrationRetryMS;
   }
 
@@ -31,7 +30,7 @@ public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
         LOGGER.info("Thread for retry task sleeping for {} ms", serviceDiscoveryRegistrationRetryMS);
         Thread.sleep(serviceDiscoveryRegistrationRetryMS);
         LOGGER.info("Thread for retry task woke up");
-        announcer = retryQueue.take();
+        announcer = serviceDiscoveryAnnouncerRetryQueue.take();
         announcer.register();
         LOGGER.info("Registered to service discovery: {}", announcer);
       } catch (InterruptedException e) {
@@ -41,7 +40,7 @@ public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
       } catch (Exception e) {
         LOGGER.error("Failed to register to service discovery: {}", announcer, e);
         if (announcer != null) {
-          retryQueue.add(announcer);
+          serviceDiscoveryAnnouncerRetryQueue.add(announcer);
         }
       }
     }
