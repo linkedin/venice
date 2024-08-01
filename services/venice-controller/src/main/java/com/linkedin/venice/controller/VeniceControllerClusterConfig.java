@@ -143,7 +143,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
-import static com.linkedin.venice.ConfigKeys.RETRY_REGISTER_SERVICE_DISCOVERY_ANNOUNCER_MS;
+import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
@@ -505,7 +505,7 @@ public class VeniceControllerClusterConfig {
   private final boolean errorLeaderReplicaFailOverEnabled;
 
   private final Set<String> childDatacenters;
-  private final long retryRegisterServiceDiscoveryAnnouncerMS;
+  private final long serviceDiscoveryRegistrationRetryMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -901,8 +901,8 @@ public class VeniceControllerClusterConfig {
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
         props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
-    this.retryRegisterServiceDiscoveryAnnouncerMS =
-        props.getLong(RETRY_REGISTER_SERVICE_DISCOVERY_ANNOUNCER_MS, 30000L);
+    this.serviceDiscoveryRegistrationRetryMS =
+        props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30 * Time.MS_PER_SECOND);
   }
 
   public VeniceProperties getProps() {
@@ -1564,8 +1564,8 @@ public class VeniceControllerClusterConfig {
     return sourceOfTruthAdminAdapterFactory;
   }
 
-  public long getRetryRegisterServiceDiscoveryAnnouncerMS() {
-    return retryRegisterServiceDiscoveryAnnouncerMS;
+  public long getServiceDiscoveryRegistrationRetryMS() {
+    return serviceDiscoveryRegistrationRetryMS;
   }
 
   /**

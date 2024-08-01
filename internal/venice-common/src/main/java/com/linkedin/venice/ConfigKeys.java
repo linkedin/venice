@@ -206,8 +206,7 @@ public class ConfigKeys {
   /**
    * Time interval to retry registering service discovery announcers that failed to register. By default, this is set to 30000L ms.
    */
-  public static final String RETRY_REGISTER_SERVICE_DISCOVERY_ANNOUNCER_MS =
-      "retry.register.service.discovery.announcer.ms";
+  public static final String SERVICE_DISCOVERY_REGISTRATION_RETRY_MS = "service.discovery.registration.retry.ms";
 
   public static final String FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS =
       "fatal.data.validation.failure.topic.retention.ms";

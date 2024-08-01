@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.utils.Time;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -42,8 +43,8 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer1).register();
     doThrow(new RuntimeException()).doNothing().when(announcer2).register();
     doNothing().when(announcer3).register();
-    doReturn(30000L).when(config).getRetryRegisterServiceDiscoveryAnnouncerMS();
-    long retryRegisterServiceDiscoveryAnnouncerMS = config.getRetryRegisterServiceDiscoveryAnnouncerMS();
+    doReturn(30 * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue = new LinkedBlockingQueue<>();
     ServiceDiscoveryAnnouncerHelper.registerServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers, retryQueue);
@@ -54,7 +55,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     Assert.assertEquals(retryQueue.size(), 2);
 
     ServiceDiscoveryAnnouncerRetryTask retryTask =
-        new ServiceDiscoveryAnnouncerRetryTask(retryQueue, retryRegisterServiceDiscoveryAnnouncerMS);
+        new ServiceDiscoveryAnnouncerRetryTask(retryQueue, serviceDiscoveryRegistrationRetryMS);
     Thread retryThread = new Thread(retryTask);
     LOGGER.info("Starting retry thread");
     retryThread.start();
@@ -66,19 +67,19 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     Assert.assertEquals(retryQueue.peek(), announcer1);
     Assert.assertEquals(retryQueue.size(), 2);
 
-    putTestToSleep(retryRegisterServiceDiscoveryAnnouncerMS + 1000);
+    putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertTrue(retryQueue.contains(announcer2));
     Assert.assertEquals(retryQueue.peek(), announcer2);
     Assert.assertEquals(retryQueue.size(), 2);
 
-    putTestToSleep(retryRegisterServiceDiscoveryAnnouncerMS + 1000);
+    putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertFalse(retryQueue.contains(announcer2));
     Assert.assertEquals(retryQueue.peek(), announcer1);
     Assert.assertEquals(retryQueue.size(), 1);
 
-    putTestToSleep(retryRegisterServiceDiscoveryAnnouncerMS + 1000);
+    putTestToSleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertFalse(retryQueue.contains(announcer1));
     Assert.assertEquals(retryQueue.size(), 0);
 
