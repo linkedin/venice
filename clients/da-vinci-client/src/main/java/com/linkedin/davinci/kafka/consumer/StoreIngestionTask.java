@@ -3243,8 +3243,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
             boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
             if (isValueManifest) {
-              hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
               recordAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize(), currentTimeMs);
+              hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
             } else { // the manifest pertains to a chunked rmd
               hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);
             }
