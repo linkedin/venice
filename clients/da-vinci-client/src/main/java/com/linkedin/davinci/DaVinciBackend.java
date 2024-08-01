@@ -477,10 +477,11 @@ public class DaVinciBackend implements Closeable {
       AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
       aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
       StoreBackend storeBackend = getStoreOrThrow(storeName);
-      storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
 
       if (recordTransformer != null) {
-        recordTransformer.onRecovery(storageEngine, storeBackend, partitions);
+        recordTransformer.onRecovery(storageEngine, storeBackend, partitions, Optional.of(version));
+      } else {
+        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
       }
     });
   }

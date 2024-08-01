@@ -9,13 +9,14 @@ import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
-import org.mockito.Mockito;
 import org.rocksdb.RocksIterator;
 import org.testng.annotations.Test;
 
@@ -64,25 +65,33 @@ public class RecordTransformerTest {
   public void testOnRecovery() {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
 
-    StoreBackend storeBackend = Mockito.mock(StoreBackend.class);
+    StoreBackend storeBackend = mock(StoreBackend.class);
     CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
-    Mockito.when(storeBackend.subscribe(Mockito.any())).thenReturn(future);
+    when(storeBackend.subscribe(any())).thenReturn(future);
 
-    RocksIterator iterator = Mockito.mock(RocksIterator.class);
+    RocksIterator iterator = mock(RocksIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
     when(iterator.key()).thenReturn("mockKey".getBytes());
     when(iterator.value()).thenReturn("mockValue".getBytes());
 
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
-    when(storageEngine.getRocksDBIterator(Mockito.anyInt())).thenReturn(iterator);
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
 
     deleteClassHash();
+    Optional<Version> version = Optional.of(mock(Version.class));
     List<Integer> partitions = new ArrayList<>();
-    partitions.add(1);
-    recordTransformer.onRecovery(storageEngine, storeBackend, partitions);
+    int partitionId = 1;
+    partitions.add(partitionId);
+    recordTransformer.onRecovery(storageEngine, storeBackend, partitions, version);
+    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
+
+    // Reset the mock to clear previous interactions
+    reset(storageEngine);
 
     // Execute the onRecovery method again to test the case where the classHash file exists
-    recordTransformer.onRecovery(storageEngine, storeBackend, partitions);
+    when(storageEngine.getRocksDBIterator(partitionId)).thenReturn(iterator);
+    recordTransformer.onRecovery(storageEngine, storeBackend, partitions, version);
+    verify(storageEngine, never()).clearPartitionOffset(partitionId);
+    verify(storageEngine, times(1)).getRocksDBIterator(partitionId);
   }
 
   @Test

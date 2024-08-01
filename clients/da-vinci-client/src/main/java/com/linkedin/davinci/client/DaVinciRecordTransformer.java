@@ -4,6 +4,7 @@ import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ComplementSet;
@@ -19,6 +20,7 @@ import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.objectweb.asm.ClassReader;
 import org.rocksdb.RocksIterator;
@@ -214,16 +216,18 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   public final void onRecovery(
       AbstractStorageEngine storageEngine,
       StoreBackend storeBackend,
-      List<Integer> partitions) {
+      List<Integer> partitions,
+      Optional<Version> version) {
     int classHash = getClassHash();
     boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
 
     if (!storeRecordsInDaVinci || transformationLogicChanged) {
       // Bootstrap from VT
-      storeBackend.subscribe(ComplementSet.newSet(partitions));
+      for (Integer partition: partitions) {
+        storageEngine.clearPartitionOffset(partition);
+      }
     } else {
       // Bootstrap from local storage
-
       Schema keySchema = getKeyOutputSchema();
       AvroGenericDeserializer<K> keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
 
@@ -242,6 +246,8 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
         }
       }
     }
+
+    storeBackend.subscribe(ComplementSet.newSet(partitions), version);
   }
 
   /**
