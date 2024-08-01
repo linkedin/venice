@@ -307,6 +307,6 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public int getInFlightRequests() {
-    return totalStats.getInflightRequests();
+    return totalStats.getInFlightRequests();
   }
 }

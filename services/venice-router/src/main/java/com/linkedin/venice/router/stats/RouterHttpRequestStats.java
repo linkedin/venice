@@ -381,7 +381,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
   }
 
-  public int getInflightRequests() {
+  public int getInFlightRequests() {
     return currentInFlightRequest.get();
   }
 }
