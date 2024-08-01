@@ -902,7 +902,7 @@ public class VeniceControllerClusterConfig {
     this.danglingTopicOccurrenceThresholdForCleanup =
         props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
     this.serviceDiscoveryRegistrationRetryMS =
-        props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30 * Time.MS_PER_SECOND);
+        props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
   }
 
   public VeniceProperties getProps() {
