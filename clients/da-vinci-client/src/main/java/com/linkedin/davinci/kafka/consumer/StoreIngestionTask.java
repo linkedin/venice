@@ -4017,4 +4017,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
   }
+
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
+  }
+
+  public boolean hasAllPartitionReportedCompleted() {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+      if (entry.getValue().isCompletionReported()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 }

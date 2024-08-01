@@ -340,8 +340,7 @@ public abstract class StoreIngestionTaskTest {
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
   private AbstractStorageEngine mockAbstractStorageEngine;
-  private EventThrottler mockBandwidthThrottler;
-  private EventThrottler mockRecordsThrottler;
+  private IngestionThrottler mockIngestionThrottler;
   private Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private ReadOnlySchemaRepository mockSchemaRepo;
@@ -521,8 +520,7 @@ public abstract class StoreIngestionTaskTest {
 
     mockStorageMetadataService = mock(StorageMetadataService.class);
 
-    mockBandwidthThrottler = mock(EventThrottler.class);
-    mockRecordsThrottler = mock(EventThrottler.class);
+    mockIngestionThrottler = mock(IngestionThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockLocalKafkaConsumer = mock(PubSubConsumerAdapter.class);
@@ -956,8 +954,7 @@ public abstract class StoreIngestionTaskTest {
         localKafkaProps,
         10,
         1,
-        mockBandwidthThrottler,
-        mockRecordsThrottler,
+        mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         mockMetricRepo,
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
@@ -979,8 +976,7 @@ public abstract class StoreIngestionTaskTest {
         remoteKafkaProps,
         10,
         1,
-        mockBandwidthThrottler,
-        mockRecordsThrottler,
+        mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         mockMetricRepo,
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
@@ -995,7 +991,6 @@ public abstract class StoreIngestionTaskTest {
         false);
     remoteKafkaConsumerService.start();
 
-    doReturn(100L).when(mockBandwidthThrottler).getMaxRatePerSecond();
     prepareAggKafkaConsumerServiceMock();
 
     return StoreIngestionTaskFactory.builder()
@@ -1727,8 +1722,8 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(new RandomPollStrategy(1), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
-      verify(mockRecordsThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(1);
-      verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(anyDouble());
+      verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottleRecordRate(1);
+      verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottleBandwidth(anyInt());
     }, aaConfig, null);
   }
 

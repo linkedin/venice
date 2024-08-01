@@ -17,7 +17,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -90,8 +89,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
-      final EventThrottler bandwidthThrottler,
-      final EventThrottler recordsThrottler,
+      final IngestionThrottler ingestionThrottler,
       final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
@@ -140,8 +138,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           liveConfigBasedKafkaThrottlingEnabled
               ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
               : () -> pubSubConsumer.poll(readCycleDelayMs);
-      final IntConsumer bandwidthThrottlerFunction = totalBytes -> bandwidthThrottler.maybeThrottle(totalBytes);
-      final IntConsumer recordsThrottlerFunction = recordsCount -> recordsThrottler.maybeThrottle(recordsCount);
+      final IntConsumer bandwidthThrottlerFunction =
+          totalBytes -> ingestionThrottler.maybeThrottleBandwidth(totalBytes);
+      final IntConsumer recordsThrottlerFunction =
+          recordsCount -> ingestionThrottler.maybeThrottleRecordRate(recordsCount);
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
           sharedConsumerNonExistingTopicCleanupDelayMS,
           1000,
@@ -400,8 +400,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         Properties consumerProperties,
         long readCycleDelayMs,
         int numOfConsumersPerKafkaCluster,
-        EventThrottler bandwidthThrottler,
-        EventThrottler recordsThrottler,
+        IngestionThrottler ingestionThrottler,
         KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
         MetricsRepository metricsRepository,
         String kafkaClusterAlias,
