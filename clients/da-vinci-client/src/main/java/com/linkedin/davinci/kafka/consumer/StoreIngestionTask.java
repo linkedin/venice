@@ -2429,7 +2429,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
 
-  protected abstract void recordAssembledRecordSizeRatio(long recordSize, long currentTimeMs);
+  protected abstract void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs);
+
+  protected abstract double calculateAssembledRecordSizeRatio(long recordSize);
 
   public abstract long getBatchReplicationLag();
 
@@ -3243,7 +3245,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
             boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
             if (isValueManifest) {
-              recordAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize(), currentTimeMs);
+              double ratio = calculateAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize());
+              recordAssembledRecordSizeRatio(ratio, currentTimeMs);
               hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
             } else { // the manifest pertains to a chunked rmd
               hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);

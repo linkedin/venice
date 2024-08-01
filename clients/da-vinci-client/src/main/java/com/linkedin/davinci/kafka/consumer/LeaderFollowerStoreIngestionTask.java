@@ -1901,9 +1901,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected final void recordAssembledRecordSizeRatio(long size, long currentTimeMs) {
+  protected final double calculateAssembledRecordSizeRatio(long recordSize) {
+    return (double) recordSize / maxRecordSizeBytes;
+  }
+
+  @Override
+  protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
     if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
-      hostLevelIngestionStats.recordAssembledRecordSizeRatio((double) size / maxRecordSizeBytes, currentTimeMs);
+      hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
     }
   }
 
