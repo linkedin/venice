@@ -3244,15 +3244,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
             ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
             boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
-            if (isValueManifest) {
-              double ratio = calculateAssembledRecordSizeRatio(keyLen + chunkedValueManifest.getSize());
-              recordAssembledRecordSizeRatio(ratio, currentTimeMs);
-              hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
+            if (isValueManifest) { // the manifest pertains to a chunked value
+              int recordSize = keyLen + chunkedValueManifest.getSize();
+              recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
+              hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
             } else { // the manifest pertains to a chunked rmd
               hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);
             }
           } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
-            LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
+            LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record / RMD size", e);
           }
         }
 
