@@ -30,7 +30,7 @@ public class ServiceDiscoveryAnnouncerRetryTask implements Runnable {
    */
   @Override
   public void run() {
-    while (true) {
+    while (!serviceDiscoveryAnnouncerRetryQueue.isEmpty()) {
       try {
         ServiceDiscoveryAnnouncer availableAnnouncer = serviceDiscoveryAnnouncerRetryQueue.take();
         List<ServiceDiscoveryAnnouncer> announcerList = new ArrayList<>();

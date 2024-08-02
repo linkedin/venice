@@ -60,7 +60,8 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
    * 2) Retry thread starts and retries registering the announcers in the queue <br>
    * 3) announcer1 retries registering and fails, and announcer2 retries registering and succeeds, so {@code retryQueue=[announcer1]} <br>
    * 4) The thread sleeps for 30 seconds <br>
-   * 5) announcer1 retries registering and succeeds, so {@code retryQueue=[]}
+   * 5) announcer1 retries registering and succeeds, so {@code retryQueue=[]} <br>
+   * 6) The thread sleeps for 30 seconds and queue is empty, so the thread exits
    */
   @Test
   public void testRegisterServiceDiscoveryAnnouncers() {
@@ -93,6 +94,9 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     Assert.assertFalse(retryQueue.contains(announcer2));
     Assert.assertFalse(retryQueue.contains(announcer3));
     Assert.assertEquals(retryQueue.size(), 0);
+
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    Assert.assertFalse(asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryThread().isAlive());
   }
 
   /**
@@ -107,7 +111,8 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
    * 6) The thread sleeps for 30 seconds <br>
    * 7) announcer1 retries registering and succeeds, and announcer2 retries registering and fails, so {@code retryQueue=[announcer2]} <br>
    * 8) The thread sleeps for 30 seconds <br>
-   * 9) announcer2 retries registering and succeeds, so {@code retryQueue=[]}
+   * 9) announcer2 retries registering and succeeds, so {@code retryQueue=[]} <br>
+   * 10) The thread sleeps for 30 seconds and queue is empty, so the thread exits
    */
   @Test
   public void testAddToRetryQueueMultipleTimes() {
@@ -163,6 +168,9 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     Assert.assertFalse(retryQueue.contains(announcer2));
     Assert.assertFalse(retryQueue.contains(announcer3));
     Assert.assertEquals(retryQueue.size(), 0);
+
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    Assert.assertFalse(asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryThread().isAlive());
   }
 
   @Test
