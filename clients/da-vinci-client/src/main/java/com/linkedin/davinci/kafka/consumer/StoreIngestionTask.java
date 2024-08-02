@@ -2429,6 +2429,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
 
+  protected void recordAssembledRecordSize(Put put, int keyLen, long currentTimeMs) {
+    try {
+      ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
+          ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
+          AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+      ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
+      boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
+      if (isValueManifest) { // the manifest pertains to a chunked value
+        int recordSize = keyLen + chunkedValueManifest.getSize();
+        recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
+        hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+      } else { // the manifest pertains to a chunked rmd
+        hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);
+      }
+    } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
+      LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record / RMD size", e);
+    }
+  }
+
   protected abstract void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs);
 
   protected abstract double calculateAssembledRecordSizeRatio(long recordSize);
@@ -3238,22 +3257,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (metricsEnabled && recordLevelMetricEnabled.get()
             && put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-          try {
-            ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
-                ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
-                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-            ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
-            boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
-            if (isValueManifest) { // the manifest pertains to a chunked value
-              int recordSize = keyLen + chunkedValueManifest.getSize();
-              recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
-              hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
-            } else { // the manifest pertains to a chunked rmd
-              hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);
-            }
-          } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
-            LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record / RMD size", e);
-          }
+          recordAssembledRecordSize(put, keyLen, currentTimeMs); // must be before recordTransformer changes putValue
         }
 
         // Check if put.getSchemaId is positive, if not default to 1
