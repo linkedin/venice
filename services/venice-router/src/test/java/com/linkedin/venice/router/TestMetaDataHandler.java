@@ -1618,9 +1618,9 @@ public class TestMetaDataHandler {
 
     Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
       {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-        put("ltx1-test1.prod.linkedin.com_137", 1);
-        put("ltx1-test2.prod.linkedin.com_137", 1);
+        put("ltx1-test.prod.linkedin.com_137", ExecutionStatus.COMPLETED.getValue());
+        put("ltx1-test1.prod.linkedin.com_137", ExecutionStatus.NOT_CREATED.getValue());
+        put("ltx1-test2.prod.linkedin.com_137", ExecutionStatus.COMPLETED.getValue());
       }
     };
 

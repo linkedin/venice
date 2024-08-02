@@ -554,12 +554,43 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           Integer.parseInt(storePartition),
           Optional.empty());
 
+      if (!instances.isEmpty()) {
+        LOGGER.info(
+            "Instances for store: {} version: {} partition: {} are: {}",
+            storeName,
+            storeVersion,
+            storePartition,
+            instances);
+      } else {
+        LOGGER.info(
+            "No instances found for store: {} version: {} partition: {}",
+            storeName,
+            storeVersion,
+            storePartition);
+      }
+
       List<String> liveNodeHostNames = instances.entrySet()
           .stream()
           .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
           .map(Map.Entry::getKey)
           .map(CharSequence::toString)
           .collect(Collectors.toList());
+
+      if (!liveNodeHostNames.isEmpty()) {
+        LOGGER.info(
+            "Live nodes for store: {} version: {} partition: {} are: {}",
+            storeName,
+            storeVersion,
+            storePartition,
+            liveNodeHostNames);
+      } else {
+        LOGGER.info(
+            "No live nodes found for store: {} version: {} partition: {}",
+            storeName,
+            storeVersion,
+            storePartition);
+      }
+
       response.setDiscoveryResult(liveNodeHostNames);
     } catch (VeniceException e) {
       byte[] errBody =
