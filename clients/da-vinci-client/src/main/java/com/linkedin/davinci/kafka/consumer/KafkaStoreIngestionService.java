@@ -149,7 +149,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final AggKafkaConsumerService aggKafkaConsumerService;
 
   /**
-   * A repository mapping each Kafka Topic to it corresponding Ingestion task responsible
+   * A repository mapping each Version Topic to it corresponding Ingestion task responsible
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
@@ -186,6 +186,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private KafkaValueSerializer kafkaValueSerializer;
+  private final IngestionThrottler ingestionThrottler;
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -233,19 +234,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
 
-    EventThrottler bandwidthThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaBytesPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_bandwidth",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-
-    EventThrottler recordsThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaRecordPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
+    this.ingestionThrottler = new IngestionThrottler(
+        isDaVinciClient,
+        serverConfig,
+        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap));
 
     final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
     if (liveClusterConfigRepository != null) {
@@ -397,8 +389,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         pubSubClientsFactory.getConsumerAdapterFactory(),
         this::getPubSubSSLPropertiesFromServerConfig,
         serverConfig,
-        bandwidthThrottler,
-        recordsThrottler,
+        ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
@@ -561,6 +552,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public void stopInner() {
+    Utils.closeQuietlyWithErrorLogged(ingestionThrottler);
     Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);
     shutdownExecutorService(participantStoreConsumerExecutorService, "participantStoreConsumerExecutorService", true);
 

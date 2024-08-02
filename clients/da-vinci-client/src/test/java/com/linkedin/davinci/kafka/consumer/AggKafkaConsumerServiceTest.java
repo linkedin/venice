@@ -21,7 +21,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
@@ -36,8 +35,7 @@ public class AggKafkaConsumerServiceTest {
   private PubSubConsumerAdapterFactory consumerFactory;
   private PubSubPropertiesSupplier pubSubPropertiesSupplier;
   private VeniceServerConfig serverConfig;
-  private EventThrottler bandwidthThrottler;
-  private EventThrottler recordsThrottler;
+  private IngestionThrottler ingestionThrottler;
   private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private MetricsRepository metricsRepository;
   private TopicExistenceChecker topicExistenceChecker;
@@ -57,8 +55,7 @@ public class AggKafkaConsumerServiceTest {
     topicPartition = new PubSubTopicPartitionImpl(topic, 0);
     consumerFactory = mock(PubSubConsumerAdapterFactory.class);
     pubSubPropertiesSupplier = mock(PubSubPropertiesSupplier.class);
-    bandwidthThrottler = mock(EventThrottler.class);
-    recordsThrottler = mock(EventThrottler.class);
+    ingestionThrottler = mock(IngestionThrottler.class);
     kafkaClusterBasedRecordThrottler = mock(KafkaClusterBasedRecordThrottler.class);
     metricsRepository = mock(MetricsRepository.class);
     topicExistenceChecker = mock(TopicExistenceChecker.class);
@@ -72,8 +69,7 @@ public class AggKafkaConsumerServiceTest {
         consumerFactory,
         pubSubPropertiesSupplier,
         serverConfig,
-        bandwidthThrottler,
-        recordsThrottler,
+        ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         topicExistenceChecker,
@@ -93,8 +89,13 @@ public class AggKafkaConsumerServiceTest {
     doReturn(mock(AbstractKafkaConsumerService.class)).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
     when(storeIngestionTask.getVersionTopic()).thenReturn(topic);
     when(storeIngestionTask.getTopicManager(pubSubUrl)).thenReturn(topicManager);
-
-    aggKafkaConsumerServiceSpy.subscribeConsumerFor(pubSubUrl, storeIngestionTask, topicPartition, -1);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        topic,
+        topicPartition,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
+    aggKafkaConsumerServiceSpy
+        .subscribeConsumerFor(pubSubUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
 
     verify(topicManager).prefetchAndCacheLatestOffset(topicPartition);
   }

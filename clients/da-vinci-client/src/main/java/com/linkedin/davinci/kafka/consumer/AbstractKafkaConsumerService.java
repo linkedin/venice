@@ -30,7 +30,7 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
   public abstract long getMaxElapsedTimeMSSinceLastPollInConsumerPool();
 
   public abstract void startConsumptionIntoDataReceiver(
-      PubSubTopicPartition topicPartition,
+      PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver);
 
@@ -43,4 +43,5 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
   public abstract Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition);
+
 }

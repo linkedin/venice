@@ -682,6 +682,7 @@ public class TestUtils {
 
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
+    doReturn(storeName).when(mockStore).getName();
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     // Set timeout threshold to 0 so that push timeout error will happen immediately after a partition subscription.

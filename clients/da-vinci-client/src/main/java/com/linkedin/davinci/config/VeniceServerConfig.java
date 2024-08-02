@@ -7,6 +7,9 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -107,6 +110,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFI
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT;
@@ -472,6 +476,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean blobTransferManagerEnabled;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
+  private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
+  private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
+  private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -778,6 +786,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    daVinciCurrentVersionBootstrappingSpeedupEnabled =
+        serverProperties.getBoolean(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, false);
+    daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond =
+        serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, -1);
+    daVinciCurrentVersionBootstrappingQuotaBytesPerSecond =
+        serverProperties.getSizeInBytes(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND, -1);
+    resubscriptionTriggeredByVersionIngestionContextChangeEnabled =
+        serverProperties.getBoolean(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, false);
   }
 
   long extractIngestionMemoryLimit(
@@ -1390,5 +1406,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getRocksDBPath() {
     return getDataBasePath() + File.separator + "rocksdb";
+  }
+
+  public boolean isDaVinciCurrentVersionBootstrappingSpeedupEnabled() {
+    return daVinciCurrentVersionBootstrappingSpeedupEnabled;
+  }
+
+  public long getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond() {
+    return daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
+  }
+
+  public long getDaVinciCurrentVersionBootstrappingQuotaBytesPerSecond() {
+    return daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
+  }
+
+  public boolean isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() {
+    return resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
   }
 }
