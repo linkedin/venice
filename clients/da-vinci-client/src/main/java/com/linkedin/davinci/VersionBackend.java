@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
@@ -102,7 +103,9 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
-    this.pushStatusDelayedUpdateTask = new PushStatusDelayedUpdateTask(version);
+    long daVinciWriteCompleteEventDelayInMs =
+        this.config.getClusterProperties().getLong(DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS);
+    this.pushStatusDelayedUpdateTask = new PushStatusDelayedUpdateTask(version, daVinciWriteCompleteEventDelayInMs);
   }
 
   synchronized void close() {
