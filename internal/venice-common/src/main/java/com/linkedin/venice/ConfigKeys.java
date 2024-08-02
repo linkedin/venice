@@ -1726,7 +1726,13 @@ public class ConfigKeys {
   /**
    * Config to control whether to batch push statues among all partitions into one single update events.
    */
-  public static final String WRITE_BATCHING_PUSH_STATUS = "write.batching.push.status";
+  public static final String DAVINCI_WRITE_BATCHING_PUSH_STATUS = "davinci.write.batching.push.status";
+
+  /**
+   * Config to control maximum delay in waiting for potential new subscription actions from user before
+   * Da-Vinci sending the final batch push COMPLETE signal to Venice backend.
+   */
+  public static final String DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS = "davinci.write.complete.event.delay.in.ms";
 
   /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.

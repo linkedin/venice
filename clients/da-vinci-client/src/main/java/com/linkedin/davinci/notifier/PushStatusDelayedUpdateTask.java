@@ -22,16 +22,18 @@ public class PushStatusDelayedUpdateTask {
   private Version version;
   private boolean batchPushStartSignalSent;
   private boolean batchPushEndSignalSent;
+  private final long daVinciWriteCompleteEventDelayInMs;
   private final Map<Integer, ExecutionStatus> partitionStatus = new VeniceConcurrentHashMap<>();
   // Executor for scheduling tasks
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
   // Reference to the currently scheduled future task
   private ScheduledFuture<Void> scheduledTask;
 
-  public PushStatusDelayedUpdateTask(Version version) {
+  public PushStatusDelayedUpdateTask(Version version, long daVinciWriteCompleteEventDelayInMs) {
     this.version = version;
     this.batchPushStartSignalSent = false;
     this.batchPushEndSignalSent = false;
+    this.daVinciWriteCompleteEventDelayInMs = daVinciWriteCompleteEventDelayInMs;
   }
 
   public boolean isBatchPushStartSignalSent() {
@@ -94,7 +96,7 @@ public class PushStatusDelayedUpdateTask {
             version.kafkaTopicName());
       }
       return null;
-    }, 30, TimeUnit.SECONDS);
+    }, daVinciWriteCompleteEventDelayInMs, TimeUnit.MILLISECONDS);
   }
 
   /**

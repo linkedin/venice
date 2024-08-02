@@ -11,6 +11,8 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_WRITE_BATCHING_PUSH_STATUS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
@@ -152,7 +154,6 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_STA
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
-import static com.linkedin.venice.ConfigKeys.WRITE_BATCHING_PUSH_STATUS;
 import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_INITIAL_WINDOW_SIZE;
 import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_CONCURRENT_STREAMS;
@@ -500,7 +501,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
-  private final boolean writeBatchingPushStatus;
+  private final boolean daVinciWriteBatchingPushStatus;
+  private final long daVinciWriteCompleteEventDelayInMs;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
@@ -832,7 +834,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
-    writeBatchingPushStatus = serverProperties.getBoolean(WRITE_BATCHING_PUSH_STATUS, false);
+    daVinciWriteBatchingPushStatus = serverProperties.getBoolean(DAVINCI_WRITE_BATCHING_PUSH_STATUS, false);
+    daVinciWriteCompleteEventDelayInMs =
+        serverProperties.getLong(DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS, TimeUnit.SECONDS.toMillis(30));
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1488,8 +1492,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return useDaVinciSpecificExecutionStatusForError;
   }
 
-  public boolean writeBatchingPushStatus() {
-    return writeBatchingPushStatus;
+  public boolean daVinciWriteBatchingPushStatus() {
+    return daVinciWriteBatchingPushStatus;
+  }
+
+  public long getDaVinciWriteCompleteEventDelayInMs() {
+    return daVinciWriteCompleteEventDelayInMs;
   }
 
   public boolean isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled() {
