@@ -56,11 +56,11 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
   /**
    * Below is the expected workflow of the test: <br>
    * 1) {@link AsyncRetryingServiceDiscoveryAnnouncer#register()} is called. The result of the call is that announcer3
-   * successfully registers, and announcer1 and announcer2 fail to register, so retryQueue is [announcer1, announcer2] <br>
-   * 2) Retry thread starts and retries registering the announcers in retryQueue <br>
-   * 3) announcer1 retries registering and fails, so retryQueue is [announcer2, announcer1] <br>
-   * 4) After 30 seconds, announcer2 retries registering and successfully registers, so retryQueue is [announcer1] <br>
-   * 5) After 30 seconds, announcer1 retries registering and successfully registers, so retryQueue is []
+   * successfully registers, and announcer1 and announcer2 fail to register, so {@code retryQueue=[announcer1, announcer2]} <br>
+   * 2) Retry thread starts and retries registering the announcers in the queue <br>
+   * 3) announcer1 retries registering and fails, and announcer2 retries registering and succeeds, so {@code retryQueue=[announcer1]} <br>
+   * 4) The thread sleeps for 30 seconds <br>
+   * 5) announcer1 retries registering and succeeds, so {@code retryQueue=[]}
    */
   @Test
   public void testRegisterServiceDiscoveryAnnouncers() {
@@ -83,19 +83,85 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
 
     sleep(1000);
     Assert.assertTrue(retryQueue.contains(announcer1));
-    Assert.assertTrue(retryQueue.contains(announcer2));
-    Assert.assertFalse(retryQueue.contains(announcer3));
-    Assert.assertEquals(retryQueue.peek(), announcer2);
-    Assert.assertEquals(retryQueue.size(), 2);
-
-    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
-    Assert.assertTrue(retryQueue.contains(announcer1));
     Assert.assertFalse(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
     Assert.assertEquals(retryQueue.peek(), announcer1);
     Assert.assertEquals(retryQueue.size(), 1);
 
     sleep(serviceDiscoveryRegistrationRetryMS + 1000);
     Assert.assertFalse(retryQueue.contains(announcer1));
+    Assert.assertFalse(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
+    Assert.assertEquals(retryQueue.size(), 0);
+  }
+
+  /**
+   * Below is the expected workflow of the test: <br>
+   * 1) {@link AsyncRetryingServiceDiscoveryAnnouncer#register()} is called. The result of the call is that all announcers
+   * fail to register, so {@code retryQueue=[announcer1, announcer2, announcer3]} <br>
+   * 2) Retry thread starts and retries registering the announcers in the queue <br>
+   * 3) All announcers fail to register again, so {@code retryQueue=[announcer1, announcer2, announcer3]} <br>
+   * 4) The thread sleeps for 30 seconds <br>
+   * 5) announcer1 and announcer2 retry registering and fail, and announcer3 retries registering and succeeds, so
+   * {@code retryQueue=[announcer1, announcer2]} <br>
+   * 6) The thread sleeps for 30 seconds <br>
+   * 7) announcer1 retries registering and succeeds, and announcer2 retries registering and fails, so {@code retryQueue=[announcer2]} <br>
+   * 8) The thread sleeps for 30 seconds <br>
+   * 9) announcer2 retries registering and succeeds, so {@code retryQueue=[]}
+   */
+  @Test
+  public void testAddToRetryQueueMultipleTimes() {
+    reset(announcer1, announcer2, announcer3, config);
+    doThrow(new RuntimeException()).doThrow(new RuntimeException())
+        .doThrow(new RuntimeException())
+        .doNothing()
+        .when(announcer1)
+        .register();
+    doThrow(new RuntimeException()).doThrow(new RuntimeException())
+        .doThrow(new RuntimeException())
+        .doThrow(new RuntimeException())
+        .doNothing()
+        .when(announcer2)
+        .register();
+    doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer3).register();
+    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
+    List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
+    AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
+        new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
+    BlockingQueue<ServiceDiscoveryAnnouncer> retryQueue =
+        asyncRetryingServiceDiscoveryAnnouncer.getServiceDiscoveryAnnouncerRetryQueue();
+    try {
+      asyncRetryingServiceDiscoveryAnnouncer.register();
+    } catch (Exception e) {
+      Assert.fail("The method call should not throw an exception.");
+    }
+
+    sleep(1000);
+    Assert.assertTrue(retryQueue.contains(announcer1));
+    Assert.assertTrue(retryQueue.contains(announcer2));
+    Assert.assertTrue(retryQueue.contains(announcer3));
+    Assert.assertEquals(retryQueue.peek(), announcer1);
+    Assert.assertEquals(retryQueue.size(), 3);
+
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    Assert.assertTrue(retryQueue.contains(announcer1));
+    Assert.assertTrue(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
+    Assert.assertEquals(retryQueue.peek(), announcer1);
+    Assert.assertEquals(retryQueue.size(), 2);
+
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    Assert.assertFalse(retryQueue.contains(announcer1));
+    Assert.assertTrue(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
+    Assert.assertEquals(retryQueue.peek(), announcer2);
+    Assert.assertEquals(retryQueue.size(), 1);
+
+    sleep(serviceDiscoveryRegistrationRetryMS + 1000);
+    Assert.assertFalse(retryQueue.contains(announcer1));
+    Assert.assertFalse(retryQueue.contains(announcer2));
+    Assert.assertFalse(retryQueue.contains(announcer3));
     Assert.assertEquals(retryQueue.size(), 0);
   }
 
