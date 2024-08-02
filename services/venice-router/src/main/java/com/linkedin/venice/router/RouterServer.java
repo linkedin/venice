@@ -20,7 +20,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -261,7 +260,8 @@ public class RouterServer extends AbstractVeniceService {
         serviceDiscoveryAnnouncers,
         accessController,
         sslFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
+        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        null);
   }
 
   // for test purpose
@@ -274,7 +274,8 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      D2Client d2Client) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
 
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
@@ -325,8 +326,7 @@ public class RouterServer extends AbstractVeniceService {
         config.getRefreshIntervalForZkReconnectInMs());
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
-    D2Client d2Client = D2ClientFactory.getD2Client(config.getZkConnection(), Optional.empty());
-    String d2ServiceName = config.getClusterToD2Map().get(config.getClusterName());
+    String d2ServiceName = "venice-discovery";
     this.pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
         d2ServiceName,

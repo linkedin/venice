@@ -2,6 +2,7 @@ package com.linkedin.venice.blobtransfer;
 
 import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import org.apache.logging.log4j.LogManager;
@@ -32,10 +33,12 @@ public class BlobTransferUtil {
       String baseDir,
       ClientConfig clientConfig) {
     try {
+      AvroGenericStoreClientImpl storeClient =
+          (AvroGenericStoreClientImpl) ClientFactory.getAndStartGenericAvroClient(clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir),
-          new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
+          new DaVinciBlobFinder(storeClient));
       manager.start();
       return manager;
     } catch (Exception e) {

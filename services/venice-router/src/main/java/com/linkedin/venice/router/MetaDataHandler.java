@@ -56,6 +56,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.router.api.RouterResourceType;
@@ -552,11 +553,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           Integer.parseInt(storeVersion),
           Integer.parseInt(storePartition),
           Optional.empty());
+
       List<String> liveNodeHostNames = instances.entrySet()
           .stream()
+          .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
           .map(Map.Entry::getKey)
           .map(CharSequence::toString)
-          .filter(instanceHostName -> pushStatusStoreReader.isInstanceAlive(storeName, instanceHostName))
           .collect(Collectors.toList());
       response.setDiscoveryResult(liveNodeHostNames);
     } catch (VeniceException e) {

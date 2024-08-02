@@ -5,13 +5,18 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PAR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.RetryUtils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.message.BasicNameValuePair;
@@ -22,32 +27,46 @@ import org.apache.logging.log4j.Logger;
 /**
  * DvcBlobFinder discovers live DaVinci peer nodes to facilitate blob transfers necessary for bootstrapping the database
  */
-public class DvcBlobFinder implements BlobFinder {
-  private static final Logger LOGGER = LogManager.getLogger(DvcBlobFinder.class);
+public class DaVinciBlobFinder implements BlobFinder {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciBlobFinder.class);
   private static final String TYPE_BLOB_DISCOVERY = "blob_discovery";
   private static final String ERROR_DISCOVERY_MESSAGE =
       "Error finding DVC peers for blob transfer in store: %s, version: %d, partition: %d";
-  private final TransportClient transportClient;
+  private final AvroGenericStoreClientImpl storeClient;
 
-  public DvcBlobFinder(TransportClient transportClient) {
-    this.transportClient = transportClient;
+  public DaVinciBlobFinder(AvroGenericStoreClientImpl storeClient) {
+    this.storeClient = storeClient;
   }
 
   @Override
   public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partition) {
-    String uri = buildUriForBlobDiscovery(storeName, version, partition);
+    String requestPath = buildUriForBlobDiscovery(storeName, version, partition);
+    byte[] response = executeRequest(requestPath);
 
-    CompletableFuture<BlobPeersDiscoveryResponse> futureResponse = transportClient.get(uri).thenApply(response -> {
-      byte[] responseBody = response.getBody();
-      ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      try {
-        return mapper.readValue(responseBody, BlobPeersDiscoveryResponse.class);
-      } catch (IOException e) {
-        return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
-      }
-    }).exceptionally(throwable -> handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, throwable));
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    try {
+      return mapper.readValue(response, BlobPeersDiscoveryResponse.class);
+    } catch (IOException e) {
+      return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
+    }
+  }
 
-    return futureResponse.join();
+  private byte[] executeRequest(String requestPath) {
+    byte[] response;
+    try {
+      response = RetryUtils.executeWithMaxAttempt(
+          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
+          3,
+          Duration.ofSeconds(5),
+          Collections.singletonList(ExecutionException.class));
+    } catch (Exception e) {
+      throw new VeniceException("Failed to fetch schema from path " + requestPath, e);
+    }
+
+    if (response == null) {
+      throw new VeniceException("Requested schema(s) doesn't exist for request path: " + requestPath);
+    }
+    return response;
   }
 
   private String buildUriForBlobDiscovery(String storeName, int version, int partition) {
@@ -76,6 +95,6 @@ public class DvcBlobFinder implements BlobFinder {
 
   @Override
   public void close() throws IOException {
-    transportClient.close();
+    storeClient.close();
   }
 }
