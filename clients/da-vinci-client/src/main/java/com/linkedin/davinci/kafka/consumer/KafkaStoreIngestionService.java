@@ -150,7 +150,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final AggKafkaConsumerService aggKafkaConsumerService;
 
   /**
-   * A repository mapping each Kafka Topic to it corresponding Ingestion task responsible
+   * A repository mapping each Version Topic to it corresponding Ingestion task responsible
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;

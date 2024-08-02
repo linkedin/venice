@@ -89,8 +89,13 @@ public class AggKafkaConsumerServiceTest {
     doReturn(mock(AbstractKafkaConsumerService.class)).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
     when(storeIngestionTask.getVersionTopic()).thenReturn(topic);
     when(storeIngestionTask.getTopicManager(pubSubUrl)).thenReturn(topicManager);
-
-    aggKafkaConsumerServiceSpy.subscribeConsumerFor(pubSubUrl, storeIngestionTask, topicPartition, -1);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        topic,
+        topicPartition,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
+    aggKafkaConsumerServiceSpy
+        .subscribeConsumerFor(pubSubUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
 
     verify(topicManager).prefetchAndCacheLatestOffset(topicPartition);
   }

@@ -110,6 +110,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFI
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT;
@@ -478,6 +479,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
+  private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -790,6 +792,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getLong(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND, -1);
     daVinciCurrentVersionBootstrappingQuotaBytesPerSecond =
         serverProperties.getSizeInBytes(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND, -1);
+    resubscriptionTriggeredByVersionIngestionContextChangeEnabled =
+        serverProperties.getBoolean(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, false);
   }
 
   long extractIngestionMemoryLimit(
@@ -1414,5 +1418,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDaVinciCurrentVersionBootstrappingQuotaBytesPerSecond() {
     return daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
+  }
+
+  public boolean isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() {
+    return resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
   }
 }
