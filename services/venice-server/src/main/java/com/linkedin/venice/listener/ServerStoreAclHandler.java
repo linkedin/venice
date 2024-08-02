@@ -58,11 +58,15 @@ public class ServerStoreAclHandler extends StoreAclHandler {
   }
 
   /**
-   * In Venice Server, the resource name is actually a Kafka topic name.
+   * In Venice Server, the resource name is actually a Kafka topic name for STORAGE/COMPUTE but store name for DICTIONARY.
    */
   @Override
   protected String extractStoreName(String resourceName) {
-    return Version.parseStoreFromKafkaTopicName(resourceName);
+    if (Version.isVersionTopic(resourceName)) {
+      return Version.parseStoreFromKafkaTopicName(resourceName);
+    } else {
+      return resourceName;
+    }
   }
 
   protected static boolean checkWhetherAccessHasAlreadyApproved(ChannelHandlerContext ctx) {
