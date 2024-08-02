@@ -45,24 +45,11 @@ public class DaVinciBlobFinder implements BlobFinder {
 
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
     BlobPeersDiscoveryResponse discoveryResponse;
-
     try {
       discoveryResponse = mapper.readValue(response, BlobPeersDiscoveryResponse.class);
-      logAllPeers(discoveryResponse);
       return discoveryResponse;
     } catch (IOException e) {
       return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
-    }
-  }
-
-  public void logAllPeers(BlobPeersDiscoveryResponse response) {
-    if (response == null || response.getDiscoveryResult() == null) {
-      LOGGER.warn("No peers found to log.");
-      return;
-    }
-
-    for (String peer: response.getDiscoveryResult()) {
-      LOGGER.info("Peer: {}", peer);
     }
   }
 

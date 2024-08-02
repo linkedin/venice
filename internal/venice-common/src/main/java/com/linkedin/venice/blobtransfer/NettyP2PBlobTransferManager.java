@@ -6,6 +6,8 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -14,6 +16,7 @@ import java.util.concurrent.CompletionStage;
  * blobs and in the meanwhile, it can make requests to other peers to fetch blobs.
  */
 public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void> {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciBlobFinder.class);
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
   protected final NettyFileTransferClient nettyClient;
@@ -37,7 +40,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   @Override
   public CompletionStage<InputStream> get(String storeName, int version, int partition)
       throws VenicePeersNotFoundException {
-    CompletionStage<InputStream> inputStream;
+    CompletionStage<InputStream> inputStream = null;
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
     if (response == null || response.isError()) {
       throw new VenicePeersNotFoundException("Failed to obtain the peers for the requested blob");
@@ -46,16 +49,20 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     if (discoverPeers == null || discoverPeers.isEmpty()) {
       throw new VenicePeersNotFoundException("No peers found for the requested blob");
     }
-    try {
-      // TODO: add some retry logic or strategy to choose the peers differently in case of failure
-      // instanceName comes as a format of <hostName>_<applicationPort>
-      String chosenHost = discoverPeers.get(0).split("_")[0];
-      inputStream = nettyClient.get(chosenHost, storeName, version, partition);
-    } catch (Exception e) {
-      throw new VenicePeersNotFoundException("The connection to peers failed", e);
+    for (String peer: discoverPeers) {
+      try {
+        // instanceName comes as a format of <hostName>_<applicationPort>
+        String chosenHost = peer.split("_")[0];
+        inputStream = nettyClient.get(chosenHost, storeName, version, partition);
+      } catch (Exception e) {
+        LOGGER.warn("Failed to connect to peer: {}", peer, e);
+      }
     }
-
-    return inputStream;
+    try {
+      return inputStream;
+    } catch (Exception e) {
+      throw new VenicePeersNotFoundException("Failed to obtain the blob from the peers");
+    }
   }
 
   @Override
