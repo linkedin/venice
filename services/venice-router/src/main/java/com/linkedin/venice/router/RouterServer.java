@@ -808,8 +808,6 @@ public class RouterServer extends AbstractVeniceService {
         LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
       }
     }
-    // Graceful shutdown
-    Thread.sleep(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
     if (serverFuture != null && !serverFuture.cancel(false)) {
       serverFuture.awaitUninterruptibly();
     }
@@ -836,13 +834,16 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
-    // Wait till all the requests are drained
+    // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
         if (dispatcher.hasInFlightRequests()) {
           throw new VeniceException("There are still in-flight requests in router");
         }
-      }, 10, Duration.ofSeconds(10), Collections.singletonList(VeniceException.class));
+      },
+          10,
+          Duration.ofSeconds(config.getRouterNettyGracefulShutdownPeriodSeconds()),
+          Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       LOGGER.error(
           "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
