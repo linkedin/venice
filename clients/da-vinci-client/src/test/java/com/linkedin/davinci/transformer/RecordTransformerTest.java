@@ -9,6 +9,7 @@ import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
@@ -83,7 +84,7 @@ public class RecordTransformerTest {
     List<Integer> partitions = new ArrayList<>();
     int partitionId = 1;
     partitions.add(partitionId);
-    recordTransformer.onRecovery(storageEngine, storeBackend, partitions, version);
+    recordTransformer.onRecovery(storageEngine, storeBackend, null, partitions, version);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
 
     // Reset the mock to clear previous interactions
@@ -91,9 +92,14 @@ public class RecordTransformerTest {
 
     // Execute the onRecovery method again to test the case where the classHash file exists
     when(storageEngine.getRocksDBIterator(partitionId)).thenReturn(iterator);
-    recordTransformer.onRecovery(storageEngine, storeBackend, partitions, version);
+    recordTransformer.onRecovery(storageEngine, storeBackend, null, partitions, version);
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
     verify(storageEngine, times(1)).getRocksDBIterator(partitionId);
+
+    // Should throw an error if a user tries to use blob transfer wit the record transformer
+    BlobTransferManager blobTransferManager = mock(BlobTransferManager.class);
+    assertThrows(
+        () -> recordTransformer.onRecovery(storageEngine, storeBackend, blobTransferManager, partitions, version));
   }
 
   @Test

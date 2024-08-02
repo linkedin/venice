@@ -3,6 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
@@ -216,8 +217,14 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   public final void onRecovery(
       AbstractStorageEngine storageEngine,
       StoreBackend storeBackend,
+      BlobTransferManager blobTransferManager,
       List<Integer> partitions,
       Optional<Version> version) {
+
+    if (blobTransferManager != null) {
+      throw new VeniceException("Blob transfer is not supported in DaVinciRecordTransformer");
+    }
+
     int classHash = getClassHash();
     boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
 
