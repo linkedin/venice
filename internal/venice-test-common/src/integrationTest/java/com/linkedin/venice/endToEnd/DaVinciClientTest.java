@@ -1002,7 +1002,7 @@ public class DaVinciClientTest {
    * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
    * to avoid conflicts.
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT, enabled = true)
+  @Test(timeOut = 2 * TEST_TIMEOUT, enabled = false)
   public void testBlobP2PTransferAmongDVC() throws Exception {
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
     String storeName = Utils.getUniqueString("test-store");

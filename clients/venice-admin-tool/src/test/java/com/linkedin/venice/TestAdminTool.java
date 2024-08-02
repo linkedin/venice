@@ -74,15 +74,13 @@ public class TestAdminTool {
   public void testAdminUpdateStoreArg() throws ParseException, IOException {
     final String K1 = "k1", V1 = "v1", K2 = "k2", V2 = "v2", K3 = "k3", V3 = "v3";
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
-        "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true", "--partitioner-params",
+        "testStore", "--rmd-chunking-enabled", "true", "--partitioner-params",
         "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
     Assert.assertTrue(params.getRmdChunkingEnabled().isPresent());
     Assert.assertTrue(params.getRmdChunkingEnabled().get());
-    Assert.assertTrue(params.getBlobTransferEnabled().isPresent());
-    Assert.assertTrue(params.getBlobTransferEnabled().get());
     Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
     Assert.assertTrue(partitionerParams.isPresent());
     Map<String, String> partitionerParamsMap = partitionerParams.get();

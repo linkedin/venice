@@ -44,10 +44,25 @@ public class DaVinciBlobFinder implements BlobFinder {
     byte[] response = executeRequest(requestPath);
 
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    BlobPeersDiscoveryResponse discoveryResponse;
+
     try {
-      return mapper.readValue(response, BlobPeersDiscoveryResponse.class);
+      discoveryResponse = mapper.readValue(response, BlobPeersDiscoveryResponse.class);
+      logAllPeers(discoveryResponse);
+      return discoveryResponse;
     } catch (IOException e) {
       return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
+    }
+  }
+
+  public void logAllPeers(BlobPeersDiscoveryResponse response) {
+    if (response == null || response.getDiscoveryResult() == null) {
+      LOGGER.warn("No peers found to log.");
+      return;
+    }
+
+    for (String peer: response.getDiscoveryResult()) {
+      LOGGER.info("Peer: {}", peer);
     }
   }
 
@@ -60,11 +75,11 @@ public class DaVinciBlobFinder implements BlobFinder {
           Duration.ofSeconds(5),
           Collections.singletonList(ExecutionException.class));
     } catch (Exception e) {
-      throw new VeniceException("Failed to fetch schema from path " + requestPath, e);
+      throw new VeniceException("Failed to fetch blob peers from path " + requestPath, e);
     }
 
     if (response == null) {
-      throw new VeniceException("Requested schema(s) doesn't exist for request path: " + requestPath);
+      throw new VeniceException("Requested blob peers doesn't exist for request path: " + requestPath);
     }
     return response;
   }
