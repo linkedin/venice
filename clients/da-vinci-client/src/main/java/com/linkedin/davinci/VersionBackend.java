@@ -103,8 +103,8 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
-    long daVinciWriteCompleteEventDelayInMs =
-        this.config.getClusterProperties().getLong(DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS);
+    long daVinciWriteCompleteEventDelayInMs = this.config.getClusterProperties()
+        .getLong(DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS, TimeUnit.SECONDS.toMillis(30));
     this.pushStatusDelayedUpdateTask = new PushStatusDelayedUpdateTask(version, daVinciWriteCompleteEventDelayInMs);
   }
 
