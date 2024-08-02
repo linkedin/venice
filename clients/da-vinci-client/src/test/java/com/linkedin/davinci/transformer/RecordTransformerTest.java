@@ -18,10 +18,14 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.rocksdb.RocksIterator;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class RecordTransformerTest {
+  @BeforeMethod
+  @AfterClass
   public void deleteClassHash() {
     File file = new File("./classHash-0.txt");
     if (file.exists()) {
@@ -55,7 +59,6 @@ public class RecordTransformerTest {
     Class<String> outputValueClass = recordTransformer.getOutputValueClass();
     assertEquals(outputValueClass, String.class);
 
-    deleteClassHash();
     int classHash = recordTransformer.getClassHash();
     assertTrue(recordTransformer.hasTransformationLogicChanged(classHash));
     assertFalse(recordTransformer.hasTransformationLogicChanged(classHash));
@@ -76,7 +79,6 @@ public class RecordTransformerTest {
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
 
-    deleteClassHash();
     Optional<Version> version = Optional.of(mock(Version.class));
     List<Integer> partitions = new ArrayList<>();
     int partitionId = 1;
