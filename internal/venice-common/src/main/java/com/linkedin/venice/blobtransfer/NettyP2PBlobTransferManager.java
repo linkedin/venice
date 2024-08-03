@@ -58,10 +58,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         LOGGER.info("Chosen host: {}", chosenHost);
         return inputStream;
       } catch (Exception e) {
-        throw new VenicePeersNotFoundException("The connection to peers failed", e);
+        LOGGER.warn("Failed to connect to peer: {}", peer, e);
       }
     }
-    throw new VenicePeersNotFoundException("Failed to obtain the blob from the peers");
+    throw new VenicePeersNotFoundException("No valid peers found for the requested blob");
   }
 
   @Override
