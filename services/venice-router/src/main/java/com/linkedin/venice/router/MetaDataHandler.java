@@ -573,12 +573,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           .collect(Collectors.toList());
 
       if (!readyToServeNodeHostNames.isEmpty()) {
-        LOGGER.info(
-            "Ready to serve nodes for store: {} version: {} partition: {} are: {}",
-            storeName,
-            storeVersion,
-            storePartition,
-            readyToServeNodeHostNames);
+        LOGGER.info("{} ready to serve nodes were found", readyToServeNodeHostNames.size());
       } else {
         LOGGER.info(
             "No ready to serve nodes found for store: {} version: {} partition: {}",
