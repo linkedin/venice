@@ -554,44 +554,40 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           Integer.parseInt(storePartition),
           Optional.empty());
 
-      if (!instances.isEmpty()) {
-        LOGGER.info(
-            "Instances for store: {} version: {} partition: {} are: {}",
-            storeName,
-            storeVersion,
-            storePartition,
-            instances);
-      } else {
+      if (instances.isEmpty()) {
         LOGGER.info(
             "No instances found for store: {} version: {} partition: {}",
             storeName,
             storeVersion,
             storePartition);
+        return;
+      } else {
+        LOGGER.info("{} instances were found", instances.size());
       }
 
-      List<String> liveNodeHostNames = instances.entrySet()
+      List<String> readyToServeNodeHostNames = instances.entrySet()
           .stream()
           .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
           .map(Map.Entry::getKey)
           .map(CharSequence::toString)
           .collect(Collectors.toList());
 
-      if (!liveNodeHostNames.isEmpty()) {
+      if (!readyToServeNodeHostNames.isEmpty()) {
         LOGGER.info(
-            "Live nodes for store: {} version: {} partition: {} are: {}",
+            "Ready to serve nodes for store: {} version: {} partition: {} are: {}",
             storeName,
             storeVersion,
             storePartition,
-            liveNodeHostNames);
+            readyToServeNodeHostNames);
       } else {
         LOGGER.info(
-            "No live nodes found for store: {} version: {} partition: {}",
+            "No ready to serve nodes found for store: {} version: {} partition: {}",
             storeName,
             storeVersion,
             storePartition);
       }
 
-      response.setDiscoveryResult(liveNodeHostNames);
+      response.setDiscoveryResult(readyToServeNodeHostNames);
     } catch (VeniceException e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
