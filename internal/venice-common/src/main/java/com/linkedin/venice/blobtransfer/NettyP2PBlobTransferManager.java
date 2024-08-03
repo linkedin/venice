@@ -5,7 +5,6 @@ import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -41,36 +40,28 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   @Override
   public CompletionStage<InputStream> get(String storeName, int version, int partition)
       throws VenicePeersNotFoundException {
-    CompletableFuture<InputStream> inputStreamFuture = new CompletableFuture<>();
+    CompletionStage<InputStream> inputStream;
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
-
     if (response == null || response.isError()) {
       throw new VenicePeersNotFoundException("Failed to obtain the peers for the requested blob");
     }
-
     List<String> discoverPeers = response.getDiscoveryResult();
     if (discoverPeers == null || discoverPeers.isEmpty()) {
       throw new VenicePeersNotFoundException("No peers found for the requested blob");
     }
-
     for (String peer: discoverPeers) {
       try {
+        // TODO: add some retry logic or strategy to choose the peers differently in case of failure
         // instanceName comes as a format of <hostName>_<applicationPort>
         String chosenHost = peer.split("_")[0];
-        CompletionStage<InputStream> result = nettyClient.get(chosenHost, storeName, version, partition);
-        InputStream inputStream = result.toCompletableFuture().get();
-        inputStreamFuture.complete(inputStream);
-        break;
+        inputStream = nettyClient.get(chosenHost, storeName, version, partition);
+        LOGGER.info("Chosen host: {}", chosenHost);
+        return inputStream;
       } catch (Exception e) {
-        LOGGER.warn("Failed to connect to peer: {}", peer, e);
+        throw new VenicePeersNotFoundException("The connection to peers failed", e);
       }
     }
-
-    if (!inputStreamFuture.isDone()) {
-      throw new VenicePeersNotFoundException("Failed to obtain the blob from the peers");
-    }
-
-    return inputStreamFuture;
+    throw new VenicePeersNotFoundException("Failed to obtain the blob from the peers");
   }
 
   @Override
