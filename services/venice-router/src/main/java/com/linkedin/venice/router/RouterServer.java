@@ -68,6 +68,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -837,7 +838,7 @@ public class RouterServer extends AbstractVeniceService {
     // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (dispatcher.hasInFlightRequests()) {
+        if (RouterHttpRequestStats.hasInFlightRequests()) {
           throw new VeniceException("There are still in-flight requests in router");
         }
       },
