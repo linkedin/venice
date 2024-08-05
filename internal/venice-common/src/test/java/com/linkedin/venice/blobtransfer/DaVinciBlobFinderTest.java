@@ -1,16 +1,11 @@
 package com.linkedin.venice.blobtransfer;
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertTrue;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.testng.AssertJUnit.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -22,7 +17,7 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciBlobFinderTest {
-  private AvroGenericStoreClientImpl storeClient;
+  private AbstractAvroStoreClient storeClient;
   private DaVinciBlobFinder daVinciBlobFinder;
   private static final String storeName = "testStore";
   private static final int version = 1;
@@ -30,7 +25,7 @@ public class DaVinciBlobFinderTest {
 
   @BeforeMethod
   public void setUp() {
-    storeClient = mock(AvroGenericStoreClientImpl.class);
+    storeClient = mock(AbstractAvroStoreClient.class);
     daVinciBlobFinder = new DaVinciBlobFinder(storeClient);
   }
 

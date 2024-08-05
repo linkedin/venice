@@ -5,18 +5,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PAR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.RetryUtils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.message.BasicNameValuePair;
@@ -32,43 +28,24 @@ public class DaVinciBlobFinder implements BlobFinder {
   private static final String TYPE_BLOB_DISCOVERY = "blob_discovery";
   private static final String ERROR_DISCOVERY_MESSAGE =
       "Error finding DVC peers for blob transfer in store: %s, version: %d, partition: %d";
-  private final AvroGenericStoreClientImpl storeClient;
+  private final AbstractAvroStoreClient storeClient;
 
-  public DaVinciBlobFinder(AvroGenericStoreClientImpl storeClient) {
+  public DaVinciBlobFinder(AbstractAvroStoreClient storeClient) {
     this.storeClient = storeClient;
   }
 
   @Override
   public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partition) {
-    String requestPath = buildUriForBlobDiscovery(storeName, version, partition);
-    byte[] response = executeRequest(requestPath);
+    String uri = buildUriForBlobDiscovery(storeName, version, partition);
 
-    ObjectMapper mapper = ObjectMapperFactory.getInstance();
-    BlobPeersDiscoveryResponse discoveryResponse;
     try {
-      discoveryResponse = mapper.readValue(response, BlobPeersDiscoveryResponse.class);
-      return discoveryResponse;
-    } catch (IOException e) {
+      CompletableFuture<byte[]> futureResponse = storeClient.getRaw(uri);
+      byte[] response = futureResponse.join();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
+      return mapper.readValue(response, BlobPeersDiscoveryResponse.class);
+    } catch (IOException | VeniceException e) {
       return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
     }
-  }
-
-  private byte[] executeRequest(String requestPath) {
-    byte[] response;
-    try {
-      response = RetryUtils.executeWithMaxAttempt(
-          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
-          3,
-          Duration.ofSeconds(5),
-          Collections.singletonList(ExecutionException.class));
-    } catch (Exception e) {
-      throw new VeniceException("Failed to fetch blob peers from path " + requestPath, e);
-    }
-
-    if (response == null) {
-      throw new VeniceException("Requested blob peers doesn't exist for request path: " + requestPath);
-    }
-    return response;
   }
 
   private String buildUriForBlobDiscovery(String storeName, int version, int partition) {

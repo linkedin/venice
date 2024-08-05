@@ -560,7 +560,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
             storeName,
             storeVersion,
             storePartition);
-        return;
       } else {
         LOGGER.info("{} instances were found", instances.size());
       }

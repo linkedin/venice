@@ -17,7 +17,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
-import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -183,7 +183,7 @@ public class TestBlobDiscovery {
         .setMetricsRepository(new MetricsRepository());
 
     BlobFinder dvcFinder =
-        new DaVinciBlobFinder((AvroGenericStoreClientImpl) ClientFactory.getAndStartGenericAvroClient(clientConfig));
+        new DaVinciBlobFinder((AbstractAvroStoreClient) ClientFactory.getAndStartGenericAvroClient(clientConfig));
 
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
       BlobPeersDiscoveryResponse response = dvcFinder.discoverBlobPeers(storeName, 1, 1);
