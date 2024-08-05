@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
@@ -328,6 +329,48 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.close();
     verify(mockPubSubConsumer, times(2)).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
+  }
+
+  @Test
+  public void testMetricReportingThread() throws InterruptedException {
+    D2ControllerClient d2ControllerClient = mock(D2ControllerClient.class);
+    StoreResponse storeResponse = mock(StoreResponse.class);
+    StoreInfo storeInfo = mock(StoreInfo.class);
+    doReturn(1).when(storeInfo).getCurrentVersion();
+    doReturn(2).when(storeInfo).getPartitionCount();
+    doReturn(storeInfo).when(storeResponse).getStore();
+    doReturn(storeResponse).when(d2ControllerClient).getStore(storeName);
+    MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
+    doReturn(rmdSchema.toString()).when(rmdSchemaFromMultiSchemaResponse).getSchemaStr();
+    doReturn(new MultiSchemaResponse.Schema[] { rmdSchemaFromMultiSchemaResponse }).when(multiRMDSchemaResponse)
+        .getSchemas();
+    doReturn(multiRMDSchemaResponse).when(d2ControllerClient).getAllReplicationMetadataSchemas(storeName);
+
+    PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    ChangelogClientConfig changelogClientConfig =
+        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
+            .setSchemaReader(schemaReader)
+            .setStoreName(storeName)
+            .setViewName("");
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
+    VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
+        veniceChangelogConsumer.getHeartbeatReporterThread();
+
+    Map<Integer, Long> lastHeartbeat = new HashMap<>();
+    BasicConsumerStats consumerStats = Mockito.mock(BasicConsumerStats.class);
+    Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
+    topicPartitionSet.add(new PubSubTopicPartitionImpl(oldVersionTopic, 1));
+
+    reporterThread.recordStats(lastHeartbeat, consumerStats, topicPartitionSet);
+    Mockito.verify(consumerStats).recordMaximumConsumingVersion(1);
+    Mockito.verify(consumerStats).recordMinimumConsumingVersion(1);
   }
 
   private void prepareChangeCaptureRecordsToBePolled(

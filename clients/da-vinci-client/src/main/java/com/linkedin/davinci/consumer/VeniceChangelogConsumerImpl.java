@@ -1002,39 +1002,53 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return changelogClientConfig;
   }
 
-  private class HeartbeatReporterThread extends Thread {
-    HeartbeatReporterThread() {
+  protected HeartbeatReporterThread getHeartbeatReporterThread() {
+    return heartbeatReporterThread;
+  }
+
+  protected BasicConsumerStats getChangeCaptureStats() {
+    return changeCaptureStats;
+  }
+
+  protected class HeartbeatReporterThread extends Thread {
+    protected HeartbeatReporterThread() {
       super("Ingestion-Heartbeat-Reporter-Service-Thread");
     }
 
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
-          changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
-        }
-        int maxVersion = -1;
-        int minVersion = Integer.MAX_VALUE;
-        for (PubSubTopicPartition partition: pubSubConsumer.getAssignment()) {
-          int version = Version.parseVersionFromKafkaTopicName(partition.getTopicName());
-          maxVersion = Math.max(maxVersion, version);
-          minVersion = Math.min(minVersion, version);
-        }
-        if (minVersion == Integer.MAX_VALUE) {
-          minVersion = -1;
-        }
-
-        // Record max and min consumed versions
-        changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
-        changeCaptureStats.recordMinimumConsumingVersion(minVersion);
         try {
+          recordStats(currentVersionLastHeartbeat, changeCaptureStats, pubSubConsumer.getAssignment());
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
-          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
+          LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
           break;
         }
       }
-      LOGGER.info("Lag Monitoring thread interrupted!  Shutting down...");
+    }
+
+    protected void recordStats(
+        Map<Integer, Long> currentVersionLastHeartbeat,
+        BasicConsumerStats changeCaptureStats,
+        Set<PubSubTopicPartition> assignment) {
+      for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
+        changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
+      }
+      int maxVersion = -1;
+      int minVersion = Integer.MAX_VALUE;
+      for (PubSubTopicPartition partition: assignment) {
+        int version = Version.parseVersionFromKafkaTopicName(partition.getTopicName());
+        maxVersion = Math.max(maxVersion, version);
+        minVersion = Math.min(minVersion, version);
+      }
+      if (minVersion == Integer.MAX_VALUE) {
+        minVersion = -1;
+      }
+
+      // Record max and min consumed versions
+      changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
+      changeCaptureStats.recordMinimumConsumingVersion(minVersion);
     }
   }
 }
