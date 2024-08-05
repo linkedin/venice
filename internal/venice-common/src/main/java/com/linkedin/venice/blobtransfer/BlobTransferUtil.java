@@ -1,6 +1,6 @@
 package com.linkedin.venice.blobtransfer;
 
-import static com.linkedin.venice.client.store.ClientFactory.*;
+import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 
 import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;

@@ -7,7 +7,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.client.store.ClientFactory.*;
+import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.d2.balancer.D2Client;
