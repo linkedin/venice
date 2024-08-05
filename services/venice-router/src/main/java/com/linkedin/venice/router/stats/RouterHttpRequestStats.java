@@ -30,7 +30,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private static final MetricsRepository localMetricRepo = new MetricsRepository(METRIC_CONFIG);
   private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
   static {
-    totalInflightRequestSensor.add("total_inflight_request_count", new Max());
+    totalInflightRequestSensor.add("total_inflight_request_count", new Rate());
   }
   private final Sensor requestSensor;
   private final Sensor healthySensor;
@@ -79,8 +79,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor metaStoreShadowReadSensor;
   private Sensor keySizeSensor;
   private final String systemStoreName;
-
-  private static final AtomicInteger totalInflightRequest = new AtomicInteger();
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -208,7 +206,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordRequest() {
     requestSensor.record();
     inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
-    totalInflightRequestSensor.record(totalInflightRequest.incrementAndGet());
+    totalInflightRequestSensor.record();
   }
 
   public void recordHealthyRequest(Double latency) {
@@ -366,7 +364,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * there is no need to record into the sensor again. We just want to maintain the bookkeeping.
      */
     currentInFlightRequest.decrementAndGet();
-    totalInflightRequest.decrementAndGet();
+    totalInflightRequestSensor.record(-1);
   }
 
   public void recordAllowedRetryRequest() {
