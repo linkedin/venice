@@ -10,10 +10,15 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class D2ControllerClient extends ControllerClient {
+  private static final Logger LOGGER = LogManager.getLogger(D2ControllerClient.class);
   private static final String D2_SCHEME = "d2://";
   /**
    * {@link #DUMMY_URL_WHEN_USING_D2_CLIENT} is not used since {@link D2ControllerClient}
@@ -57,10 +62,23 @@ public class D2ControllerClient extends ControllerClient {
     this.sslFactory = sslFactory;
   }
 
+  /**
+   * Discover leader controller from a D2 client.
+   * @return leader controller url
+   */
   @Override
   protected String discoverLeaderController() {
+    List<D2Client> d2Client = Collections.singletonList(this.d2Client);
+    return discoverLeaderController(d2Client);
+  }
+
+  /**
+   * Discover leader controller from a list of D2 clients.
+   * @return leader controller url
+   */
+  protected String discoverLeaderController(List<D2Client> d2ClientList) {
     LeaderControllerResponse controllerResponse = d2ClientGet(
-        this.d2Client,
+        d2ClientList,
         this.d2ServiceName,
         ControllerRoute.LEADER_CONTROLLER.getPath(),
         newParams(),
@@ -96,24 +114,27 @@ public class D2ControllerClient extends ControllerClient {
   }
 
   private static <RESPONSE> RESPONSE d2ClientGet(
-      D2Client d2Client,
+      List<D2Client> d2ClientList,
       String d2ServiceName,
       String path,
       QueryParams params,
       Class<RESPONSE> responseClass) {
     String requestPath = D2_SCHEME + d2ServiceName + path + "?" + encodeQueryParams(params);
-    try {
-      RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
-      String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
-      return ObjectMapperFactory.getInstance().readValue(responseBody, responseClass);
-    } catch (Exception e) {
-      throw new VeniceException("Failed to get response for url: " + requestPath + " with D2 Client", e);
+    for (D2Client d2Client: d2ClientList) {
+      try {
+        RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
+        String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
+        return ObjectMapperFactory.getInstance().readValue(responseBody, responseClass);
+      } catch (Exception e) {
+        LOGGER.error("Failed to get response for url: " + requestPath + " with D2 Client:" + d2Client, e);
+      }
     }
+    throw new VeniceException("List of D2 Clients failed to get response for url: " + requestPath);
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(D2Client d2Client, String d2ServiceName, String storeName) {
     return d2ClientGet(
-        d2Client,
+        Collections.singletonList(d2Client),
         d2ServiceName,
         ControllerRoute.CLUSTER_DISCOVERY.getPath(),
         getQueryParamsToDiscoverCluster(storeName),

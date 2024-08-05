@@ -18,6 +18,8 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.Mockito;
@@ -212,6 +214,75 @@ public class TestD2ControllerClient {
         Optional.of(mock(SSLFactory.class)))) {
       URL responseUrl = new URL(controllerClient.discoverLeaderController());
       Assert.assertEquals(responseUrl.getPort(), 1578);
+    }
+
+    D2ClientFactory.release(TEST_ZK_ADDRESS);
+  }
+
+  @Test
+  public void testDiscoverLeaderControllerWithListOfD2Clients() throws JsonProcessingException {
+    LeaderControllerResponse leaderControllerResponse = new LeaderControllerResponse();
+    leaderControllerResponse.setCluster(TEST_CLUSTER);
+    leaderControllerResponse.setName(TEST_STORE);
+    leaderControllerResponse.setUrl("http://localhost:2000");
+    leaderControllerResponse.setSecureUrl("http://localhost:2001");
+
+    String leaderControllerResponseStr = ObjectMapperFactory.getInstance().writeValueAsString(leaderControllerResponse);
+
+    RestResponse leaderControllerRestResponse = mock(RestResponse.class);
+    doReturn(ByteString.unsafeWrap(leaderControllerResponseStr.getBytes(StandardCharsets.UTF_8)))
+        .when(leaderControllerRestResponse)
+        .getEntity();
+
+    D2Client mockD2Client1 = Mockito.mock(D2Client.class);
+    doAnswer(invocation -> {
+      RestRequest request = invocation.getArgument(0, RestRequest.class);
+      URI uri = request.getURI();
+      if (uri.getPath().equals(ControllerRoute.LEADER_CONTROLLER.getPath())) {
+        return CompletableFuture.supplyAsync(() -> new VeniceException());
+      }
+      return null;
+    }).when(mockD2Client1).restRequest(any());
+
+    D2Client mockD2Client2 = Mockito.mock(D2Client.class);
+    doAnswer(invocation -> {
+      RestRequest request = invocation.getArgument(0, RestRequest.class);
+      URI uri = request.getURI();
+      if (uri.getPath().equals(ControllerRoute.LEADER_CONTROLLER.getPath())) {
+        return CompletableFuture.supplyAsync(() -> new VeniceException());
+      }
+      return null;
+    }).when(mockD2Client2).restRequest(any());
+
+    D2Client mockD2Client3 = Mockito.mock(D2Client.class);
+    doAnswer(invocation -> {
+      RestRequest request = invocation.getArgument(0, RestRequest.class);
+      URI uri = request.getURI();
+      if (uri.getPath().equals(ControllerRoute.LEADER_CONTROLLER.getPath())) {
+        return CompletableFuture.supplyAsync(() -> leaderControllerRestResponse);
+      }
+      return null;
+    }).when(mockD2Client3).restRequest(any());
+
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client1);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client2);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client3);
+
+    List<D2Client> d2ClientList = Arrays.asList(mockD2Client1, mockD2Client2, mockD2Client3);
+
+    try (D2ControllerClient controllerClient =
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
+      String leaderController = controllerClient.discoverLeaderController(d2ClientList);
+      Assert.assertEquals(leaderController, leaderControllerResponse.getUrl());
+    }
+
+    try (D2ControllerClient controllerClient = new D2ControllerClient(
+        TEST_CONTROLLER_D2_SERVICE,
+        TEST_CLUSTER,
+        TEST_ZK_ADDRESS,
+        Optional.of(mock(SSLFactory.class)))) {
+      String leaderController = controllerClient.discoverLeaderController(d2ClientList);
+      Assert.assertEquals(leaderController, leaderControllerResponse.getSecureUrl());
     }
 
     D2ClientFactory.release(TEST_ZK_ADDRESS);
