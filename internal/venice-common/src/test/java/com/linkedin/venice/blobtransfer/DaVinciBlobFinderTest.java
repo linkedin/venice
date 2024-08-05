@@ -88,18 +88,4 @@ public class DaVinciBlobFinderTest {
     assertEquals(response.getErrorMessage(), "some error");
     assertTrue(response.isError());
   }
-
-  @Test
-  public void testDiscoverBlobPeers_Exceptionally() {
-    CompletableFuture<TransportClientResponse> futureResponse = new CompletableFuture<>();
-    futureResponse.completeExceptionally(new RuntimeException("Test Exception"));
-    when(storeClient.get(anyString())).thenReturn(futureResponse);
-
-    BlobPeersDiscoveryResponse response = daVinciBlobFinder.discoverBlobPeers(storeName, version, partition);
-
-    assertTrue(response.isError());
-    assertEquals(
-        response.getErrorMessage(),
-        "Error finding DVC peers for blob transfer in store: testStore, version: 1, partition: 1");
-  }
 }

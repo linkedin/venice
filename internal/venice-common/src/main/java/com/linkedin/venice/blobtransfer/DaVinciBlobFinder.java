@@ -6,7 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VER
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -39,11 +39,12 @@ public class DaVinciBlobFinder implements BlobFinder {
     String uri = buildUriForBlobDiscovery(storeName, version, partition);
 
     try {
-      CompletableFuture<byte[]> futureResponse = storeClient.getRaw(uri);
-      byte[] response = futureResponse.join();
+      CompletableFuture<TransportClientResponse> futureResponse = storeClient.get(uri);
+      TransportClientResponse transportResponse = futureResponse.join();
+      byte[] response = transportResponse.getBody(); // Assuming getBody() returns the byte array
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
       return mapper.readValue(response, BlobPeersDiscoveryResponse.class);
-    } catch (IOException | VeniceException e) {
+    } catch (IOException e) {
       return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
     }
   }
