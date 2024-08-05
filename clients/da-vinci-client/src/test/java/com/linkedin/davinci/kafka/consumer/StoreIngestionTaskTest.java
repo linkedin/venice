@@ -4499,12 +4499,17 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig, TestStringRecordTransformer::new);
   }
 
+  public enum RmdChunkingStatus {
+    NONE, NON_CHUNKED, CHUNKED
+  }
+
   @DataProvider
   public static Object[][] testAssembledValueSizeProvider() {
     Object[] testSchemaIds =
         { VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
             AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion() };
-    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), testSchemaIds, DataProviderUtils.BOOLEAN);
+    Object[] chunkingStatus = { RmdChunkingStatus.NONE, RmdChunkingStatus.NON_CHUNKED, RmdChunkingStatus.CHUNKED };
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), testSchemaIds, chunkingStatus);
   }
 
   /**
@@ -4515,9 +4520,11 @@ public abstract class StoreIngestionTaskTest {
    * and not emitted on any other invalid schemaId values.
    */
   @Test(dataProvider = "testAssembledValueSizeProvider")
-  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId, boolean isForRmd) throws Exception {
+  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId, RmdChunkingStatus rmdChunkingStatus)
+      throws Exception {
     int numChunks = 10;
-    long expectedValueSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH;
+    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH + putKeyFoo.length;
+    int rmdSize = 5 * ByteUtils.BYTES_PER_KB; // arbitrary size
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
     for (int i = 0; i < numChunks; i++) {
@@ -4538,7 +4545,18 @@ public abstract class StoreIngestionTaskTest {
           Put put = (Put) message.getValue().getPayloadUnion();
           if (put.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
             put.schemaId = testSchemaId; // set manifest schemaId to testSchemaId to see if metrics are still recorded
-            put.replicationMetadataPayload = (isForRmd) ? ByteBuffer.allocate(10) : VeniceWriter.EMPTY_BYTE_BUFFER;
+            switch (rmdChunkingStatus) {
+              case NON_CHUNKED:
+                put.replicationMetadataPayload = ByteBuffer.allocate(rmdSize);
+                break;
+              case CHUNKED:
+                put.replicationMetadataPayload = ChunkingTestUtils.createReplicationMetadataPayload(rmdSize);
+                storeIngestionTaskUnderTest.setRmdChunked(true);
+                break;
+              default:
+                put.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;
+                break;
+            }
           }
           LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
           when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
@@ -4561,15 +4579,14 @@ public abstract class StoreIngestionTaskTest {
       HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
       if (testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
         ArgumentCaptor<Long> sizeCaptor = ArgumentCaptor.forClass(long.class);
-        if (isForRmd) { // should have metrics for rmd size but not record size
+        verify(stats, timeout(1000).times(1)).recordAssembledRecordSize(sizeCaptor.capture(), anyLong());
+        assertEquals(sizeCaptor.getValue().longValue(), expectedRecordSize);
+        verify(stats, timeout(1000).times(1)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+
+        if (rmdChunkingStatus != RmdChunkingStatus.NONE) {
           verify(stats, timeout(1000).times(1)).recordAssembledRmdSize(sizeCaptor.capture(), anyLong());
-          assertEquals(sizeCaptor.getValue().longValue(), expectedValueSize);
-          verify(stats, times(0)).recordAssembledRecordSize(anyLong(), anyLong());
-          verify(stats, times(0)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
-        } else { // should have metrics for record size but not rmd size
-          verify(stats, timeout(1000).times(1)).recordAssembledRecordSize(sizeCaptor.capture(), anyLong());
-          assertEquals(sizeCaptor.getValue().longValue(), expectedValueSize + putKeyFoo.length);
-          verify(stats, timeout(1000).times(1)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+          assertEquals(sizeCaptor.getValue().longValue(), rmdSize);
+        } else {
           verify(stats, times(0)).recordAssembledRmdSize(anyLong(), anyLong());
         }
       } else {

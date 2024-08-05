@@ -108,7 +108,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -325,6 +324,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
+  protected boolean isRmdChunked;
   protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
@@ -484,6 +484,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
+    this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[partitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
@@ -2434,17 +2435,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
           ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
           AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+      int recordSize = keyLen + chunkedValueManifest.getSize();
+      recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
+      hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+
       ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
-      boolean isValueManifest = rmdPayload != null && rmdPayload.equals(VeniceWriter.EMPTY_BYTE_BUFFER);
-      if (isValueManifest) { // the manifest pertains to a chunked value
-        int recordSize = keyLen + chunkedValueManifest.getSize();
-        recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
-        hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
-      } else { // the manifest pertains to a chunked rmd
-        hostLevelIngestionStats.recordAssembledRmdSize(chunkedValueManifest.getSize(), currentTimeMs);
+      if (rmdPayload == null || rmdPayload.remaining() == 0) {
+        return;
       }
+      int rmdSize;
+      if (isRmdChunked) {
+        ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(
+            ByteUtils.extractByteArray(rmdPayload),
+            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+        rmdSize = rmdManifest.getSize();
+      } else {
+        rmdSize = rmdPayload.remaining();
+      }
+      hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
     } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
-      LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record / RMD size", e);
+      LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record or RMD size", e);
     }
   }
 
@@ -3993,6 +4003,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected boolean isChunked() {
     return isChunked;
+  }
+
+  void setRmdChunked(boolean isRmdChunked) {
+    this.isRmdChunked = isRmdChunked;
   }
 
   protected ReadOnlySchemaRepository getSchemaRepo() {
