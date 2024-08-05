@@ -77,6 +77,26 @@ public class ConfigKeys {
   public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND =
       "server.kafka.fetch.quota.records.per.second";
 
+  /**
+   * Whether to speed up DaVinci current version bootstrapping or not.
+   */
+  public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED =
+      "da.vinci.current.version.bootstrapping.speedup.enabled";
+
+  /**
+   * When {@link #DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED} is true, the following throttler
+   * will be applied when any current version is bootstrapping.
+   */
+  public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND =
+      "da.vinci.current.version.bootstrapping.quota.records.per.second";
+
+  /**
+   * When {@link #DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED} is true, the following throttler
+   * will be applied when any current version is bootstrapping.
+   */
+  public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND =
+      "da.vinci.current.version.bootstrapping.quota.bytes.per.second";
+
   // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND =
       "kafka.fetch.quota.unordered.bytes.per.second";
@@ -202,6 +222,11 @@ public class ConfigKeys {
    * The retention policy for deprecated topics, which includes topics for both failed jobs and retired store versions.
    */
   public static final String DEPRECATED_TOPIC_RETENTION_MS = "deprecated.topic.retention.ms";
+
+  /**
+   * Time interval to retry registering service discovery announcers that failed to register. By default, this is set to 30000L ms.
+   */
+  public static final String SERVICE_DISCOVERY_REGISTRATION_RETRY_MS = "service.discovery.registration.retry.ms";
 
   public static final String FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS =
       "fatal.data.validation.failure.topic.retention.ms";
@@ -2097,7 +2122,7 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
 
-  /**g
+  /**
    * Percentage of total single get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the
    * total single get requests are allowed for long tail retry. This is to prevent retry storm and cascading failures.
    */
@@ -2123,4 +2148,12 @@ public class ConfigKeys {
    * retry managers in router periodically to provide retry budget based on a percentage of the original requests.
    */
   public static final String ROUTER_RETRY_MANAGER_CORE_POOL_SIZE = "router.retry.manager.core.pool.size";
+
+  /**
+   * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
+   * of store version's ingestion context changed (workload type {#@link PartitionReplicaIngestionContext.WorkloadType} or
+   * {#@link VersionRole.WorkloadType} version role changed).
+   */
+  public static final String SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED =
+      "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
 }

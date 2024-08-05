@@ -329,6 +329,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
+  protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -472,6 +474,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
+    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -557,6 +561,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
     subscribePartition(topicPartition, true);
+  }
+
+  void resubscribeForAllPartitions() throws InterruptedException {
+    throwIfNotRunning();
+    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      resubscribe(partitionConsumptionState);
+    }
   }
 
   /**
@@ -1273,6 +1284,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Thread.sleep(readCycleDelayMs);
   }
 
+  protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+    PartitionReplicaIngestionContext.VersionRole newVersionRole =
+        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
+        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
+      // TODO: Add support workload type change in the future, as enabling write computing during normal hybrid
+      // ingestion could cause workload type change.
+      if (!newVersionRole.equals(versionRole)) {
+        LOGGER.info(
+            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
+                + "changed to New: version role: {}, workload type: {}",
+            versionTopic,
+            versionRole,
+            workloadType,
+            newVersionRole,
+            newWorkloadType);
+        versionRole = newVersionRole;
+        resubscribeForAllPartitions();
+      }
+    }
+  }
+
   private void maybeUnsubscribeCompletedPartitions(Store store) {
     if (hybridStoreConfig.isPresent() || (!serverConfig.isUnsubscribeAfterBatchpushEnabled())) {
       return;
@@ -1344,6 +1378,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
+        updateIngestionRoleIfStoreChanged(store);
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
@@ -1835,10 +1870,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        consumerSubscribe(
-            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic()),
-            offsetRecord.getLocalVersionTopicOffset(),
-            localKafkaServer);
+        PubSubTopicPartition pubSubTopicPartition =
+            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
+        consumerSubscribe(pubSubTopicPartition, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
@@ -3129,12 +3163,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(PubSubTopicPartition topicPartition, long startOffset, String kafkaURL) {
+  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext =
+        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
+    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
@@ -3709,6 +3745,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportCompleted(partitionConsumptionState, false);
   }
 
+  protected abstract void resubscribe(PartitionConsumptionState partitionConsumptionState) throws InterruptedException;
+
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     ingestionNotificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
     LOGGER.info("Replica: {} is ready to serve", partitionConsumptionState.getReplicaId());
@@ -4016,5 +4054,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     }
     return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
+  }
+
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
+  }
+
+  public boolean hasAllPartitionReportedCompleted() {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+      if (!entry.getValue().isCompletionReported()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // For unit test purpose.
+  void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
+    this.versionRole = versionRole;
   }
 }
