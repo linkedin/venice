@@ -2288,6 +2288,7 @@ public abstract class StoreIngestionTaskTest {
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
+      assertTrue(storeIngestionTaskUnderTest.hasAllPartitionReportedCompleted());
     }, aaConfig);
   }
 
