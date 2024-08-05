@@ -50,6 +50,11 @@ import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY;
@@ -143,6 +148,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
@@ -469,6 +475,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int nonExistingTopicIngestionTaskKillThresholdSecond;
   private final int nonExistingTopicCheckRetryIntervalSecond;
   private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
+  private final KafkaConsumerServiceDelegator.ConsumerPoolStrategyType consumerPoolStrategyType;
+  private final int consumerPoolSizeForCurrentVersionAAWCLeader;
+  private final int consumerPoolSizeForNonCurrentVersionAAWCLeader;
+  private final int consumerPoolSizeForCurrentVersionNonAAWCLeader;
+  private final int consumerPoolSizeForNonCurrentVersionNonAAWCLeader;
+
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
@@ -779,6 +791,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         .getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
     dedicatedConsumerPoolForAAWCLeaderEnabled =
         serverProperties.getBoolean(SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED, false);
+    consumerPoolStrategyType = KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.valueOf(
+        serverProperties.getString(
+            SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
+            KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT.name()));
+    consumerPoolSizeForCurrentVersionAAWCLeader =
+        serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER, 10);
+    consumerPoolSizeForNonCurrentVersionAAWCLeader =
+        serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER, 10);
+    consumerPoolSizeForCurrentVersionNonAAWCLeader =
+        serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER, 10);
+    consumerPoolSizeForNonCurrentVersionNonAAWCLeader =
+        serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER, 10);
     dedicatedConsumerPoolSizeForAAWCLeader =
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
     useDaVinciSpecificExecutionStatusForError =
@@ -1382,6 +1406,26 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getDedicatedConsumerPoolSizeForAAWCLeader() {
     return dedicatedConsumerPoolSizeForAAWCLeader;
+  }
+
+  public KafkaConsumerServiceDelegator.ConsumerPoolStrategyType getConsumerPoolStrategyType() {
+    return consumerPoolStrategyType;
+  }
+
+  public int getConsumerPoolSizeForCurrentVersionAAWCLeader() {
+    return consumerPoolSizeForCurrentVersionAAWCLeader;
+  }
+
+  public int getConsumerPoolSizeForNonCurrentVersionAAWCLeader() {
+    return consumerPoolSizeForNonCurrentVersionAAWCLeader;
+  }
+
+  public int getConsumerPoolSizeForCurrentVersionNonAAWCLeader() {
+    return consumerPoolSizeForNonCurrentVersionNonAAWCLeader;
+  }
+
+  public int getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader() {
+    return consumerPoolSizeForNonCurrentVersionNonAAWCLeader;
   }
 
   public int getTopicManagerMetadataFetcherConsumerPoolSize() {
