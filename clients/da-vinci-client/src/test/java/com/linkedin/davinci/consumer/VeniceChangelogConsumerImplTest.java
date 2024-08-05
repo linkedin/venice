@@ -371,6 +371,9 @@ public class VeniceChangelogConsumerImplTest {
     reporterThread.recordStats(lastHeartbeat, consumerStats, topicPartitionSet);
     Mockito.verify(consumerStats).recordMaximumConsumingVersion(1);
     Mockito.verify(consumerStats).recordMinimumConsumingVersion(1);
+
+    reporterThread.start();
+    reporterThread.interrupt();
   }
 
   private void prepareChangeCaptureRecordsToBePolled(
