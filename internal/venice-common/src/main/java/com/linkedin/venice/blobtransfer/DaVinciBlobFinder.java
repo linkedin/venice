@@ -44,7 +44,7 @@ public class DaVinciBlobFinder implements BlobFinder {
       byte[] response = transportResponse.getBody(); // Assuming getBody() returns the byte array
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
       return mapper.readValue(response, BlobPeersDiscoveryResponse.class);
-    } catch (IOException e) {
+    } catch (Exception e) {
       return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
     }
   }

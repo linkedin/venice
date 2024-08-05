@@ -70,7 +70,7 @@ public class DaVinciBlobFinderTest {
   }
 
   @Test
-  public void testDiscoverBlobPeers_IOException() throws Exception {
+  public void testDiscoverBlobPeers_ContentDeserializationError() throws Exception {
     String responseBodyJson = "{\"error\":true,\"errorMessage\":\"some error\",\"discoveryResult\":[]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
     TransportClientResponse mockResponse = new TransportClientResponse(0, null, responseBody);
@@ -87,5 +87,19 @@ public class DaVinciBlobFinderTest {
     assertEquals(0, response.getDiscoveryResult().size());
     assertEquals(response.getErrorMessage(), "some error");
     assertTrue(response.isError());
+  }
+
+  @Test
+  public void testDiscoverBlobPeers_ClientWithIncorrectUri() {
+    CompletableFuture<TransportClientResponse> futureResponse = new CompletableFuture<>();
+    futureResponse.completeExceptionally(new RuntimeException("Test Exception"));
+    when(storeClient.get(anyString())).thenReturn(futureResponse);
+
+    BlobPeersDiscoveryResponse response = daVinciBlobFinder.discoverBlobPeers(storeName, version, partition);
+
+    assertTrue(response.isError());
+    assertEquals(
+        response.getErrorMessage(),
+        "Error finding DVC peers for blob transfer in store: testStore, version: 1, partition: 1");
   }
 }
