@@ -4547,11 +4547,11 @@ public abstract class StoreIngestionTaskTest {
             put.schemaId = testSchemaId; // set manifest schemaId to testSchemaId to see if metrics are still recorded
             switch (rmdChunkingStatus) {
               case NON_CHUNKED:
-                put.replicationMetadataPayload = ByteBuffer.allocate(rmdSize);
+                put.replicationMetadataPayload = ByteBuffer.allocate(rmdSize + ByteUtils.SIZE_OF_INT);
+                put.replicationMetadataPayload.position(ByteUtils.SIZE_OF_INT); // for getIntHeaderFromByteBuffer()
                 break;
               case CHUNKED:
                 put.replicationMetadataPayload = ChunkingTestUtils.createReplicationMetadataPayload(rmdSize);
-                storeIngestionTaskUnderTest.setRmdChunked(true);
                 break;
               default:
                 put.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;

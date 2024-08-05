@@ -169,6 +169,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
+  private static final int CHUNK_MANIFEST_SCHEMA_ID =
+      AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -324,7 +326,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
-  protected boolean isRmdChunked;
   protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
@@ -484,7 +485,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
-    this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[partitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
@@ -2430,27 +2430,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
 
-  protected void recordAssembledRecordSize(Put put, int keyLen, long currentTimeMs) {
+  /**
+   * Records metrics for the original size of full-assembled records (key + value) and RMD by utilizing the field
+   * {@link ChunkedValueManifest#size}.
+   * Also records the ratio of assembled record size to maximum allowed size, which is intended to be used to alert
+   * customers about how close they are to hitting the size limit.
+   * @param keyLen The size of the record's key
+   * @param valueBytes {@link Put#putValue} which is expected to be a serialized {@link ChunkedValueManifest}
+   * @param rmdBytes {@link Put#replicationMetadataPayload} which can be a serialized {@link ChunkedValueManifest} if
+   * RMD chunking was enabled or just the RMD payload otherwise
+   */
+  protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
     try {
-      ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
-          ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
-          AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-      int recordSize = keyLen + chunkedValueManifest.getSize();
-      recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
-      hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
-
-      ByteBuffer rmdPayload = put.getReplicationMetadataPayload();
-      if (rmdPayload == null || rmdPayload.remaining() == 0) {
+      if (ByteUtils.getIntHeaderFromByteBuffer(valueBytes) != CHUNK_MANIFEST_SCHEMA_ID) {
+        LOGGER.error("Unable to deserialize putValue into a ChunkedValueManifest due to incorrect integer header");
         return;
       }
-      int rmdSize;
-      if (isRmdChunked) {
-        ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(
-            ByteUtils.extractByteArray(rmdPayload),
-            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+
+      byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
+      ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
+      int recordSize = keyLen + valueManifest.getSize();
+      hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+      recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
+
+      if (rmdBytes == null || rmdBytes.remaining() == 0) {
+        return;
+      }
+
+      int rmdSize = rmdBytes.remaining();
+      if (ByteUtils.getIntHeaderFromByteBuffer(rmdBytes) == CHUNK_MANIFEST_SCHEMA_ID) {
+        byte[] rmdByteArray = ByteUtils.extractByteArray(rmdBytes);
+        ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(rmdByteArray, CHUNK_MANIFEST_SCHEMA_ID);
         rmdSize = rmdManifest.getSize();
-      } else {
-        rmdSize = rmdPayload.remaining();
       }
       hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
     } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
@@ -3265,9 +3276,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        if (metricsEnabled && recordLevelMetricEnabled.get()
-            && put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-          recordAssembledRecordSize(put, keyLen, currentTimeMs); // must be before recordTransformer changes putValue
+        if (metricsEnabled && recordLevelMetricEnabled.get() && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+          // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
+          recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
         // Check if put.getSchemaId is positive, if not default to 1
@@ -4003,10 +4014,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected boolean isChunked() {
     return isChunked;
-  }
-
-  void setRmdChunked(boolean isRmdChunked) {
-    this.isRmdChunked = isRmdChunked;
   }
 
   protected ReadOnlySchemaRepository getSchemaRepo() {
