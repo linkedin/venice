@@ -63,10 +63,15 @@ public class ServerStoreAclHandler extends StoreAclHandler {
    */
   @Override
   protected String extractStoreName(String resourceName, QueryAction queryAction) {
-    if (QueryAction.DICTIONARY.equals(queryAction)) {
-      return resourceName;
-    } else {
-      return Version.parseStoreFromKafkaTopicName(resourceName);
+    switch (queryAction) {
+      case STORAGE:
+      case COMPUTE:
+        return Version.parseStoreFromKafkaTopicName(resourceName);
+      case DICTIONARY:
+        return resourceName;
+      default:
+        throw new IllegalArgumentException(
+            String.format("Unexpected QueryAction: %s with resource name: %s", queryAction, resourceName));
     }
   }
 
