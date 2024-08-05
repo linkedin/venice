@@ -102,7 +102,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.Consumer;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -212,99 +212,159 @@ public class UpdateStoreUtils {
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
 
-    owner.map(addToUpdatedConfigs(updatedConfigs, OWNER)).ifPresent(updatedStore::setOwner);
-    readability.map(addToUpdatedConfigs(updatedConfigs, ENABLE_READS)).ifPresent(updatedStore::setEnableReads);
-    writeability.map(addToUpdatedConfigs(updatedConfigs, ENABLE_WRITES)).ifPresent(updatedStore::setEnableWrites);
-    partitionCount.map(addToUpdatedConfigs(updatedConfigs, PARTITION_COUNT)).ifPresent(updatedStore::setPartitionCount);
-    largestUsedVersionNumber.map(addToUpdatedConfigs(updatedConfigs, LARGEST_USED_VERSION_NUMBER))
-        .ifPresent(updatedStore::setLargestUsedVersionNumber);
-    bootstrapToOnlineTimeoutInHours.map(addToUpdatedConfigs(updatedConfigs, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
-        .ifPresent(updatedStore::setBootstrapToOnlineTimeoutInHours);
-    storageQuotaInByte.map(addToUpdatedConfigs(updatedConfigs, STORAGE_QUOTA_IN_BYTE))
-        .ifPresent(updatedStore::setStorageQuotaInByte);
-    readQuotaInCU.map(addToUpdatedConfigs(updatedConfigs, READ_QUOTA_IN_CU)).ifPresent(updatedStore::setReadQuotaInCU);
-    accessControlled.map(addToUpdatedConfigs(updatedConfigs, ACCESS_CONTROLLED))
-        .ifPresent(updatedStore::setAccessControlled);
-    compressionStrategy.map(addToUpdatedConfigs(updatedConfigs, COMPRESSION_STRATEGY))
-        .ifPresent(updatedStore::setCompressionStrategy);
-    clientDecompressionEnabled.map(addToUpdatedConfigs(updatedConfigs, CLIENT_DECOMPRESSION_ENABLED))
-        .ifPresent(updatedStore::setClientDecompressionEnabled);
-    chunkingEnabled.map(addToUpdatedConfigs(updatedConfigs, CHUNKING_ENABLED))
-        .ifPresent(updatedStore::setChunkingEnabled);
-    rmdChunkingEnabled.map(addToUpdatedConfigs(updatedConfigs, RMD_CHUNKING_ENABLED))
-        .ifPresent(updatedStore::setRmdChunkingEnabled);
-    batchGetLimit.map(addToUpdatedConfigs(updatedConfigs, BATCH_GET_LIMIT)).ifPresent(updatedStore::setBatchGetLimit);
-    numVersionsToPreserve.map(addToUpdatedConfigs(updatedConfigs, NUM_VERSIONS_TO_PRESERVE))
-        .ifPresent(updatedStore::setNumVersionsToPreserve);
-    replicationFactor.map(addToUpdatedConfigs(updatedConfigs, REPLICATION_FACTOR))
-        .ifPresent(updatedStore::setReplicationFactor);
-    storeMigration.map(addToUpdatedConfigs(updatedConfigs, STORE_MIGRATION)).ifPresent(updatedStore::setMigrating);
-    migrationDuplicateStore.map(addToUpdatedConfigs(updatedConfigs, MIGRATION_DUPLICATE_STORE))
-        .ifPresent(updatedStore::setMigrationDuplicateStore);
-    writeComputationEnabled.map(addToUpdatedConfigs(updatedConfigs, WRITE_COMPUTATION_ENABLED))
-        .ifPresent(updatedStore::setWriteComputationEnabled);
-    replicationMetadataVersionID.map(addToUpdatedConfigs(updatedConfigs, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
-        .ifPresent(updatedStore::setRmdVersion);
-    readComputationEnabled.map(addToUpdatedConfigs(updatedConfigs, READ_COMPUTATION_ENABLED))
-        .ifPresent(updatedStore::setReadComputationEnabled);
-    nativeReplicationEnabled.map(addToUpdatedConfigs(updatedConfigs, NATIVE_REPLICATION_ENABLED))
-        .ifPresent(updatedStore::setNativeReplicationEnabled);
-    activeActiveReplicationEnabled.map(addToUpdatedConfigs(updatedConfigs, ACTIVE_ACTIVE_REPLICATION_ENABLED))
-        .ifPresent(updatedStore::setActiveActiveReplicationEnabled);
-    pushStreamSourceAddress.map(addToUpdatedConfigs(updatedConfigs, PUSH_STREAM_SOURCE_ADDRESS))
-        .ifPresent(updatedStore::setPushStreamSourceAddress);
-    backupStrategy.map(addToUpdatedConfigs(updatedConfigs, BACKUP_STRATEGY)).ifPresent(updatedStore::setBackupStrategy);
-    autoSchemaRegisterPushJobEnabled.map(addToUpdatedConfigs(updatedConfigs, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED))
-        .ifPresent(updatedStore::setSchemaAutoRegisterFromPushJobEnabled);
-    hybridStoreDiskQuotaEnabled.map(addToUpdatedConfigs(updatedConfigs, HYBRID_STORE_DISK_QUOTA_ENABLED))
-        .ifPresent(updatedStore::setHybridStoreDiskQuotaEnabled);
-    backupVersionRetentionMs.map(addToUpdatedConfigs(updatedConfigs, BACKUP_VERSION_RETENTION_MS))
-        .ifPresent(updatedStore::setBackupVersionRetentionMs);
-    nativeReplicationSourceFabric.map(addToUpdatedConfigs(updatedConfigs, NATIVE_REPLICATION_SOURCE_FABRIC))
-        .ifPresent(updatedStore::setNativeReplicationSourceFabric);
-    latestSupersetSchemaId.map(addToUpdatedConfigs(updatedConfigs, LATEST_SUPERSET_SCHEMA_ID))
-        .ifPresent(updatedStore::setLatestSuperSetValueSchemaId);
-    minCompactionLagSeconds.map(addToUpdatedConfigs(updatedConfigs, MIN_COMPACTION_LAG_SECONDS))
-        .ifPresent(updatedStore::setMinCompactionLagSeconds);
-    maxCompactionLagSeconds.map(addToUpdatedConfigs(updatedConfigs, MAX_COMPACTION_LAG_SECONDS))
-        .ifPresent(updatedStore::setMaxCompactionLagSeconds);
-    maxRecordSizeBytes.map(addToUpdatedConfigs(updatedConfigs, MAX_RECORD_SIZE_BYTES))
-        .ifPresent(updatedStore::setMaxRecordSizeBytes);
-    unusedSchemaDeletionEnabled.map(addToUpdatedConfigs(updatedConfigs, UNUSED_SCHEMA_DELETION_ENABLED))
-        .ifPresent(updatedStore::setUnusedSchemaDeletionEnabled);
-    blobTransferEnabled.map(addToUpdatedConfigs(updatedConfigs, BLOB_TRANSFER_ENABLED))
-        .ifPresent(updatedStore::setBlobTransferEnabled);
-    storageNodeReadQuotaEnabled.map(addToUpdatedConfigs(updatedConfigs, STORAGE_NODE_READ_QUOTA_ENABLED))
-        .ifPresent(updatedStore::setStorageNodeReadQuotaEnabled);
-    regularVersionETLEnabled.map(addToUpdatedConfigs(updatedConfigs, REGULAR_VERSION_ETL_ENABLED))
-        .ifPresent(regularVersionETL -> {
-          ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
-          if (etlStoreConfig == null) {
-            etlStoreConfig = new ETLStoreConfigImpl();
-          }
-          etlStoreConfig.setRegularVersionETLEnabled(regularVersionETL);
-          updatedStore.setEtlStoreConfig(etlStoreConfig);
-        });
-    futureVersionETLEnabled.map(addToUpdatedConfigs(updatedConfigs, FUTURE_VERSION_ETL_ENABLED))
-        .ifPresent(futureVersionETL -> {
-          ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
-          if (etlStoreConfig == null) {
-            etlStoreConfig = new ETLStoreConfigImpl();
-          }
-          etlStoreConfig.setFutureVersionETLEnabled(futureVersionETL);
-          updatedStore.setEtlStoreConfig(etlStoreConfig);
-        });
-    etledUserProxyAccount.map(addToUpdatedConfigs(updatedConfigs, ETLED_PROXY_USER_ACCOUNT))
-        .ifPresent(etlProxyAccount -> {
-          ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
-          if (etlStoreConfig == null) {
-            etlStoreConfig = new ETLStoreConfigImpl();
-          }
-          etlStoreConfig.setEtledUserProxyAccount(etlProxyAccount);
-          updatedStore.setEtlStoreConfig(etlStoreConfig);
-        });
-    incrementalPushEnabled.map(addToUpdatedConfigs(updatedConfigs, INCREMENTAL_PUSH_ENABLED))
-        .ifPresent(updatedStore::setIncrementalPushEnabled);
+    addToUpdatedConfigs(updatedConfigs, OWNER, owner, updatedStore::setOwner);
+    addToUpdatedConfigs(updatedConfigs, ENABLE_READS, readability, updatedStore::setEnableReads);
+    addToUpdatedConfigs(updatedConfigs, ENABLE_WRITES, writeability, updatedStore::setEnableWrites);
+    addToUpdatedConfigs(updatedConfigs, PARTITION_COUNT, partitionCount, updatedStore::setPartitionCount);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        LARGEST_USED_VERSION_NUMBER,
+        largestUsedVersionNumber,
+        updatedStore::setLargestUsedVersionNumber);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
+        bootstrapToOnlineTimeoutInHours,
+        updatedStore::setBootstrapToOnlineTimeoutInHours);
+    addToUpdatedConfigs(updatedConfigs, STORAGE_QUOTA_IN_BYTE, storageQuotaInByte, updatedStore::setStorageQuotaInByte);
+    addToUpdatedConfigs(updatedConfigs, READ_QUOTA_IN_CU, readQuotaInCU, updatedStore::setReadQuotaInCU);
+    addToUpdatedConfigs(updatedConfigs, ACCESS_CONTROLLED, accessControlled, updatedStore::setAccessControlled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        COMPRESSION_STRATEGY,
+        compressionStrategy,
+        updatedStore::setCompressionStrategy);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        CLIENT_DECOMPRESSION_ENABLED,
+        clientDecompressionEnabled,
+        updatedStore::setClientDecompressionEnabled);
+    addToUpdatedConfigs(updatedConfigs, CHUNKING_ENABLED, chunkingEnabled, updatedStore::setChunkingEnabled);
+    addToUpdatedConfigs(updatedConfigs, RMD_CHUNKING_ENABLED, rmdChunkingEnabled, updatedStore::setRmdChunkingEnabled);
+    addToUpdatedConfigs(updatedConfigs, BATCH_GET_LIMIT, batchGetLimit, updatedStore::setBatchGetLimit);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        NUM_VERSIONS_TO_PRESERVE,
+        numVersionsToPreserve,
+        updatedStore::setNumVersionsToPreserve);
+    addToUpdatedConfigs(updatedConfigs, REPLICATION_FACTOR, replicationFactor, updatedStore::setReplicationFactor);
+    addToUpdatedConfigs(updatedConfigs, STORE_MIGRATION, storeMigration, updatedStore::setMigrating);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        MIGRATION_DUPLICATE_STORE,
+        migrationDuplicateStore,
+        updatedStore::setMigrationDuplicateStore);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        WRITE_COMPUTATION_ENABLED,
+        writeComputationEnabled,
+        updatedStore::setWriteComputationEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        REPLICATION_METADATA_PROTOCOL_VERSION_ID,
+        replicationMetadataVersionID,
+        updatedStore::setRmdVersion);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        READ_COMPUTATION_ENABLED,
+        readComputationEnabled,
+        updatedStore::setReadComputationEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        NATIVE_REPLICATION_ENABLED,
+        nativeReplicationEnabled,
+        updatedStore::setNativeReplicationEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        ACTIVE_ACTIVE_REPLICATION_ENABLED,
+        activeActiveReplicationEnabled,
+        updatedStore::setActiveActiveReplicationEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        PUSH_STREAM_SOURCE_ADDRESS,
+        pushStreamSourceAddress,
+        updatedStore::setPushStreamSourceAddress);
+    addToUpdatedConfigs(updatedConfigs, BACKUP_STRATEGY, backupStrategy, updatedStore::setBackupStrategy);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED,
+        autoSchemaRegisterPushJobEnabled,
+        updatedStore::setSchemaAutoRegisterFromPushJobEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        HYBRID_STORE_DISK_QUOTA_ENABLED,
+        hybridStoreDiskQuotaEnabled,
+        updatedStore::setHybridStoreDiskQuotaEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        BACKUP_VERSION_RETENTION_MS,
+        backupVersionRetentionMs,
+        updatedStore::setBackupVersionRetentionMs);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        NATIVE_REPLICATION_SOURCE_FABRIC,
+        nativeReplicationSourceFabric,
+        updatedStore::setNativeReplicationSourceFabric);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        LATEST_SUPERSET_SCHEMA_ID,
+        latestSupersetSchemaId,
+        updatedStore::setLatestSuperSetValueSchemaId);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        MIN_COMPACTION_LAG_SECONDS,
+        minCompactionLagSeconds,
+        updatedStore::setMinCompactionLagSeconds);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        MAX_COMPACTION_LAG_SECONDS,
+        maxCompactionLagSeconds,
+        updatedStore::setMaxCompactionLagSeconds);
+    addToUpdatedConfigs(updatedConfigs, MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes, updatedStore::setMaxRecordSizeBytes);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        UNUSED_SCHEMA_DELETION_ENABLED,
+        unusedSchemaDeletionEnabled,
+        updatedStore::setUnusedSchemaDeletionEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        BLOB_TRANSFER_ENABLED,
+        blobTransferEnabled,
+        updatedStore::setBlobTransferEnabled);
+    addToUpdatedConfigs(
+        updatedConfigs,
+        STORAGE_NODE_READ_QUOTA_ENABLED,
+        storageNodeReadQuotaEnabled,
+        updatedStore::setStorageNodeReadQuotaEnabled);
+    addToUpdatedConfigs(updatedConfigs, REGULAR_VERSION_ETL_ENABLED, regularVersionETLEnabled, regularVersionETL -> {
+      ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
+      if (etlStoreConfig == null) {
+        etlStoreConfig = new ETLStoreConfigImpl();
+      }
+      etlStoreConfig.setRegularVersionETLEnabled(regularVersionETL);
+      updatedStore.setEtlStoreConfig(etlStoreConfig);
+    });
+    addToUpdatedConfigs(updatedConfigs, FUTURE_VERSION_ETL_ENABLED, futureVersionETLEnabled, futureVersionETL -> {
+      ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
+      if (etlStoreConfig == null) {
+        etlStoreConfig = new ETLStoreConfigImpl();
+      }
+      etlStoreConfig.setFutureVersionETLEnabled(futureVersionETL);
+      updatedStore.setEtlStoreConfig(etlStoreConfig);
+    });
+    addToUpdatedConfigs(updatedConfigs, ETLED_PROXY_USER_ACCOUNT, etledUserProxyAccount, etlProxyAccount -> {
+      ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
+      if (etlStoreConfig == null) {
+        etlStoreConfig = new ETLStoreConfigImpl();
+      }
+      etlStoreConfig.setEtledUserProxyAccount(etlProxyAccount);
+      updatedStore.setEtlStoreConfig(etlStoreConfig);
+    });
+    addToUpdatedConfigs(
+        updatedConfigs,
+        INCREMENTAL_PUSH_ENABLED,
+        incrementalPushEnabled,
+        updatedStore::setIncrementalPushEnabled);
 
     // No matter what, set native replication to enabled in multi-region mode if the store currently doesn't enable it,
     // and it is not explicitly asked to be updated
@@ -519,11 +579,15 @@ public class UpdateStoreUtils {
     return updateStoreWrapper;
   }
 
-  private static <T> Function<T, T> addToUpdatedConfigs(Set<CharSequence> updatedConfigs, String config) {
-    return (configValue) -> {
-      updatedConfigs.add(config);
-      return configValue;
-    };
+  private static <T> void addToUpdatedConfigs(
+      Set<CharSequence> updatedConfigs,
+      String configName,
+      Optional<T> param,
+      Consumer<T> paramSetter) {
+    if (param.isPresent()) {
+      updatedConfigs.add(configName);
+      paramSetter.accept(param.get());
+    }
   }
 
   static void updateInferredConfig(
