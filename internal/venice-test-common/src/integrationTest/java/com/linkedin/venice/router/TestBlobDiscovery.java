@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.client.store.ClientFactory.*;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -17,9 +18,8 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -183,7 +183,7 @@ public class TestBlobDiscovery {
         .setMetricsRepository(new MetricsRepository());
 
     BlobFinder dvcFinder =
-        new DaVinciBlobFinder((AbstractAvroStoreClient) ClientFactory.getAndStartGenericAvroClient(clientConfig));
+        new DaVinciBlobFinder(new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
 
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
       BlobPeersDiscoveryResponse response = dvcFinder.discoverBlobPeers(storeName, 1, 1);
