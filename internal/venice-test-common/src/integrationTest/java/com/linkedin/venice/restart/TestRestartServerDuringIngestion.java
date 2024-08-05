@@ -1,6 +1,7 @@
 package com.linkedin.venice.restart;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
+import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
@@ -73,8 +74,11 @@ public abstract class TestRestartServerDuringIngestion {
     int numberOfRouter = 1;
     int replicaFactor = 1;
     int partitionSize = 1000;
+    Properties props = new Properties();
+    props.setProperty(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, String.valueOf(1));
+
     cluster = ServiceFactory
-        .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false);
+        .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false, props);
     pubSubProducerAdapterFactory =
         cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
