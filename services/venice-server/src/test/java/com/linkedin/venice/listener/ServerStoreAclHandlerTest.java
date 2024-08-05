@@ -1,7 +1,11 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
@@ -37,7 +41,8 @@ import org.testng.annotations.Test;
 
 
 public class ServerStoreAclHandlerTest {
-  private static final String TEST_STORE_NAME = "testStore";
+  // Store name can be in a version topic format
+  private static final String TEST_STORE_NAME = "testStore_v1";
   private static final String TEST_STORE_VERSION = Version.composeKafkaTopic(TEST_STORE_NAME, 1);
 
   /**
@@ -181,7 +186,7 @@ public class ServerStoreAclHandlerTest {
   }
 
   @Test
-  public void testAllRequestTypes() throws SSLPeerUnverifiedException {
+  public void testAllRequestTypes() throws SSLPeerUnverifiedException, AclException {
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     HttpRequest request = mock(HttpRequest.class);
@@ -208,9 +213,26 @@ public class ServerStoreAclHandlerTest {
     doReturn(HttpMethod.GET).when(request).method();
     for (QueryAction queryAction: QueryAction.values()) {
       MockAccessController mockAccessController = new MockAccessController(queryAction);
-      StoreAclHandler storeAclHandler = new ServerStoreAclHandler(mockAccessController, metadataRepo);
+      MockAccessController spyMockAccessController = spy(mockAccessController);
+      StoreAclHandler storeAclHandler = new ServerStoreAclHandler(spyMockAccessController, metadataRepo);
       doReturn(buildTestURI(queryAction)).when(request).uri();
       storeAclHandler.channelRead0(ctx, request);
+      switch (queryAction) {
+        case ADMIN:
+        case CURRENT_VERSION:
+        case HEALTH:
+        case METADATA:
+        case TOPIC_PARTITION_INGESTION_CONTEXT:
+          verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
+          break;
+        case STORAGE:
+        case COMPUTE:
+        case DICTIONARY:
+          verify(spyMockAccessController).hasAccess(any(), eq(TEST_STORE_NAME), any());
+          break;
+        default:
+          throw new IllegalArgumentException("Invalid query action: " + queryAction);
+      }
     }
   }
 
@@ -235,7 +257,7 @@ public class ServerStoreAclHandlerTest {
         return "/" + QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase() + "/" + TEST_STORE_VERSION
             + "/" + TEST_STORE_VERSION + "/1";
       default:
-        throw new IllegalArgumentException("Invalid query action");
+        throw new IllegalArgumentException("Invalid query action: " + queryAction);
     }
   }
 }

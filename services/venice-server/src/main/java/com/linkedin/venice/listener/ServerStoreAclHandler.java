@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import io.grpc.Metadata;
@@ -61,11 +62,11 @@ public class ServerStoreAclHandler extends StoreAclHandler {
    * In Venice Server, the resource name is actually a Kafka topic name for STORAGE/COMPUTE but store name for DICTIONARY.
    */
   @Override
-  protected String extractStoreName(String resourceName) {
-    if (Version.isVersionTopic(resourceName)) {
-      return Version.parseStoreFromKafkaTopicName(resourceName);
-    } else {
+  protected String extractStoreName(String resourceName, QueryAction queryAction) {
+    if (QueryAction.DICTIONARY.equals(queryAction)) {
       return resourceName;
+    } else {
+      return Version.parseStoreFromKafkaTopicName(resourceName);
     }
   }
 
