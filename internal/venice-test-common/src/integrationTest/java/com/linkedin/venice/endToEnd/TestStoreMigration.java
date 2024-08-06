@@ -680,13 +680,15 @@ public class TestStoreMigration {
           TimeUnit.SECONDS,
           () -> assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
 
+      // Store migration status output via closure PrintFunction
+      Set<String> statusOutput = new HashSet<String>();
+      AdminTool.PrintFunction printFunction = (message) -> {
+        statusOutput.add(message.trim());
+        System.err.println(message);
+      };
+
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        // Store migration status output via closure PrintFunction
-        Set<String> statusOutput = new HashSet<String>();
-        AdminTool.PrintFunction printFunction = (message) -> {
-          statusOutput.add(message.trim());
-          System.err.println(message);
-        };
+        statusOutput.clear();
         checkMigrationStatus(parentControllerUrl, storeName, printFunction);
         assertTrue(
             statusOutput
@@ -699,11 +701,7 @@ public class TestStoreMigration {
       endMigration(parentControllerUrl, childControllerUrl0, storeName);
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         // Store migration status output via closure PrintFunction
-        Set<String> statusOutput = new HashSet<String>();
-        AdminTool.PrintFunction printFunction = (message) -> {
-          statusOutput.add(message.trim());
-          System.err.println(message);
-        };
+        statusOutput.clear();
         checkMigrationStatus(parentControllerUrl, storeName, printFunction);
         assertTrue(
             statusOutput
