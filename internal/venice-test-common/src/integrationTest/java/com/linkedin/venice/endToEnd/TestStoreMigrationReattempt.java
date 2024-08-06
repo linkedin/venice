@@ -173,10 +173,8 @@ public class TestStoreMigrationReattempt {
         assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
       });
 
-      completeMigration(parentControllerUrl, storeName);
-
       verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
-
+      completeMigration(parentControllerUrl, storeName);
       endMigration(parentControllerUrl, storeName);
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         // Store migration status output via closure PrintFunction

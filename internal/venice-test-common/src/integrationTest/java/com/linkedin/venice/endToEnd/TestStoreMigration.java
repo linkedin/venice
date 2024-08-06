@@ -13,9 +13,11 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -668,6 +670,94 @@ public class TestStoreMigration {
     }
   }
 
+  /**
+   * Tests store migration after a failed attempt. This test creates a store and induces a kill message in the
+   * participant store for the current version topic in the destination cluster. It then starts and completes the
+   * migration. The test ensures that the kill message is removed from the participant store before migration begins,
+   * allowing ingestion for migrating versions to succeed without errors and ensuring a successful migration.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationAfterFailedAttempt() throws Exception {
+    String storeName = Utils.getUniqueString("testWithFailedAttempt");
+    createAndPushStore(srcClusterName, storeName);
+
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      StoreResponse storeResponse = TestUtils.assertCommand(srcParentControllerClient.getStore(storeName));
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertNotNull(storeInfo);
+      String currentVersionTopicName = Version.composeKafkaTopic(storeName, 1);
+
+      // induce a kill message in the participant store for the current version topic in the destination cluster
+      VeniceClusterWrapper destClusterWrapper = multiClusterWrapper.getClusters().get(destClusterName);
+      VeniceHelixAdmin destClusterVhaDc0 = destClusterWrapper.getLeaderVeniceController().getVeniceHelixAdmin();
+      assertFalse(destClusterVhaDc0.isParent());
+      // add kill message to dest cluster
+      destClusterVhaDc0.sendKillMessageToParticipantStore(destClusterName, currentVersionTopicName);
+      // Verify the kill push message is in the participant message store.
+      verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, true);
+
+      startMigration(parentControllerUrl, storeName);
+      // Ensure migration status is updated in source parent controller
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        // Store migration status output via closure PrintFunction
+        Set<String> statusOutput = new HashSet<String>();
+        AdminTool.PrintFunction printFunction = (message) -> {
+          statusOutput.add(message.trim());
+          System.err.println(message);
+        };
+        checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+        assertTrue(
+            statusOutput
+                .contains(storeName + " belongs to cluster " + srcClusterName + " according to cluster discovery"));
+        assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
+      });
+
+      verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
+      completeMigration(parentControllerUrl, storeName);
+      endMigration(parentControllerUrl, storeName);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        // Store migration status output via closure PrintFunction
+        Set<String> statusOutput = new HashSet<String>();
+        AdminTool.PrintFunction printFunction = (message) -> {
+          statusOutput.add(message.trim());
+          System.err.println(message);
+        };
+        checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+        assertTrue(
+            statusOutput
+                .contains(storeName + " belongs to cluster " + destClusterName + " according to cluster discovery"));
+        assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
+      });
+
+      assertTrue(srcParentControllerClient.getStore(storeName).isError());
+      StoreResponse destStoreResponse = TestUtils.assertCommand(destParentControllerClient.getStore(storeName));
+      StoreInfo destStoreInfo = destStoreResponse.getStore();
+      assertNotNull(destStoreInfo);
+      assertFalse(destStoreInfo.isMigrating());
+      assertFalse(destStoreInfo.isMigrationDuplicateStore());
+    }
+
+    try (ControllerClient childControllerClient0 = new ControllerClient(destClusterName, childControllerUrl0)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse response = childControllerClient0.getStore(storeName);
+        StoreInfo storeInfo = response.getStore();
+        assertNotNull(storeInfo);
+        StoreResponse destStoreResponse = TestUtils.assertCommand(childControllerClient0.getStore(storeName));
+        StoreInfo destStoreInfo = destStoreResponse.getStore();
+        assertNotNull(destStoreInfo);
+        assertFalse(destStoreInfo.isMigrating());
+        assertFalse(destStoreInfo.isMigrationDuplicateStore());
+        assertEquals(destStoreInfo.getCurrentVersion(), 1);
+      });
+    }
+  }
+
   private void verifyKillMessageInParticipantStore(
       VeniceClusterWrapper clusterWrapper,
       String topic,
@@ -682,7 +772,7 @@ public class TestStoreMigration {
         ClientFactory.getAndStartSpecificAvroClient(
             ClientConfig.defaultSpecificClientConfig(participantStoreName, ParticipantMessageValue.class)
                 .setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
-      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         try {
           if (shouldPresent) {
             // Verify that the kill offline message has made it to the participant message store.

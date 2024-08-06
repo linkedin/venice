@@ -1484,20 +1484,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Consumer<String> versionMigrationConsumer = migratingStoreName -> {
       Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
       List<Version> versionsToMigrate = getVersionsToMigrate(srcStoresInChildColos, migratingStore);
-
-      // Remove any existing KILL messages from the participant store before initiating store migration
-      if (!isParent()) {
-        List<String> versionTopics = new ArrayList<>(versionsToMigrate.size());
-        for (Version version: versionsToMigrate) {
-          versionTopics.add(version.kafkaTopicName());
-        }
-        LOGGER.info(
-            "Number of versions to migrate: {} versionTopics: {} vm: {}",
-            versionsToMigrate.size(),
-            versionTopics,
-            versionsToMigrate);
-        deleteOldIngestionKillMessagesInDestCluster(destClusterName, storeName, versionTopics);
-      }
       LOGGER.info(
           "Adding versions {} to store {} in dest cluster {}",
           versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(",")),
@@ -1972,28 +1958,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           store.getLargestUsedVersionNumber(),
           storeName,
           clusterName);
-    } else {
-      addVersion(
-          clusterName,
-          storeName,
-          pushJobId,
-          versionNumber,
-          numberOfPartitions,
-          getReplicationFactor(clusterName, storeName),
-          true,
-          false,
-          false,
-          true,
-          pushType,
-          null,
-          remoteKafkaBootstrapServers,
-          Optional.empty(),
-          rewindTimeInSecondsOverride,
-          replicationMetadataVersionId,
-          Optional.empty(),
-          versionSwapDeferred,
-          repushSourceVersion);
+      return;
     }
+    if (!isParent() && store.isMigrating()) {
+      String versionTopicName = Version.composeKafkaTopic(storeName, versionNumber);
+      LOGGER.info(
+          "Deleting any old ingestion kill messages for version: {} in cluster: {} since store: {} is being migrated",
+          versionTopicName,
+          clusterName,
+          storeName);
+      deleteOldIngestionKillMessagesInDestCluster(clusterName, storeName, Collections.singletonList(versionTopicName));
+    }
+    addVersion(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNumber,
+        numberOfPartitions,
+        getReplicationFactor(clusterName, storeName),
+        true,
+        false,
+        false,
+        true,
+        pushType,
+        null,
+        remoteKafkaBootstrapServers,
+        Optional.empty(),
+        rewindTimeInSecondsOverride,
+        replicationMetadataVersionId,
+        Optional.empty(),
+        versionSwapDeferred,
+        repushSourceVersion);
   }
 
   /**

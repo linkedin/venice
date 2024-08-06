@@ -49,10 +49,6 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       ClientConfig<ParticipantMessageValue> clientConfig,
       long participantMessageConsumptionDelayMs,
       ICProvider icProvider) {
-    LOGGER.info(
-        "####Initializing {} with delay: {} ms",
-        getClass().getSimpleName(),
-        participantMessageConsumptionDelayMs);
     this.stats = Validate.notNull(stats);
     this.storeIngestionService = Validate.notNull(storeIngestionService);
     this.clusterInfoProvider = Validate.notNull(clusterInfoProvider);
@@ -74,7 +70,6 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             ParticipantMessageKey key = new ParticipantMessageKey();
             key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
             key.resourceName = topic;
-            LOGGER.info("#### Polling KILL ingestion message for store-version: {}", topic);
             String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
             if (clusterName == null) {
               continue;
@@ -89,15 +84,14 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
               value = getParticipantStoreClient(clusterName).get(key).get();
             }
 
-            LOGGER.info(
-                "#### Polled KILL ingestion message for store-version: {} cluster: {} val: {}",
-                topic,
-                clusterName,
-                value);
-
             if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
-              LOGGER.info("Received a KILL ingestion message for store-version: {} in cluster: {}", topic, clusterName);
               KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+              LOGGER.info(
+                  "Initiating KILL consumption for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms. Terminating consumption.",
+                  topic,
+                  clusterName,
+                  killPushJobMessage.timestamp,
+                  System.currentTimeMillis() - killPushJobMessage.timestamp);
               if (storeIngestionService.killConsumptionTask(topic)) {
                 // emit metrics only when a confirmed kill is made
                 stats.recordKilledPushJobs();
