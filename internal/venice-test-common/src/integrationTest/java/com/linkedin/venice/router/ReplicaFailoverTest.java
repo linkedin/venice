@@ -1,7 +1,5 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
-
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -64,7 +62,6 @@ public class ReplicaFailoverTest {
     props.setProperty(
         ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS,
         String.valueOf(MAX_REQUEST_LATENCY_QD1 / 2));
-    props.setProperty(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, String.valueOf(1));
     cluster.addVeniceRouter(props);
     storeName = cluster.createStore(KEY_COUNT);
   }

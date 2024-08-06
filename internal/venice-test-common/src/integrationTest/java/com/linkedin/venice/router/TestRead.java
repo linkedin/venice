@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CURRENT_VERSION;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
@@ -157,7 +156,6 @@ public abstract class TestRead {
     extraProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, isRouterHttp2Enabled());
     extraProperties.put(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, true);
     extraProperties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
-    extraProperties.put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 1);
 
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
