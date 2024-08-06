@@ -115,7 +115,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
-  protected final Map<Integer, Long> currentVersionLastHeartbeat = new HashMap<>();
+  protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
   protected final int[] currentValuePayloadSize;
 
   protected final ChangelogClientConfig changelogClientConfig;
