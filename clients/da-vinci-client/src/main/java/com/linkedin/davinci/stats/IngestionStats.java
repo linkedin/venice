@@ -585,10 +585,7 @@ public class IngestionStats {
   }
 
   public double getTransformerErrorCount() {
-    if (transformerErrorCount != null) {
-      return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-    return 0;
+    return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordTransformerLatency(double value, long currentTimeMs) {
