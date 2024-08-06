@@ -1487,8 +1487,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       // Remove any existing KILL messages from the participant store before initiating store migration
       if (!isParent()) {
-        List<String> versionTopics =
-            versionsToMigrate.stream().map(Version::kafkaTopicName).collect(Collectors.toList());
+        List<String> versionTopics = new ArrayList<>(versionsToMigrate.size());
+        for (Version version: versionsToMigrate) {
+          versionTopics.add(version.kafkaTopicName());
+        }
+        LOGGER.info(
+            "Number of versions to migrate: {} versionTopics: {} vm: {}",
+            versionsToMigrate.size(),
+            versionTopics,
+            versionsToMigrate);
         deleteOldIngestionKillMessagesInDestCluster(destClusterName, storeName, versionTopics);
       }
       LOGGER.info(
