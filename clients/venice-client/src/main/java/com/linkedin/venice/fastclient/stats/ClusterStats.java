@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.stats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -29,30 +30,30 @@ public class ClusterStats extends AbstractVeniceStats {
 
   private final String storeName;
   private final Map<String, RouteStats> perRouteStats = new VeniceConcurrentHashMap<>();
-  private final Sensor blockedInstanceCount;
-  private final Sensor unhealthyInstanceCount;
-  private final Sensor versionUpdateFailureSensor;
+  private final Lazy<Sensor> blockedInstanceCount;
+  private final Lazy<Sensor> unhealthyInstanceCount;
+  private final Lazy<Sensor> versionUpdateFailureSensor;
   /* This sensor tracks the version number that the client is at. This will help in case some clients are not able
   to switch to the latest version*/
-  private final Sensor currentVersionNumberSensor;
+  private final Lazy<Sensor> currentVersionNumberSensor;
   private int currentVersion = -1;
 
   public ClusterStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
     this.storeName = storeName;
-    this.blockedInstanceCount = registerSensor("blocked_instance_count", new Avg(), new Max());
-    this.unhealthyInstanceCount = registerSensor("unhealthy_instance_count", new Avg(), new Max());
-    this.versionUpdateFailureSensor = registerSensor("version_update_failure", new OccurrenceRate());
+    this.blockedInstanceCount = Lazy.of(() -> registerSensor("blocked_instance_count", new Avg(), new Max()));
+    this.unhealthyInstanceCount = Lazy.of(() -> registerSensor("unhealthy_instance_count", new Avg(), new Max()));
+    this.versionUpdateFailureSensor = Lazy.of(() -> registerSensor("version_update_failure", new OccurrenceRate()));
     this.currentVersionNumberSensor =
-        registerSensor(new AsyncGauge((ignored, ignored2) -> this.currentVersion, "current_version"));
+        Lazy.of(() -> registerSensor(new AsyncGauge((ignored, ignored2) -> this.currentVersion, "current_version")));
   }
 
   public void recordBlockedInstanceCount(int count) {
-    this.blockedInstanceCount.record(count);
+    this.blockedInstanceCount.get().record(count);
   }
 
   public void recordUnhealthyInstanceCount(int count) {
-    this.unhealthyInstanceCount.record(count);
+    this.unhealthyInstanceCount.get().record(count);
   }
 
   public void recordPendingRequestCount(String instance, int count) {
@@ -64,7 +65,7 @@ public class ClusterStats extends AbstractVeniceStats {
   }
 
   public void recordVersionUpdateFailure() {
-    versionUpdateFailureSensor.record();
+    versionUpdateFailureSensor.get().record();
   }
 
   public List<Double> getMetricValues(String sensorName, String... stats) {
