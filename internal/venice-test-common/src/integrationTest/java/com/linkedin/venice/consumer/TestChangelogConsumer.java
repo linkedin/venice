@@ -543,7 +543,7 @@ public class TestChangelogConsumer {
       Set<VeniceChangeCoordinate> badCheckpointSet = new HashSet<>();
       badCheckpointSet.add(badCoordinate);
 
-      Assert.assertThrows(() -> veniceChangelogConsumer.seekToCheckpoint(badCheckpointSet));
+      Assert.assertThrows(() -> veniceChangelogConsumer.seekToCheckpoint(badCheckpointSet).get());
 
       // Seek the consumer by checkpoint
       veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();
