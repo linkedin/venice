@@ -2442,10 +2442,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
     try {
-      if (ByteUtils.getIntHeaderFromByteBuffer(valueBytes) != CHUNK_MANIFEST_SCHEMA_ID) {
-        LOGGER.error("Unable to deserialize putValue into a ChunkedValueManifest due to incorrect integer header");
-        return;
-      }
+      // TODO: Check with Jialin on this
+      // if (ByteUtils.getIntHeaderFromByteBuffer(valueBytes) != CHUNK_MANIFEST_SCHEMA_ID) {
+      // LOGGER.error("Unable to deserialize putValue into a ChunkedValueManifest due to incorrect integer header");
+      // return;
+      // }
 
       byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
       ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
