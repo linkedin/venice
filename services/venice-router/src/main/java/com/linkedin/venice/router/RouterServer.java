@@ -124,7 +124,7 @@ import org.apache.logging.log4j.Logger;
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
-
+  public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   // Immutable state
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final MetricsRepository metricsRepository;
@@ -270,6 +270,22 @@ public class RouterServer extends AbstractVeniceService {
   // for test purpose
   public MetricsRepository getMetricsRepository() {
     return this.metricsRepository;
+  }
+
+  public RouterServer(
+      VeniceProperties properties,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
+      Optional<DynamicAccessController> accessController,
+      Optional<SSLFactory> sslFactory,
+      MetricsRepository metricsRepository) {
+    this(
+        properties,
+        serviceDiscoveryAnnouncers,
+        accessController,
+        sslFactory,
+        metricsRepository,
+        null,
+        DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
   }
 
   public RouterServer(
