@@ -22,7 +22,7 @@ public class ClientStats extends BasicClientStats {
   private final Lazy<Sensor> successRequestDuplicateKeyCountSensor;
   private final Lazy<Sensor> requestSerializationTime;
   private final Lazy<Sensor> requestSubmissionToResponseHandlingTime;
-  private final Lazy<Sensor> responseDeserializationTime;
+  private final Sensor responseDeserializationTime;
   private final Lazy<Sensor> responseDecompressionTimeSensor;
   private final Lazy<Sensor> streamingResponseTimeToReceiveFirstRecord;
   private final Lazy<Sensor> streamingResponseTimeToReceive50PctRecord;
@@ -83,7 +83,7 @@ public class ClientStats extends BasicClientStats {
      * The total time it took to process the response.
      */
     responseDeserializationTime =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max()));
+        registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
 
     responseDecompressionTimeSensor =
         Lazy.of(() -> registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max()));
@@ -159,7 +159,7 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordResponseDeserializationTime(double latency) {
-    responseDeserializationTime.get().record(latency);
+    responseDeserializationTime.record(latency);
   }
 
   public void recordResponseDecompressionTime(double latency) {
