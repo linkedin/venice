@@ -30,18 +30,18 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
 
   private final String storeName;
 
-  private final Lazy<Sensor> noAvailableReplicaRequestCountSensor;
+  private final Sensor noAvailableReplicaRequestCountSensor;
   private final Lazy<Sensor> dualReadFastClientSlowerRequestCountSensor;
   private final Lazy<Sensor> dualReadFastClientSlowerRequestRatioSensor;
   private final Lazy<Sensor> dualReadFastClientErrorThinClientSucceedRequestCountSensor;
   private final Lazy<Sensor> dualReadFastClientErrorThinClientSucceedRequestRatioSensor;
   private final Lazy<Sensor> dualReadThinClientFastClientLatencyDeltaSensor;
 
-  private final Lazy<Sensor> leakedRequestCountSensor;
+  private final Sensor leakedRequestCountSensor;
 
-  private final Lazy<Sensor> longTailRetryRequestSensor;
-  private final Lazy<Sensor> errorRetryRequestSensor;
-  private final Lazy<Sensor> retryRequestWinSensor;
+  private final Sensor longTailRetryRequestSensor;
+  private final Sensor errorRetryRequestSensor;
+  private final Sensor retryRequestWinSensor;
 
   private final Lazy<Sensor> metadataStalenessSensor;
   private long cacheTimeStampInMs = 0;
@@ -63,7 +63,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
 
     this.storeName = storeName;
     this.noAvailableReplicaRequestCountSensor =
-        Lazy.of(() -> registerSensor("no_available_replica_request_count", new OccurrenceRate()));
+        registerSensor("no_available_replica_request_count", new OccurrenceRate());
 
     Rate requestRate = getRequestRate();
     Rate fastClientSlowerRequestRate = new OccurrenceRate();
@@ -91,10 +91,10 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
             "dual_read_thinclient_fastclient_latency_delta",
             new Max(),
             new Avg()));
-    this.leakedRequestCountSensor = Lazy.of(() -> registerSensor("leaked_request_count", new OccurrenceRate()));
-    this.longTailRetryRequestSensor = Lazy.of(() -> registerSensor("long_tail_retry_request", new OccurrenceRate()));
-    this.errorRetryRequestSensor = Lazy.of(() -> registerSensor("error_retry_request", new OccurrenceRate()));
-    this.retryRequestWinSensor = Lazy.of(() -> registerSensor("retry_request_win", new OccurrenceRate()));
+    this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
+    this.longTailRetryRequestSensor = registerSensor("long_tail_retry_request", new OccurrenceRate());
+    this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
+    this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
 
     this.metadataStalenessSensor = Lazy.of(() -> registerSensor(new AsyncGauge((ignored, ignored2) -> {
       if (this.cacheTimeStampInMs == 0) {
@@ -106,7 +106,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordNoAvailableReplicaRequest() {
-    noAvailableReplicaRequestCountSensor.get().record();
+    noAvailableReplicaRequestCountSensor.record();
   }
 
   public void recordFastClientSlowerRequest() {
@@ -159,7 +159,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordLeakedRequest(String instance) {
-    leakedRequestCountSensor.get().record();
+    leakedRequestCountSensor.record();
     getRouteStats(instance).recordLeakedRequest();
   }
 
@@ -168,15 +168,15 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordLongTailRetryRequest() {
-    longTailRetryRequestSensor.get().record();
+    longTailRetryRequestSensor.record();
   }
 
   public void recordErrorRetryRequest() {
-    errorRetryRequestSensor.get().record();
+    errorRetryRequestSensor.record();
   }
 
   public void recordRetryRequestWin() {
-    retryRequestWinSensor.get().record();
+    retryRequestWinSensor.record();
   }
 
   public void updateCacheTimestamp(long cacheTimeStampInMs) {
