@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import io.grpc.Metadata;
@@ -58,11 +59,20 @@ public class ServerStoreAclHandler extends StoreAclHandler {
   }
 
   /**
-   * In Venice Server, the resource name is actually a Kafka topic name.
+   * In Venice Server, the resource name is actually a Kafka topic name for STORAGE/COMPUTE but store name for DICTIONARY.
    */
   @Override
-  protected String extractStoreName(String resourceName) {
-    return Version.parseStoreFromKafkaTopicName(resourceName);
+  protected String extractStoreName(String resourceName, QueryAction queryAction) {
+    switch (queryAction) {
+      case STORAGE:
+      case COMPUTE:
+        return Version.parseStoreFromKafkaTopicName(resourceName);
+      case DICTIONARY:
+        return resourceName;
+      default:
+        throw new IllegalArgumentException(
+            String.format("Unexpected QueryAction: %s with resource name: %s", queryAction, resourceName));
+    }
   }
 
   protected static boolean checkWhetherAccessHasAlreadyApproved(ChannelHandlerContext ctx) {
