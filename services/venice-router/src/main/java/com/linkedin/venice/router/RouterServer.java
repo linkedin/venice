@@ -68,6 +68,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -87,6 +88,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -104,7 +106,9 @@ import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -805,8 +809,6 @@ public class RouterServer extends AbstractVeniceService {
         LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
       }
     }
-    // Graceful shutdown
-    Thread.sleep(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
     if (serverFuture != null && !serverFuture.cancel(false)) {
       serverFuture.awaitUninterruptibly();
     }
@@ -833,6 +835,20 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
+    // Graceful shutdown: Wait till all the requests are drained
+    try {
+      RetryUtils.executeWithMaxAttempt(() -> {
+        if (RouterHttpRequestStats.hasInFlightRequests()) {
+          throw new VeniceException("There are still in-flight requests in router");
+        }
+      },
+          10,
+          Duration.ofSeconds(config.getRouterNettyGracefulShutdownPeriodSeconds()),
+          Collections.singletonList(VeniceException.class));
+    } catch (VeniceException e) {
+      LOGGER.error(
+          "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
+    }
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
