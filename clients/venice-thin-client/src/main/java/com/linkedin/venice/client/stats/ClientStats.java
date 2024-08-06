@@ -38,7 +38,7 @@ public class ClientStats extends BasicClientStats {
   /**
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
    */
-  private final Lazy<Sensor> multiGetFallbackSensor;
+  private final Sensor multiGetFallbackSensor;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -129,7 +129,7 @@ public class ClientStats extends BasicClientStats {
             retryRequestSuccessKeyCount,
             getSuccessRequestKeyCountRate(),
             "retry_key_success_ratio"));
-    multiGetFallbackSensor = Lazy.of(() -> registerSensor("multiget_fallback", new OccurrenceRate()));
+    multiGetFallbackSensor = registerSensor("multiget_fallback", new OccurrenceRate());
   }
 
   public void recordHttpRequest(int httpStatus) {
@@ -207,6 +207,6 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordMultiGetFallback(int keyCount) {
-    multiGetFallbackSensor.get().record(keyCount);
+    multiGetFallbackSensor.record(keyCount);
   }
 }
