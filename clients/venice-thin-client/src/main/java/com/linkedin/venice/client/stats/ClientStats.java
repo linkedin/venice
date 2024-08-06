@@ -16,9 +16,9 @@ import java.util.Map;
 
 
 public class ClientStats extends BasicClientStats {
-  private final Lazy<Sensor> unhealthyRequestLatencySensor;
+  private final Sensor unhealthyRequestLatencySensor;
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
-  private final Lazy<Sensor> requestRetryCountSensor;
+  private final Sensor requestRetryCountSensor;
   private final Lazy<Sensor> successRequestDuplicateKeyCountSensor;
   private final Lazy<Sensor> requestSerializationTime;
   private final Lazy<Sensor> requestSubmissionToResponseHandlingTime;
@@ -32,9 +32,9 @@ public class ClientStats extends BasicClientStats {
   private final Lazy<Sensor> appTimedOutRequestSensor;
   private final Lazy<Sensor> appTimedOutRequestResultRatioSensor;
   private final Lazy<Sensor> clientFutureTimeoutSensor;
-  private final Lazy<Sensor> retryRequestKeyCountSensor;
-  private final Lazy<Sensor> retryRequestSuccessKeyCountSensor;
-  private final Lazy<Sensor> retryKeySuccessRatioSensor;
+  private final Sensor retryRequestKeyCountSensor;
+  private final Sensor retryRequestSuccessKeyCountSensor;
+  private final Sensor retryKeySuccessRatioSensor;
   /**
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
    */
@@ -59,9 +59,8 @@ public class ClientStats extends BasicClientStats {
      */
     Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestRetryCountSensor = Lazy.of(() -> registerSensor("request_retry_count", requestRetryCountRate));
-    unhealthyRequestLatencySensor =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg()));
+    requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
+    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
     successRequestDuplicateKeyCountSensor =
         Lazy.of(() -> registerSensor("success_request_duplicate_key_count", new Rate()));
     /**
@@ -121,17 +120,15 @@ public class ClientStats extends BasicClientStats {
     clientFutureTimeoutSensor = Lazy.of(() -> registerSensor("client_future_timeout", new Avg(), new Min(), new Max()));
     /* Metrics relevant to track long tail retry efficacy for batch get*/
     Rate retryRequestKeyCount = new Rate();
-    retryRequestKeyCountSensor =
-        Lazy.of(() -> registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max()));
+    retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
     Rate retryRequestSuccessKeyCount = new Rate();
-    retryRequestSuccessKeyCountSensor = Lazy
-        .of(() -> registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max()));
-    retryKeySuccessRatioSensor = Lazy.of(
-        () -> registerSensor(
-            new TehutiUtils.SimpleRatioStat(
-                retryRequestSuccessKeyCount,
-                getSuccessRequestKeyCountRate(),
-                "retry_key_success_ratio")));
+    retryRequestSuccessKeyCountSensor =
+        registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max());
+    retryKeySuccessRatioSensor = registerSensor(
+        new TehutiUtils.SimpleRatioStat(
+            retryRequestSuccessKeyCount,
+            getSuccessRequestKeyCountRate(),
+            "retry_key_success_ratio"));
     multiGetFallbackSensor = Lazy.of(() -> registerSensor("multiget_fallback", new OccurrenceRate()));
   }
 
@@ -142,11 +139,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordUnhealthyLatency(double latency) {
-    unhealthyRequestLatencySensor.get().record(latency);
+    unhealthyRequestLatencySensor.record(latency);
   }
 
   public void recordRequestRetryCount() {
-    requestRetryCountSensor.get().record();
+    requestRetryCountSensor.record();
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
@@ -202,11 +199,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {
-    retryRequestKeyCountSensor.get().record(numberOfKeysSentInRetryRequest);
+    retryRequestKeyCountSensor.record(numberOfKeysSentInRetryRequest);
   }
 
   public void recordRetryRequestSuccessKeyCount(int numberOfKeysCompletedInRetryRequest) {
-    retryRequestSuccessKeyCountSensor.get().record(numberOfKeysCompletedInRetryRequest);
+    retryRequestSuccessKeyCountSensor.record(numberOfKeysCompletedInRetryRequest);
   }
 
   public void recordMultiGetFallback(int keyCount) {
