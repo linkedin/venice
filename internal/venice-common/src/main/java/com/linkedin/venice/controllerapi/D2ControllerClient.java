@@ -27,7 +27,7 @@ public class D2ControllerClient extends ControllerClient {
   private static final String DUMMY_URL_WHEN_USING_D2_CLIENT = "http://fake.host";
 
   private final String d2ServiceName;
-  private final D2Client d2Client;
+  private final List<D2Client> d2Clients;
   private final boolean externalD2Client;
   private final String d2ZkHost;
   private final Optional<SSLFactory> sslFactory;
@@ -39,7 +39,7 @@ public class D2ControllerClient extends ControllerClient {
       Optional<SSLFactory> sslFactory) {
     super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
     this.d2ServiceName = d2ServiceName;
-    this.d2Client = D2ClientFactory.getD2Client(d2ZKHost, sslFactory);
+    this.d2Clients = Collections.singletonList(D2ClientFactory.getD2Client(d2ZKHost, sslFactory));
     this.externalD2Client = false;
     this.d2ZkHost = d2ZKHost;
     this.sslFactory = sslFactory;
@@ -56,33 +56,50 @@ public class D2ControllerClient extends ControllerClient {
       Optional<SSLFactory> sslFactory) {
     super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
     this.d2ServiceName = d2ServiceName;
-    this.d2Client = d2Client;
+    this.d2Clients = Collections.singletonList(d2Client);
+    this.externalD2Client = true;
+    this.d2ZkHost = null;
+    this.sslFactory = sslFactory;
+  }
+
+  public D2ControllerClient(
+      String d2ServiceName,
+      String clusterName,
+      List<D2Client> d2Clients,
+      Optional<SSLFactory> sslFactory) {
+    super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
+    this.d2ServiceName = d2ServiceName;
+    this.d2Clients = d2Clients;
     this.externalD2Client = true;
     this.d2ZkHost = null;
     this.sslFactory = sslFactory;
   }
 
   /**
-   * Discover leader controller from a D2 client.
+   * Discover leader controller from a list of D2 Clients.
    * @return leader controller url
    */
   @Override
   protected String discoverLeaderController() {
-    List<D2Client> d2Client = Collections.singletonList(this.d2Client);
-    return discoverLeaderController(d2Client);
-  }
+    LeaderControllerResponse controllerResponse = null;
+    for (D2Client d2Client: d2Clients) {
+      try {
+        controllerResponse = d2ClientGet(
+            d2Client,
+            d2ServiceName,
+            ControllerRoute.LEADER_CONTROLLER.getPath(),
+            newParams(),
+            LeaderControllerResponse.class);
+        // we get a successful response, so we break out of loop
+        break;
+      } catch (VeniceException e) {
+        LOGGER.error("Failed to discover leader controller with D2 client: " + d2Client, e);
+      }
+    }
+    if (controllerResponse == null) {
+      throw new VeniceException("Failed to discover leader controller with D2 client");
+    }
 
-  /**
-   * Discover leader controller from a list of D2 clients.
-   * @return leader controller url
-   */
-  protected String discoverLeaderController(List<D2Client> d2ClientList) {
-    LeaderControllerResponse controllerResponse = d2ClientGet(
-        d2ClientList,
-        this.d2ServiceName,
-        ControllerRoute.LEADER_CONTROLLER.getPath(),
-        newParams(),
-        LeaderControllerResponse.class);
     /**
      * Current controller D2 announcement is announcing url with http: prefix and the regular HTTP port number (1576);
      * if we change the D2 announcement, the existing Samza users which depend on D2 result would break; if we upgrade
@@ -100,7 +117,6 @@ public class D2ControllerClient extends ControllerClient {
         if (controllerResponse.getSecureUrl() != null) {
           return controllerResponse.getSecureUrl();
         }
-
         URL responseUrl = new URL(controllerResponse.getUrl());
         if (responseUrl.getProtocol().equalsIgnoreCase("http")) {
           URL secureControllerUrl = convertToSecureUrl(responseUrl);
@@ -114,27 +130,24 @@ public class D2ControllerClient extends ControllerClient {
   }
 
   private static <RESPONSE> RESPONSE d2ClientGet(
-      List<D2Client> d2ClientList,
+      D2Client d2Client,
       String d2ServiceName,
       String path,
       QueryParams params,
       Class<RESPONSE> responseClass) {
     String requestPath = D2_SCHEME + d2ServiceName + path + "?" + encodeQueryParams(params);
-    for (D2Client d2Client: d2ClientList) {
-      try {
-        RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
-        String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
-        return ObjectMapperFactory.getInstance().readValue(responseBody, responseClass);
-      } catch (Exception e) {
-        LOGGER.error("Failed to get response for url: " + requestPath + " with D2 Client:" + d2Client, e);
-      }
+    try {
+      RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
+      String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
+      return ObjectMapperFactory.getInstance().readValue(responseBody, responseClass);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to get response for url: " + requestPath + " with D2 Client");
     }
-    throw new VeniceException("List of D2 Clients failed to get response for url: " + requestPath);
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(D2Client d2Client, String d2ServiceName, String storeName) {
     return d2ClientGet(
-        Collections.singletonList(d2Client),
+        d2Client,
         d2ServiceName,
         ControllerRoute.CLUSTER_DISCOVERY.getPath(),
         getQueryParamsToDiscoverCluster(storeName),
@@ -177,7 +190,14 @@ public class D2ControllerClient extends ControllerClient {
 
   @Override
   public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
-    return discoverCluster(d2Client, d2ServiceName, storeName, 1);
+    for (D2Client d2Client: d2Clients) {
+      try {
+        return discoverCluster(d2Client, d2ServiceName, storeName, 1);
+      } catch (Exception e) {
+        LOGGER.error("Failed to discover cluster with D2 client: " + d2Client, e);
+      }
+    }
+    throw new VeniceException("Failed to discover cluster with D2 client");
   }
 
   @Override
