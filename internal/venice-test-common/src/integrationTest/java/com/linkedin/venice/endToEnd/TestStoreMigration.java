@@ -67,10 +67,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -642,32 +640,9 @@ public class TestStoreMigration {
     // Verify the kill push message is in the participant message store.
     verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, true);
     // delete kill message from dest cluster
-    destClusterVhaDc0.deleteOldIngestionKillMessagesInDestCluster(
-        destClusterName,
-        currentVersionTopicName,
-        Collections.singletonList(currentVersionTopicName));
+    destClusterVhaDc0.clearIngestionKillMessageAndVerify(destClusterName, currentVersionTopicName);
     // Verify the kill push message is removed from the participant message store.
     verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
-
-    // send kill message for multiple topics
-    List<String> versionTopics = Arrays.asList(
-        Version.composeKafkaTopic(storeName, 2),
-        Version.composeKafkaTopic(storeName, 3),
-        Version.composeKafkaTopic(storeName, 4));
-    for (String topic: versionTopics) {
-      destClusterVhaDc0.sendKillMessageToParticipantStore(destClusterName, topic);
-    }
-    // Verify the kill push message is in the participant message store.
-    for (String topic: versionTopics) {
-      verifyKillMessageInParticipantStore(destClusterWrapper, topic, true);
-    }
-    // delete kill message from dest cluster
-    destClusterVhaDc0
-        .deleteOldIngestionKillMessagesInDestCluster(destClusterName, currentVersionTopicName, versionTopics);
-    // Verify the kill push message is removed from the participant message store.
-    for (String topic: versionTopics) {
-      verifyKillMessageInParticipantStore(destClusterWrapper, topic, false);
-    }
   }
 
   /**

@@ -235,7 +235,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -1523,104 +1522,58 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     versionMigrationConsumer.accept(storeName);
   }
 
-  /**
-   * Delete stale KILL messages in destination cluster for the versions to be migrated. This is the best effort and
-   * the maximum wait time is 5 minutes.
-   * @param destClusterName name of the destination cluster.
-   *                        This is the cluster where the store is being migrated to.
-   * @param storeName name of the store.
-   * @param versionTopics list of version topics to be checked for KILL messages.
-   */
-  public void deleteOldIngestionKillMessagesInDestCluster(
-      String destClusterName,
-      String storeName,
-      List<String> versionTopics) {
-    if (versionTopics.isEmpty()) {
-      return;
-    }
-    long startTime = System.currentTimeMillis();
-    List<CompletableFuture<Void>> futures = new ArrayList<>();
-    for (String versionTopic: versionTopics) {
-      CompletableFuture<Void> future = handleKillIngestionMessage(destClusterName, versionTopic);
-      futures.add(future);
-    }
-
-    // Wait for all futures to complete
-    CompletableFuture<Void> allFutures = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-    try {
-      LOGGER.info(
-          "Waiting for kill message removal in destination cluster: {} for store: {}",
-          destClusterName,
-          storeName);
-      allFutures.get(5, TimeUnit.MINUTES);
-      LOGGER.info(
-          "Completed waiting for kill message removal in destination cluster: {} for store: {} in {} ms",
-          destClusterName,
-          storeName,
-          System.currentTimeMillis() - startTime);
-    } catch (InterruptedException | ExecutionException | TimeoutException e) {
-      LOGGER.error("Error while waiting for kill message removal in destination cluster: {}", destClusterName, e);
-    }
-  }
-
-  protected CompletableFuture<Void> handleKillIngestionMessage(String clusterName, String topicName) {
-    LOGGER.info(
-        "Checking if kill message exists in participant store for topic: {} in cluster: {}",
-        topicName,
-        clusterName);
+  public void clearIngestionKillMessageAndVerify(String clusterName, String versionTopicName) {
+    long startTs = System.currentTimeMillis();
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
-    key.resourceName = topicName;
+    key.resourceName = versionTopicName;
+    ParticipantMessageValue value;
+    try {
+      value = RetryUtils.executeWithMaxAttempt(
+          () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
+          3,
+          Duration.ofSeconds(5),
+          Collections.singletonList(Exception.class));
+      if (value == null) {
+        return;
+      }
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to check if kill message exists in participant store for store-version: {} in cluster: {}",
+          versionTopicName,
+          clusterName,
+          e);
+      return;
+    }
+    KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+    LOGGER.info(
+        "Deleting kill message for store-version: {} in cluster: {}. Message age: {}",
+        versionTopicName,
+        clusterName,
+        System.currentTimeMillis() - killPushJobMessage.getTimestamp());
+    deleteParticipantStoreKillMessage(clusterName, versionTopicName);
 
-    return CompletableFuture.supplyAsync(() -> {
-      try {
-        ParticipantMessageValue value = RetryUtils.executeWithMaxAttempt(
-            () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
-            3,
-            Duration.ofSeconds(5),
-            Collections.singletonList(Exception.class));
-        if (value != null) {
-          return true;
+    // wait for kill message to be removed
+    try {
+      RetryUtils.executeWithMaxAttempt(() -> {
+        if (participantStoreClientsManager.getReader(clusterName).get(key).get() != null) {
+          throw new VeniceException(
+              "Kill message still exists in participant store for store-version: " + versionTopicName + " in cluster: "
+                  + clusterName);
         }
-      } catch (Exception e) {
-        LOGGER.error(
-            "Failed to check if kill message exists in participant store for cluster: {} and topic: {}",
-            clusterName,
-            topicName,
-            e);
-      }
-      return false;
-    }).thenApply(exists -> {
-      if (!exists) {
-        return null;
-      }
-      LOGGER.info("Deleting kill message for topic: {} in cluster: {}", topicName, clusterName);
-      deleteParticipantStoreKillMessage(clusterName, topicName);
-      try {
-        RetryUtils.executeWithMaxAttempt(() -> {
-          try {
-            ParticipantMessageValue value = participantStoreClientsManager.getReader(clusterName).get(key).get();
-            if (value != null) {
-              throw new VeniceException(
-                  "Kill message still exists in participant store for topic: " + topicName + " in cluster: "
-                      + clusterName);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(
-                "Failed to get kill message from participant store for topic: " + topicName + " in cluster: "
-                    + clusterName,
-                e);
-          }
-        }, 10, Duration.ofSeconds(15), Collections.singletonList(VeniceException.class));
-      } catch (Exception e) {
-        LOGGER.error(
-            "Failed to wait for kill message removal from participant store for topic: {} in cluster: {}",
-            topicName,
-            clusterName,
-            e);
-      }
-      return null;
-    });
+      }, 10, Duration.ofSeconds(15), Collections.singletonList(Exception.class));
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to wait for kill message removal from participant store for store-version: {} in cluster: {}",
+          versionTopicName,
+          clusterName,
+          e);
+    }
+    LOGGER.info(
+        "Completed waiting for kill message removal from participant store for store-version: {} in cluster: {}. Time elapsed: {} ms",
+        versionTopicName,
+        clusterName,
+        System.currentTimeMillis() - startTs);
   }
 
   private Map<String, StoreInfo> getStoreInfoInChildColos(String srcClusterName, String storeName) {
@@ -1967,7 +1920,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           versionTopicName,
           clusterName,
           storeName);
-      deleteOldIngestionKillMessagesInDestCluster(clusterName, storeName, Collections.singletonList(versionTopicName));
+      clearIngestionKillMessageAndVerify(clusterName, versionTopicName);
     }
     addVersion(
         clusterName,

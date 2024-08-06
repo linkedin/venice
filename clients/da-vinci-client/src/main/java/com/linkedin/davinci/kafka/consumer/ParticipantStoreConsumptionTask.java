@@ -90,8 +90,8 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
                   "Initiating KILL consumption for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms. Terminating consumption.",
                   topic,
                   clusterName,
-                  killPushJobMessage.timestamp,
-                  System.currentTimeMillis() - killPushJobMessage.timestamp);
+                  killPushJobMessage.getTimestamp(),
+                  System.currentTimeMillis() - killPushJobMessage.getTimestamp());
               if (storeIngestionService.killConsumptionTask(topic)) {
                 // emit metrics only when a confirmed kill is made
                 stats.recordKilledPushJobs();
