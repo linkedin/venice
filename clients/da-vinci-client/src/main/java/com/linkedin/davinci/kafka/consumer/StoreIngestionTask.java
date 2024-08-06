@@ -446,12 +446,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     this.recordTransformer =
         clientRecordTransformer != null ? new BlockingDaVinciRecordTransformer(clientRecordTransformer) : null;
-    if (this.recordTransformer != null) {
-      versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
-      versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
-      versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
-      versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
-    }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);

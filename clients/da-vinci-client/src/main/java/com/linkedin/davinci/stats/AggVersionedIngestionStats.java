@@ -235,24 +235,4 @@ public class AggVersionedIngestionStats
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
     getStats(storeName, version).recordIdleTime(idleTimeMs);
   }
-
-  public void registerTransformerLatencySensor(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLatencySensor();
-    getTotalStats(storeName).registerTransformerLatencySensor();
-  }
-
-  public void registerTransformerLifecycleStartLatency(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLifecycleStartLatencySensor();
-    getTotalStats(storeName).registerTransformerLifecycleStartLatencySensor();
-  }
-
-  public void registerTransformerLifecycleEndLatency(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLifecycleEndLatencySensor();
-    getTotalStats(storeName).registerTransformerLifecycleEndLatencySensor();
-  }
-
-  public void registerTransformerErrorSensor(String storeName, int version) {
-    getStats(storeName, version).registerTransformerErrorSensor();
-    getTotalStats(storeName).registerTransformerErrorSensor();
-  }
 }
