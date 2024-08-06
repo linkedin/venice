@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ACTIVE_PARENT_CONTROLLER_REGION_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
@@ -523,6 +524,10 @@ public class AdminSparkServer extends AbstractVeniceService {
         SET_MIGRATION_PUSH_STRATEGY.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, migrationRoutes.setMigrationPushStrategy(admin)));
 
+    // No active parent controller check; any controller is allowed to discover active parent controller region
+    httpService.get(
+        ACTIVE_PARENT_CONTROLLER_REGION_DISCOVERY.getPath(),
+        ActiveParentControllerRegionDiscovery.discoverActiveParentControllerRegion(admin));
     httpService.get(
         CLUSTER_DISCOVERY.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(admin)));

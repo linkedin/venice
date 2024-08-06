@@ -652,6 +652,12 @@ public interface Admin extends AutoCloseable, Closeable {
   void setStorePushStrategyForMigration(String voldemortStoreName, String strategy);
 
   /**
+   * Find the region of the active parent controller.
+   * @throws com.linkedin.venice.exceptions.VeniceException if no active parent controller is found.
+   */
+  String discoverActiveParentControllerRegion();
+
+  /**
    * Find the cluster which the given store belongs to. Return the pair of the cluster name and the d2 service
    * associated with that cluster.
    *
