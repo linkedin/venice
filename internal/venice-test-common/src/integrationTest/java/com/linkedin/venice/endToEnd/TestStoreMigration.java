@@ -296,7 +296,7 @@ public class TestStoreMigration {
         }
       });
       // Test end migration
-      endMigration(parentControllerUrl, Optional.of(childControllerUrl0), storeName);
+      endMigration(parentControllerUrl, childControllerUrl0, storeName);
     }
   }
 
@@ -374,7 +374,7 @@ public class TestStoreMigration {
 
       // Verify that store and system store only exist in destination cluster after ending migration
       statusOutput.clear();
-      endMigration(parentControllerUrl, Optional.of(childControllerUrl0), storeName);
+      endMigration(parentControllerUrl, childControllerUrl0, storeName);
       checkMigrationStatus(parentControllerUrl, storeName, printFunction);
 
       Assert.assertFalse(
@@ -546,14 +546,31 @@ public class TestStoreMigration {
     }
   }
 
-  private void endMigration(String controllerUrl, Optional<String> childControllerUrl, String storeName)
-      throws Exception {
-    String[] endMigration = { "--end-migration", "--url", controllerUrl, "--store", storeName, "--cluster-src",
+  private void endMigration(String parentControllerUrl, String childControllerUrl, String storeName) throws Exception {
+    String[] endMigration = { "--end-migration", "--url", parentControllerUrl, "--store", storeName, "--cluster-src",
         srcClusterName, "--cluster-dest", destClusterName };
     AdminTool.main(endMigration);
 
-    try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, controllerUrl);
-        ControllerClient destControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
+    try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // Store should be deleted in source cluster. Store in destination cluster should not be migrating.
+        StoreResponse storeResponse = srcControllerClient.getStore(storeName);
+        Assert.assertNull(storeResponse.getStore());
+
+        storeResponse = destControllerClient.getStore(storeName);
+        Assert.assertNotNull(storeResponse.getStore());
+        Assert.assertFalse(storeResponse.getStore().isMigrating());
+        Assert.assertFalse(storeResponse.getStore().isMigrationDuplicateStore());
+      });
+    }
+    if (childControllerUrl == null) {
+      return;
+    }
+
+    // Perform the same check on child controller too
+    try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, childControllerUrl);
+        ControllerClient destControllerClient = new ControllerClient(destClusterName, childControllerUrl)) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         // Store should be deleted in source cluster. Store in destination cluster should not be migrating.
         StoreResponse storeResponse = srcControllerClient.getStore(storeName);
@@ -566,22 +583,6 @@ public class TestStoreMigration {
       });
     }
 
-    if (childControllerUrl.isPresent()) {
-      // Perform the same check on child controller too
-      try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, childControllerUrl.get());
-          ControllerClient destControllerClient = new ControllerClient(destClusterName, childControllerUrl.get())) {
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          // Store should be deleted in source cluster. Store in destination cluster should not be migrating.
-          StoreResponse storeResponse = srcControllerClient.getStore(storeName);
-          Assert.assertNull(storeResponse.getStore());
-
-          storeResponse = destControllerClient.getStore(storeName);
-          Assert.assertNotNull(storeResponse.getStore());
-          Assert.assertFalse(storeResponse.getStore().isMigrating());
-          Assert.assertFalse(storeResponse.getStore().isMigrationDuplicateStore());
-        });
-      }
-    }
   }
 
   private void readFromStore(AvroGenericStoreClient<String, Object> client) {
@@ -695,7 +696,7 @@ public class TestStoreMigration {
 
       verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
       completeMigration(parentControllerUrl, storeName);
-      endMigration(parentControllerUrl, storeName);
+      endMigration(parentControllerUrl, childControllerUrl0, storeName);
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         // Store migration status output via closure PrintFunction
         Set<String> statusOutput = new HashSet<String>();
