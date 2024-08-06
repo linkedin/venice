@@ -52,6 +52,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
@@ -59,6 +61,7 @@ import org.testng.annotations.Test;
 
 
 public class TestBlobDiscovery {
+  private static final Logger LOGGER = LogManager.getLogger(TestBlobDiscovery.class);
   private static final String INT_KEY_SCHEMA = "\"int\"";
   private static final String INT_VALUE_SCHEMA = "\"int\"";
   String clusterName;
@@ -182,11 +185,10 @@ public class TestBlobDiscovery {
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setMetricsRepository(new MetricsRepository());
 
-    BlobFinder dvcFinder =
+    BlobFinder daVinciBlobFinder =
         new DaVinciBlobFinder(new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
-
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
-      BlobPeersDiscoveryResponse response = dvcFinder.discoverBlobPeers(storeName, 1, 1);
+      BlobPeersDiscoveryResponse response = daVinciBlobFinder.discoverBlobPeers(storeName, 1, 1);
       Assert.assertNotNull(response);
       List<String> hostNames = response.getDiscoveryResult();
       Assert.assertNotNull(hostNames);

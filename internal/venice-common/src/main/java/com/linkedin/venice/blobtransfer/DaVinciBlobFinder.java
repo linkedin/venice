@@ -6,13 +6,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VER
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.message.BasicNameValuePair;
@@ -37,16 +37,17 @@ public class DaVinciBlobFinder implements BlobFinder {
   @Override
   public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partition) {
     String uri = buildUriForBlobDiscovery(storeName, version, partition);
+    CompletableFuture<BlobPeersDiscoveryResponse> futureResponse = CompletableFuture.supplyAsync(() -> {
+      try {
+        byte[] responseBody = (byte[]) storeClient.getRaw(uri).get(3, TimeUnit.SECONDS);
+        ObjectMapper mapper = ObjectMapperFactory.getInstance();
+        return mapper.readValue(responseBody, BlobPeersDiscoveryResponse.class);
+      } catch (Exception e) {
+        return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
+      }
+    }).exceptionally(throwable -> handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, throwable));
 
-    try {
-      CompletableFuture<TransportClientResponse> futureResponse = storeClient.get(uri);
-      TransportClientResponse transportResponse = futureResponse.join();
-      byte[] response = transportResponse.getBody(); // Assuming getBody() returns the byte array
-      ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      return mapper.readValue(response, BlobPeersDiscoveryResponse.class);
-    } catch (Exception e) {
-      return handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, e);
-    }
+    return futureResponse.join();
   }
 
   private String buildUriForBlobDiscovery(String storeName, int version, int partition) {

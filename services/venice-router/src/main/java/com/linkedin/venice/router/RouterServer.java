@@ -168,6 +168,8 @@ public class RouterServer extends AbstractVeniceService {
   private ZkRoutersClusterManager routersClusterManager;
   private Optional<Router> router = Optional.empty();
   private Router secureRouter;
+  private D2Client d2Client;
+  private String d2ServiceName;
   private DictionaryRetrievalService dictionaryRetrievalService;
   private RouterThrottler readRequestThrottler;
 
@@ -261,7 +263,8 @@ public class RouterServer extends AbstractVeniceService {
         accessController,
         sslFactory,
         TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
-        null);
+        null,
+        "venice-discovery");
   }
 
   // for test purpose
@@ -275,7 +278,8 @@ public class RouterServer extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository,
-      D2Client d2Client) {
+      D2Client d2Client,
+      String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
 
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
@@ -326,7 +330,6 @@ public class RouterServer extends AbstractVeniceService {
         config.getRefreshIntervalForZkReconnectInMs());
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
-    String d2ServiceName = "venice-discovery";
     this.pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
         d2ServiceName,
