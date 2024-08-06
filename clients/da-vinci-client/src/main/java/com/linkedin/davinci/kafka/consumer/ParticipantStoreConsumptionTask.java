@@ -87,7 +87,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
               KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
               LOGGER.info(
-                  "Initiating KILL consumption for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms. Terminating consumption.",
+                  "Terminating ingestion task for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms.",
                   topic,
                   clusterName,
                   killPushJobMessage.getTimestamp(),
