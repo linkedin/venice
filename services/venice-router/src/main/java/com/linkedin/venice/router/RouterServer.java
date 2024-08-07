@@ -20,7 +20,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -132,9 +131,8 @@ import org.apache.logging.log4j.Logger;
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
-
+  public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   private static final String ROUTER_RETRY_MANAGER_THREAD_PREFIX = "Router-retry-manager-thread";
-
   // Immutable state
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final MetricsRepository metricsRepository;
@@ -178,6 +176,8 @@ public class RouterServer extends AbstractVeniceService {
   private ZkRoutersClusterManager routersClusterManager;
   private Optional<Router> router = Optional.empty();
   private Router secureRouter;
+  private D2Client d2Client;
+  private String d2ServiceName;
   private DictionaryRetrievalService dictionaryRetrievalService;
   private RouterThrottler readRequestThrottler;
 
@@ -272,7 +272,9 @@ public class RouterServer extends AbstractVeniceService {
         serviceDiscoveryAnnouncers,
         accessController,
         sslFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
+        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        null,
+        "venice-discovery");
   }
 
   // for test purpose
@@ -286,6 +288,24 @@ public class RouterServer extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository) {
+    this(
+        properties,
+        serviceDiscoveryAnnouncers,
+        accessController,
+        sslFactory,
+        metricsRepository,
+        null,
+        DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+  }
+
+  public RouterServer(
+      VeniceProperties properties,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
+      Optional<DynamicAccessController> accessController,
+      Optional<SSLFactory> sslFactory,
+      MetricsRepository metricsRepository,
+      D2Client d2Client,
+      String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
 
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
@@ -336,8 +356,6 @@ public class RouterServer extends AbstractVeniceService {
         config.getRefreshIntervalForZkReconnectInMs());
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
-    D2Client d2Client = D2ClientFactory.getD2Client(config.getZkConnection(), Optional.empty());
-    String d2ServiceName = config.getClusterToD2Map().get(config.getClusterName());
     this.pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
         d2ServiceName,

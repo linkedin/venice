@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -16,9 +17,9 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
-import com.linkedin.venice.blobtransfer.DvcBlobFinder;
+import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -51,6 +52,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
@@ -58,6 +61,7 @@ import org.testng.annotations.Test;
 
 
 public class TestBlobDiscovery {
+  private static final Logger LOGGER = LogManager.getLogger(TestBlobDiscovery.class);
   private static final String INT_KEY_SCHEMA = "\"int\"";
   private static final String INT_VALUE_SCHEMA = "\"int\"";
   String clusterName;
@@ -181,10 +185,10 @@ public class TestBlobDiscovery {
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setMetricsRepository(new MetricsRepository());
 
-    BlobFinder dvcFinder = new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig));
-
+    BlobFinder daVinciBlobFinder =
+        new DaVinciBlobFinder(new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
-      BlobPeersDiscoveryResponse response = dvcFinder.discoverBlobPeers(storeName, 1, 1);
+      BlobPeersDiscoveryResponse response = daVinciBlobFinder.discoverBlobPeers(storeName, 1, 1);
       Assert.assertNotNull(response);
       List<String> hostNames = response.getDiscoveryResult();
       Assert.assertNotNull(hostNames);

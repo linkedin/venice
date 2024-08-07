@@ -56,6 +56,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.router.api.RouterResourceType;
@@ -552,13 +553,35 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           Integer.parseInt(storeVersion),
           Integer.parseInt(storePartition),
           Optional.empty());
-      List<String> liveNodeHostNames = instances.entrySet()
+
+      if (instances.isEmpty()) {
+        LOGGER.info(
+            "No instances found for store: {} version: {} partition: {}",
+            storeName,
+            storeVersion,
+            storePartition);
+      } else {
+        LOGGER.info("{} instances were found", instances.size());
+      }
+
+      List<String> readyToServeNodeHostNames = instances.entrySet()
           .stream()
+          .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
           .map(Map.Entry::getKey)
           .map(CharSequence::toString)
-          .filter(instanceHostName -> pushStatusStoreReader.isInstanceAlive(storeName, instanceHostName))
           .collect(Collectors.toList());
-      response.setDiscoveryResult(liveNodeHostNames);
+
+      if (!readyToServeNodeHostNames.isEmpty()) {
+        LOGGER.info("{} ready to serve nodes were found", readyToServeNodeHostNames.size());
+      } else {
+        LOGGER.info(
+            "No ready to serve nodes found for store: {} version: {} partition: {}",
+            storeName,
+            storeVersion,
+            storePartition);
+      }
+
+      response.setDiscoveryResult(readyToServeNodeHostNames);
     } catch (VeniceException e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
