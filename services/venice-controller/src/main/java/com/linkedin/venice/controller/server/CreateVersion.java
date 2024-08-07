@@ -469,9 +469,11 @@ public class CreateVersion extends AbstractRoute {
      * Allow STREAM push type if one of the following conditions is true
      * 1. AA is enabled for the store
      * 2. AA is not enabled for the store but the store is configured with NON_AGGREGATE data replication policy
+     * 3. AA is not enabled for the store but the store is configured with AGGREGATE data replication policy
      */
     if (pushType.equals(PushType.STREAM) && !(store.isActiveActiveReplicationEnabled()
-        || store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NON_AGGREGATE))) {
+        || store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NON_AGGREGATE)
+        || store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE))) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "requesting topic for streaming writes to store " + store.getName()
