@@ -2,6 +2,7 @@ package com.linkedin.venice.tehuti;
 
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,6 +31,12 @@ public class MetricsUtils {
       int previousCount = count.getAndIncrement();
       return (left * previousCount + right) / (previousCount + 1);
     }, 0.0));
+  }
+
+  public static List<Double> getAvgMax(String baseMetricName, List<? extends MetricsAware> metricsAwareWrapperList) {
+    return Arrays.asList(
+        getAvg(baseMetricName + ".Avg", metricsAwareWrapperList),
+        getMax(baseMetricName + ".Max", metricsAwareWrapperList));
   }
 
   public static double getMetricValue(

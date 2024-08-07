@@ -953,23 +953,19 @@ public abstract class TestBatch {
         MetricsRepository metricsRepository) throws Exception;
   }
 
-  private List<Double> getPerStoreMetricValues(String storeName, String sensorName) {
-    String metricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
-    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
-    return Arrays.asList(
-        MetricsUtils.getMax(metricName + ".Max", veniceServers), // default=Double.MAX_VALUE
-        MetricsUtils.getAvg(metricName + ".Avg", veniceServers)); // default=NaN
-  }
-
   private void validatePerStoreMetricsRange(String storeName, String sensorName, double minValue, double maxValue) {
-    getPerStoreMetricValues(storeName, sensorName).forEach(value -> {
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
+    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
+    MetricsUtils.getAvgMax(baseMetricName, veniceServers).forEach(value -> {
       Assert.assertTrue(value >= minValue, "Metric value expected >= " + minValue + " actual=" + value);
       Assert.assertTrue(value <= maxValue, "Metric value expected <= " + maxValue + " actual=" + value);
     });
   }
 
   private void assertUnusedPerStoreMetrics(String storeName, String sensorName) {
-    getPerStoreMetricValues(storeName, sensorName).forEach(value -> {
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
+    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
+    MetricsUtils.getAvgMax(baseMetricName, veniceServers).forEach(value -> {
       Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Needs to be invalid");
     });
   }
