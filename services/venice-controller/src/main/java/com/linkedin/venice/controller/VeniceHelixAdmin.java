@@ -1530,26 +1530,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
     key.resourceName = versionTopicName;
-    ParticipantMessageValue value;
-    try {
-      value = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
-          3,
-          Duration.ofMillis(100),
-          Duration.ofSeconds(1),
-          Duration.ofSeconds(15),
-          Collections.singletonList(Exception.class));
-      if (value == null) {
-        return;
-      }
-    } catch (Exception e) {
-      LOGGER.error(
-          "Failed to check if kill message exists in participant store for store-version: {} in cluster: {}",
-          versionTopicName,
-          clusterName,
-          e);
+    ParticipantMessageValue value = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
+        3,
+        Duration.ofMillis(100),
+        Duration.ofSeconds(1),
+        Duration.ofSeconds(15),
+        Collections.singletonList(Exception.class));
+    if (value == null) {
       return;
     }
+
     KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
     LOGGER.info(
         "Deleting kill message for store-version: {} in cluster: {}. Message age: {}",
@@ -1567,7 +1558,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Collections.singletonList(Exception.class));
 
     // wait for kill message to be removed
-
     RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
       if (participantStoreClientsManager.getReader(clusterName).get(key).get() != null) {
         throw new VeniceException(
@@ -1580,12 +1570,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Duration.ofSeconds(3),
         Duration.ofMinutes(1),
         Collections.singletonList(Exception.class));
-
     LOGGER.info(
-        "Completed waiting for kill message removal from participant store for store-version: {} in cluster: {}. Time elapsed: {} ms",
+        "Spent: {}ms for kill message removal from participant store for store-version: {} in cluster: {}",
+        System.currentTimeMillis() - startTs,
         versionTopicName,
-        clusterName,
-        System.currentTimeMillis() - startTs);
+        clusterName);
   }
 
   private Map<String, StoreInfo> getStoreInfoInChildColos(String srcClusterName, String storeName) {
