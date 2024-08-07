@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,19 +30,19 @@ public class D2ControllerClient extends ControllerClient {
   private final String d2ServiceName;
   private final List<D2Client> d2Clients;
   private final boolean externalD2Client;
-  private final String d2ZkHost;
+  private final List<String> d2ZkHosts;
   private final Optional<SSLFactory> sslFactory;
 
   public D2ControllerClient(
       String d2ServiceName,
       String clusterName,
-      String d2ZKHost,
+      String d2ZkHost,
       Optional<SSLFactory> sslFactory) {
     super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
     this.d2ServiceName = d2ServiceName;
-    this.d2Clients = Collections.singletonList(D2ClientFactory.getD2Client(d2ZKHost, sslFactory));
+    this.d2Clients = Collections.singletonList(D2ClientFactory.getD2Client(d2ZkHost, sslFactory));
     this.externalD2Client = false;
-    this.d2ZkHost = d2ZKHost;
+    this.d2ZkHosts = Collections.singletonList(d2ZkHost);
     this.sslFactory = sslFactory;
   }
 
@@ -58,7 +59,7 @@ public class D2ControllerClient extends ControllerClient {
     this.d2ServiceName = d2ServiceName;
     this.d2Clients = Collections.singletonList(d2Client);
     this.externalD2Client = true;
-    this.d2ZkHost = null;
+    this.d2ZkHosts = null;
     this.sslFactory = sslFactory;
   }
 
@@ -71,7 +72,22 @@ public class D2ControllerClient extends ControllerClient {
     this.d2ServiceName = d2ServiceName;
     this.d2Clients = d2Clients;
     this.externalD2Client = true;
-    this.d2ZkHost = null;
+    this.d2ZkHosts = null;
+    this.sslFactory = sslFactory;
+  }
+
+  public D2ControllerClient(
+      String d2ServiceName,
+      String clusterName,
+      Optional<SSLFactory> sslFactory,
+      List<String> d2ZkHosts) {
+    super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
+    this.d2ServiceName = d2ServiceName;
+    this.d2Clients = d2ZkHosts.stream()
+        .map(d2ZkHost -> D2ClientFactory.getD2Client(d2ZkHost, sslFactory))
+        .collect(Collectors.toList());
+    this.externalD2Client = false;
+    this.d2ZkHosts = d2ZkHosts;
     this.sslFactory = sslFactory;
   }
 
@@ -93,7 +109,7 @@ public class D2ControllerClient extends ControllerClient {
         // we get a successful response, so we break out of loop
         break;
       } catch (VeniceException e) {
-        LOGGER.error("Failed to discover leader controller with D2 client: " + d2Client, e);
+        LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
       }
     }
     if (controllerResponse == null) {
@@ -141,7 +157,7 @@ public class D2ControllerClient extends ControllerClient {
       String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
       return ObjectMapperFactory.getInstance().readValue(responseBody, responseClass);
     } catch (Exception e) {
-      throw new VeniceException("Failed to get response for url: " + requestPath + " with D2 Client");
+      throw new VeniceException("Failed to get response for url: " + requestPath + " with D2 Client", e);
     }
   }
 
@@ -194,7 +210,7 @@ public class D2ControllerClient extends ControllerClient {
       try {
         return discoverCluster(d2Client, d2ServiceName, storeName, 1);
       } catch (Exception e) {
-        LOGGER.error("Failed to discover cluster with D2 client: " + d2Client, e);
+        LOGGER.warn("Failed to discover cluster with D2 client: " + d2Client, e);
       }
     }
     throw new VeniceException("Failed to discover cluster with D2 client");
@@ -206,7 +222,9 @@ public class D2ControllerClient extends ControllerClient {
       // Object is no longer used in other places. Safe to clean up resources
       super.close();
       if (!externalD2Client) {
-        D2ClientFactory.release(d2ZkHost);
+        for (String d2ZkHost: d2ZkHosts) {
+          D2ClientFactory.release(d2ZkHost);
+        }
       }
     } else {
       // Object is still in use at other places. Do not release resources right now.

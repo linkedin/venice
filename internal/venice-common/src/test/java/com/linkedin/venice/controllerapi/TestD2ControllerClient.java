@@ -33,6 +33,10 @@ public class TestD2ControllerClient {
   private static final String TEST_STORE = "test_store";
   private static final String TEST_CLUSTER = "test_cluster";
   private static final String TEST_ZK_ADDRESS = "localhost:2181";
+  private static final String TEST_ZK_ADDRESS_2 = "localhost:2182";
+  private static final String TEST_ZK_ADDRESS_3 = "localhost:2183";
+  private static final List<String> TEST_ZK_ADDRESSES =
+      Arrays.asList(TEST_ZK_ADDRESS, TEST_ZK_ADDRESS_2, TEST_ZK_ADDRESS_3);
   private static final String TEST_CONTROLLER_D2_SERVICE = "ChildController";
   private static final String TEST_ROUTER_D2_SERVICE = "VeniceRouter";
   private static final String TEST_SERVER_D2_SERVICE = "VeniceServer";
@@ -96,7 +100,7 @@ public class TestD2ControllerClient {
   }
 
   @Test
-  public void testDiscoverClusterWithMultipleExternalD2Clients() throws JsonProcessingException {
+  public void testDiscoverClusterWithMultipleD2Clients() throws JsonProcessingException {
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
     serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
     serviceDiscoveryResponse.setD2Service(TEST_ROUTER_D2_SERVICE);
@@ -151,6 +155,24 @@ public class TestD2ControllerClient {
         Assert.fail("The method call should return a response and not throw an exception");
       }
     }
+
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client1);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS_2, mockD2Client2);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS_3, mockD2Client3);
+
+    try (D2ControllerClient controllerClient =
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, Optional.empty(), TEST_ZK_ADDRESSES)) {
+      try {
+        D2ServiceDiscoveryResponse response = controllerClient.discoverCluster(TEST_STORE);
+        Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+      } catch (VeniceException e) {
+        Assert.fail("The method call should return a response and not throw an exception");
+      }
+    }
+
+    D2ClientFactory.release(TEST_ZK_ADDRESS);
+    D2ClientFactory.release(TEST_ZK_ADDRESS_2);
+    D2ClientFactory.release(TEST_ZK_ADDRESS_3);
   }
 
   @Test
@@ -195,7 +217,7 @@ public class TestD2ControllerClient {
   }
 
   @Test
-  public void testDiscoverClusterThrowsExceptionWithMultipleExternalD2Clients() {
+  public void testDiscoverClusterThrowsExceptionWithMultipleD2Clients() {
     D2Client mockD2Client1 = Mockito.mock(D2Client.class);
     doAnswer(invocation -> {
       RestRequest request = invocation.getArgument(0, RestRequest.class);
@@ -227,6 +249,24 @@ public class TestD2ControllerClient {
       }
       Assert.assertThrows(VeniceException.class, () -> controllerClient.discoverCluster(TEST_STORE));
     }
+
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client1);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS_2, mockD2Client2);
+
+    List<String> testZkAddresses = Arrays.asList(TEST_ZK_ADDRESS, TEST_ZK_ADDRESS_2);
+
+    try (D2ControllerClient controllerClient =
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, Optional.empty(), testZkAddresses)) {
+      try {
+        controllerClient.discoverCluster(TEST_STORE);
+      } catch (VeniceException e) {
+        Assert.assertEquals(e.getMessage(), "Failed to discover cluster with D2 client");
+      }
+      Assert.assertThrows(VeniceException.class, () -> controllerClient.discoverCluster(TEST_STORE));
+    }
+
+    D2ClientFactory.release(TEST_ZK_ADDRESS);
+    D2ClientFactory.release(TEST_ZK_ADDRESS_2);
   }
 
   @Test
@@ -313,7 +353,7 @@ public class TestD2ControllerClient {
   }
 
   @Test
-  public void testDiscoverLeaderControllerWithMultipleExternalD2Clients() throws JsonProcessingException {
+  public void testDiscoverLeaderControllerWithMultipleD2Clients() throws JsonProcessingException {
     LeaderControllerResponse leaderControllerResponse = new LeaderControllerResponse();
     leaderControllerResponse.setCluster(TEST_CLUSTER);
     leaderControllerResponse.setName(TEST_STORE);
@@ -381,10 +421,41 @@ public class TestD2ControllerClient {
         Assert.fail("The method call should return a response and not throw an exception");
       }
     }
+
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client1);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS_2, mockD2Client2);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS_3, mockD2Client3);
+
+    try (D2ControllerClient controllerClient =
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, Optional.empty(), TEST_ZK_ADDRESSES)) {
+      try {
+        String leaderController = controllerClient.discoverLeaderController();
+        Assert.assertEquals(leaderController, leaderControllerResponse.getUrl());
+      } catch (VeniceException e) {
+        Assert.fail("The method call should return a response and not throw an exception");
+      }
+    }
+
+    try (D2ControllerClient controllerClient = new D2ControllerClient(
+        TEST_CONTROLLER_D2_SERVICE,
+        TEST_CLUSTER,
+        Optional.of(mock(SSLFactory.class)),
+        TEST_ZK_ADDRESSES)) {
+      try {
+        String leaderController = controllerClient.discoverLeaderController();
+        Assert.assertEquals(leaderController, leaderControllerResponse.getSecureUrl());
+      } catch (VeniceException e) {
+        Assert.fail("The method call should return a response and not throw an exception");
+      }
+    }
+
+    D2ClientFactory.release(TEST_ZK_ADDRESS);
+    D2ClientFactory.release(TEST_ZK_ADDRESS_2);
+    D2ClientFactory.release(TEST_ZK_ADDRESS_3);
   }
 
   @Test
-  public void testDiscoverLeaderControllerThrowsExceptionWithMultipleExternalD2Clients() {
+  public void testDiscoverLeaderControllerThrowsExceptionWithMultipleD2Clients() {
     D2Client mockD2Client1 = Mockito.mock(D2Client.class);
     doAnswer(invocation -> {
       RestRequest request = invocation.getArgument(0, RestRequest.class);
@@ -416,6 +487,24 @@ public class TestD2ControllerClient {
       }
       Assert.assertThrows(VeniceException.class, () -> controllerClient.discoverLeaderController());
     }
+
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client1);
+    D2ClientFactory.setD2Client(TEST_ZK_ADDRESS_2, mockD2Client2);
+
+    List<String> testZkAddresses = Arrays.asList(TEST_ZK_ADDRESS, TEST_ZK_ADDRESS_2);
+
+    try (D2ControllerClient controllerClient =
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, Optional.empty(), testZkAddresses)) {
+      try {
+        controllerClient.discoverLeaderController();
+      } catch (VeniceException e) {
+        Assert.assertEquals(e.getMessage(), "Failed to discover leader controller with D2 client");
+      }
+      Assert.assertThrows(VeniceException.class, () -> controllerClient.discoverLeaderController());
+    }
+
+    D2ClientFactory.release(TEST_ZK_ADDRESS);
+    D2ClientFactory.release(TEST_ZK_ADDRESS_2);
   }
 
   /**
