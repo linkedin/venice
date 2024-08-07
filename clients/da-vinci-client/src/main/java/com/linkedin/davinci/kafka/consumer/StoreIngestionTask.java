@@ -326,6 +326,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
+  protected final boolean isRmdChunked;
   protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
@@ -485,6 +486,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
+    this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[partitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
@@ -2442,12 +2444,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
     try {
-      // TODO: Check with Jialin on this
-      // if (ByteUtils.getIntHeaderFromByteBuffer(valueBytes) != CHUNK_MANIFEST_SCHEMA_ID) {
-      // LOGGER.error("Unable to deserialize putValue into a ChunkedValueManifest due to incorrect integer header");
-      // return;
-      // }
-
       byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
       ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
       int recordSize = keyLen + valueManifest.getSize();
@@ -2459,7 +2455,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       int rmdSize = rmdBytes.remaining();
-      if (ByteUtils.getIntHeaderFromByteBuffer(rmdBytes) == CHUNK_MANIFEST_SCHEMA_ID) {
+      if (isRmdChunked) {
         byte[] rmdByteArray = ByteUtils.extractByteArray(rmdBytes);
         ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(rmdByteArray, CHUNK_MANIFEST_SCHEMA_ID);
         rmdSize = rmdManifest.getSize();
