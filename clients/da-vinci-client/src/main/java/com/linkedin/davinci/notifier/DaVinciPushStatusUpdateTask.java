@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 
 /**
- * This is a delayed scheduler for sending batching push status in DaVinci.
+ * This is a scheduler for sending batching push status in DaVinci.
  */
 public class DaVinciPushStatusUpdateTask {
   private final Version version;
