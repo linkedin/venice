@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -80,7 +81,9 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -627,7 +630,7 @@ public class PartialUpdateTest {
    */
   @Test(timeOut = TEST_TIMEOUT_MS
       * 3, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testActiveActivePartialUpdateWithCompression(CompressionStrategy compressionStrategy) {
+  public void testActiveActivePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws Exception {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -846,11 +849,15 @@ public class PartialUpdateTest {
     } finally {
       veniceProducer.stop();
     }
+
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RMD_SIZE_IN_BYTES);
+    List<Double> assembledRmdSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
+    MetricsUtils.validateMetricRange(assembledRmdSizes, 290000, 740000);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
-    final String storeName = Utils.getUniqueString("ttlRepsuhAAWC");
+    final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);

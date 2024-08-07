@@ -34,7 +34,7 @@ import java.util.Map;
 public class HostLevelIngestionStats extends AbstractVeniceStats {
   public static final String ASSEMBLED_RECORD_SIZE_RATIO = "assembled_record_size_ratio";
   public static final String ASSEMBLED_RECORD_SIZE_IN_BYTES = "assembled_record_size_in_bytes";
-  public static final String ASSEMBLED_RECORD_RMD_SIZE_IN_BYTES = "assembled_record_rmd_size_in_bytes";
+  public static final String ASSEMBLED_RMD_SIZE_IN_BYTES = "assembled_rmd_size_in_bytes";
 
   // The aggregated bytes ingested rate for the entire host
   private final LongAdderRateGauge totalBytesConsumedRate;
@@ -286,7 +286,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.assembledRecordSizeRatioSensor = registerSensor(ASSEMBLED_RECORD_SIZE_RATIO, new Max());
 
-    this.assembledRmdSizeSensor = registerSensor(ASSEMBLED_RECORD_RMD_SIZE_IN_BYTES, avgAndMax());
+    this.assembledRmdSizeSensor = registerSensor(ASSEMBLED_RMD_SIZE_IN_BYTES, avgAndMax());
 
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(

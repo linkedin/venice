@@ -64,7 +64,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -631,7 +630,10 @@ public abstract class TestBatch {
         validator);
 
     // Since chunking was not enabled, verify that the assembled record size metrics are not collected
-    assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
+    MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers()).forEach(value -> {
+      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Must be invalid");
+    });
 
     // Re-push with Kafka Input
     testRepush(storeName, validator);
@@ -953,23 +955,6 @@ public abstract class TestBatch {
         MetricsRepository metricsRepository) throws Exception;
   }
 
-  private void validatePerStoreMetricsRange(String storeName, String sensorName, double minValue, double maxValue) {
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
-    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
-    MetricsUtils.getAvgMax(baseMetricName, veniceServers).forEach(value -> {
-      Assert.assertTrue(value >= minValue, "Metric value expected >= " + minValue + " actual=" + value);
-      Assert.assertTrue(value <= maxValue, "Metric value expected <= " + maxValue + " actual=" + value);
-    });
-  }
-
-  private void assertUnusedPerStoreMetrics(String storeName, String sensorName) {
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
-    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
-    MetricsUtils.getAvgMax(baseMetricName, veniceServers).forEach(value -> {
-      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Needs to be invalid");
-    });
-  }
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testLargeValues() throws Exception {
     try {
@@ -983,7 +968,9 @@ public abstract class TestBatch {
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
-    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES, BYTES_PER_MB, LARGE_VALUE_SIZE);
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
+    List<Double> assembledRecordSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
+    MetricsUtils.validateMetricRange(assembledRecordSizes, BYTES_PER_MB, LARGE_VALUE_SIZE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
@@ -1000,7 +987,9 @@ public abstract class TestBatch {
 
       // Add a little wiggle room (1e-3) for generating the test data / record sizes
       final double maxRatio = (double) tooLargeValueSize / maxRecordSizeBytesForTest + 1e-3;
-      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 0, maxRatio);
+      String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_RATIO);
+      List<Double> assembledRecordSizeRatios = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
+      MetricsUtils.validateMetricRange(assembledRecordSizeRatios, 0, maxRatio);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());

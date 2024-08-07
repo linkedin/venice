@@ -39,6 +39,14 @@ public class MetricsUtils {
         getMax(baseMetricName + ".Max", metricsAwareWrapperList));
   }
 
+  public static void validateMetricRange(List<Double> metricValues, double min, double max) throws Exception {
+    for (double value: metricValues) {
+      if (value < min || value > max) {
+        throw new Exception(String.format("Metric value %f is not in range [%f, %f]", value, min, max));
+      }
+    }
+  }
+
   public static double getMetricValue(
       String metricName,
       List<? extends MetricsAware> metricsAwareWrapperList,
