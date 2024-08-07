@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -13,16 +14,19 @@ import io.tehuti.metrics.stats.Max;
  * information than just max and average, e.g. 50/99 percentile numbers.
  */
 public class WritePathLatencySensor {
-  private final Sensor sensor;
+  private final Lazy<Sensor> sensor;
   private final MetricConfig metricConfig;
   private final Avg avgStat = new Avg();
   private final Max maxStat = new Max();
 
   public WritePathLatencySensor(MetricsRepository metricsRepo, MetricConfig metricConfig, String sensorName) {
     this.metricConfig = metricConfig;
-    this.sensor = metricsRepo.sensor(sensorName);
-    this.sensor.add(sensorName + Avg.class.getSimpleName(), avgStat);
-    this.sensor.add(sensorName + Max.class.getSimpleName(), maxStat);
+    this.sensor = Lazy.of(() -> {
+      Sensor sensor = metricsRepo.sensor(sensorName);
+      sensor.add(sensorName + Avg.class.getSimpleName(), avgStat);
+      sensor.add(sensorName + Max.class.getSimpleName(), maxStat);
+      return sensor;
+    });
   }
 
   /**
@@ -43,6 +47,6 @@ public class WritePathLatencySensor {
    * Record the latency value.
    */
   public void record(double value, long currentTimeMs) {
-    sensor.record(value, currentTimeMs);
+    sensor.get().record(value, currentTimeMs);
   }
 }
