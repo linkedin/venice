@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -29,14 +30,14 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final LongAdderRateGauge pollNonZeroResultNumSensor;
 
   private final Sensor pollRequestError;
-  private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
-  private final Sensor detectedDeletedTopicNumSensor;
-  private final Sensor detectedNoRunningIngestionTopicPartitionNumSensor;
-  private final Sensor delegateSubscribeLatencySensor;
-  private final Sensor updateCurrentAssignmentLatencySensor;
-  private final Sensor maxPartitionsPerConsumer;
-  private final Sensor minPartitionsPerConsumer;
-  private final Sensor avgPartitionsPerConsumer;
+  private final Lazy<Sensor> consumerRecordsProducingToWriterBufferLatencySensor;
+  private final Lazy<Sensor> detectedDeletedTopicNumSensor;
+  private final Lazy<Sensor> detectedNoRunningIngestionTopicPartitionNumSensor;
+  private final Lazy<Sensor> delegateSubscribeLatencySensor;
+  private final Lazy<Sensor> updateCurrentAssignmentLatencySensor;
+  private final Lazy<Sensor> maxPartitionsPerConsumer;
+  private final Lazy<Sensor> minPartitionsPerConsumer;
+  private final Lazy<Sensor> avgPartitionsPerConsumer;
   private final Sensor getOffsetLagIsAbsentSensor;
   private final Sensor getOffsetLagIsPresentSensor;
   private final Sensor getLatestOffsetIsAbsentSensor;
@@ -96,16 +97,17 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     pollRequestError = registerSensor("consumer_poll_error", new OccurrenceRate());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsProducingToWriterBufferLatencySensor =
-        registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max());
-    detectedDeletedTopicNumSensor = registerSensor("detected_deleted_topic_num", new Total());
+        Lazy.of(() -> registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max()));
+    detectedDeletedTopicNumSensor = Lazy.of(() -> registerSensor("detected_deleted_topic_num", new Total()));
     detectedNoRunningIngestionTopicPartitionNumSensor =
-        registerSensor("detected_no_running_ingestion_topic_partition_num", new Total());
-    delegateSubscribeLatencySensor = registerSensor("delegate_subscribe_latency", new Avg(), new Max());
-    updateCurrentAssignmentLatencySensor = registerSensor("update_current_assignment_latency", new Avg(), new Max());
+        Lazy.of(() -> registerSensor("detected_no_running_ingestion_topic_partition_num", new Total()));
+    delegateSubscribeLatencySensor = Lazy.of(() -> registerSensor("delegate_subscribe_latency", new Avg(), new Max()));
+    updateCurrentAssignmentLatencySensor =
+        Lazy.of(() -> registerSensor("update_current_assignment_latency", new Avg(), new Max()));
 
-    minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
-    maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
-    avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
+    minPartitionsPerConsumer = Lazy.of(() -> registerSensor("min_partitions_per_consumer", new Gauge()));
+    maxPartitionsPerConsumer = Lazy.of(() -> registerSensor("max_partitions_per_consumer", new Gauge()));
+    avgPartitionsPerConsumer = Lazy.of(() -> registerSensor("avg_partitions_per_consumer", new Gauge()));
 
     Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
     Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
@@ -134,7 +136,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   }
 
   public void recordConsumerRecordsProducingToWriterBufferLatency(double latency) {
-    consumerRecordsProducingToWriterBufferLatencySensor.record(latency);
+    consumerRecordsProducingToWriterBufferLatencySensor.get().record(latency);
   }
 
   public void recordPollError() {
@@ -142,31 +144,31 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   }
 
   public void recordDetectedDeletedTopicNum(int count) {
-    detectedDeletedTopicNumSensor.record(count);
+    detectedDeletedTopicNumSensor.get().record(count);
   }
 
   public void recordDetectedNoRunningIngestionTopicPartitionNum(int count) {
-    detectedNoRunningIngestionTopicPartitionNumSensor.record(count);
+    detectedNoRunningIngestionTopicPartitionNumSensor.get().record(count);
   }
 
   public void recordDelegateSubscribeLatency(double value) {
-    delegateSubscribeLatencySensor.record(value);
+    delegateSubscribeLatencySensor.get().record(value);
   }
 
   public void recordUpdateCurrentAssignmentLatency(double value) {
-    updateCurrentAssignmentLatencySensor.record(value);
+    updateCurrentAssignmentLatencySensor.get().record(value);
   }
 
   public void recordMinPartitionsPerConsumer(int count) {
-    minPartitionsPerConsumer.record(count);
+    minPartitionsPerConsumer.get().record(count);
   }
 
   public void recordMaxPartitionsPerConsumer(int count) {
-    maxPartitionsPerConsumer.record(count);
+    maxPartitionsPerConsumer.get().record(count);
   }
 
   public void recordAvgPartitionsPerConsumer(int count) {
-    avgPartitionsPerConsumer.record(count);
+    avgPartitionsPerConsumer.get().record(count);
   }
 
   public void recordOffsetLagIsAbsent() {
