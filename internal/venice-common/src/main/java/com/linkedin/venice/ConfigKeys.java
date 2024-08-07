@@ -1729,10 +1729,10 @@ public class ConfigKeys {
   public static final String DAVINCI_WRITE_BATCHING_PUSH_STATUS = "davinci.write.batching.push.status";
 
   /**
-   * Config to control maximum delay in waiting for potential new subscription actions from user before
-   * Da-Vinci sending the final batch push COMPLETE signal to Venice backend.
+   * DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci node, and
+   * decide whether to send a status update event. This config controls the interval between each check.
    */
-  public static final String DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS = "davinci.write.complete.event.delay.in.ms";
+  public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
   /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.

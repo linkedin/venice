@@ -1,12 +1,12 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.notifier.PushStatusDelayedUpdateTask;
+import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -19,7 +19,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -72,7 +71,7 @@ public class VersionBackend {
    */
   private Future heartbeat;
   private final int heartbeatInterval;
-  private final PushStatusDelayedUpdateTask pushStatusDelayedUpdateTask;
+  private final DaVinciPushStatusUpdateTask daVinciPushStatusUpdateTask;
 
   VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
@@ -103,9 +102,13 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
-    long daVinciWriteCompleteEventDelayInMs = this.config.getClusterProperties()
-        .getLong(DAVINCI_WRITE_COMPLETE_EVENT_DELAY_IN_MS, TimeUnit.SECONDS.toMillis(30));
-    this.pushStatusDelayedUpdateTask = new PushStatusDelayedUpdateTask(version, daVinciWriteCompleteEventDelayInMs);
+    long daVinciPushStatusCheckIntervalInMs = this.config.getClusterProperties()
+        .getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, TimeUnit.SECONDS.toMillis(30));
+    this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
+        version,
+        daVinciPushStatusCheckIntervalInMs,
+        backend.getPushStatusStoreWriter());
+    this.daVinciPushStatusUpdateTask.start();
   }
 
   synchronized void close() {
@@ -124,7 +127,7 @@ public class VersionBackend {
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when killing consumption task: {}", version.kafkaTopicName(), e);
     }
-    pushStatusDelayedUpdateTask.shutdown();
+    daVinciPushStatusUpdateTask.shutdown();
   }
 
   synchronized void delete() {
@@ -379,11 +382,7 @@ public class VersionBackend {
         .collect(Collectors.toList());
   }
 
-  public void updatePartitionStatusAndMaybeSendBatchingStatus(
-      int partition,
-      ExecutionStatus status,
-      PushStatusStoreWriter pushStatusStoreWriter) {
-    pushStatusDelayedUpdateTask
-        .updatePartitionStatusAndMaybeSendBatchingStatus(partition, status, pushStatusStoreWriter);
+  public void updatePartitionStatus(int partition, ExecutionStatus status) {
+    daVinciPushStatusUpdateTask.updatePartitionStatus(partition, status);
   }
 }
