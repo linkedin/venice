@@ -89,7 +89,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
         1,
         1,
-        1);
+        1,
+        incomingValueSchemaId);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
         ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
@@ -154,7 +155,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1,
         1,
         1,
-        1);
+        1,
+        incomingValueSchemaId);
 
     GenericRecord updateFieldPartialUpdateRecord2 = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord2.put("intArray", Arrays.asList(10, 20, 30, 40));
@@ -171,7 +173,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 2,
         2,
         0,
-        0);
+        0,
+        incomingValueSchemaId);
 
     // Validate updated replication metadata.
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
@@ -276,7 +279,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        newColoID);
+        newColoID,
+        incomingValueSchemaId);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());

@@ -234,7 +234,8 @@ public class MergeConflictResolver {
       final long updateOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
-      final int newValueColoID) {
+      final int newValueColoID,
+      final int oldValueSchemaId) {
     final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema();
     if (supersetValueSchemaEntry == null) {
       throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
@@ -248,8 +249,11 @@ public class MergeConflictResolver {
     if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
       return MergeConflictResult.getIgnoredResult();
     }
-    ValueAndRmd<GenericRecord> oldValueAndRmd =
-        prepareValueAndRmdForUpdate(oldValueBytesProvider.get(), rmdWithValueSchemaId, supersetValueSchemaEntry);
+    ValueAndRmd<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
+        oldValueBytesProvider.get(),
+        rmdWithValueSchemaId,
+        supersetValueSchemaEntry,
+        oldValueSchemaId);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaId();
     if (oldValueSchemaID == -1) {
@@ -616,7 +620,8 @@ public class MergeConflictResolver {
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
-      SchemaEntry superSetSchemaSchemaEntry) {
+      SchemaEntry superSetSchemaSchemaEntry,
+      int oldSchemaId) {
 
     if (rmdWithValueSchemaId == null) {
       GenericRecord newValue;
@@ -632,8 +637,8 @@ public class MergeConflictResolver {
          */
 
         int schemaId = superSetSchemaSchemaEntry.getId();
-        newValue =
-            deserializerCacheForFullValue.get(schemaId, superSetSchemaSchemaEntry.getId()).deserialize(oldValueBytes);
+        newValue = deserializerCacheForFullValue.get(oldSchemaId, superSetSchemaSchemaEntry.getId())
+            .deserialize(oldValueBytes);
       }
       GenericRecord newRmd = newRmdCreator.apply(superSetSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));

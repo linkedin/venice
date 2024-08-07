@@ -56,7 +56,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        0);
+        0,
+        schemaSet.getValueSchemaId());
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -101,7 +102,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        updateColoId);
+        updateColoId,
+        schemaSet.getValueSchemaId());
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -161,7 +163,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        -2);
+        -2,
+        schemaSet.getValueSchemaId());
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -219,7 +222,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        -2);
+        -2,
+        schemaSet.getValueSchemaId());
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -258,7 +262,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        -2);
+        -2,
+        schemaSet.getValueSchemaId());
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -329,7 +334,8 @@ public class TestMergeUpdate extends TestMergeBase {
         2L,
         1L,
         0,
-        0);
+        0,
+        schemaSet.getValueSchemaId());
 
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(
@@ -395,7 +401,8 @@ public class TestMergeUpdate extends TestMergeBase {
         10L,
         1L,
         0,
-        0);
+        0,
+        schemaSet.getValueSchemaId());
 
     GenericRecord newUpdatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
@@ -474,7 +481,8 @@ public class TestMergeUpdate extends TestMergeBase {
         2L,
         1L,
         0,
-        0);
+        0,
+        schemaSet.getValueSchemaId());
 
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(
@@ -552,7 +560,8 @@ public class TestMergeUpdate extends TestMergeBase {
         3L,
         1L,
         0,
-        0);
+        0,
+        schemaSet.getValueSchemaId());
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME), Collections.emptyList());
     IndexedHashMap<Utf8, Utf8> expectedNullableMap = new IndexedHashMap<>();
@@ -762,7 +771,8 @@ public class TestMergeUpdate extends TestMergeBase {
         timestamp,
         1L,
         0,
-        0);
+        0,
+        schemaSet.getValueSchemaId());
   }
 
   private void validateNullableCollectionUpdateResult(
