@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -14,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * from OFFLINE to DROPPED.
  */
 public class ParticipantStateTransitionStats extends ThreadPoolStats {
-  private Sensor threadBlockedOnOfflineToDroppedTransitionSensor;
+  private Lazy<Sensor> threadBlockedOnOfflineToDroppedTransitionSensor;
   private AtomicInteger threadBlockedOnOfflineToDroppedTransitionCount = new AtomicInteger(0);
 
   public ParticipantStateTransitionStats(
@@ -22,10 +23,11 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
       ThreadPoolExecutor threadPoolExecutor,
       String name) {
     super(metricsRepository, threadPoolExecutor, name);
-    threadBlockedOnOfflineToDroppedTransitionSensor = registerSensor(
-        new AsyncGauge(
-            (ignored, ignored2) -> this.threadBlockedOnOfflineToDroppedTransitionCount.get(),
-            "thread_blocked_on_offline_to_dropped_transition"));
+    threadBlockedOnOfflineToDroppedTransitionSensor = Lazy.of(
+        () -> registerSensor(
+            new AsyncGauge(
+                (ignored, ignored2) -> this.threadBlockedOnOfflineToDroppedTransitionCount.get(),
+                "thread_blocked_on_offline_to_dropped_transition")));
   }
 
   public void incrementThreadBlockedOnOfflineToDroppedTransitionCount() {

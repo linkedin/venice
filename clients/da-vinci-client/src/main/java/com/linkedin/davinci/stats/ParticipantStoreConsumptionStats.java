@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -32,35 +33,35 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
 
   private static final String HEARTBEAT = "heartbeat";
 
-  private final Sensor killPushJobLatencySensor;
-  private final Sensor killedPushJobsSensor;
-  private final Sensor failedInitializationSensor;
-  private final Sensor killPushJobFailedConsumption;
+  private final Lazy<Sensor> killPushJobLatencySensor;
+  private final Lazy<Sensor> killedPushJobsSensor;
+  private final Lazy<Sensor> failedInitializationSensor;
+  private final Lazy<Sensor> killPushJobFailedConsumption;
   private final Sensor heartbeatSensor;
 
   public ParticipantStoreConsumptionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, clusterName + NAME_SUFFIX);
-    killPushJobLatencySensor = registerSensorIfAbsent(KILL_PUSH_JOB_LATENCY, new Avg(), new Max());
-    killedPushJobsSensor = registerSensorIfAbsent(KILLED_PUSH_JOBS, new Count());
-    failedInitializationSensor = registerSensorIfAbsent(FAILED_INITIALIZATION, new Count());
-    killPushJobFailedConsumption = registerSensorIfAbsent(KILL_PUSH_JOB_FAILED_CONSUMPTION, new Count());
+    killPushJobLatencySensor = Lazy.of(() -> registerSensorIfAbsent(KILL_PUSH_JOB_LATENCY, new Avg(), new Max()));
+    killedPushJobsSensor = Lazy.of(() -> registerSensorIfAbsent(KILLED_PUSH_JOBS, new Count()));
+    failedInitializationSensor = Lazy.of(() -> registerSensorIfAbsent(FAILED_INITIALIZATION, new Count()));
+    killPushJobFailedConsumption = Lazy.of(() -> registerSensorIfAbsent(KILL_PUSH_JOB_FAILED_CONSUMPTION, new Count()));
     heartbeatSensor = registerSensorIfAbsent(HEARTBEAT, new OccurrenceRate());
   }
 
   public void recordKillPushJobLatency(double latencyInMs) {
-    killPushJobLatencySensor.record(latencyInMs);
+    killPushJobLatencySensor.get().record(latencyInMs);
   }
 
   public void recordKilledPushJobs() {
-    killedPushJobsSensor.record();
+    killedPushJobsSensor.get().record();
   }
 
   public void recordFailedInitialization() {
-    failedInitializationSensor.record();
+    failedInitializationSensor.get().record();
   }
 
   public void recordKillPushJobFailedConsumption() {
-    killPushJobFailedConsumption.record();
+    killPushJobFailedConsumption.get().record();
   }
 
   public void recordHeartbeat() {
