@@ -625,8 +625,10 @@ public class MergeConflictResolver {
         newValue = AvroSchemaUtils.createGenericRecord(superSetSchemaSchemaEntry.getSchema());
       } else {
         /**
-         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated, or was
-         * assembled from a chunked value.  We'll rely on the superset schema to deserialize in this case.
+         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated. Records
+         * should have the schema id in the first few bytes unless they are assembled from a chunked value. In order
+         * to provide coverage for both cases, we just utilize the supersetSchema entry which should be the latest
+         * schema (and therefore should not drop fields after the update).
          */
 
         int schemaId = superSetSchemaSchemaEntry.getId();
