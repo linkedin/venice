@@ -13,7 +13,6 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.davinci.serializer.avro.fast.MapOrderPreservingFastSerDeFactory;
-import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -37,7 +36,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
-import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -618,24 +616,24 @@ public class MergeConflictResolver {
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
-      SchemaEntry readerValueSchemaEntry) {
+      SchemaEntry superSetSchemaSchemaEntry) {
 
     if (rmdWithValueSchemaId == null) {
       GenericRecord newValue;
       if (oldValueBytes == null) {
         // Value and RMD both never existed
-        newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+        newValue = AvroSchemaUtils.createGenericRecord(superSetSchemaSchemaEntry.getSchema());
       } else {
         /**
-         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated. In this
-         * case, the value must be retrieved from storage engine, and is prepended with schema ID.
+         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated, or was
+         * assembled from a chunked value.  We'll rely on the superset schema to deserialize in this case.
          */
-        int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
-        LogManager.getLogger(MergeConflictResolver.class).info("DEBUGGING: SCHEMA ID: {}", schemaId);
+
+        int schemaId = superSetSchemaSchemaEntry.getId();
         newValue =
-            deserializerCacheForFullValue.get(schemaId, readerValueSchemaEntry.getId()).deserialize(oldValueBytes);
+            deserializerCacheForFullValue.get(schemaId, superSetSchemaSchemaEntry.getId()).deserialize(oldValueBytes);
       }
-      GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
+      GenericRecord newRmd = newRmdCreator.apply(superSetSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, new ArrayList<Long>());
       return new ValueAndRmd<>(Lazy.of(() -> newValue), newRmd);
@@ -643,8 +641,8 @@ public class MergeConflictResolver {
 
     int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();
     return createOldValueAndRmd(
-        readerValueSchemaEntry.getSchema(),
-        readerValueSchemaEntry.getId(),
+        superSetSchemaSchemaEntry.getSchema(),
+        superSetSchemaSchemaEntry.getId(),
         oldValueWriterSchemaId,
         Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId.getRmdRecord());
