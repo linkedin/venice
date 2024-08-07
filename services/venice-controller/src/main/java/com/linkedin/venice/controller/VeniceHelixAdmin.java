@@ -1522,6 +1522,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     versionMigrationConsumer.accept(storeName);
   }
 
+  /**
+   * Clear KILL messages from a participant system store.
+   */
   public void clearIngestionKillMessageAndVerify(String clusterName, String versionTopicName) {
     long startTs = System.currentTimeMillis();
     ParticipantMessageKey key = new ParticipantMessageKey();
@@ -1529,10 +1532,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     key.resourceName = versionTopicName;
     ParticipantMessageValue value;
     try {
-      value = RetryUtils.executeWithMaxAttempt(
+      value = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
           () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
           3,
-          Duration.ofSeconds(5),
+          Duration.ofMillis(100),
+          Duration.ofSeconds(1),
+          Duration.ofSeconds(15),
           Collections.singletonList(Exception.class));
       if (value == null) {
         return;
@@ -1551,24 +1556,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionTopicName,
         clusterName,
         System.currentTimeMillis() - killPushJobMessage.getTimestamp());
-    deleteParticipantStoreKillMessage(clusterName, versionTopicName);
+
+    // Use RetryUtils to add timed-wait
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> deleteParticipantStoreKillMessage(clusterName, versionTopicName),
+        1,
+        Duration.ofSeconds(1),
+        Duration.ofSeconds(3),
+        Duration.ofSeconds(30),
+        Collections.singletonList(Exception.class));
 
     // wait for kill message to be removed
-    try {
-      RetryUtils.executeWithMaxAttempt(() -> {
-        if (participantStoreClientsManager.getReader(clusterName).get(key).get() != null) {
-          throw new VeniceException(
-              "Kill message still exists in participant store for store-version: " + versionTopicName + " in cluster: "
-                  + clusterName);
-        }
-      }, 10, Duration.ofSeconds(15), Collections.singletonList(Exception.class));
-    } catch (Exception e) {
-      LOGGER.error(
-          "Failed to wait for kill message removal from participant store for store-version: {} in cluster: {}",
-          versionTopicName,
-          clusterName,
-          e);
-    }
+
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      if (participantStoreClientsManager.getReader(clusterName).get(key).get() != null) {
+        throw new VeniceException(
+            "Kill message still exists in participant store for store-version: " + versionTopicName + " in cluster: "
+                + clusterName);
+      }
+    },
+        15,
+        Duration.ofSeconds(1),
+        Duration.ofSeconds(3),
+        Duration.ofMinutes(1),
+        Collections.singletonList(Exception.class));
+
     LOGGER.info(
         "Completed waiting for kill message removal from participant store for store-version: {} in cluster: {}. Time elapsed: {} ms",
         versionTopicName,
@@ -1920,7 +1932,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           versionTopicName,
           clusterName,
           storeName);
-      clearIngestionKillMessageAndVerify(clusterName, versionTopicName);
+      try {
+        clearIngestionKillMessageAndVerify(clusterName, versionTopicName);
+      } catch (Exception e) {
+        throw new VeniceRetriableException(
+            "Failed to clear ingestion kill message for store: " + storeName + " and version: " + versionNumber
+                + " in cluster: " + clusterName,
+            e);
+      }
     }
     addVersion(
         clusterName,
