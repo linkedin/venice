@@ -6,6 +6,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 
+import com.linkedin.venice.controller.ParentControllerRegionState;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -205,6 +206,7 @@ public class TestAdminSparkWithMocks {
     mockStore.setIncrementalPushEnabled(true);
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isParent();
+    doReturn(ParentControllerRegionState.ACTIVE).when(admin).getParentControllerRegionState();
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
@@ -330,6 +332,7 @@ public class TestAdminSparkWithMocks {
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     doReturn(samzaPolicy).when(admin).isParent();
+    doReturn(ParentControllerRegionState.ACTIVE).when(admin).getParentControllerRegionState();
     doReturn(aaEnabled).when(admin).isActiveActiveReplicationEnabledInAllRegion(anyString(), anyString(), eq(true));
     mockStore.setActiveActiveReplicationEnabled(aaEnabled);
 

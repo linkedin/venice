@@ -67,6 +67,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -83,8 +84,10 @@ import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -102,7 +105,9 @@ import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -110,6 +115,8 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -125,6 +132,7 @@ import org.apache.logging.log4j.Logger;
 public class RouterServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
+  private static final String ROUTER_RETRY_MANAGER_THREAD_PREFIX = "Router-retry-manager-thread";
   // Immutable state
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final MetricsRepository metricsRepository;
@@ -194,6 +202,8 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceJVMStats jvmStats;
 
   private final AggHostHealthStats aggHostHealthStats;
+
+  private ScheduledExecutorService retryManagerExecutorService;
 
   public static void main(String args[]) throws Exception {
     if (args.length != 1) {
@@ -537,13 +547,20 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterName(),
         compressorFactory,
         metricsRepository);
+
+    retryManagerExecutorService = Executors.newScheduledThreadPool(
+        config.getRetryManagerCorePoolSize(),
+        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
+
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
         partitionFinder,
         routerStats,
         metadataRepository,
         config,
-        compressorFactory);
+        compressorFactory,
+        metricsRepository,
+        retryManagerExecutorService);
 
     MetaDataHandler metaDataHandler = new MetaDataHandler(
         routingDataRepository,
@@ -810,8 +827,6 @@ public class RouterServer extends AbstractVeniceService {
         LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
       }
     }
-    // Graceful shutdown
-    Thread.sleep(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
     if (serverFuture != null && !serverFuture.cancel(false)) {
       serverFuture.awaitUninterruptibly();
     }
@@ -838,6 +853,20 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
+    // Graceful shutdown: Wait till all the requests are drained
+    try {
+      RetryUtils.executeWithMaxAttempt(() -> {
+        if (RouterHttpRequestStats.hasInFlightRequests()) {
+          throw new VeniceException("There are still in-flight requests in router");
+        }
+      },
+          10,
+          Duration.ofSeconds(config.getRouterNettyGracefulShutdownPeriodSeconds()),
+          Collections.singletonList(VeniceException.class));
+    } catch (VeniceException e) {
+      LOGGER.error(
+          "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
+    }
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
@@ -881,6 +910,9 @@ public class RouterServer extends AbstractVeniceService {
     }
     if (heartbeat != null) {
       heartbeat.stopInner();
+    }
+    if (retryManagerExecutorService != null) {
+      retryManagerExecutorService.shutdownNow();
     }
   }
 

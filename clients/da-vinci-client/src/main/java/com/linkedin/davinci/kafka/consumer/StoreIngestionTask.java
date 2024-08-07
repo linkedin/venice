@@ -133,6 +133,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -161,6 +162,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private static final long SCHEMA_POLLING_TIMEOUT_MS = MINUTES.toMillis(5);
   private static final long SOP_POLLING_TIMEOUT_MS = HOURS.toMillis(1);
+
+  protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
@@ -326,6 +329,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
+  protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -469,6 +474,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
+    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -554,6 +561,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
     subscribePartition(topicPartition, true);
+  }
+
+  void resubscribeForAllPartitions() throws InterruptedException {
+    throwIfNotRunning();
+    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      resubscribe(partitionConsumptionState);
+    }
   }
 
   /**
@@ -1270,6 +1284,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Thread.sleep(readCycleDelayMs);
   }
 
+  protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+    PartitionReplicaIngestionContext.VersionRole newVersionRole =
+        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
+        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
+      // TODO: Add support workload type change in the future, as enabling write computing during normal hybrid
+      // ingestion could cause workload type change.
+      if (!newVersionRole.equals(versionRole)) {
+        LOGGER.info(
+            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
+                + "changed to New: version role: {}, workload type: {}",
+            versionTopic,
+            versionRole,
+            workloadType,
+            newVersionRole,
+            newWorkloadType);
+        versionRole = newVersionRole;
+        resubscribeForAllPartitions();
+      }
+    }
+  }
+
   private void maybeUnsubscribeCompletedPartitions(Store store) {
     if (hybridStoreConfig.isPresent() || (!serverConfig.isUnsubscribeAfterBatchpushEnabled())) {
       return;
@@ -1341,6 +1378,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
+        updateIngestionRoleIfStoreChanged(store);
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
@@ -1370,18 +1408,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerUnSubscribeAllTopics(partitionConsumptionState);
 
           if (ingestionCheckpointDuringGracefulShutdownEnabled) {
+            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
             try {
-              waitForAllMessageToBeProcessedFromTopicPartition(
-                  new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
-                  partitionConsumptionState);
+              CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
+              waitForSyncOffsetCmd(cmdFuture, topicPartition);
+              waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
             } catch (InterruptedException e) {
               throw new VeniceException(e);
             }
-
-            this.kafkaDataIntegrityValidator
-                .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-            updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-            syncOffset(kafkaVersionTopic, partitionConsumptionState);
           }
         };
 
@@ -1448,6 +1482,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } finally {
       internalClose(doFlush);
     }
+  }
+
+  private void waitForSyncOffsetCmd(CompletableFuture<Void> cmdFuture, PubSubTopicPartition topicPartition)
+      throws InterruptedException {
+    try {
+      cmdFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+    } catch (InterruptedException e) {
+      LOGGER.warn(
+          "Got interrupted while waiting for the sync offset command for {}. Cancel command and throw the interrupt exception.",
+          topicPartition,
+          e);
+      throw e;
+    } catch (TimeoutException e) {
+      LOGGER.warn("Timeout while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
+    } catch (Exception e) {
+      LOGGER
+          .error("Got exception while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
+    } finally {
+      /**
+       * If exception happens, async command has to be invalidated because the SIT is going to be closed in SIT thread
+       * and its internal state is not reliable anymore. Notice that if the async command is already in the process of
+       * execution, cancel will wait for command to finish and not affect its execution. It is also safe to
+       * cancel an already finished command, so we can put it in finally block.
+       */
+      cmdFuture.cancel(true);
+    }
+  }
+
+  protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
+    /**
+     * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
+     * could be ahead of the other.
+     *
+     * The reason to transform the internal state only during checkpointing is that the intermediate checksum
+     * generation is an expensive operation.
+     */
+    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(pcs.getPartition(), pcs.getOffsetRecord());
+    // update the offset metadata in the OffsetRecord.
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(kafkaVersionTopic, pcs);
   }
 
   private void handleIngestionException(Exception e) {
@@ -1796,10 +1870,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        consumerSubscribe(
-            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic()),
-            offsetRecord.getLocalVersionTopicOffset(),
-            localKafkaServer);
+        PubSubTopicPartition pubSubTopicPartition =
+            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
+        consumerSubscribe(pubSubTopicPartition, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
@@ -2219,23 +2292,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
-    boolean syncOffset =
-        shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext);
-
-    if (syncOffset) {
-      /**
-       * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
-       * could be ahead of the other.
-       */
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-      /**
-       * The reason to transform the internal state only during checkpointing is that
-       * the intermediate checksum generation is an expensive operation.
-       */
-      this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(partition, offsetRecord);
-      // update the offset metadata in the OffsetRecord
-      updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-      syncOffset(kafkaVersionTopic, partitionConsumptionState);
+    if (shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext)) {
+      updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
   }
 
@@ -3105,12 +3163,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(PubSubTopicPartition topicPartition, long startOffset, String kafkaURL) {
+  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext =
+        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
+    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
@@ -3685,6 +3745,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportCompleted(partitionConsumptionState, false);
   }
 
+  protected abstract void resubscribe(PartitionConsumptionState partitionConsumptionState) throws InterruptedException;
+
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     ingestionNotificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
     LOGGER.info("Replica: {} is ready to serve", partitionConsumptionState.getReplicaId());
@@ -3992,5 +4054,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     }
     return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
+  }
+
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
+  }
+
+  public boolean hasAllPartitionReportedCompleted() {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+      if (!entry.getValue().isCompletionReported()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // For unit test purpose.
+  void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
+    this.versionRole = versionRole;
   }
 }

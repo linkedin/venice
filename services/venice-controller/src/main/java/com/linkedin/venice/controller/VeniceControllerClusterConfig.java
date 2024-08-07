@@ -2,17 +2,14 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_TIMEOUT_MINUTES;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
@@ -22,7 +19,6 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -41,13 +37,13 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
@@ -57,6 +53,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_REGION_STATE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
@@ -90,15 +87,10 @@ import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
-import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
@@ -111,27 +103,23 @@ import static com.linkedin.venice.ConfigKeys.FORCE_LEADER_ERROR_REPLICA_FAIL_OVE
 import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
 import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
+import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -155,17 +143,14 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
+import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
@@ -174,10 +159,11 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -191,7 +177,6 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -213,7 +198,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.commons.lang.StringUtils;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
@@ -238,8 +222,9 @@ public class VeniceControllerClusterConfig {
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
+  private final boolean multiRegion;
   private final boolean parent;
-  private final List<String> childDataCenterAllowlist;
+  private final ParentControllerRegionState parentControllerRegionState;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
   private final String clusterDiscoveryD2ServiceName;
@@ -251,11 +236,9 @@ public class VeniceControllerClusterConfig {
                                                   // heartbeat.
   private final Duration batchJobHeartbeatTimeout;
   private final Duration batchJobHeartbeatInitialBufferTime;
-  private final long adminConsumptionTimeoutMinute;
   private final long adminConsumptionCycleTimeoutMs;
   private final int adminConsumptionMaxWorkerThreadPoolSize;
   private final double storageEngineOverheadRatio;
-  private final long topicCreationThrottlingTimeWindowMs;
   private final long deprecatedJobTopicRetentionMs;
 
   private final long fatalDataValidationFailureRetentionMs;
@@ -265,7 +248,6 @@ public class VeniceControllerClusterConfig {
   private final long disabledReplicaEnablerServiceIntervalMs;
 
   private final int topicCleanupDelayFactor;
-  private final int topicManagerKafkaOperationTimeOutMs;
   private final int topicManagerMetadataFetcherConsumerPoolSize;
   private final int topicManagerMetadataFetcherThreadPoolSize;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -274,21 +256,14 @@ public class VeniceControllerClusterConfig {
   private final String pushJobStatusStoreClusterName;
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
-  private final int topicDeletionStatusPollIntervalMs;
   private final boolean adminHelixMessagingChannelEnabled;
   private final boolean isControllerClusterLeaderHAAS;
   private final boolean isVeniceClusterLeaderHAAS;
   private final String controllerHAASSuperClusterName;
   private final boolean earlyDeleteBackUpEnabled;
-  private final boolean sendConcurrentTopicDeleteRequestsEnabled;
-  private final boolean enableBatchPushFromAdminInChildController;
   private final boolean adminCheckReadMethodForKafka;
-  private final String kafkaAdminClass;
-  private final String kafkaWriteOnlyClass;
-  private final String kafkaReadOnlyClass;
   private final Map<String, String> childDataCenterKafkaUrlMap;
-  private final boolean activeActiveEnabledOnController;
-  private final Set<String> activeActiveRealTimeSourceFabrics;
+  private final List<String> activeActiveRealTimeSourceKafkaURLs;
   private final String nativeReplicationSourceFabric;
   private final int errorPartitionAutoResetLimit;
   private final long errorPartitionProcessingCycleDelay;
@@ -372,8 +347,6 @@ public class VeniceControllerClusterConfig {
 
   private final boolean allowClusterWipe;
 
-  private final boolean childControllerAdminTopicConsumptionEnabled;
-
   private final boolean concurrentInitRoutinesEnabled;
 
   private final boolean controllerInAzureFabric;
@@ -449,35 +422,6 @@ public class VeniceControllerClusterConfig {
   private final boolean enableNearlinePushSSLAllowlist;
   private final List<String> pushSSLAllowlist;
 
-  /**
-   * TODO: the follower 3 cluster level configs remains in the code base in case the new cluster level configs are not
-   *       working as expected. Once the new cluster level configs for native replication have been tested in prod, retire
-   *       the following configs.
-   */
-  /**
-   * When this option is enabled, all new batch-only store versions created will have native replication enabled so long
-   * as the store has leader follower also enabled.
-   */
-  private final boolean nativeReplicationEnabledForBatchOnly;
-
-  /**
-   * When this option is enabled, all new hybrid store versions created will have native replication enabled so long
-   * as the store has leader follower also enabled.
-   */
-  private final boolean nativeReplicationEnabledForHybrid;
-
-  /**
-   * When this option is enabled, all new batch-only stores will have native replication enabled in store config so long
-   * as the store has leader follower also enabled.
-   */
-  private final boolean nativeReplicationEnabledAsDefaultForBatchOnly;
-
-  /**
-   * When this option is enabled, all new hybrid stores will have native replication enabled in store config so long
-   * as the store has leader follower also enabled.
-   */
-  private final boolean nativeReplicationEnabledAsDefaultForHybrid;
-
   private final String nativeReplicationSourceFabricAsDefaultForBatchOnly;
   private final String nativeReplicationSourceFabricAsDefaultForHybrid;
 
@@ -489,12 +433,6 @@ public class VeniceControllerClusterConfig {
 
   private final boolean enablePartialUpdateForHybridActiveActiveUserStores;
   private final boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
-
-  /**
-   * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
-   * as the store has leader follower also enabled.
-   */
-  private final boolean activeActiveReplicationEnabledAsDefaultForBatchOnly;
 
   /**
    * When this option is enabled, all new hybrid stores will have active-active replication enabled in store config so long
@@ -511,12 +449,6 @@ public class VeniceControllerClusterConfig {
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
   private final long delayToRebalanceMS;
-  /**
-   * If the replica count smaller than minActiveReplica, helix would trigger the re-balance immediately.
-   * This config is deprecated. Replication factor config is moved to store/version-level config
-   */
-  @Deprecated
-  private final int minActiveReplica;
 
   /**
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
@@ -535,7 +467,6 @@ public class VeniceControllerClusterConfig {
   private final Optional<Integer> minInSyncReplicasRealTimeTopics;
   private final Optional<Integer> minInSyncReplicasAdminTopics;
   private final boolean kafkaLogCompactionForHybridStores;
-  private final long kafkaMinLogCompactionLagInMs;
 
   /**
    * Alg used by helix to decide the mapping between replicas and nodes.
@@ -567,11 +498,14 @@ public class VeniceControllerClusterConfig {
   private final boolean disableParentRequestTopicForStreamPushes;
 
   private final int defaultReadQuotaPerRouter;
+
+  private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
   private final int replicationMetadataVersion;
 
   private final boolean errorLeaderReplicaFailOverEnabled;
 
-  private final String childDatacenters;
+  private final Set<String> childDatacenters;
+  private final long serviceDiscoveryRegistrationRetryMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -584,8 +518,6 @@ public class VeniceControllerClusterConfig {
     this.minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
     this.minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
     this.kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
-    this.kafkaMinLogCompactionLagInMs =
-        props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
     this.replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     this.minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
     this.minNumberOfPartitionsForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, minNumberOfPartitions);
@@ -599,9 +531,6 @@ public class VeniceControllerClusterConfig {
     this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
     // By default, delayed rebalance is disabled.
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
-    // By default, the min active replica is replica factor minus one, which means if more than one server failed,
-    // helix would trigger re-balance immediately.
-    this.minActiveReplica = props.getInt(MIN_ACTIVE_REPLICA, replicationFactor - 1);
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
     } else {
@@ -623,18 +552,10 @@ public class VeniceControllerClusterConfig {
       this.routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
 
-    this.nativeReplicationEnabledForBatchOnly = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, false);
-    this.nativeReplicationEnabledAsDefaultForBatchOnly =
-        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, false);
-    this.nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
-    this.nativeReplicationEnabledAsDefaultForHybrid =
-        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, false);
     this.nativeReplicationSourceFabricAsDefaultForBatchOnly =
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "");
     this.nativeReplicationSourceFabricAsDefaultForHybrid =
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
-    this.activeActiveReplicationEnabledAsDefaultForBatchOnly =
-        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, false);
     this.activeActiveReplicationEnabledAsDefaultForHybrid =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
     this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
@@ -693,12 +614,19 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
+    this.defaultMaxRecordSizeBytes = props.getInt(CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES, 100 * BYTES_PER_MB);
+    if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
+      throw new VeniceException(
+          "Default max record size must be at least " + generateHumanReadableByteCountString(BYTES_PER_MB));
+    }
     this.replicationMetadataVersion = props.getInt(REPLICATION_METADATA_VERSION, 1);
-    this.childDatacenters = props.getString(CHILD_CLUSTER_ALLOWLIST);
+    // go/inclusivecode deferred(Will be replaced when clients have migrated)
+    this.childDatacenters = Utils.parseCommaSeparatedStringToSet(
+        props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, null));
     this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
 
     this.adminPort = props.getInt(ADMIN_PORT);
-    this.adminHostname = props.getString(ADMIN_HOSTNAME, () -> Utils.getHostName());
+    this.adminHostname = props.getString(ADMIN_HOSTNAME, Utils::getHostName);
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
     /**
      * Override the config to false if the "Read" method check is not working as expected.
@@ -707,54 +635,97 @@ public class VeniceControllerClusterConfig {
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
-    this.topicCreationThrottlingTimeWindowMs =
-        props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
-    this.activeActiveEnabledOnController = props.getBoolean(ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER, false);
-    this.activeActiveRealTimeSourceFabrics =
-        Utils.parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
-    validateActiveActiveConfigs();
+    this.parentControllerRegionState =
+        ParentControllerRegionState.valueOf(props.getString(CONTROLLER_PARENT_REGION_STATE, ACTIVE.name()));
 
-    // go/inclusivecode deferred(Will be replaced when clients have migrated)
-    String dataCenterAllowlist = props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
-    if (dataCenterAllowlist.isEmpty()) {
+    if (childDatacenters.isEmpty()) {
       this.childDataCenterControllerUrlMap = Collections.emptyMap();
       this.childDataCenterControllerD2Map = Collections.emptyMap();
-      this.childDataCenterAllowlist = Collections.emptyList();
     } else {
-      this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
-      this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
-      this.childDataCenterAllowlist = Arrays.asList(dataCenterAllowlist.split(LIST_SEPARATOR));
+      this.childDataCenterControllerUrlMap = parseClusterMap(props, childDatacenters);
+      this.childDataCenterControllerD2Map = parseClusterMap(props, childDatacenters, true);
     }
+
+    Set<String> nativeReplicationSourceFabricAllowlist = Utils.parseCommaSeparatedStringToSet(
+        props.getStringWithAlternative(
+            NATIVE_REPLICATION_FABRIC_ALLOWLIST,
+            // go/inclusivecode deferred(will be removed once all configs have migrated)
+            NATIVE_REPLICATION_FABRIC_WHITELIST,
+            null));
+
     this.d2ServiceName =
         childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
     if (this.parent) {
       if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
       }
-      String parentFabricList = props.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST, "");
-      this.parentFabrics = Utils.parseCommaSeparatedStringToSet(parentFabricList);
-      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(
-          NATIVE_REPLICATION_FABRIC_ALLOWLIST,
-          // go/inclusivecode deferred(will be removed once all configs have migrated)
-          NATIVE_REPLICATION_FABRIC_WHITELIST,
-          dataCenterAllowlist);
+      this.parentFabrics =
+          Utils.parseCommaSeparatedStringToSet(props.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST, (String) null));
       this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
     } else {
       this.parentFabrics = Collections.emptySet();
 
-      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(
-          NATIVE_REPLICATION_FABRIC_ALLOWLIST,
-          // go/inclusivecode deferred(will be removed once all configs have migrated)
-          NATIVE_REPLICATION_FABRIC_WHITELIST,
-          "");
-      if (nativeReplicationSourceFabricAllowlist == null || nativeReplicationSourceFabricAllowlist.length() == 0) {
+      if (nativeReplicationSourceFabricAllowlist.isEmpty()) {
         this.childDataCenterKafkaUrlMap = Collections.emptyMap();
       } else {
         this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
       }
     }
+
+    if (props.containsKey(MULTI_REGION)) {
+      this.multiRegion = props.getBoolean(MULTI_REGION);
+    } else {
+      LOGGER.warn("Config '{}' is not set. Inferring multi-region setup from other configs.", MULTI_REGION);
+
+      /**
+       * Historically, {@link MULTI_REGION} was not a supported config. It was handled on a case-by-case basis by
+       * carefully setting feature configs. While this works for ramping new features, it makes it hard to remove the
+       * feature flags once the feature is fully ramped. Ideally, this should be a mandatory config, but that would break
+       * backward compatibility and hence, we infer the multi-region setup through the presence of other configs.
+       */
+      if (parent) {
+        // Parent controllers only run in multi-region mode
+        LOGGER.info("Inferring multi-region mode since this is the parent controller.");
+        this.multiRegion = true;
+      } else if (!childDatacenters.isEmpty()) {
+        LOGGER.info("Inferring multi-region mode since there are child regions configured.");
+        this.multiRegion = true;
+      } else if (!childDataCenterKafkaUrlMap.isEmpty()) {
+        LOGGER.info("Inferring multi-region mode since PubSub URLs are set for child regions.");
+        // This is implicitly a mandatory config for child controllers in multi-region mode since Admin topic remote
+        // consumption is the only supported mode in multi-region setup, and that needs PubSub URLs to be set.
+        this.multiRegion = true;
+      } else {
+        LOGGER.info("Inferring single-region mode.");
+        this.multiRegion = false;
+      }
+    }
+
+    Set<String> activeActiveRealTimeSourceFabrics = Utils
+        .parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, (String) null));
+
+    if (activeActiveRealTimeSourceFabrics.isEmpty()) {
+      LOGGER.info(
+          "'{}' not configured explicitly. Using '{}' from '{}'",
+          ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+          nativeReplicationSourceFabricAllowlist,
+          NATIVE_REPLICATION_FABRIC_ALLOWLIST);
+      activeActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
+    }
+
+    for (String aaSourceFabric: activeActiveRealTimeSourceFabrics) {
+      if (!childDataCenterKafkaUrlMap.containsKey(aaSourceFabric)) {
+        throw new VeniceException(String.format("No Kafka URL found for A/A source fabric '%s'", aaSourceFabric));
+      }
+    }
+
+    this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceFabrics.stream()
+        .map(childDataCenterKafkaUrlMap::get)
+        .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
+
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
+
     this.parentControllerWaitingTimeForConsumptionMs =
         props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.batchJobHeartbeatStoreCluster = props.getString(
@@ -771,7 +742,6 @@ public class VeniceControllerClusterConfig {
         props.getLong(
             BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getConfigName(),
             BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()));
-    this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
     this.adminConsumptionCycleTimeoutMs =
         props.getLong(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
     // A value of one will result in a bad message for one store to block the admin message consumption of other stores.
@@ -803,8 +773,6 @@ public class VeniceControllerClusterConfig {
 
     this.disabledReplicaEnablerServiceIntervalMs =
         props.getLong(CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS, TimeUnit.HOURS.toMillis(16));
-    this.topicManagerKafkaOperationTimeOutMs =
-        props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
     this.topicManagerMetadataFetcherConsumerPoolSize = props.getInt(
         PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE,
         PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE);
@@ -830,8 +798,6 @@ public class VeniceControllerClusterConfig {
     }
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
     this.earlyDeleteBackUpEnabled = props.getBoolean(CONTROLLER_EARLY_DELETE_BACKUP_ENABLED, true);
-    this.topicDeletionStatusPollIntervalMs = props
-        .getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE); // 2s
     this.isControllerClusterLeaderHAAS = props.getBoolean(CONTROLLER_CLUSTER_LEADER_HAAS, false);
     this.isVeniceClusterLeaderHAAS = props.getBoolean(VENICE_STORAGE_CLUSTER_LEADER_HAAS, false);
     this.controllerHAASSuperClusterName = props.getString(CONTROLLER_HAAS_SUPER_CLUSTER_NAME, "");
@@ -840,13 +806,6 @@ public class VeniceControllerClusterConfig {
           CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required for " + CONTROLLER_CLUSTER_LEADER_HAAS + " or "
               + VENICE_STORAGE_CLUSTER_LEADER_HAAS + " to be set to true");
     }
-    this.sendConcurrentTopicDeleteRequestsEnabled =
-        props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
-    this.enableBatchPushFromAdminInChildController =
-        props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
-    this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName());
-    this.kafkaWriteOnlyClass = props.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
-    this.kafkaReadOnlyClass = props.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
     this.errorPartitionProcessingCycleDelay =
         props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
@@ -891,7 +850,7 @@ public class VeniceControllerClusterConfig {
     this.regionName = RegionUtils.getLocalRegionName(props, parent);
     LOGGER.info("Final region name for this node: {}", this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
-    this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
+    this.adminTopicRemoteConsumptionEnabled = !this.parent && this.multiRegion;
     if (adminTopicRemoteConsumptionEnabled && childDataCenterKafkaUrlMap.isEmpty()) {
       throw new VeniceException("Admin topic remote consumption is enabled but Kafka url map is empty");
     }
@@ -906,8 +865,6 @@ public class VeniceControllerClusterConfig {
     this.metaStoreWriterCloseConcurrency = props.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
-    this.childControllerAdminTopicConsumptionEnabled =
-        props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
@@ -944,31 +901,8 @@ public class VeniceControllerClusterConfig {
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
         props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
-  }
-
-  private void validateActiveActiveConfigs() {
-    if (this.activeActiveEnabledOnController && this.activeActiveRealTimeSourceFabrics.isEmpty()) {
-      throw new VeniceException(
-          String.format(
-              "The config %s cannot be empty when the child controller has A/A enabled " + "(%s == true).",
-              ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
-              ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
-
-    } else if (this.activeActiveEnabledOnController) {
-      LOGGER.info(
-          "A/A is enabled on a child controller and {} == {}",
-          ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
-          this.activeActiveRealTimeSourceFabrics);
-    } else {
-      LOGGER.info(
-          "A/A is not enabled on child controller. {}",
-          !this.activeActiveRealTimeSourceFabrics.isEmpty()
-              ? String.format(
-                  " But %s is still set to %s.",
-                  ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
-                  this.activeActiveRealTimeSourceFabrics)
-              : "");
-    }
+    this.serviceDiscoveryRegistrationRetryMS =
+        props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
   }
 
   public VeniceProperties getProps() {
@@ -996,6 +930,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDefaultReadQuotaPerRouter() {
     return defaultReadQuotaPerRouter;
+  }
+
+  public int getDefaultMaxRecordSizeBytes() {
+    return defaultMaxRecordSizeBytes;
   }
 
   public String getControllerName() {
@@ -1066,11 +1004,6 @@ public class VeniceControllerClusterConfig {
     return delayToRebalanceMS;
   }
 
-  @Deprecated
-  public int getMinActiveReplica() {
-    return minActiveReplica;
-  }
-
   /**
    * @return kafka Bootstrap Urls. If there is more than one url, they are separated by commas.
    */
@@ -1138,10 +1071,6 @@ public class VeniceControllerClusterConfig {
     return adminTopicReplicationFactor;
   }
 
-  public PushMonitorType getPushMonitorType() {
-    return pushMonitorType;
-  }
-
   public Optional<Integer> getMinInSyncReplicas() {
     return minInSyncReplicas;
   }
@@ -1156,30 +1085,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isKafkaLogCompactionForHybridStoresEnabled() {
     return kafkaLogCompactionForHybridStores;
-  }
-
-  public long getKafkaMinLogCompactionLagInMs() {
-    return kafkaMinLogCompactionLagInMs;
-  }
-
-  public boolean isNativeReplicationEnabledForBatchOnly() {
-    return nativeReplicationEnabledForBatchOnly;
-  }
-
-  public boolean isNativeReplicationEnabledAsDefaultForBatchOnly() {
-    return nativeReplicationEnabledAsDefaultForBatchOnly;
-  }
-
-  public boolean isNativeReplicationEnabledForHybrid() {
-    return nativeReplicationEnabledForHybrid;
-  }
-
-  public boolean isNativeReplicationEnabledAsDefaultForHybrid() {
-    return nativeReplicationEnabledAsDefaultForHybrid;
-  }
-
-  public boolean isActiveActiveReplicationEnabledAsDefaultForBatchOnly() {
-    return activeActiveReplicationEnabledAsDefaultForBatchOnly;
   }
 
   public boolean isActiveActiveReplicationEnabledAsDefaultForHybrid() {
@@ -1214,7 +1119,7 @@ public class VeniceControllerClusterConfig {
     return replicationMetadataVersion;
   }
 
-  public String getChildDatacenters() {
+  public Set<String> getChildDatacenters() {
     return childDatacenters;
   }
 
@@ -1258,12 +1163,16 @@ public class VeniceControllerClusterConfig {
     return controllerClusterZkAddress;
   }
 
+  public boolean isMultiRegion() {
+    return multiRegion;
+  }
+
   public boolean isParent() {
     return parent;
   }
 
-  public long getTopicCreationThrottlingTimeWindowMs() {
-    return topicCreationThrottlingTimeWindowMs;
+  public ParentControllerRegionState getParentControllerRegionState() {
+    return parentControllerRegionState;
   }
 
   public long getDeprecatedJobTopicRetentionMs() {
@@ -1340,12 +1249,8 @@ public class VeniceControllerClusterConfig {
     return childDataCenterKafkaUrlMap;
   }
 
-  public List<String> getChildDataCenterAllowlist() {
-    return childDataCenterAllowlist;
-  }
-
-  public Set<String> getActiveActiveRealTimeSourceFabrics() {
-    return activeActiveRealTimeSourceFabrics;
+  public List<String> getActiveActiveRealTimeSourceKafkaURLs() {
+    return activeActiveRealTimeSourceKafkaURLs;
   }
 
   public String getNativeReplicationSourceFabric() {
@@ -1376,10 +1281,6 @@ public class VeniceControllerClusterConfig {
     return batchJobHeartbeatInitialBufferTime;
   }
 
-  public long getAdminConsumptionTimeoutMinutes() {
-    return adminConsumptionTimeoutMinute;
-  }
-
   public boolean isEnableDisabledReplicaEnabled() {
     return enableDisabledReplicaEnabled;
   }
@@ -1392,16 +1293,12 @@ public class VeniceControllerClusterConfig {
     return adminConsumptionMaxWorkerThreadPoolSize;
   }
 
-  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterAllowlist) {
+  static Map<String, String> parseClusterMap(VeniceProperties clusterPros, Set<String> datacenterAllowlist) {
     return parseClusterMap(clusterPros, datacenterAllowlist, false);
   }
 
   public double getStorageEngineOverheadRatio() {
     return storageEngineOverheadRatio;
-  }
-
-  public int getTopicManagerKafkaOperationTimeOutMs() {
-    return topicManagerKafkaOperationTimeOutMs;
   }
 
   public int getTopicManagerMetadataFetcherConsumerPoolSize() {
@@ -1440,10 +1337,6 @@ public class VeniceControllerClusterConfig {
     return systemSchemaClusterName;
   }
 
-  public int getTopicDeletionStatusPollIntervalMs() {
-    return topicDeletionStatusPollIntervalMs;
-  }
-
   public boolean isAdminHelixMessagingChannelEnabled() {
     return adminHelixMessagingChannelEnabled;
   }
@@ -1462,26 +1355,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isEarlyDeleteBackUpEnabled() {
     return earlyDeleteBackUpEnabled;
-  }
-
-  public boolean isConcurrentTopicDeleteRequestsEnabled() {
-    return sendConcurrentTopicDeleteRequestsEnabled;
-  }
-
-  public boolean isEnableBatchPushFromAdminInChildController() {
-    return enableBatchPushFromAdminInChildController;
-  }
-
-  public String getKafkaAdminClass() {
-    return kafkaAdminClass;
-  }
-
-  public String getKafkaWriteOnlyClass() {
-    return kafkaWriteOnlyClass;
-  }
-
-  public String getKafkaReadOnlyClass() {
-    return kafkaReadOnlyClass;
   }
 
   public int getErrorPartitionAutoResetLimit() {
@@ -1615,10 +1488,6 @@ public class VeniceControllerClusterConfig {
     return allowClusterWipe;
   }
 
-  public boolean isChildControllerAdminTopicConsumptionEnabled() {
-    return childControllerAdminTopicConsumptionEnabled;
-  }
-
   public boolean isConcurrentInitRoutinesEnabled() {
     return concurrentInitRoutinesEnabled;
   }
@@ -1695,6 +1564,10 @@ public class VeniceControllerClusterConfig {
     return sourceOfTruthAdminAdapterFactory;
   }
 
+  public long getServiceDiscoveryRegistrationRetryMS() {
+    return serviceDiscoveryRegistrationRetryMS;
+  }
+
   /**
    * The config should follow the format below:
    * CHILD_CLUSTER_URL_PREFIX.fabricName1=controllerUrls_in_fabric1
@@ -1707,9 +1580,9 @@ public class VeniceControllerClusterConfig {
    * @param datacenterAllowlist data centers that are taken into account.
    * @param D2Routing whether it uses D2 to route or not.
    */
-  public static Map<String, String> parseClusterMap(
+  static Map<String, String> parseClusterMap(
       VeniceProperties clusterPros,
-      String datacenterAllowlist,
+      Set<String> datacenterAllowlist,
       Boolean D2Routing) {
     String propsPrefix = D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
     return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterAllowlist, (m, k, v, errMsg) -> {
@@ -1745,7 +1618,7 @@ public class VeniceControllerClusterConfig {
    */
   private static Map<String, String> parseChildDataCenterKafkaUrl(
       VeniceProperties clusterPros,
-      String datacenterAllowlist) {
+      Set<String> datacenterAllowlist) {
     return parseChildDataCenterToValue(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX,
         clusterPros,
@@ -1756,16 +1629,15 @@ public class VeniceControllerClusterConfig {
   private static Map<String, String> parseChildDataCenterToValue(
       String configPrefix,
       VeniceProperties clusterPros,
-      String datacenterAllowlist,
+      Set<String> datacenterAllowlist,
       PutToMap mappingFunction) {
     Properties childDataCenterKafkaUriProps = clusterPros.clipAndFilterNamespace(configPrefix).toProperties();
 
-    if (StringUtils.isEmpty(datacenterAllowlist)) {
+    if (datacenterAllowlist == null || datacenterAllowlist.isEmpty()) {
       throw new VeniceException("child controller list must have a allowlist");
     }
 
     Map<String, String> outputMap = new HashMap<>();
-    List<String> allowlist = Arrays.asList(datacenterAllowlist.split(LIST_SEPARATOR));
 
     for (Map.Entry<Object, Object> uriEntry: childDataCenterKafkaUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();
@@ -1780,7 +1652,7 @@ public class VeniceControllerClusterConfig {
         throw new VeniceException(errMsg + ": found no value for: " + datacenter);
       }
 
-      if (allowlist.contains(datacenter)) {
+      if (datacenterAllowlist.contains(datacenter)) {
         mappingFunction.apply(outputMap, datacenter, value, errMsg);
       }
     }

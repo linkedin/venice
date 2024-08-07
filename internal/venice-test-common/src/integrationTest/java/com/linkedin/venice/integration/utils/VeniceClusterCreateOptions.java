@@ -21,6 +21,7 @@ import java.util.Properties;
 public class VeniceClusterCreateOptions {
   private final String clusterName;
   private final String regionName;
+  private final boolean multiRegion;
   private final Map<String, String> clusterToD2;
   private final Map<String, String> clusterToServerD2;
   private final int numberOfControllers;
@@ -30,7 +31,6 @@ public class VeniceClusterCreateOptions {
   private final int partitionSize;
   private final int numberOfPartitions;
   private final int maxNumberOfPartitions;
-  private final int minActiveReplica;
   private final long rebalanceDelayMs;
   private final boolean standalone;
   private final boolean enableAllowlist;
@@ -47,6 +47,7 @@ public class VeniceClusterCreateOptions {
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
     this.regionName = builder.regionName;
+    this.multiRegion = builder.multiRegion;
     this.clusterToD2 = builder.clusterToD2;
     this.clusterToServerD2 = builder.clusterToServerD2;
     this.numberOfControllers = builder.numberOfControllers;
@@ -56,7 +57,6 @@ public class VeniceClusterCreateOptions {
     this.partitionSize = builder.partitionSize;
     this.numberOfPartitions = builder.numberOfPartitions;
     this.maxNumberOfPartitions = builder.maxNumberOfPartitions;
-    this.minActiveReplica = builder.minActiveReplica;
     this.rebalanceDelayMs = builder.rebalanceDelayMs;
     this.standalone = builder.standalone;
     this.enableAllowlist = builder.enableAllowlist;
@@ -77,6 +77,10 @@ public class VeniceClusterCreateOptions {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public boolean isMultiRegion() {
+    return multiRegion;
   }
 
   public Map<String, String> getClusterToD2() {
@@ -113,10 +117,6 @@ public class VeniceClusterCreateOptions {
 
   public int getMaxNumberOfPartitions() {
     return maxNumberOfPartitions;
-  }
-
-  public int getMinActiveReplica() {
-    return minActiveReplica;
   }
 
   public long getRebalanceDelayMs() {
@@ -176,6 +176,9 @@ public class VeniceClusterCreateOptions {
         .append("standalone:")
         .append(standalone)
         .append(", ")
+        .append("multiRegion:")
+        .append(multiRegion)
+        .append(", ")
         .append("regionName:")
         .append(regionName)
         .append(", ")
@@ -202,9 +205,6 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("maxNumberOfPartitions:")
         .append(maxNumberOfPartitions)
-        .append(", ")
-        .append("minActiveReplica:")
-        .append(minActiveReplica)
         .append(", ")
         .append("enableAllowlist:")
         .append(enableAllowlist)
@@ -247,6 +247,7 @@ public class VeniceClusterCreateOptions {
   public static class Builder {
     private String clusterName;
     private String regionName;
+    private boolean multiRegion = false;
     private Map<String, String> clusterToD2 = null;
     private Map<String, String> clusterToServerD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
@@ -256,7 +257,6 @@ public class VeniceClusterCreateOptions {
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
     private int numberOfPartitions = DEFAULT_NUMBER_OF_PARTITIONS;
     private int maxNumberOfPartitions = DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-    private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private boolean standalone = true; // set to false for multi-cluster
     private boolean enableAllowlist;
@@ -264,7 +264,6 @@ public class VeniceClusterCreateOptions {
     private boolean sslToStorageNodes = DEFAULT_SSL_TO_STORAGE_NODES;
     private boolean sslToKafka = DEFAULT_SSL_TO_KAFKA;
     private boolean forkServer;
-    private boolean isMinActiveReplicaSet = false;
     private boolean enableGrpc = false;
     private Properties extraProperties;
     private Map<String, Map<String, String>> kafkaClusterMap;
@@ -278,6 +277,11 @@ public class VeniceClusterCreateOptions {
 
     public Builder regionName(String regionName) {
       this.regionName = regionName;
+      return this;
+    }
+
+    public Builder multiRegion(boolean multiRegion) {
+      this.multiRegion = multiRegion;
       return this;
     }
 
@@ -323,12 +327,6 @@ public class VeniceClusterCreateOptions {
 
     public Builder maxNumberOfPartitions(int maxNumberOfPartitions) {
       this.maxNumberOfPartitions = maxNumberOfPartitions;
-      return this;
-    }
-
-    public Builder minActiveReplica(int minActiveReplica) {
-      this.minActiveReplica = minActiveReplica;
-      this.isMinActiveReplicaSet = true;
       return this;
     }
 
@@ -398,9 +396,6 @@ public class VeniceClusterCreateOptions {
       }
       if (regionName == null || regionName.isEmpty()) {
         regionName = STANDALONE_REGION_NAME;
-      }
-      if (!isMinActiveReplicaSet) {
-        minActiveReplica = replicationFactor - 1;
       }
       if (extraProperties == null) {
         extraProperties = new Properties();

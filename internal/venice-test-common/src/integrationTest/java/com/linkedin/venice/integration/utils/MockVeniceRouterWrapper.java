@@ -137,7 +137,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(
               CLUSTER_TO_SERVER_D2,
               TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, serverD2ServiceName)))
-          .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
+          .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 1)
           .put(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 10)
           .put(ROUTER_RESOLVE_BEFORE_SSL, true)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())

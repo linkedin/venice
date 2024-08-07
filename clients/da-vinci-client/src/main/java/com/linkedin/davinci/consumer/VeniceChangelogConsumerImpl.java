@@ -17,6 +17,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -37,6 +38,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -113,7 +115,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
-  protected final Map<Integer, Long> currentVersionLastHeartbeat = new HashMap<>();
+  protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
   protected final int[] currentValuePayloadSize;
 
   protected final ChangelogClientConfig changelogClientConfig;
@@ -376,9 +378,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
-  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
+      throws VeniceCoordinateOutOfRangeException {
     return CompletableFuture.supplyAsync(() -> {
       for (VeniceChangeCoordinate coordinate: checkpoints) {
+        checkLiveVersion(coordinate.getTopic());
         PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
         PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
         internalSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
@@ -390,10 +394,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     });
   }
 
-  private void pubSubConsumerSeek(PubSubTopicPartition topicPartition, Long offset) {
+  void checkLiveVersion(String topicName) {
+    Store store = storeRepository.getStore(storeName);
+    try {
+      store.getVersionOrThrow(Version.parseVersionFromVersionTopicName(topicName));
+    } catch (StoreVersionNotFoundException ex) {
+      throw new VeniceCoordinateOutOfRangeException("Checkpoint is off retention!  Version has been deprecated...", ex);
+    }
+  }
+
+  private void pubSubConsumerSeek(PubSubTopicPartition topicPartition, Long offset)
+      throws VeniceCoordinateOutOfRangeException {
     // Offset the seek to next operation inside venice pub sub consumer adapter subscription logic.
     long targetOffset = offset == OffsetRecord.LOWEST_OFFSET ? OffsetRecord.LOWEST_OFFSET : offset - 1;
-    pubSubConsumer.subscribe(topicPartition, targetOffset);
+    try {
+      pubSubConsumer.subscribe(topicPartition, targetOffset);
+    } catch (PubSubTopicDoesNotExistException ex) {
+      throw new VeniceCoordinateOutOfRangeException(
+          "Version does not exist! Checkpoint contained version: " + topicPartition.getTopicName() + " for partition "
+              + topicPartition.getPartitionNumber() + "please seek to beginning!",
+          ex);
+    }
     LOGGER.info("Topic partition: {} consumer seek to offset: {}", topicPartition, targetOffset);
   }
 
@@ -473,6 +494,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
           }
           seekAction.apply(topicPartition);
+
         }
 
       }
@@ -482,7 +504,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @FunctionalInterface
   interface SeekFunction {
-    void apply(PubSubTopicPartition partitionToSeek);
+    void apply(PubSubTopicPartition partitionToSeek) throws VeniceCoordinateOutOfRangeException;
   }
 
   private List<PubSubTopicPartition> getPartitionListToSubscribe(
@@ -980,25 +1002,53 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return changelogClientConfig;
   }
 
-  private class HeartbeatReporterThread extends Thread {
-    HeartbeatReporterThread() {
+  protected HeartbeatReporterThread getHeartbeatReporterThread() {
+    return heartbeatReporterThread;
+  }
+
+  protected BasicConsumerStats getChangeCaptureStats() {
+    return changeCaptureStats;
+  }
+
+  protected class HeartbeatReporterThread extends Thread {
+    protected HeartbeatReporterThread() {
       super("Ingestion-Heartbeat-Reporter-Service-Thread");
     }
 
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        for (Long lastHeartbeat: currentVersionLastHeartbeat.values()) {
-          changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat);
-        }
         try {
+          recordStats(currentVersionLastHeartbeat, changeCaptureStats, pubSubConsumer.getAssignment());
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
-          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
+          LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
           break;
         }
       }
-      LOGGER.info("Lag Monitoring thread interrupted!  Shutting down...");
+    }
+
+    protected void recordStats(
+        Map<Integer, Long> currentVersionLastHeartbeat,
+        BasicConsumerStats changeCaptureStats,
+        Set<PubSubTopicPartition> assignment) {
+      for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
+        changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
+      }
+      int maxVersion = -1;
+      int minVersion = Integer.MAX_VALUE;
+      for (PubSubTopicPartition partition: assignment) {
+        int version = Version.parseVersionFromKafkaTopicName(partition.getTopicName());
+        maxVersion = Math.max(maxVersion, version);
+        minVersion = Math.min(minVersion, version);
+      }
+      if (minVersion == Integer.MAX_VALUE) {
+        minVersion = -1;
+      }
+
+      // Record max and min consumed versions
+      changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
+      changeCaptureStats.recordMinimumConsumingVersion(minVersion);
     }
   }
 }

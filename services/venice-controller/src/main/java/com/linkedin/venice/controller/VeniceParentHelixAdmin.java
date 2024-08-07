@@ -92,7 +92,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
-import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -3859,7 +3858,7 @@ public class VeniceParentHelixAdmin implements Admin {
      *         e.g. {@link StoreBackupVersionCleanupService#cleanupBackupVersion(Store, String)}.
      */
     return destStore.getHybridStoreConfig() == null && versionNumber <= destStore.getCurrentVersion()
-        && multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterAllowlist().contains(destFabric);
+        && multiClusterConfigs.getControllerConfig(clusterName).getChildDatacenters().contains(destFabric);
   }
 
   /**
@@ -4719,32 +4718,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#configureNativeReplication(String, VeniceUserStoreType, Optional, boolean, Optional, Optional)
-   */
-  @Override
-  public void configureNativeReplication(
-      String clusterName,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableNativeReplicationForCluster,
-      Optional<String> newSourceRegion,
-      Optional<String> regionsFilter) {
-    ConfigureNativeReplicationForCluster migrateClusterToNativeReplication =
-        (ConfigureNativeReplicationForCluster) AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER
-            .getNewInstance();
-    migrateClusterToNativeReplication.clusterName = clusterName;
-    migrateClusterToNativeReplication.storeType = storeType.toString();
-    migrateClusterToNativeReplication.enabled = enableNativeReplicationForCluster;
-    migrateClusterToNativeReplication.nativeReplicationSourceRegion = newSourceRegion.orElse(null);
-    migrateClusterToNativeReplication.regionsFilter = regionsFilter.orElse(null);
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getValue();
-    message.payloadUnion = migrateClusterToNativeReplication;
-    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
-  }
-
-  /**
    * @see Admin#configureActiveActiveReplication(String, VeniceUserStoreType, Optional, boolean, Optional)
    */
   @Override
@@ -4796,7 +4769,7 @@ public class VeniceParentHelixAdmin implements Admin {
         StoreDataAudit audit = store.getValue();
         Optional<String> currentPushJobTopic =
             getTopicForCurrentPushJob(clusterName, store.getValue().getStoreName(), false, false);
-        if (audit.getStaleRegions().size() > 0 && !currentPushJobTopic.isPresent()) {
+        if (!audit.getStaleRegions().isEmpty() && !currentPushJobTopic.isPresent()) {
           retMap.put(store.getKey(), audit);
         }
       }
@@ -4896,6 +4869,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean isParent() {
     return getVeniceHelixAdmin().isParent();
+  }
+
+  /**
+   * @see Admin#getParentControllerRegionState()
+   */
+  @Override
+  public ParentControllerRegionState getParentControllerRegionState() {
+    return getVeniceHelixAdmin().getParentControllerRegionState();
   }
 
   /**
@@ -5005,6 +4986,12 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public long getBackupVersionDefaultRetentionMs() {
     return getVeniceHelixAdmin().getBackupVersionDefaultRetentionMs();
+  }
+
+  /** @see Admin#getDefaultMaxRecordSizeBytes() */
+  @Override
+  public int getDefaultMaxRecordSizeBytes() {
+    return getVeniceHelixAdmin().getDefaultMaxRecordSizeBytes();
   }
 
   /**
