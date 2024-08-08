@@ -138,8 +138,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID =
       "Online writes are only supported for stores with a current version capable of receiving hybrid writes.";
   static final String REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY =
-      "Online writes are only supported for hybrid stores that either have AA enabled or AA disabled with the "
-          + NON_AGGREGATE + " data replication policy.";
+      "Online writes are only supported for hybrid stores that either have Active-Active replication enabled or "
+          + NON_AGGREGATE + " data replication policy when Active-Active replication is disabled.";
   static final String REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER =
       "Expected partitioner class %s cannot be found.";
 

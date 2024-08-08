@@ -311,7 +311,6 @@ public class DataRecoveryTest {
                   storeName,
                   new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                       .setHybridOffsetLagThreshold(2)
-                      .setHybridDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE)
                       .setNativeReplicationEnabled(true)
                       .setActiveActiveReplicationEnabled(true)
                       .setPartitionCount(1))
