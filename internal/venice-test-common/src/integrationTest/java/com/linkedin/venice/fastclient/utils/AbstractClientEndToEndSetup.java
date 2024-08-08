@@ -14,7 +14,10 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTE
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
 import com.linkedin.d2.balancer.D2Client;
@@ -551,7 +554,7 @@ public abstract class AbstractClientEndToEndSetup {
       assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
       assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
       assertTrue(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
-      assertNull(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate"));
+      assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
       assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
       assertTrue(
           metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
@@ -572,8 +575,8 @@ public abstract class AbstractClientEndToEndSetup {
 
       for (String incorrectMetricPrefix: allIncorrectMetricPrefixes) {
         // incorrect metric should not be incremented
-        assertNull(
-            metrics.get(incorrectMetricPrefix + "request_key_count.Rate"),
+        assertFalse(
+            metrics.get(incorrectMetricPrefix + "request_key_count.Rate").value() > 0,
             "Incorrect request_key_count should not be incremented");
       }
 
