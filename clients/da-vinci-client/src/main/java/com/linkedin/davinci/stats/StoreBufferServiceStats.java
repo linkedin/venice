@@ -12,10 +12,10 @@ import java.util.function.LongSupplier;
 
 
 public class StoreBufferServiceStats extends AbstractVeniceStats {
-  private final Lazy<Sensor> totalMemoryUsageSensor;
-  private final Lazy<Sensor> totalRemainingMemorySensor;
-  private final Lazy<Sensor> maxMemoryUsagePerWriterSensor;
-  private final Lazy<Sensor> minMemoryUsagePerWriterSensor;
+  private final Sensor totalMemoryUsageSensor;
+  private final Sensor totalRemainingMemorySensor;
+  private final Sensor maxMemoryUsagePerWriterSensor;
+  private final Sensor minMemoryUsagePerWriterSensor;
   private final Lazy<Sensor> internalProcessingLatencySensor;
   private final Lazy<Sensor> internalProcessingErrorSensor;
 
@@ -26,22 +26,18 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
       LongSupplier maxMemoryUsagePerDrainerSupplier,
       LongSupplier minMemoryUsagePerDrainerSupplier) {
     super(metricsRepository, "StoreBufferService");
-    totalMemoryUsageSensor = Lazy.of(
-        () -> registerSensor(
-            new AsyncGauge((ignored, ignored2) -> totalMemoryUsageSupplier.getAsLong(), "total_memory_usage")));
-    totalRemainingMemorySensor = Lazy.of(
-        () -> registerSensor(
-            new AsyncGauge((ignored, ignored2) -> totalRemainingMemorySupplier.getAsLong(), "total_remaining_memory")));
-    maxMemoryUsagePerWriterSensor = Lazy.of(
-        () -> registerSensor(
-            new AsyncGauge(
-                (ignored, ignored2) -> maxMemoryUsagePerDrainerSupplier.getAsLong(),
-                "max_memory_usage_per_writer")));
-    minMemoryUsagePerWriterSensor = Lazy.of(
-        () -> registerSensor(
-            new AsyncGauge(
-                (ignored, ignored2) -> minMemoryUsagePerDrainerSupplier.getAsLong(),
-                "min_memory_usage_per_writer")));
+    totalMemoryUsageSensor = registerSensor(
+        new AsyncGauge((ignored, ignored2) -> totalMemoryUsageSupplier.getAsLong(), "total_memory_usage"));
+    totalRemainingMemorySensor = registerSensor(
+        new AsyncGauge((ignored, ignored2) -> totalRemainingMemorySupplier.getAsLong(), "total_remaining_memory"));
+    maxMemoryUsagePerWriterSensor = registerSensor(
+        new AsyncGauge(
+            (ignored, ignored2) -> maxMemoryUsagePerDrainerSupplier.getAsLong(),
+            "max_memory_usage_per_writer"));
+    minMemoryUsagePerWriterSensor = registerSensor(
+        new AsyncGauge(
+            (ignored, ignored2) -> minMemoryUsagePerDrainerSupplier.getAsLong(),
+            "min_memory_usage_per_writer"));
 
     internalProcessingLatencySensor =
         Lazy.of(() -> registerSensor("internal_processing_latency", new Avg(), new Max()));
