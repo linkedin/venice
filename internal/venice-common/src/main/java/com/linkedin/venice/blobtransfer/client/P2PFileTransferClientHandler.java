@@ -72,9 +72,11 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       // Parse the file name
       this.fileName = getFileNameFromHeader(response);
+
       if (this.fileName == null) {
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
+      LOGGER.info("Starting blob transfer for file: {}", fileName);
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
       // Create the directory
@@ -117,7 +119,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       if (content instanceof DefaultLastHttpContent) {
         // End of a single file transfer
-        LOGGER.debug("A file {} received successfully for {}", fileName, payload.getFullResourceName());
+        LOGGER.info("A file {} received successfully for {}", fileName, payload.getFullResourceName());
         outputFileChannel.force(true);
 
         // Size validation

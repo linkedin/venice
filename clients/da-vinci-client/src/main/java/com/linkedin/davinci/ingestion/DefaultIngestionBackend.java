@@ -61,18 +61,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
     syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
-    AbstractStorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
-    topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
-      if (storageEngineAtomicReference != null) {
-        storageEngineAtomicReference.set(storageEngine);
-      }
-      return storageEngineAtomicReference;
-    });
 
+    long startTime = System.currentTimeMillis();
     CompletionStage<Void> bootstrapFuture =
         bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
 
     bootstrapFuture.whenComplete((result, throwable) -> {
+      long endTime = System.currentTimeMillis();
+      LOGGER.info("Bootstrapping duration: {} ms", endTime - startTime);
+      AbstractStorageEngine storageEngine =
+          storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
+      topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
+        if (storageEngineAtomicReference != null) {
+          storageEngineAtomicReference.set(storageEngine);
+        }
+        return storageEngineAtomicReference;
+      });
       LOGGER.info(
           "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
           storeVersion,
@@ -83,6 +87,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     });
+
   }
 
   /**

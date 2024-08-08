@@ -54,7 +54,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         // TODO: add some retry logic or strategy to choose the peers differently in case of failure
         // instanceName comes as a format of <hostName>_<applicationPort>
         String chosenHost = peer.split("_")[0];
-        LOGGER.info("Chosen host: {}", chosenHost);
         inputStream = nettyClient.get(chosenHost, storeName, version, partition);
         return inputStream;
       } catch (Exception e) {
