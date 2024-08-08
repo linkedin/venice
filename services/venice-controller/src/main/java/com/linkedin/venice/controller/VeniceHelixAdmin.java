@@ -1532,10 +1532,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     key.resourceName = versionTopicName;
     ParticipantMessageValue value = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
         () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
-        3,
+        5,
         Duration.ofMillis(100),
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(15),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
         Collections.singletonList(Exception.class));
     if (value == null) {
       return;
@@ -1552,9 +1552,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
         () -> deleteParticipantStoreKillMessage(clusterName, versionTopicName),
         1,
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(3),
-        Duration.ofSeconds(30),
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
         Collections.singletonList(Exception.class));
 
     // wait for kill message to be removed
@@ -1565,10 +1565,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + clusterName);
       }
     },
-        15,
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(3),
-        Duration.ofMinutes(1),
+        5,
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
         Collections.singletonList(Exception.class));
     LOGGER.info(
         "Spent: {}ms for kill message removal from participant store for store-version: {} in cluster: {}",
