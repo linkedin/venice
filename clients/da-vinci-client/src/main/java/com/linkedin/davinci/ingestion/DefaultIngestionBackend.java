@@ -68,7 +68,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     bootstrapFuture.whenComplete((result, throwable) -> {
       long endTime = System.currentTimeMillis();
-      LOGGER.info("Bootstrapping duration: {} ms", endTime - startTime);
+      LOGGER.info(
+          "Blob Transfer duration for store name: {} version: {}: time: {} ms",
+          storeVersion,
+          storeAndVersion.getSecond().getNumber(),
+          endTime - startTime);
       AbstractStorageEngine storageEngine =
           storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
       topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {

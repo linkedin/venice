@@ -86,6 +86,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       // Prepare the file
       Path file = Files.createFile(partitionDir.resolve(fileName));
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+
     } else if (msg instanceof HttpContent) {
       HttpContent content = (HttpContent) msg;
       ByteBuf byteBuf = content.content();
@@ -119,7 +120,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       if (content instanceof DefaultLastHttpContent) {
         // End of a single file transfer
-        LOGGER.info("A file {} received successfully for {}", fileName, payload.getFullResourceName());
+        LOGGER.debug("A file {} received successfully for {}", fileName, payload.getFullResourceName());
         outputFileChannel.force(true);
 
         // Size validation
