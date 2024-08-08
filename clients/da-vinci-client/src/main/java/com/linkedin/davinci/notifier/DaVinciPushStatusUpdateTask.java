@@ -23,7 +23,8 @@ public class DaVinciPushStatusUpdateTask {
   private final long daVinciPushStatusCheckIntervalInMs;
   private final Map<Integer, ExecutionStatus> partitionStatus = new VeniceConcurrentHashMap<>();
   // Executor for scheduling tasks
-  private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1, new DaemonThreadFactory(""));
+  private final ScheduledExecutorService scheduler =
+      Executors.newScheduledThreadPool(1, new DaemonThreadFactory("davinci-push-status-update-task-scheduler"));
 
   public DaVinciPushStatusUpdateTask(
       Version version,
