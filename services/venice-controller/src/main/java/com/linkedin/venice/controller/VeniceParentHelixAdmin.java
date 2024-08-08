@@ -2292,7 +2292,7 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.hybridStoreConfig.offsetLagThresholdToGoOnline = -1;
         setStore.hybridStoreConfig.rewindTimeInSeconds = -1;
         setStore.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds = -1;
-        setStore.hybridStoreConfig.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
+        setStore.hybridStoreConfig.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
         setStore.hybridStoreConfig.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
       } else {
         setStore.hybridStoreConfig.offsetLagThresholdToGoOnline =

@@ -297,31 +297,24 @@ public class UpdateStoreUtilsTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
     HybridStoreConfig hybridConfigWithAggregateDRP =
         new HybridStoreConfigImpl(100, 1000, -1, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
-    HybridStoreConfig hybridConfigWithActiveActiveDRP = new HybridStoreConfigImpl(
-        100,
-        1000,
-        -1,
-        DataReplicationPolicy.ACTIVE_ACTIVE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
     HybridStoreConfig hybridConfigWithNoneDRP =
         new HybridStoreConfigImpl(100, 1000, -1, DataReplicationPolicy.NONE, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // In single-region mode, any hybrid store should have incremental push enabled.
-    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(false, null));
-    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(false, nonHybridConfig));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, hybridConfigWithNonAggregateDRP));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, hybridConfigWithAggregateDRP));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, hybridConfigWithActiveActiveDRP));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, hybridConfigWithNoneDRP));
+    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(false, false, null));
+    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(false, false, nonHybridConfig));
+    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, false, hybridConfigWithNonAggregateDRP));
+    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, false, hybridConfigWithAggregateDRP));
+    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(false, false, hybridConfigWithNoneDRP));
 
     // In multi-region mode, hybrid stores with NON_AGGREGATE DataReplicationPolicy should not have incremental push
     // enabled.
-    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(true, null));
-    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(true, nonHybridConfig));
-    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(true, hybridConfigWithNonAggregateDRP));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(true, hybridConfigWithAggregateDRP));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(true, hybridConfigWithActiveActiveDRP));
-    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(true, hybridConfigWithNoneDRP));
+    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(true, false, null));
+    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(true, false, nonHybridConfig));
+    assertFalse(UpdateStoreUtils.isIncrementalPushEnabled(true, false, hybridConfigWithNonAggregateDRP));
+    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(true, false, hybridConfigWithAggregateDRP));
+    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(true, false, hybridConfigWithNoneDRP));
+    assertTrue(UpdateStoreUtils.isIncrementalPushEnabled(true, true, hybridConfigWithNonAggregateDRP));
   }
 
   @Test
@@ -420,7 +413,7 @@ public class UpdateStoreUtilsTest {
     assertTrue(
         e5.getMessage()
             .contains(
-                "Incremental push is not supported for hybrid stores with non-aggregate data replication policy"));
+                "Incremental push is not supported for non active-active hybrid stores with NON_AGGREGATE data replication policy"));
 
     reset(controllerConfig);
     reset(store);

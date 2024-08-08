@@ -422,7 +422,7 @@ public class UpdateStoreUtils {
           DEFAULT_REWIND_TIME_IN_SECONDS,
           DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
           DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-          DataReplicationPolicy.NONE,
+          DataReplicationPolicy.NON_AGGREGATE,
           BufferReplayPolicy.REWIND_FROM_EOP);
     } else {
       newHybridStoreConfig = newHybridStoreConfigTemp;
@@ -450,17 +450,6 @@ public class UpdateStoreUtils {
 
       // Store is being made Active-Active
       if (updatedStore.isActiveActiveReplicationEnabled() && !originalStore.isActiveActiveReplicationEnabled()) {
-        // If a data-replication policy has not been defined, set a default one.
-        if (!hybridDataReplicationPolicy.isPresent()) {
-          updateInferredConfig(admin, updatedStore, DATA_REPLICATION_POLICY, updatedConfigs, () -> {
-            LOGGER.info(
-                "Data replication policy was not explicitly set when converting store to Active-Active store: {}."
-                    + " Setting it to active-active replication policy.",
-                storeName);
-            newHybridStoreConfig.setDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
-          });
-        }
-
         // If configs are set to enable incremental push for hybrid Active-Active users store, enable it
         if (clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
           updateInferredConfig(
@@ -469,7 +458,10 @@ public class UpdateStoreUtils {
               INCREMENTAL_PUSH_ENABLED,
               updatedConfigs,
               () -> updatedStore.setIncrementalPushEnabled(
-                  isIncrementalPushEnabled(clusterConfig.isMultiRegion(), newHybridStoreConfig)));
+                  isIncrementalPushEnabled(
+                      clusterConfig.isMultiRegion(),
+                      updatedStore.isActiveActiveReplicationEnabled(),
+                      newHybridStoreConfig)));
         }
       }
 
@@ -719,16 +711,19 @@ public class UpdateStoreUtils {
    *   <li>If the system is running in single-region mode, the store must by hybrid</li>
    *   <li>If the system is running in multi-region mode,</li>
    *   <ol type="i">
-   *     <li>Hybrid + Active-Active + {@link DataReplicationPolicy} is {@link DataReplicationPolicy#ACTIVE_ACTIVE}</li>
-   *     <li>Hybrid + {@link DataReplicationPolicy} is {@link DataReplicationPolicy#AGGREGATE}</li>
-   *     <li>Hybrid + {@link DataReplicationPolicy} is {@link DataReplicationPolicy#NONE}</li>
+   *     <li>Hybrid + Active-Active</li>
+   *     <li>Hybrid + !Active-Active + {@link DataReplicationPolicy} is {@link DataReplicationPolicy#AGGREGATE}</li>
+   *     <li>Hybrid + !Active-Active + {@link DataReplicationPolicy} is {@link DataReplicationPolicy#NONE}</li>
    *   </ol>
    * <ol/>
    * @param multiRegion whether the system is running in multi-region mode
    * @param hybridStoreConfig The hybrid store config after applying all updates
    * @return {@code true} if incremental push is allowed, {@code false} otherwise
    */
-  static boolean isIncrementalPushEnabled(boolean multiRegion, HybridStoreConfig hybridStoreConfig) {
+  static boolean isIncrementalPushEnabled(
+      boolean multiRegion,
+      boolean activeActiveReplicationEnabled,
+      HybridStoreConfig hybridStoreConfig) {
     // Only hybrid stores can support incremental push
     if (!AdminUtils.isHybrid(hybridStoreConfig)) {
       return false;
@@ -739,9 +734,13 @@ public class UpdateStoreUtils {
       return true;
     }
 
+    // A/A can always support incremental push
+    if (activeActiveReplicationEnabled) {
+      return true;
+    }
+
     DataReplicationPolicy dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy();
-    return dataReplicationPolicy == DataReplicationPolicy.ACTIVE_ACTIVE
-        || dataReplicationPolicy == DataReplicationPolicy.AGGREGATE
+    return dataReplicationPolicy == DataReplicationPolicy.AGGREGATE
         || dataReplicationPolicy == DataReplicationPolicy.NONE;
   }
 
@@ -803,13 +802,14 @@ public class UpdateStoreUtils {
       }
 
       DataReplicationPolicy dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy();
-      // Incremental push + NON_AGGREGATE DRP is not supported in multi-region mode
+      // Incremental push + !AA + NON_AGGREGATE DRP is not supported in multi-region mode
       if (controllerConfig.isMultiRegion() && store.isIncrementalPushEnabled()
+          && !store.isActiveActiveReplicationEnabled()
           && dataReplicationPolicy == DataReplicationPolicy.NON_AGGREGATE) {
         throw new VeniceHttpException(
             HttpStatus.SC_BAD_REQUEST,
             errorMessagePrefix
-                + "Incremental push is not supported for hybrid stores with non-aggregate data replication policy",
+                + "Incremental push is not supported for non active-active hybrid stores with NON_AGGREGATE data replication policy",
             ErrorType.INVALID_CONFIG);
       }
 
