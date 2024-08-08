@@ -61,23 +61,19 @@ public class ClientStats extends BasicClientStats {
 
     requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
-    successRequestDuplicateKeyCountSensor =
-        Lazy.of(() -> registerSensor("success_request_duplicate_key_count", new Rate()));
+    successRequestDuplicateKeyCountSensor = registerLazySensor("success_request_duplicate_key_count", new Rate());
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
      * on the caller's thread.
      */
     requestSerializationTime =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max()));
+        registerLazySensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
 
     /**
      * The time it took between sending the request to the router and beginning to process the response.
      */
-    requestSubmissionToResponseHandlingTime = Lazy.of(
-        () -> registerSensorWithDetailedPercentiles(
-            "request_submission_to_response_handling_time",
-            new Avg(),
-            new Max()));
+    requestSubmissionToResponseHandlingTime =
+        registerLazySensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
 
     /**
      * The total time it took to process the response.
@@ -86,21 +82,16 @@ public class ClientStats extends BasicClientStats {
         registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
 
     responseDecompressionTimeSensor =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max()));
+        registerLazySensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
 
     /**
      * Metrics to track the latency of each proportion of results received.
      */
-    streamingResponseTimeToReceiveFirstRecord =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_ttfr", new Avg()));
-    streamingResponseTimeToReceive50PctRecord =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_tt50pr", new Avg()));
-    streamingResponseTimeToReceive90PctRecord =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_tt90pr", new Avg()));
-    streamingResponseTimeToReceive95PctRecord =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_tt95pr", new Avg()));
-    streamingResponseTimeToReceive99PctRecord =
-        Lazy.of(() -> registerSensorWithDetailedPercentiles("response_tt99pr", new Avg()));
+    streamingResponseTimeToReceiveFirstRecord = registerLazySensorWithDetailedPercentiles("response_ttfr", new Avg());
+    streamingResponseTimeToReceive50PctRecord = registerLazySensorWithDetailedPercentiles("response_tt50pr", new Avg());
+    streamingResponseTimeToReceive90PctRecord = registerLazySensorWithDetailedPercentiles("response_tt90pr", new Avg());
+    streamingResponseTimeToReceive95PctRecord = registerLazySensorWithDetailedPercentiles("response_tt95pr", new Avg());
+    streamingResponseTimeToReceive99PctRecord = registerLazySensorWithDetailedPercentiles("response_tt99pr", new Avg());
 
     /**
      * Metrics to track the timed-out requests.
@@ -110,14 +101,13 @@ public class ClientStats extends BasicClientStats {
      *
      * This timeout behavior could actually happen before the D2 timeout, which is specified/configured in a different way.
      */
-    appTimedOutRequestSensor = Lazy.of(() -> registerSensor("app_timed_out_request", new OccurrenceRate()));
-    appTimedOutRequestResultRatioSensor = Lazy.of(
-        () -> registerSensorWithDetailedPercentiles(
-            "app_timed_out_request_result_ratio",
-            new Avg(),
-            new Min(),
-            new Max()));
-    clientFutureTimeoutSensor = Lazy.of(() -> registerSensor("client_future_timeout", new Avg(), new Min(), new Max()));
+    appTimedOutRequestSensor = registerLazySensor("app_timed_out_request", new OccurrenceRate());
+    appTimedOutRequestResultRatioSensor = registerLazySensorWithDetailedPercentiles(
+        "app_timed_out_request_result_ratio",
+        new Avg(),
+        new Min(),
+        new Max());
+    clientFutureTimeoutSensor = registerLazySensor("client_future_timeout", new Avg(), new Min(), new Max());
     /* Metrics relevant to track long tail retry efficacy for batch get*/
     Rate retryRequestKeyCount = new Rate();
     retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());

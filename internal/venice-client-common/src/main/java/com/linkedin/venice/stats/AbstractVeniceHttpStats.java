@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.NamedMeasurableStat;
@@ -34,6 +35,10 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
     return super.registerSensor(getFullMetricName(sensorName), null, stats);
   }
 
+  protected Lazy<Sensor> registerLazySensor(String sensorName, MeasurableStat... stats) {
+    return Lazy.of(() -> registerSensor(getFullMetricName(sensorName), stats));
+  }
+
   protected Sensor registerSensor(String sensorName, Sensor[] parents, MeasurableStat... stats) {
     return super.registerSensor(getFullMetricName(sensorName), parents, stats);
   }
@@ -58,5 +63,9 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
     System.arraycopy(stats, 0, newStats, 0, stats.length);
     newStats[stats.length] = TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName(sensorName));
     return registerSensor(sensorName, newStats);
+  }
+
+  protected Lazy<Sensor> registerLazySensorWithDetailedPercentiles(String sensorName, MeasurableStat... stats) {
+    return Lazy.of(() -> registerSensorWithDetailedPercentiles(sensorName, stats));
   }
 }
