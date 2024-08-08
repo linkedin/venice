@@ -81,10 +81,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
+  protected final ConsumerPoolType poolType;
+  private final IntConsumer poolTypeThrottlerFunc;
+
+
   /**
    * @param statsOverride injection of stats, for test purposes
    */
   protected KafkaConsumerService(
+      final ConsumerPoolType poolType,
       final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
@@ -105,6 +110,21 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
+    this.poolType = poolType;
+    if (this.poolType.equals(ConsumerPoolType.AA_WC_LEADER_POOL)) {
+        this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleAAWCRecordRate(recordsCount);
+    } else if (this.poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL)) {
+      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleCurrentVersionAAWCLeaderRecordRate(recordsCount);
+    } else if (this.poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
+      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleCurrentVersionNonAAWCLeaderRecordRate(recordsCount);
+    } else if (this.poolType.equals(ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL)) {
+      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleNonCurrentVersionAAWCLeaderRecordRate(recordsCount);
+    } else if (this.poolType.equals(ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
+      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleNonCurrentVersionNonAAWCLeaderRecordRate(recordsCount);
+    } else {
+      LOGGER.info("No pool type specific record throttling for type: {}", poolType);
+      this.poolTypeThrottlerFunc = null;
+    }
 
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(
@@ -140,8 +160,13 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
               : () -> pubSubConsumer.poll(readCycleDelayMs);
       final IntConsumer bandwidthThrottlerFunction =
           totalBytes -> ingestionThrottler.maybeThrottleBandwidth(totalBytes);
-      final IntConsumer recordsThrottlerFunction =
-          recordsCount -> ingestionThrottler.maybeThrottleRecordRate(recordsCount);
+      final IntConsumer recordsThrottlerFunction = recordsCount -> {
+        if (poolTypeThrottlerFunc != null) {
+          poolTypeThrottlerFunc.accept(recordsCount);
+        }
+        ingestionThrottler.maybeThrottleRecordRate(recordsCount);
+      };
+
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
           sharedConsumerNonExistingTopicCleanupDelayMS,
           1000,
@@ -397,6 +422,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   interface KCSConstructor {
     KafkaConsumerService construct(
+        ConsumerPoolType poolType,
         PubSubConsumerAdapterFactory consumerFactory,
         Properties consumerProperties,
         long readCycleDelayMs,

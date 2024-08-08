@@ -294,11 +294,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         resolvedKafkaUrl,
         url -> new KafkaConsumerServiceDelegator(
             serverConfig,
-            (consumerPoolSize, statsSuffix) -> sharedConsumerAssignmentStrategy.constructor.construct(
+            (poolSize, statsSuffix, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
+                poolType,
                 consumerFactory,
                 consumerProperties,
                 readCycleDelayMs,
-                consumerPoolSize,
+                poolSize,
                 ingestionThrottler,
                 kafkaClusterBasedRecordThrottler,
                 metricsRepository,

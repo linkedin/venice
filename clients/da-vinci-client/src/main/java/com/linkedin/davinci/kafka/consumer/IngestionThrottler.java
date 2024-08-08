@@ -35,6 +35,11 @@ public class IngestionThrottler implements Closeable {
 
   private volatile EventThrottler finalRecordThrottler;
   private volatile EventThrottler finalBandwidthThrottler;
+  private final EventThrottler aaWCLeaderRecordThrottler;
+  private final EventThrottler currentVersionAAWCLeaderRecordThrottler;
+  private final EventThrottler currentVersionNonAAWCLeaderRecordThrottler;
+  private final EventThrottler nonCurrentVersionAAWCLeaderRecordThrottler;
+  private final EventThrottler nonCurrentVersionNonAAWCLeaderRecordThrottler;
   private boolean isUsingSpeedupThrottler = false;
 
   public IngestionThrottler(
@@ -66,6 +71,37 @@ public class IngestionThrottler implements Closeable {
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
         serverConfig.getKafkaFetchQuotaTimeWindow(),
         "kafka_consumption_bandwidth",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+
+    this.aaWCLeaderRecordThrottler = new EventThrottler(
+        serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "aa_wc_leader_records_count",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+    this.currentVersionAAWCLeaderRecordThrottler = new EventThrottler(
+        serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "current_version_aa_wc_leader_records_count",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+    this.currentVersionNonAAWCLeaderRecordThrottler = new EventThrottler(
+        serverConfig.getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "current_version_non_aa_wc_leader_records_count",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+    this.nonCurrentVersionAAWCLeaderRecordThrottler = new EventThrottler(
+        serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "non_current_version_aa_wc_leader_records_count",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+    this.nonCurrentVersionNonAAWCLeaderRecordThrottler = new EventThrottler(
+        serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "non_current_version_non_aa_wc_leader_records_count",
         false,
         EventThrottler.BLOCK_STRATEGY);
 
@@ -128,6 +164,26 @@ public class IngestionThrottler implements Closeable {
 
   public void maybeThrottleBandwidth(int totalBytes) {
     finalBandwidthThrottler.maybeThrottle(totalBytes);
+  }
+
+  public void maybeThrottleAAWCRecordRate(int count) {
+    aaWCLeaderRecordThrottler.maybeThrottle(count);
+  }
+
+  public void maybeThrottleCurrentVersionAAWCLeaderRecordRate(int count) {
+    currentVersionAAWCLeaderRecordThrottler.maybeThrottle(count);
+  }
+
+  public void maybeThrottleCurrentVersionNonAAWCLeaderRecordRate(int count) {
+    currentVersionNonAAWCLeaderRecordThrottler.maybeThrottle(count);
+  }
+
+  public void maybeThrottleNonCurrentVersionAAWCLeaderRecordRate(int count) {
+    nonCurrentVersionAAWCLeaderRecordThrottler.maybeThrottle(count);
+  }
+
+  public void maybeThrottleNonCurrentVersionNonAAWCLeaderRecordRate(int count) {
+    nonCurrentVersionNonAAWCLeaderRecordThrottler.maybeThrottle(count);
   }
 
   public boolean isUsingSpeedupThrottler() {
