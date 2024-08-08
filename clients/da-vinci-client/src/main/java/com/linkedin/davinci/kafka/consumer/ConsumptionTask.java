@@ -276,10 +276,7 @@ class ConsumptionTask implements Runnable {
   PubSubTopic getDestinationIdentifier(PubSubTopicPartition topicPartition) {
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
         dataReceiverMap.get(topicPartition);
-    if (dataReceiver != null) {
-      return dataReceiver.destinationIdentifier();
-    }
-    return null;
+    return dataReceiver == null ? null : dataReceiver.destinationIdentifier();
   }
 
   Long getLastSuccessfulPollTimestamp(PubSubTopicPartition topicPartition) {
