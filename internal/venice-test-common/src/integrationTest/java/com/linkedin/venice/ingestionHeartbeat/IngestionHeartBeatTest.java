@@ -120,11 +120,8 @@ public class IngestionHeartBeatTest {
 
   @DataProvider
   public static Object[][] AAConfigAndIncPushAndDRPProvider() {
-    return DataProviderUtils.allPermutationGenerator(
-        (permutation) -> true,
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        DataReplicationPolicy.values());
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
   }
 
   @Test(dataProvider = "AAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
