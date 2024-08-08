@@ -3070,7 +3070,7 @@ public abstract class StoreIngestionTaskTest {
           100,
           100,
           -1,
-          DataReplicationPolicy.ACTIVE_ACTIVE,
+          DataReplicationPolicy.NON_AGGREGATE,
           BufferReplayPolicy.REWIND_FROM_EOP);
     }
 

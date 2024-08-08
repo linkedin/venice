@@ -218,7 +218,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         100L,
         100L,
         100L,
-        DataReplicationPolicy.ACTIVE_ACTIVE,
+        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     mockVersion.setHybridStoreConfig(hybridStoreConfig);

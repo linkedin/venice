@@ -4,7 +4,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIEL
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
-import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
@@ -121,14 +120,8 @@ public class IngestionHeartBeatTest {
 
   @DataProvider
   public static Object[][] AAConfigAndIncPushAndDRPProvider() {
-    return DataProviderUtils.allPermutationGenerator((permutation) -> {
-      boolean isActiveActiveEnabled = (boolean) permutation[1];
-      DataReplicationPolicy dataReplicationPolicy = (DataReplicationPolicy) permutation[3];
-      if (isActiveActiveEnabled && dataReplicationPolicy != ACTIVE_ACTIVE) {
-        return false;
-      }
-      return true;
-    }, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
   }
 
   @Test(dataProvider = "AAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)

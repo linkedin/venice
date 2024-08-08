@@ -8,7 +8,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PARTITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
-import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_ALL_VALUE_SCHEMA_IDS;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_CURRENT_VERSION;
@@ -139,8 +138,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID =
       "Online writes are only supported for stores with a current version capable of receiving hybrid writes.";
   static final String REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY =
-      "Online writes are only supported for hybrid stores that have " + ACTIVE_ACTIVE + " or " + NON_AGGREGATE
-          + " data replication policy.";
+      "Online writes are only supported for hybrid stores that either have Active-Active replication enabled or "
+          + NON_AGGREGATE + " data replication policy when Active-Active replication is disabled.";
   static final String REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER =
       "Expected partitioner class %s cannot be found.";
 
@@ -764,12 +763,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
 
     /**
-     * Only allow router request_topic for hybrid stores that have data replication policy:
-     * 1. NON_AGGREGATE
-     * 2. ACTIVE_ACTIVE
+     * Only allow router request_topic for hybrid stores that have either
+     * 1. AA enabled
+     * 2. AA disabled and data replication policy is NON_AGGREGATE
      */
     DataReplicationPolicy dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy();
-    if (!dataReplicationPolicy.equals(NON_AGGREGATE) && !dataReplicationPolicy.equals(ACTIVE_ACTIVE)) {
+    if (!currentVersion.isActiveActiveReplicationEnabled() && !dataReplicationPolicy.equals(NON_AGGREGATE)) {
       setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY.getBytes(), false, ctx);
       return;
     }
