@@ -108,7 +108,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
 
     X509Certificate clientCert = extractClientCert(ctx);
     String resourceName = requestParts[2];
-    String storeName = extractStoreName(resourceName);
+    String storeName = extractStoreName(resourceName, queryAction);
 
     try {
       // Check ACL in case of non system store as system store contain public information
@@ -132,7 +132,8 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
       @Override
       public void onMessage(ReqT message) {
         VeniceClientRequest request = (VeniceClientRequest) message;
-        String storeName = extractStoreName(request.getResourceName());
+        // For now, GRPC only supports STORAGE query
+        String storeName = extractStoreName(request.getResourceName(), QueryAction.STORAGE);
         String method = request.getMethod();
 
         BiConsumer<Status, Metadata> grpcCloseConsumer = call::close;
@@ -168,7 +169,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
   /**
    * Extract the store name from the incoming resource name.
    */
-  protected String extractStoreName(String resourceName) {
+  protected String extractStoreName(String resourceName, QueryAction queryAction) {
     return resourceName;
   }
 

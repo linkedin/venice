@@ -2,10 +2,8 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 
-import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -17,12 +15,11 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -50,41 +47,40 @@ import org.testng.annotations.Test;
 public class AdminConsumptionTaskIntegrationTest {
   private static final int TIMEOUT = 1 * Time.MS_PER_MINUTE;
 
-  private String clusterName = Utils.getUniqueString("test-cluster");
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   private static final String owner = "test_owner";
   private static final String keySchema = "\"string\"";
   private static final String valueSchema = "\"string\"";
 
-  private Properties extraProperties = new Properties();
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-
   /**
    * This test is flaky on slower hardware, with a short timeout ):
    */
   @Test(timeOut = TIMEOUT)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException, IOException {
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
-            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
-        TopicManager topicManager =
-            IntegrationTestPushUtils
-                .getTopicManagerRepo(
-                    PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                    100,
-                    0l,
-                    pubSubBrokerWrapper,
-                    pubSubTopicRepository)
-                .getLocalTopicManager()) {
+    try (
+        VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+                new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                    .numberOfClusters(1)
+                    .numberOfParentControllers(1)
+                    .numberOfChildControllers(1)
+                    .numberOfServers(1)
+                    .numberOfRouters(1)
+                    .replicationFactor(1)
+                    .build());
+        ControllerClient parentControllerClient = new ControllerClient(
+            venice.getClusterNames()[0],
+            venice.getParentControllers().get(0).getControllerUrl())) {
+      String clusterName = venice.getClusterNames()[0];
+      Admin admin = venice.getParentControllers().get(0).getVeniceAdmin();
+      PubSubTopicRepository pubSubTopicRepository = admin.getPubSubTopicRepository();
+      TopicManager topicManager = admin.getTopicManager();
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
+      PubSubBrokerWrapper pubSubBrokerWrapper = venice.getParentKafkaBrokerWrapper();
       try (
-          VeniceControllerWrapper controller = ServiceFactory.getVeniceController(
-              new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                  .regionName(STANDALONE_REGION_NAME)
-                  .build());
           PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
               pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
           VeniceWriter<byte[], byte[], byte[]> writer =
@@ -99,44 +95,48 @@ public class AdminConsumptionTaskIntegrationTest {
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         Thread.sleep(5000); // Non-deterministic, but whatever. This should never fail.
-        Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+        Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
 
-        try (ControllerClient controllerClient = new ControllerClient(clusterName, controller.getControllerUrl())) {
-          controllerClient.skipAdminMessage(Long.toString(badOffset), false);
-        }
+        parentControllerClient.skipAdminMessage(Long.toString(badOffset), false);
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
-          Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+          Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
         });
       }
     }
   }
 
-  @Test(timeOut = TIMEOUT)
+  @Test(timeOut = 2 * TIMEOUT)
   public void testParallelAdminExecutionTasks() throws IOException, InterruptedException {
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
-            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
-        TopicManager topicManager =
-            IntegrationTestPushUtils
-                .getTopicManagerRepo(
-                    PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                    100,
-                    0l,
-                    pubSubBrokerWrapper,
-                    pubSubTopicRepository)
-                .getLocalTopicManager()) {
+    int adminConsumptionMaxWorkerPoolSize = 3;
+
+    Properties parentControllerProps = new Properties();
+    parentControllerProps.put(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, adminConsumptionMaxWorkerPoolSize);
+    parentControllerProps.put(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, 3000);
+
+    try (
+        VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+                new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                    .numberOfClusters(1)
+                    .numberOfParentControllers(1)
+                    .numberOfChildControllers(1)
+                    .numberOfServers(1)
+                    .numberOfRouters(1)
+                    .replicationFactor(1)
+                    .parentControllerProperties(parentControllerProps)
+                    .build());
+        ControllerClient parentControllerClient = new ControllerClient(
+            venice.getClusterNames()[0],
+            venice.getParentControllers().get(0).getControllerUrl())) {
+      String clusterName = venice.getClusterNames()[0];
+      Admin admin = venice.getParentControllers().get(0).getVeniceAdmin();
+      PubSubTopicRepository pubSubTopicRepository = admin.getPubSubTopicRepository();
+      TopicManager topicManager = admin.getTopicManager();
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
-      int adminConsumptionMaxWorkerPoolSize = 3;
-      extraProperties.put(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, adminConsumptionMaxWorkerPoolSize);
-      extraProperties.put(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, 3000);
+      PubSubBrokerWrapper pubSubBrokerWrapper = venice.getParentKafkaBrokerWrapper();
       try (
-          VeniceControllerWrapper controller = ServiceFactory.getVeniceController(
-              new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                  .regionName(STANDALONE_REGION_NAME)
-                  .extraProperties(extraProperties)
-                  .build());
           PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
               pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
           VeniceWriter<byte[], byte[], byte[]> writer =
@@ -148,12 +148,12 @@ public class AdminConsumptionTaskIntegrationTest {
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+          Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
         });
 
         // Spin up a thread to occupy the store write lock to simulate the blocking admin execution task thread.
         CountDownLatch lockOccupyThreadStartedSignal = new CountDownLatch(1);
-        Runnable infiniteLockOccupy = getRunnable(controller, storeName, lockOccupyThreadStartedSignal);
+        Runnable infiniteLockOccupy = getRunnable(venice, storeName, lockOccupyThreadStartedSignal);
         Thread infiniteLockThread = new Thread(infiniteLockOccupy, "infiniteLockOccupy: " + storeName);
         infiniteLockThread.start();
         Assert.assertTrue(lockOccupyThreadStartedSignal.await(5, TimeUnit.SECONDS));
@@ -181,7 +181,7 @@ public class AdminConsumptionTaskIntegrationTest {
         writer.put(new byte[0], otherStoreMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, otherStoreName));
+          Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
         });
 
         infiniteLockThread.interrupt(); // This will release the lock
@@ -190,14 +190,19 @@ public class AdminConsumptionTaskIntegrationTest {
         byte[] storeDeletionMessage = getStoreDeletionMessage(clusterName, storeName, executionId);
         writer.put(new byte[0], storeDeletionMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+          Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
         });
       }
     }
   }
 
-  private Runnable getRunnable(VeniceControllerWrapper controller, String storeName, CountDownLatch latch) {
-    VeniceHelixAdmin admin = controller.getVeniceHelixAdmin();
+  private Runnable getRunnable(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper venice,
+      String storeName,
+      CountDownLatch latch) {
+    String clusterName = venice.getClusterNames()[0];
+    VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+    Admin admin = parentController.getVeniceAdmin();
     return () -> {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createStoreWriteLock(storeName)) {

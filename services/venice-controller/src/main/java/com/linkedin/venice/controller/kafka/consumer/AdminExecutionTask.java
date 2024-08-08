@@ -540,12 +540,13 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
+    params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
       finalParams = params;
     } else {
-      if (message.updatedConfigsList == null || message.updatedConfigsList.size() == 0) {
+      if (message.updatedConfigsList == null || message.updatedConfigsList.isEmpty()) {
         throw new VeniceException(
             "UpdateStore failed for store " + storeName + ". replicateAllConfigs flag was off "
                 + "but there was no config updates.");
@@ -675,21 +676,9 @@ public class AdminExecutionTask implements Callable<Void> {
   }
 
   private void handleEnableNativeReplicationForCluster(ConfigureNativeReplicationForCluster message) {
-    String clusterName = message.clusterName.toString();
-    VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(message.storeType.toString().toUpperCase());
-    boolean enableNativeReplication = message.enabled;
-    Optional<String> nativeReplicationSourceFabric = (message.nativeReplicationSourceRegion == null)
-        ? Optional.empty()
-        : Optional.of(message.nativeReplicationSourceRegion.toString());
-    Optional<String> regionsFilter =
-        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureNativeReplication(
-        clusterName,
-        storeType,
-        Optional.of(storeName),
-        enableNativeReplication,
-        nativeReplicationSourceFabric,
-        regionsFilter);
+    LOGGER.info(
+        "Received message to configure native replication for cluster: {} but ignoring it as native replication is the only mode",
+        message.clusterName);
   }
 
   private void handleEnableActiveActiveReplicationForCluster(ConfigureActiveActiveReplicationForCluster message) {

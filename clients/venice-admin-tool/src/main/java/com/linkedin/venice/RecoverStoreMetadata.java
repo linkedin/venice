@@ -255,6 +255,7 @@ public class RecoverStoreMetadata {
             .setStorageNodeReadQuotaEnabled(deletedStore.isStorageNodeReadQuotaEnabled())
             .setMinCompactionLagSeconds(deletedStore.getMinCompactionLagSeconds())
             .setMaxCompactionLagSeconds(deletedStore.getMaxCompactionLagSeconds())
+            .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "

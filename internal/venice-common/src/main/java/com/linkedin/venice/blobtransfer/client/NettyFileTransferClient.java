@@ -16,9 +16,12 @@ import io.netty.handler.codec.http.HttpVersion;
 import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class NettyFileTransferClient {
+  private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
@@ -42,15 +45,21 @@ public class NettyFileTransferClient {
     });
   }
 
-  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition)
-      throws InterruptedException {
+  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition) {
     CompletionStage<InputStream> inputStream = new CompletableFuture<>();
     // Connects to the remote host
-    Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
-    // Attach the file handler to the pipeline
-    ch.pipeline().addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition));
-    // Send a GET request
-    ch.writeAndFlush(prepareRequest(storeName, version, partition));
+    try {
+      Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
+      // Attach the file handler to the pipeline
+      ch.pipeline().addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition));
+      // Send a GET request
+      ch.writeAndFlush(prepareRequest(storeName, version, partition));
+    } catch (Exception e) {
+      LOGGER.error("Failed to connect to the host: {}", host, e);
+      if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
+        inputStream.toCompletableFuture().completeExceptionally(e);
+      }
+    }
     return inputStream;
   }
 

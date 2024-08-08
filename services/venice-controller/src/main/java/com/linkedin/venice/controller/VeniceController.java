@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -58,6 +59,7 @@ public class VeniceController {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
+  private final AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer;
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
@@ -127,6 +129,9 @@ public class VeniceController {
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
+    long serviceDiscoveryRegistrationRetryMS = multiClusterConfigs.getServiceDiscoveryRegistrationRetryMS();
+    this.asyncRetryingServiceDiscoveryAnnouncer =
+        new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     createServices();
   }
 
@@ -249,16 +254,14 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
-    serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
-      serviceDiscoveryAnnouncer.register();
-      LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
-    });
+    asyncRetryingServiceDiscoveryAnnouncer.register();
     LOGGER.info("Controller is started.");
   }
 
   private void initializeSystemSchema(Admin admin) {
     String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
+    VeniceControllerClusterConfig systemStoreClusterConfig =
+        multiClusterConfigs.getControllerConfig(systemStoreCluster);
     if (!multiClusterConfigs.isParent() && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
       String regionName = systemStoreClusterConfig.getRegionName();
       String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
@@ -301,10 +304,7 @@ public class VeniceController {
    */
   public void stop() {
     // unregister from service discovery first
-    serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
-      serviceDiscoveryAnnouncer.unregister();
-      LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
-    });
+    asyncRetryingServiceDiscoveryAnnouncer.unregister();
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);

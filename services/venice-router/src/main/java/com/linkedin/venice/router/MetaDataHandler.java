@@ -29,6 +29,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -55,12 +56,12 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
-import com.linkedin.venice.routerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
@@ -313,11 +314,13 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);
       int schemaNum = valueSchemaEntries.size();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
+      int index = 0;
       for (SchemaEntry entry: valueSchemaEntries) {
         int schemaId = entry.getId();
-        schemas[schemaId - 1] = new MultiSchemaResponse.Schema();
-        schemas[schemaId - 1].setId(schemaId);
-        schemas[schemaId - 1].setSchemaStr(entry.getSchema().toString());
+        schemas[index] = new MultiSchemaResponse.Schema();
+        schemas[index].setId(schemaId);
+        schemas[index].setSchemaStr(entry.getSchema().toString());
+        index++;
       }
       responseObject.setSchemas(schemas);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
@@ -541,7 +544,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     try {
       // gets the instances for a FULL_PUSH for the store's version and partitionId
       // gets the instance's hostnames from its keys & filter to include only live instances
@@ -550,13 +553,35 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           Integer.parseInt(storeVersion),
           Integer.parseInt(storePartition),
           Optional.empty());
-      List<String> liveNodeHostNames = instances.entrySet()
+
+      if (instances.isEmpty()) {
+        LOGGER.info(
+            "No instances found for store: {} version: {} partition: {}",
+            storeName,
+            storeVersion,
+            storePartition);
+      } else {
+        LOGGER.info("{} instances were found", instances.size());
+      }
+
+      List<String> readyToServeNodeHostNames = instances.entrySet()
           .stream()
+          .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
           .map(Map.Entry::getKey)
           .map(CharSequence::toString)
-          .filter(instanceHostName -> pushStatusStoreReader.isInstanceAlive(storeName, instanceHostName))
           .collect(Collectors.toList());
-      response.setLiveNodeNames(liveNodeHostNames);
+
+      if (!readyToServeNodeHostNames.isEmpty()) {
+        LOGGER.info("{} ready to serve nodes were found", readyToServeNodeHostNames.size());
+      } else {
+        LOGGER.info(
+            "No ready to serve nodes found for store: {} version: {} partition: {}",
+            storeName,
+            storeVersion,
+            storePartition);
+      }
+
+      response.setDiscoveryResult(readyToServeNodeHostNames);
     } catch (VeniceException e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();

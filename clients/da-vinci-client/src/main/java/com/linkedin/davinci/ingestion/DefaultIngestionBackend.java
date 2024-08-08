@@ -1,16 +1,26 @@
 package com.linkedin.davinci.ingestion;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
+import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -25,24 +35,32 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
+  private final VeniceServerConfig serverConfig;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
+  private final BlobTransferManager blobTransferManager;
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
-      StorageService storageService) {
+      StorageService storageService,
+      BlobTransferManager blobTransferManager,
+      VeniceServerConfig serverConfig) {
     this.storageMetadataService = storageMetadataService;
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
+    this.blobTransferManager = blobTransferManager;
+    this.serverConfig = serverConfig;
   }
 
   @Override
   public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
-    Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+    Pair<Store, Version> storeAndVersion =
+        Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
+    syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
     AbstractStorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
     topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
       if (storageEngineAtomicReference != null) {
@@ -50,13 +68,65 @@ public class DefaultIngestionBackend implements IngestionBackend {
       }
       return storageEngineAtomicReference;
     });
-    LOGGER.info(
-        "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
-        storeVersion,
-        partition);
-    getStoreIngestionService().startConsumption(storeConfig, partition);
-    LOGGER
-        .info("Completed starting consumption in ingestion service for store {} partition {}", storeVersion, partition);
+
+    CompletionStage<Void> bootstrapFuture =
+        bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
+
+    bootstrapFuture.whenComplete((result, throwable) -> {
+      LOGGER.info(
+          "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
+          storeVersion,
+          partition);
+      getStoreIngestionService().startConsumption(storeConfig, partition);
+      LOGGER.info(
+          "Completed starting consumption in ingestion service for store {} partition {}",
+          storeVersion,
+          partition);
+    });
+  }
+
+  /**
+   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the 30-minute timeout or
+   * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
+   * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
+   */
+  CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
+    // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
+    // though
+    // Only DVC would create blobTransferManager.
+    if (!store.isBlobTransferEnabled() || store.isHybrid() || blobTransferManager == null) {
+      return CompletableFuture.completedFuture(null);
+    }
+
+    String storeName = store.getName();
+    String baseDir = serverConfig.getRocksDBPath();
+    try {
+      CompletableFuture<InputStream> p2pFuture =
+          blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
+      LOGGER.info(
+          "Bootstrapping from blobs for store {}, version {}, partition {}",
+          storeName,
+          versionNumber,
+          partitionId);
+      return CompletableFuture.runAsync(() -> {
+        try {
+          p2pFuture.get(30, TimeUnit.MINUTES);
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Failed bootstrapping from blobs for store {}, version {}, partition {}",
+              storeName,
+              versionNumber,
+              partitionId,
+              e);
+          RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
+          p2pFuture.cancel(true);
+          // TODO: close channels
+        }
+      });
+    } catch (VenicePeersNotFoundException e) {
+      LOGGER.warn("No peers founds for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
+      return CompletableFuture.completedFuture(null);
+    }
   }
 
   @Override
@@ -117,5 +187,19 @@ public class DefaultIngestionBackend implements IngestionBackend {
   @Override
   public void close() {
     // Do nothing here, since this is only a wrapper class.
+  }
+
+  /**
+   * This method is used to sync the store version config with on the store metadata obtained from ZK.
+   * VeniceStoreVersionConfig was introduced to allow store-version level configs be configurable via a config file.
+   * However, that's no longer a standard practice today since every metadata is stored in ZK. For backward compatibility,
+   * there are some configs may need to be copied over from ZK to VeniceStoreVersionConfig.
+   * @param store, the store metadata obtained from ZK.
+   * @param storeConfig, a POJO class to hold some store-version level configs.
+   */
+  private void syncStoreVersionConfig(Store store, VeniceStoreVersionConfig storeConfig) {
+    if (store.isBlobTransferEnabled()) {
+      storeConfig.setBlobTransferEnabled(true);
+    }
   }
 }

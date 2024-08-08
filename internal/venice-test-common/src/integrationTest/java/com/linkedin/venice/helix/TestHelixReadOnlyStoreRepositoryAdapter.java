@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -56,7 +57,7 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
     zkClient.setZkSerializer(adapter);
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
-    String storesPath = "/stores";
+    String storesPath = "/" + STORES;
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository =

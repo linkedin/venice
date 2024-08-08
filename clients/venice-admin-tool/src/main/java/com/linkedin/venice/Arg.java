@@ -11,9 +11,14 @@ public enum Arg {
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   SERVER_URL("server-url", "su", true, "Venice server url, eg. http://localhost:1690  This has to be a storage node"),
   VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
+  SRC_ZOOKEEPER_URL("src-zookeeper-url", "szu", true, "Source Zookeeper url, eg. localhost:2181"),
+  DEST_ZOOKEEPER_URL("dest-zookeeper-url", "dzu", true, "Destination Zookeeper url, eg. localhost:2182"),
+  INFILE("infile", "if", true, "Path to input text file"), OUTFILE("outfile", "of", true, "Path to output text file"),
+  BASE_PATH("base-path", "bp", true, "Base path for ZK, eg. /venice-parent"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
+  CLUSTER_LIST("cluster-list", "cl", true, "Comma separated list of cluster names, eg. venice-0, venice-1, ..."),
   STORE("store", "s", true, "Name of Venice store"), STORES("stores", "sts", true, "Name of a group of Venice stores"),
   VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(
@@ -24,7 +29,10 @@ public enum Arg {
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
   VALUE_SCHEMA("value-schema-file", "vs", true, "Path to text file with value schema"),
   ZK_SSL_CONFIG_FILE("zk-ssl-config-file", "zscf", true, "Path to text file with ZK SSL configs"),
-  DERIVED_SCHEMA_ID("derived-schema-id", "did", true, "derived schema id"),
+  SRC_ZK_SSL_CONFIG_FILE("src-zk-ssl-config-file", "szscf", true, "Path to text file with source ZK SSL configs"),
+  DEST_ZK_SSL_CONFIG_FILE(
+      "dest-zk-ssl-config-file", "dzscf", true, "Path to text file with destination ZK SSL configs"
+  ), DERIVED_SCHEMA_ID("derived-schema-id", "did", true, "derived schema id"),
   DERIVED_SCHEMA("derived-schema-file", "ds", true, "Path to text file with derived schema"),
   OWNER("owner", "o", true, "Owner email for new store creation"),
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
@@ -240,6 +248,10 @@ public enum Arg {
   ),
   MAX_COMPACTION_LAG_SECONDS(
       "max-compaction-lag-seconds", "mxcls", true, "Max compaction lag seconds for version topic of hybrid stores"
+  ),
+  MAX_RECORD_SIZE_BYTES(
+      "max-record-size-bytes", "mrsb", true,
+      "Store-level max record size in bytes. Used by VeniceWriter to fail batch push jobs and pause consumption on nearline jobs with partial update."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
@@ -255,9 +267,7 @@ public enum Arg {
   ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
-  BLOB_TRANSFER_ENABLED(
-      "blob-transfer-enabled", "bt", false, "Flag to indicate if the blob transfer is allowed or not"
-  );
+  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not");
 
   private final String argName;
   private final String first;

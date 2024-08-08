@@ -163,7 +163,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   private static class AsyncSetupMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
     private Map<String, Store> systemStores = new VeniceConcurrentHashMap<>();
 
-    public AsyncSetupMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
+    public AsyncSetupMockVeniceParentHelixAdmin(
+        VeniceHelixAdmin veniceHelixAdmin,
+        VeniceControllerClusterConfig config) {
       super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     }
 
@@ -299,9 +301,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testCreateStoreForMultiCluster() {
     String secondCluster = "testCreateStoreForMultiCluster";
-    VeniceControllerConfig configForSecondCluster = mockConfig(secondCluster);
+    VeniceControllerClusterConfig configForSecondCluster = mockConfig(secondCluster);
     mockResources(configForSecondCluster, secondCluster);
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
     configMap.put(clusterName, config);
     configMap.put(secondCluster, configForSecondCluster);
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, new VeniceControllerMultiClusterConfig(configMap));
@@ -796,7 +798,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
      */
     private Map<String, Boolean> storeVersionToKillJobStatus = new HashMap<>();
 
-    public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
+    public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerClusterConfig config) {
       super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     }
 
@@ -1145,7 +1147,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
     configMap.put(clusterName, config);
 
     doReturn(
@@ -1248,7 +1250,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
     configMap.put(clusterName, config);
 
     doReturn(
@@ -1355,7 +1357,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
     configMap.put(clusterName, config);
 
     doReturn(
@@ -1786,7 +1788,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setHybridBufferReplayPolicy(REWIND_FROM_SOP)
         .setBootstrapToOnlineTimeoutInHours(48)
         .setReplicationFactor(2)
-        .setBlobTransferEnabled(false);
+        .setBlobTransferEnabled(false)
+        .setMaxRecordSizeBytes(7777);
 
     parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
@@ -1818,6 +1821,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
     assertEquals(updateStore.replicationFactor, 2);
     Assert.assertFalse(updateStore.blobTransferEnabled);
+    Assert.assertEquals(updateStore.maxRecordSizeBytes, 7777);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));

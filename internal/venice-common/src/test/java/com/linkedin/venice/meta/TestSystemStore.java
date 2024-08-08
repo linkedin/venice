@@ -9,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.writer.VeniceWriter;
 import org.testng.annotations.Test;
 
 
@@ -105,6 +106,7 @@ public class TestSystemStore {
     assertEquals(systemStore.getNativeReplicationSourceFabric(), "");
     assertFalse(systemStore.isDaVinciPushStatusStoreEnabled());
     assertFalse(systemStore.isBlobTransferEnabled());
+    assertEquals(systemStore.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
 
     // All the shared store-level property update should throw exception
     assertThrows(() -> systemStore.setOwner("test"));
@@ -137,6 +139,7 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setMigrationDuplicateStore(true));
     assertThrows(() -> systemStore.setNativeReplicationSourceFabric(""));
     assertThrows(() -> systemStore.setDaVinciPushStatusStoreEnabled(true));
+    assertThrows(() -> systemStore.setMaxRecordSizeBytes(1));
 
     // SystemStores property for SystemStore is not supported.
     assertThrows(() -> systemStore.getSystemStores());

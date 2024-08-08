@@ -18,11 +18,11 @@ public class BlobPeersDiscoveryResponse {
     return this.isError;
   }
 
-  public void setMessage(String message) {
+  public void setErrorMessage(String message) {
     this.message = message;
   }
 
-  public String getMessage() {
+  public String getErrorMessage() {
     return this.message;
   }
 

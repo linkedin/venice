@@ -30,6 +30,8 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
+import com.linkedin.venice.blobtransfer.BlobTransferUtil;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -86,7 +88,6 @@ import org.apache.logging.log4j.Logger;
 
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
-
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -105,6 +106,8 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final ClientConfig clientConfig;
+  private BlobTransferManager<Void> blobTransferManager;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -118,6 +121,7 @@ public class DaVinciBackend implements Closeable {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       this.configLoader = configLoader;
+      this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
@@ -282,6 +286,16 @@ public class DaVinciBackend implements Closeable {
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
       }
 
+      if (backendConfig.isBlobTransferManagerEnabled()) {
+        blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
+            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
+            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
+            configLoader.getVeniceServerConfig().getRocksDBPath(),
+            clientConfig);
+      } else {
+        blobTransferManager = null;
+      }
+
       bootstrap();
 
       storeRepository.registerStoreDataChangedListener(storeChangeListener);
@@ -363,6 +377,7 @@ public class DaVinciBackend implements Closeable {
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
+
     for (AbstractStorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -427,8 +442,14 @@ public class DaVinciBackend implements Closeable {
             metricsRepository,
             storageMetadataService,
             ingestionService,
-            storageService)
-        : new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
+            storageService,
+            blobTransferManager)
+        : new DefaultIngestionBackend(
+            storageMetadataService,
+            ingestionService,
+            storageService,
+            blobTransferManager,
+            configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
     // Subscribe all bootstrap version partitions.
@@ -468,7 +489,6 @@ public class DaVinciBackend implements Closeable {
     storeByNameMap.clear();
     versionByTopicMap.clear();
     compressorFactory.close();
-
     executor.shutdown();
     try {
       if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
@@ -495,6 +515,11 @@ public class DaVinciBackend implements Closeable {
       storeRepository.clear();
       schemaRepository.clear();
       pushStatusStoreWriter.close();
+
+      if (blobTransferManager != null) {
+        blobTransferManager.close();
+      }
+
       LOGGER.info("Da Vinci backend is closed successfully");
     } catch (Throwable e) {
       String msg = "Unable to stop Da Vinci backend";

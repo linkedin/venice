@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_CONFIG;
+
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.LiveClusterConfig;
@@ -17,7 +19,7 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
   private String clusterPath = "/test-metadata-cluster";
-  private String clusterConfigPath = "/ClusterConfig";
+  private String clusterConfigPath = "/" + CLUSTER_CONFIG;
   private ZkServerWrapper zkServerWrapper;
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 

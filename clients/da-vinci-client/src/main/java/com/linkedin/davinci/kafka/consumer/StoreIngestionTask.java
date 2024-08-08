@@ -17,6 +17,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -132,6 +133,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -161,10 +163,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final long SCHEMA_POLLING_TIMEOUT_MS = MINUTES.toMillis(5);
   private static final long SOP_POLLING_TIMEOUT_MS = HOURS.toMillis(1);
 
+  protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
+
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
+  private static final int CHUNK_MANIFEST_SCHEMA_ID =
+      AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -320,11 +326,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
+  protected final boolean isRmdChunked;
   protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
+  protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -434,14 +443,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer =
+
+    // Ensure getRecordTransformer does not return null
+    DaVinciRecordTransformer clientRecordTransformer =
         getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
-    if (recordTransformer != null) {
+    this.recordTransformer =
+        clientRecordTransformer != null ? new BlockingDaVinciRecordTransformer(clientRecordTransformer) : null;
+    if (this.recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
+
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
@@ -463,6 +477,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
+    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -470,6 +486,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
+    this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[partitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
@@ -548,6 +565,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
     subscribePartition(topicPartition, true);
+  }
+
+  void resubscribeForAllPartitions() throws InterruptedException {
+    throwIfNotRunning();
+    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      resubscribe(partitionConsumptionState);
+    }
   }
 
   /**
@@ -1264,6 +1288,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Thread.sleep(readCycleDelayMs);
   }
 
+  protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+    PartitionReplicaIngestionContext.VersionRole newVersionRole =
+        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+    PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
+        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
+      // TODO: Add support workload type change in the future, as enabling write computing during normal hybrid
+      // ingestion could cause workload type change.
+      if (!newVersionRole.equals(versionRole)) {
+        LOGGER.info(
+            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
+                + "changed to New: version role: {}, workload type: {}",
+            versionTopic,
+            versionRole,
+            workloadType,
+            newVersionRole,
+            newWorkloadType);
+        versionRole = newVersionRole;
+        resubscribeForAllPartitions();
+      }
+    }
+  }
+
   private void maybeUnsubscribeCompletedPartitions(Store store) {
     if (hybridStoreConfig.isPresent() || (!serverConfig.isUnsubscribeAfterBatchpushEnabled())) {
       return;
@@ -1335,6 +1382,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
+        updateIngestionRoleIfStoreChanged(store);
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
@@ -1364,18 +1412,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerUnSubscribeAllTopics(partitionConsumptionState);
 
           if (ingestionCheckpointDuringGracefulShutdownEnabled) {
+            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
             try {
-              waitForAllMessageToBeProcessedFromTopicPartition(
-                  new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
-                  partitionConsumptionState);
+              CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
+              waitForSyncOffsetCmd(cmdFuture, topicPartition);
+              waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
             } catch (InterruptedException e) {
               throw new VeniceException(e);
             }
-
-            this.kafkaDataIntegrityValidator
-                .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-            updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-            syncOffset(kafkaVersionTopic, partitionConsumptionState);
           }
         };
 
@@ -1442,6 +1486,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } finally {
       internalClose(doFlush);
     }
+  }
+
+  private void waitForSyncOffsetCmd(CompletableFuture<Void> cmdFuture, PubSubTopicPartition topicPartition)
+      throws InterruptedException {
+    try {
+      cmdFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+    } catch (InterruptedException e) {
+      LOGGER.warn(
+          "Got interrupted while waiting for the sync offset command for {}. Cancel command and throw the interrupt exception.",
+          topicPartition,
+          e);
+      throw e;
+    } catch (TimeoutException e) {
+      LOGGER.warn("Timeout while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
+    } catch (Exception e) {
+      LOGGER
+          .error("Got exception while waiting for the sync offset command for {}. Cancel command.", topicPartition, e);
+    } finally {
+      /**
+       * If exception happens, async command has to be invalidated because the SIT is going to be closed in SIT thread
+       * and its internal state is not reliable anymore. Notice that if the async command is already in the process of
+       * execution, cancel will wait for command to finish and not affect its execution. It is also safe to
+       * cancel an already finished command, so we can put it in finally block.
+       */
+      cmdFuture.cancel(true);
+    }
+  }
+
+  protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
+    /**
+     * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
+     * could be ahead of the other.
+     *
+     * The reason to transform the internal state only during checkpointing is that the intermediate checksum
+     * generation is an expensive operation.
+     */
+    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(pcs.getPartition(), pcs.getOffsetRecord());
+    // update the offset metadata in the OffsetRecord.
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(kafkaVersionTopic, pcs);
   }
 
   private void handleIngestionException(Exception e) {
@@ -1790,10 +1874,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        consumerSubscribe(
-            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic()),
-            offsetRecord.getLocalVersionTopicOffset(),
-            localKafkaServer);
+        PubSubTopicPartition pubSubTopicPartition =
+            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
+        consumerSubscribe(pubSubTopicPartition, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
@@ -2213,23 +2296,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
-    boolean syncOffset =
-        shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext);
-
-    if (syncOffset) {
-      /**
-       * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
-       * could be ahead of the other.
-       */
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-      /**
-       * The reason to transform the internal state only during checkpointing is that
-       * the intermediate checksum generation is an expensive operation.
-       */
-      this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(partition, offsetRecord);
-      // update the offset metadata in the OffsetRecord
-      updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-      syncOffset(kafkaVersionTopic, partitionConsumptionState);
+    if (shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext)) {
+      updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
   }
 
@@ -2363,6 +2431,44 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void recordChecksumVerificationFailure() {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
+
+  /**
+   * Records metrics for the original size of full-assembled records (key + value) and RMD by utilizing the field
+   * {@link ChunkedValueManifest#size}.
+   * Also records the ratio of assembled record size to maximum allowed size, which is intended to be used to alert
+   * customers about how close they are to hitting the size limit.
+   * @param keyLen The size of the record's key
+   * @param valueBytes {@link Put#putValue} which is expected to be a serialized {@link ChunkedValueManifest}
+   * @param rmdBytes {@link Put#replicationMetadataPayload} which can be a serialized {@link ChunkedValueManifest} if
+   * RMD chunking was enabled or just the RMD payload otherwise
+   */
+  protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
+    try {
+      byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
+      ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
+      int recordSize = keyLen + valueManifest.getSize();
+      hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+      recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
+
+      if (rmdBytes == null || rmdBytes.remaining() == 0) {
+        return;
+      }
+
+      int rmdSize = rmdBytes.remaining();
+      if (isRmdChunked) {
+        byte[] rmdByteArray = ByteUtils.extractByteArray(rmdBytes);
+        ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(rmdByteArray, CHUNK_MANIFEST_SCHEMA_ID);
+        rmdSize = rmdManifest.getSize();
+      }
+      hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
+    } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
+      LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record or RMD size", e);
+    }
+  }
+
+  protected abstract void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs);
+
+  protected abstract double calculateAssembledRecordSizeRatio(long recordSize);
 
   public abstract long getBatchReplicationLag();
 
@@ -2890,13 +2996,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  protected void recordWriterStats(
+  protected abstract void recordWriterStats(
       long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
-      PartitionConsumptionState partitionConsumptionState) {
-
-  }
+      PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Message validation using DIV. Leaders should pass in the validator instance from {@link LeaderFollowerStoreIngestionTask};
@@ -3099,12 +3203,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(PubSubTopicPartition topicPartition, long startOffset, String kafkaURL) {
+  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext =
+        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
+    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
@@ -3167,16 +3273,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        if (metricsEnabled && recordLevelMetricEnabled.get()
-            && put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-          try {
-            ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
-                ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
-                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-            hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
-          } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
-            LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
-          }
+        if (metricsEnabled && recordLevelMetricEnabled.get() && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+          // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
+          recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
         // Check if put.getSchemaId is positive, if not default to 1
@@ -3679,6 +3778,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportCompleted(partitionConsumptionState, false);
   }
 
+  protected abstract void resubscribe(PartitionConsumptionState partitionConsumptionState) throws InterruptedException;
+
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     ingestionNotificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
     LOGGER.info("Replica: {} is ready to serve", partitionConsumptionState.getReplicaId());
@@ -3986,5 +4087,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     }
     return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
+  }
+
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
+  }
+
+  public boolean hasAllPartitionReportedCompleted() {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+      if (!entry.getValue().isCompletionReported()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // For unit test purpose.
+  void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
+    this.versionRole = versionRole;
   }
 }

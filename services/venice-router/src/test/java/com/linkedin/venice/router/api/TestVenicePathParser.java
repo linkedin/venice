@@ -51,6 +51,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -126,7 +127,9 @@ public class TestVenicePathParser {
         getMockedStats(),
         storeRepository,
         mock(VeniceRouterConfig.class),
-        mock(CompressorFactory.class));
+        mock(CompressorFactory.class),
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class));
 
     String storeName = "test-store";
     String uri = "storage/" + storeName;
@@ -186,7 +189,9 @@ public class TestVenicePathParser {
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
-        compressorFactory);
+        compressorFactory,
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class));
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
     String keyB64 = Base64.getEncoder().encodeToString("key".getBytes());
@@ -215,7 +220,9 @@ public class TestVenicePathParser {
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
-        compressorFactory).parseResourceUri(myUri, request);
+        compressorFactory,
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class)).parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
     Assert.assertEquals(
         path.getPartitionKey().getKeyBuffer(),
@@ -234,7 +241,9 @@ public class TestVenicePathParser {
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
-        compressorFactory).parseResourceUri("/badAction/storeName/key");
+        compressorFactory,
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class)).parseResourceUri("/badAction/storeName/key");
   }
 
   @Test
@@ -279,7 +288,9 @@ public class TestVenicePathParser {
         mockRouterStats,
         storeRepository,
         MOCK_ROUTER_CONFIG,
-        compressorFactory);
+        compressorFactory,
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class));
     try {
       pathParser.parseResourceUri(myUri, request);
       fail("A RouterException should be thrown here");

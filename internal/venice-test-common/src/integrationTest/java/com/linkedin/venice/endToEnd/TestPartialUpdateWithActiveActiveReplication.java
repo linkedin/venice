@@ -77,9 +77,7 @@ public class TestPartialUpdateWithActiveActiveReplication {
   public static final String NULLABLE_MAP_FIELD = "nullableMapField";
 
   private static final Map<String, Integer> MAP_FIELD_DEFAULT_VALUE = Collections.emptyMap();
-  private static final Map<String, Integer> NULLABLE_MAP_FIELD_DEFAULT_VALUE = null;
   private static final List<Integer> LIST_FIELD_DEFAULT_VALUE = Collections.emptyList();
-  private static final List<Integer> NULLABLE_LIST_FIELD_DEFAULT_VALUE = null;
 
   private static final String REGULAR_FIELD_DEFAULT_VALUE = "default_venice";
 

@@ -9,8 +9,10 @@ import static org.mockito.Mockito.mock;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.IngestionThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
 import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
@@ -145,8 +147,7 @@ public class KafkaConsumptionTest {
   public void testLocalAndRemoteConsumption(boolean isTopicWiseSharedConsumerAssignmentStrategy)
       throws ExecutionException, InterruptedException {
     // Prepare Aggregate Kafka Consumer Service.
-    EventThrottler mockBandwidthThrottler = mock(EventThrottler.class);
-    EventThrottler mockRecordsThrottler = mock(EventThrottler.class);
+    IngestionThrottler mockIngestionThrottler = mock(IngestionThrottler.class);
     Map<String, EventThrottler> kafkaUrlToRecordsThrottler = new HashMap<>();
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
@@ -189,8 +190,7 @@ public class KafkaConsumptionTest {
         pubSubConsumerAdapterFactory,
         k -> VeniceProperties.empty(),
         veniceServerConfig,
-        mockBandwidthThrottler,
-        mockRecordsThrottler,
+        mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         topicExistenceChecker,
@@ -212,8 +212,13 @@ public class KafkaConsumptionTest {
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        versionTopic,
+        pubSubTopicPartition,
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
     StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, pubSubTopicPartition, -1);
+        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, pubSubTopicPartition));
 
@@ -225,7 +230,7 @@ public class KafkaConsumptionTest {
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
     StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, pubSubTopicPartition, -1);
+        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, pubSubTopicPartition));
 

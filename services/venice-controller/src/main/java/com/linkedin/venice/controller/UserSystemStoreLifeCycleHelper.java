@@ -47,7 +47,7 @@ public class UserSystemStoreLifeCycleHelper {
     this.parentAdmin = parentAdmin;
     this.authorizerService = authorizerService;
     for (String cluster: multiClusterConfig.getClusters()) {
-      VeniceControllerConfig controllerConfig = multiClusterConfig.getControllerConfig(cluster);
+      VeniceControllerClusterConfig controllerConfig = multiClusterConfig.getControllerConfig(cluster);
       Set<VeniceSystemStoreType> autoCreateEnabledSystemStores = new HashSet<>();
       if (controllerConfig.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
           && controllerConfig.isAutoMaterializeMetaSystemStoreEnabled()) {

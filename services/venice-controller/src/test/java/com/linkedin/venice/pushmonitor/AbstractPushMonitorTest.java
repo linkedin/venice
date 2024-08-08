@@ -25,7 +25,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
@@ -78,7 +78,7 @@ public abstract class AbstractPushMonitorTest {
   private AggPushHealthStats mockPushHealthStats;
   protected ClusterLockManager clusterLockManager;
 
-  protected VeniceControllerConfig mockControllerConfig;
+  protected VeniceControllerClusterConfig mockControllerConfig;
 
   protected MetricsRepository mockMetricRepo;
 
@@ -110,7 +110,7 @@ public abstract class AbstractPushMonitorTest {
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
     clusterLockManager = new ClusterLockManager(clusterName);
-    mockControllerConfig = mock(VeniceControllerConfig.class);
+    mockControllerConfig = mock(VeniceControllerClusterConfig.class);
     when(mockMetricRepo.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
     when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
     when(mockControllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
@@ -1039,7 +1039,7 @@ public abstract class AbstractPushMonitorTest {
     return mockStoreRepo;
   }
 
-  protected VeniceControllerConfig getMockControllerConfig() {
+  protected VeniceControllerClusterConfig getMockControllerConfig() {
     return mockControllerConfig;
   }
 

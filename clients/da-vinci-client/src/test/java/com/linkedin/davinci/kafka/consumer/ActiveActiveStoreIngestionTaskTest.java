@@ -39,6 +39,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
@@ -80,7 +81,6 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -92,8 +92,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -121,6 +120,37 @@ public class ActiveActiveStoreIngestionTaskTest {
   @DataProvider(name = "CompressionStrategy")
   public static Object[] compressionStrategyProvider() {
     return new Object[] { CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
+  }
+
+  @Test
+  public void testHandleDeleteBeforeEOP() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isEndOfPushReceived()).thenReturn(false);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    when(consumerRecord.getValue()).thenReturn(kafkaValue);
+    when(consumerRecord.getOffset()).thenReturn(1L);
+    kafkaValue.messageType = MessageType.DELETE.getValue();
+    Delete deletePayload = new Delete();
+    kafkaValue.payloadUnion = deletePayload;
+    ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
+        ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
+    ingestionTask.processMessageAndMaybeProduceToKafka(consumerRecord, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    verify(ingestionTask, times(1)).produceToLocalKafka(
+        any(),
+        any(),
+        leaderProducedRecordContextArgumentCaptor.capture(),
+        any(),
+        anyInt(),
+        anyString(),
+        anyInt(),
+        anyLong());
+    Assert.assertEquals(leaderProducedRecordContextArgumentCaptor.getAllValues().get(0).getValueUnion(), deletePayload);
   }
 
   @Test(dataProvider = "CompressionStrategy")
@@ -203,6 +233,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setHybridStoreConfig(hybridStoreConfig);
+    store.setVersions(Collections.singletonList(mockVersion));
 
     Properties kafkaConsumerProperties = new Properties();
     kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
@@ -313,8 +344,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     for (int i = 0; i < 50000; i++) {
       stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
     }
-    String valueString = stringBuilder.toString();
-    ByteBuffer updatedValueBytes = ChunkingTestUtils.prependSchemaId(valueString.getBytes(), 1);
+    ByteBuffer valueBytes = ByteBuffer.wrap(stringBuilder.toString().getBytes());
+    ByteBuffer updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
     when(consumerRecord.getOffset()).thenReturn(100L);
@@ -482,16 +513,12 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedValueManifest.size = 8;
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
     int manifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    byte[] chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
-    chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
+    ByteBuffer chunkedManifestBytes = chunkedValueManifestSerializer.serialize(chunkedValueManifest);
+    chunkedManifestBytes = ByteUtils.prependIntHeaderToByteBuffer(chunkedManifestBytes, manifestSchemaId);
     byte[] topLevelKey2 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key2);
     byte[] chunkedKey1InKey2 = chunkedKeyWithSuffix1.array();
-
-    when(storageEngine.getReplicationMetadata(partition, topLevelKey2)).thenReturn(chunkedManifestBytes);
+    when(storageEngine.getReplicationMetadata(partition, topLevelKey2)).thenReturn(chunkedManifestBytes.array());
     when(storageEngine.getReplicationMetadata(partition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    List<byte[]> chunkedValues = new ArrayList<>(1);
-    chunkedValues.add(chunkedValue1);
-    when(storageEngine.multiGetReplicationMetadata(eq(partition), any())).thenReturn(chunkedValues);
     byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key2, container, 0L);
     Assert.assertNotNull(result2);
     Assert.assertNotNull(container.getManifest());
@@ -519,17 +546,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedValueManifest.size = 8 + 12;
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix2);
-    chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
-    chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
+    chunkedManifestBytes = chunkedValueManifestSerializer.serialize(chunkedValueManifest);
+    chunkedManifestBytes = ByteUtils.prependIntHeaderToByteBuffer(chunkedManifestBytes, manifestSchemaId);
     byte[] topLevelKey3 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key3);
     byte[] chunkedKey1InKey3 = chunkedKeyWithSuffix1.array();
     byte[] chunkedKey2InKey3 = chunkedKeyWithSuffix2.array();
-
-    when(storageEngine.getReplicationMetadata(partition, topLevelKey3)).thenReturn(chunkedManifestBytes);
+    when(storageEngine.getReplicationMetadata(partition, topLevelKey3)).thenReturn(chunkedManifestBytes.array());
     when(storageEngine.getReplicationMetadata(partition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(partition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    when(storageEngine.multiGetReplicationMetadata(eq(partition), any()))
-        .thenReturn(Arrays.asList(chunkedValue1, chunkedValue2));
     byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key3, container, 0L);
     Assert.assertNotNull(result3);
     Assert.assertNotNull(container.getManifest());

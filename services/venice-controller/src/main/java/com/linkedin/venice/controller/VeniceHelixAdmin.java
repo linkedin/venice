@@ -414,6 +414,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private long backupVersionDefaultRetentionMs;
 
+  private int defaultMaxRecordSizeBytes;
+
   private DataRecoveryManager dataRecoveryManager;
 
   protected final PubSubTopicRepository pubSubTopicRepository;
@@ -459,7 +461,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
-    VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
+    VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
@@ -470,6 +472,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
+    this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
@@ -631,7 +634,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Participant stores are not read or written in parent colo. Parent controller skips participant store
     // initialization.
-    if (!multiClusterConfigs.isParent() && multiClusterConfigs.isParticipantMessageStoreEnabled()) {
+    if (!isParent() && multiClusterConfigs.isParticipantMessageStoreEnabled()) {
       initRoutines.add(
           new PerClusterInternalRTStoreInitializationRoutine(
               PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE,
@@ -701,7 +704,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getCommonConfig();
+    VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getCommonConfig();
 
     VeniceProperties originalPros = controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
@@ -710,7 +713,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     }
-    controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
+    controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
@@ -997,8 +1000,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
-    newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
-    newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+    newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
     /**
      * Initialize default NR source fabric base on default config for different store types.
@@ -1324,7 +1326,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Test if a store is allowed for a batch push.
    * @param storeName name of a store.
-   * @return <code>ture</code> is the store is a participant system store or {@linkplain ConfigKeys#CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD} is enabled.
+   * @return {@code true} is the store is a participant system store or if Venice is running in single-region mode
    */
   @Override
   public boolean whetherEnableBatchPushFromAdmin(String storeName) {
@@ -1332,8 +1334,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Allow (empty) push to participant system store from child controller directly since participant stores are
      * independent in different fabrics (different data).
      */
-    return VeniceSystemStoreUtils.isParticipantStore(storeName)
-        || multiClusterConfigs.isEnableBatchPushFromAdminInChildController();
+    return VeniceSystemStoreUtils.isParticipantStore(storeName) || !multiClusterConfigs.isMultiRegion();
   }
 
   /**
@@ -1578,21 +1579,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
     return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
       Map<String, ControllerClient> controllerClients = new HashMap<>();
-      VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-      veniceControllerConfig.getChildDataCenterControllerUrlMap()
+      VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      controllerConfig.getChildDataCenterControllerUrlMap()
           .entrySet()
           .forEach(
               entry -> controllerClients.put(
                   entry.getKey(),
                   ControllerClient.constructClusterControllerClient(clusterName, entry.getValue(), sslFactory)));
 
-      veniceControllerConfig.getChildDataCenterControllerD2Map()
+      controllerConfig.getChildDataCenterControllerD2Map()
           .entrySet()
           .forEach(
               entry -> controllerClients.put(
                   entry.getKey(),
                   new D2ControllerClient(
-                      veniceControllerConfig.getD2ServiceName(),
+                      controllerConfig.getD2ServiceName(),
                       clusterName,
                       entry.getValue(),
                       sslFactory)));
@@ -2079,17 +2080,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store = repository.getStore(storeName);
         version.setPushType(pushType);
         store.addVersion(version);
-        // Apply cluster-level native replication configs
+
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
-
-        boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-
-        if (store.isHybrid()) {
-          nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
-        } else {
-          nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-        }
-        version.setNativeReplicationEnabled(nativeReplicationEnabled);
+        version.setNativeReplicationEnabled(clusterConfig.isMultiRegion());
 
         if (version.isNativeReplicationEnabled()) {
           if (remoteKafkaBootstrapServers != null) {
@@ -2179,7 +2172,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     checkControllerLeadershipFor(clusterName);
     try {
-      VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+      VeniceControllerClusterConfig controllerConfig = getHelixVeniceClusterResources(clusterName).getConfig();
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
       createBatchTopics(
@@ -2187,7 +2180,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           version.getPushType(),
           getTopicManager(),
           version.getPartitionCount() * amplificationFactor,
-          clusterConfig,
+          controllerConfig,
           false);
     } finally {
       topicToCreationTime.remove(version.kafkaTopicName());
@@ -2206,17 +2199,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throwStoreDoesNotExist(clusterName, storeName);
     } else {
-      helixAdminClient.createVeniceStorageClusterResources(
-          clusterName,
-          version.kafkaTopicName(),
-          version.getPartitionCount(),
-          store.getReplicationFactor());
       startMonitorOfflinePush(
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
           store.getReplicationFactor(),
           store.getOffLinePushStrategy());
+      helixAdminClient.createVeniceStorageClusterResources(
+          clusterName,
+          version.kafkaTopicName(),
+          version.getPartitionCount(),
+          store.getReplicationFactor());
+      try {
+        retireOldStoreVersions(clusterName, storeName, true, store.getCurrentVersion());
+      } catch (Throwable t) {
+        LOGGER.error(
+            "Failed to delete previous backup version while data recovery to store {} in cluster {}",
+            storeName,
+            clusterName,
+            t);
+      }
     }
   }
 
@@ -2542,14 +2544,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               store.addVersion(version);
             }
 
-            // Apply cluster-level native replication configs
-            boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-            if (store.isHybrid()) {
-              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
-            } else {
-              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-            }
-            version.setNativeReplicationEnabled(nativeReplicationEnabled);
+            version.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
 
             // Check whether native replication is enabled
             if (version.isNativeReplicationEnabled()) {
@@ -3142,7 +3137,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Store store = getStore(clusterName, storeName);
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
+    VeniceControllerClusterConfig systemSchemaClusterConfig =
+        multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
     String systemSchemaClusterD2Service = systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName);
     String systemSchemaClusterD2ZkHost = systemSchemaClusterConfig.getChildControllerD2ZkHost(getRegionName());
     int currentVersionNumber = store.getCurrentVersion();
@@ -3324,7 +3320,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
+  private boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
     try {
       OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
       return offlinePushStatus.hasFatalDataValidationError();
@@ -3395,7 +3391,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
 
-      if (store.getBackupStrategy() == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
+      if (deleteBackupOnStartPush) {
         LOGGER.info("Deleting backup versions as the new push started for upcoming version for store: {}", storeName);
       } else {
         LOGGER.info("Retiring old versions after successful push for store: {}", storeName);
@@ -4040,7 +4036,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         TopicManager topicManager;
         if (isParent()) {
           // RT might not exist in parent colo. Get RT partition count from a child colo.
-          String childDatacenter = Utils.parseCommaSeparatedStringToList(clusterConfig.getChildDatacenters()).get(0);
+          String childDatacenter = clusterConfig.getChildDatacenters().iterator().next();
           topicManager = getTopicManager(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter));
         } else {
           topicManager = getTopicManager();
@@ -4254,7 +4250,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       if (incrementalPushEnabled || store.isHybrid()) {
         // Enabling incremental push
-        store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
         store.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForHybrid());
         store.setActiveActiveReplicationEnabled(
             store.isActiveActiveReplicationEnabled()
@@ -4262,10 +4257,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       } else {
         // Disabling incremental push
         // This is only possible when hybrid settings are set to null before turning of incremental push for the store.
-        store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
         store.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
-        store.setActiveActiveReplicationEnabled(
-            store.isActiveActiveReplicationEnabled() || config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+        store.setActiveActiveReplicationEnabled(false);
       }
       store.setIncrementalPushEnabled(incrementalPushEnabled);
 
@@ -4576,6 +4569,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
+    Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
 
@@ -4670,12 +4664,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store.setIncrementalPushEnabled(false);
             // Enable/disable native replication for batch-only stores if the cluster level config for new batch
             // stores is on
-            store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForBatchOnly());
             store.setNativeReplicationSourceFabric(
                 clusterConfig.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
-            store.setActiveActiveReplicationEnabled(
-                store.isActiveActiveReplicationEnabled()
-                    || clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+            store.setActiveActiveReplicationEnabled(false);
           } else {
             // Batch-only store is being converted to hybrid store.
             if (!store.isHybrid()) {
@@ -4683,7 +4674,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                * Enable/disable native replication for hybrid stores if the cluster level config
                * for new hybrid stores is on
                */
-              store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForHybrid());
               store
                   .setNativeReplicationSourceFabric(clusterConfig.getNativeReplicationSourceFabricAsDefaultForHybrid());
               /*
@@ -4837,6 +4827,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return store;
         });
       }
+
+      maxRecordSizeBytes.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setMaxRecordSizeBytes(aInt);
+        return store;
+      }));
 
       unusedSchemaDeletionEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setUnusedSchemaDeletionEnabled(aBoolean);
@@ -7031,9 +7026,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  /**
-   * @return the aggregate resources required by controller to manage a Venice cluster.
-   */
+  @Override
   public HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster) {
     Optional<HelixVeniceClusterResources> resources = controllerStateModelFactory.getModel(cluster).getResources();
     if (!resources.isPresent()) {
@@ -7042,7 +7035,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return resources.get();
   }
 
-  void addConfig(VeniceControllerConfig config) {
+  void addConfig(VeniceControllerClusterConfig config) {
     multiClusterConfigs.addClusterConfig(config);
   }
 
@@ -7130,131 +7123,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void deleteAclForStore(String clusterName, String storeName) {
     throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported!");
-  }
-
-  /**
-   * @see Admin#configureNativeReplication(String, VeniceUserStoreType, Optional, boolean, Optional, Optional)
-   */
-  @Override
-  public void configureNativeReplication(
-      String clusterName,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableNativeReplicationForCluster,
-      Optional<String> newSourceFabric,
-      Optional<String> regionsFilter) {
-    /**
-     * Check whether the command affects this fabric.
-     */
-    if (regionsFilter.isPresent()) {
-      Set<String> fabrics = parseRegionsFilterList(regionsFilter.get());
-      if (!fabrics.contains(multiClusterConfigs.getRegionName())) {
-        LOGGER.info(
-            "EnableNativeReplicationForCluster command will be skipped for cluster {}, because the fabrics filter "
-                + "is {} which doesn't include the current fabric: {}",
-            clusterName,
-            fabrics,
-            multiClusterConfigs.getRegionName());
-        return;
-      }
-    }
-
-    if (storeName.isPresent()) {
-      /**
-       * Legacy stores venice_system_store_davinci_push_status_store_<cluster_name> still exist.
-       * But {@link com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter#getStore(String)} cannot find
-       * them by store names. Skip davinci push status stores until legacy znodes are cleaned up.
-       */
-      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName.get());
-      if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
-        LOGGER.info("Will not enable native replication for davinci push status store: {}", storeName.get());
-        return;
-      }
-
-      /**
-       * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
-       * storeName is present.
-       */
-      Store originalStore = getStore(clusterName, storeName.get());
-      if (originalStore == null) {
-        throw new VeniceNoStoreException(storeName.get(), clusterName);
-      }
-      boolean shouldUpdateNativeReplication = false;
-      switch (storeType) {
-        case BATCH_ONLY:
-          shouldUpdateNativeReplication =
-              !originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
-          break;
-        case HYBRID_ONLY:
-          shouldUpdateNativeReplication =
-              originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
-          break;
-        case INCREMENTAL_PUSH:
-          shouldUpdateNativeReplication = originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
-          break;
-        case HYBRID_OR_INCREMENTAL:
-          shouldUpdateNativeReplication =
-              (originalStore.isHybrid() || originalStore.isIncrementalPushEnabled()) && !originalStore.isSystemStore();
-          break;
-        case SYSTEM:
-          shouldUpdateNativeReplication = originalStore.isSystemStore();
-          break;
-        case ALL:
-          shouldUpdateNativeReplication = true;
-          break;
-        default:
-          throw new VeniceException("Unsupported store type." + storeType);
-      }
-      if (shouldUpdateNativeReplication) {
-        LOGGER.info("Will enable native replication for store: {}", storeName.get());
-        setNativeReplicationEnabled(clusterName, storeName.get(), enableNativeReplicationForCluster);
-        newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
-      } else {
-        LOGGER.info("Will not enable native replication for store: {}", storeName.get());
-      }
-    } else {
-      /**
-       * The batch update command hits child controller directly; all stores in the cluster will be updated
-       */
-      List<Store> storesToBeConfigured;
-      switch (storeType) {
-        case BATCH_ONLY:
-          storesToBeConfigured = getAllStores(clusterName).stream()
-              .filter(s -> (!s.isHybrid() && !s.isIncrementalPushEnabled() && !s.isSystemStore()))
-              .collect(Collectors.toList());
-          break;
-        case HYBRID_ONLY:
-          storesToBeConfigured = getAllStores(clusterName).stream()
-              .filter(s -> (s.isHybrid() && !s.isIncrementalPushEnabled() && !s.isSystemStore()))
-              .collect(Collectors.toList());
-          break;
-        case INCREMENTAL_PUSH:
-          storesToBeConfigured = getAllStores(clusterName).stream()
-              .filter(s -> (s.isIncrementalPushEnabled() && !s.isSystemStore()))
-              .collect(Collectors.toList());
-          break;
-        case HYBRID_OR_INCREMENTAL:
-          storesToBeConfigured = getAllStores(clusterName).stream()
-              .filter(s -> ((s.isHybrid() || s.isIncrementalPushEnabled()) && !s.isSystemStore()))
-              .collect(Collectors.toList());
-          break;
-        case SYSTEM:
-          storesToBeConfigured =
-              getAllStores(clusterName).stream().filter(Store::isSystemStore).collect(Collectors.toList());
-          break;
-        case ALL:
-          storesToBeConfigured = getAllStores(clusterName);
-          break;
-        default:
-          throw new VeniceException("Unsupported store type." + storeType);
-      }
-
-      storesToBeConfigured.forEach(store -> {
-        LOGGER.info("Will enable native replication for store: {}", store.getName());
-        setNativeReplicationEnabled(clusterName, store.getName(), enableNativeReplicationForCluster);
-        newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
-      });
-    }
   }
 
   /**
@@ -7686,12 +7554,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * @see Admin#getParentControllerRegionState()
+   */
+  @Override
+  public ParentControllerRegionState getParentControllerRegionState() {
+    return multiClusterConfigs.getParentControllerRegionState();
+  }
+
+  /**
    * @see Admin#getChildDataCenterControllerUrlMap(String)
    */
   @Override
   public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
     /**
-     * According to {@link VeniceControllerConfig#VeniceControllerConfig(VeniceProperties)}, the map is empty
+     * According to {@link VeniceControllerClusterConfig#VeniceControllerClusterConfig(VeniceProperties)}, the map is empty
      * if this is a child controller.
      */
     return multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterControllerUrlMap();
@@ -7761,7 +7637,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Optional<String> getAggregateRealTimeTopicSource(String clusterName) {
     String sourceRegion = multiClusterConfigs.getControllerConfig(clusterName).getAggregateRealTimeSourceRegion();
-    if (sourceRegion != null && sourceRegion.length() > 0) {
+    if (!StringUtils.isEmpty(sourceRegion)) {
       return Optional.of(getNativeReplicationKafkaBootstrapServerAddress(sourceRegion));
     } else {
       return Optional.empty();
@@ -7931,6 +7807,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return backupVersionDefaultRetentionMs;
   }
 
+  /** @see Admin#getDefaultMaxRecordSizeBytes() */
+  @Override
+  public int getDefaultMaxRecordSizeBytes() {
+    return defaultMaxRecordSizeBytes;
+  }
+
   private Pair<NodeReplicasReadinessState, List<Replica>> areAllCurrentVersionReplicasReady(
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
       ReadWriteStoreRepository storeRepo,
@@ -8072,12 +7954,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // HelixVeniceClusterResources should exist on leader controller
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
-      HelixReadWriteLiveClusterConfigRepository clusterConfigRepository =
+      HelixReadWriteLiveClusterConfigRepository liveConfigRepository =
           getReadWriteLiveClusterConfigRepository(clusterName);
-      // Enable child controller admin topic consumption when both cfg2 config and live config are true
-      adminTopicConsumptionEnabled =
-          clusterConfigRepository.getConfigs().isChildControllerAdminTopicConsumptionEnabled()
-              && multiClusterConfigs.getControllerConfig(clusterName).isChildControllerAdminTopicConsumptionEnabled();
+      // Enable child controller admin topic consumption when configs applied at startup and live config are true.
+      // The live configs are used during store migration.
+      adminTopicConsumptionEnabled = liveConfigRepository.getConfigs().isChildControllerAdminTopicConsumptionEnabled()
+          && multiClusterConfigs.getControllerConfig(clusterName).isMultiRegion();
     }
     return adminTopicConsumptionEnabled;
   }
@@ -8284,5 +8166,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // Only for testing
   public void setPushJobDetailsStoreClient(AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client) {
     pushJobDetailsStoreClient = client;
+  }
+
+  @Override
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

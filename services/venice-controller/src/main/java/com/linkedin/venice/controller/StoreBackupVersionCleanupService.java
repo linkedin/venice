@@ -276,6 +276,17 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
                 : v.getNumber() < currentVersion)
         .collect(Collectors.toList());
 
+    // If there are still leaking versions due to consecutive repushes with some version failing in other fabric,
+    // there could be versions with repushSourceVersion does not match current version, delete them after backup
+    // retention period.
+    if (readyToBeRemovedVersions.isEmpty()) {
+      for (Version version: versions) {
+        if (version.getNumber() < currentVersion && store.getLatestVersionPromoteToCurrentTimestamp()
+            + defaultBackupVersionRetentionMs < time.getMilliseconds()) {
+          readyToBeRemovedVersions.add(version);
+        }
+      }
+    }
     if (readyToBeRemovedVersions.isEmpty()) {
       return false;
     }

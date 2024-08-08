@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
+
 import com.linkedin.venice.controller.kafka.consumer.StringToLongMapJSONSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -19,7 +21,7 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
   private static final Logger LOGGER = LogManager.getLogger(ZkAdminTopicMetadataAccessor.class);
   private static final int ZK_UPDATE_RETRY = 3;
   private static final long ZK_UPDATE_RETRY_DELAY_MS = 1000;
-  private static final String ADMIN_TOPIC_METADATA_NODE = "/adminTopicMetadata";
+  private static final String ADMIN_TOPIC_METADATA_NODE = "/" + ADMIN_TOPIC_METADATA;
   private static final String ADMIN_TOPIC_METADATA_NODE_PATH_PATTERN =
       getAdminTopicMetadataNodePath(TrieBasedPathResourceRegistry.WILDCARD_MATCH_ANY);
 

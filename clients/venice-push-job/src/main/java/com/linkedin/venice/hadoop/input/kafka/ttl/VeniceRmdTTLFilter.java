@@ -17,6 +17,7 @@ import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
@@ -96,9 +97,19 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
       return (long) rmdTimestampObject <= filterTimestamp;
     }
-    RecordDeserializer<GenericRecord> valueDeserializer =
-        valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
-    GenericRecord valueRecord = valueDeserializer.deserialize(getValuePayload(value));
+    ByteBuffer valuePayload = getValuePayload(value);
+    GenericRecord valueRecord;
+    if (valuePayload == null || valuePayload.remaining() == 0) {
+      /**
+       * If it is a DELETE, then we need to create a default value and pass with old timestamp and perform the TTL delete
+       * operation and check the result.
+       */
+      valueRecord = AvroSchemaUtils.createGenericRecord(valueSchemaMap.get(valueSchemaId));
+    } else {
+      RecordDeserializer<GenericRecord> valueDeserializer =
+          valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
+      valueRecord = valueDeserializer.deserialize(getValuePayload(value));
+    }
     UpdateResultStatus updateResultStatus =
         mergeRecordHelper.deleteRecord(valueRecord, (GenericRecord) rmdTimestampObject, filterTimestamp, 0);
     if (updateResultStatus.equals(UpdateResultStatus.COMPLETELY_UPDATED)) {

@@ -16,6 +16,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -126,7 +127,8 @@ public class TestVeniceComputePath {
           10,
           false,
           -1,
-          1);
+          1,
+          mock(RetryManager.class));
       Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
     }
   }
@@ -215,7 +217,8 @@ public class TestVeniceComputePath {
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
         null,
-        longTailRetryMaxRouteForMultiKeyReq);
+        longTailRetryMaxRouteForMultiKeyReq,
+        mock(RetryManager.class));
     byte[] serializedMultiGetRequest = multiGetPath.serializeRouterRequest();
 
     VeniceComputePath computePath = new VeniceComputePath(
@@ -227,7 +230,8 @@ public class TestVeniceComputePath {
         maxKeyCount,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
-        longTailRetryMaxRouteForMultiKeyReq);
+        longTailRetryMaxRouteForMultiKeyReq,
+        mock(RetryManager.class));
     VeniceMultiGetPath syntheticMultiGetPath = computePath.toMultiGetPath();
     Assert.assertEquals(syntheticMultiGetPath.serializeRouterRequest(), serializedMultiGetRequest);
     Assert

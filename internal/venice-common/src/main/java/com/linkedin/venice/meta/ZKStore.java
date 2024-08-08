@@ -224,6 +224,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
+    setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
+    setBlobTransferEnabled(store.isBlobTransferEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -850,6 +852,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public int getMaxRecordSizeBytes() {
+    return this.storeProperties.maxRecordSizeBytes;
+  }
+
+  @Override
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
+    this.storeProperties.maxRecordSizeBytes = maxRecordSizeBytes;
+  }
+
+  @Override
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     this.storeProperties.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled;
   }
@@ -873,7 +885,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */
   private void setPushedVersionsOnline() {
-    // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as
+    // TODO, if the PUSHED version is the latest version, after store is enabled to write, shall we put this version as
     // the current version?
     for (StoreVersion storeVersion: this.storeProperties.versions) {
       Version version = new VersionImpl(storeVersion);

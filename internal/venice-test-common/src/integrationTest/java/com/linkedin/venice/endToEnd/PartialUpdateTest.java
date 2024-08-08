@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -80,7 +81,9 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -124,7 +127,7 @@ import org.testng.annotations.Test;
  * This class includes tests on partial update (Write Compute) with a setup that has both the parent and child controllers.
  */
 public class PartialUpdateTest {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
+  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final int TEST_TIMEOUT_MS = 180_000;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
@@ -163,7 +166,7 @@ public class PartialUpdateTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testRepushWithChunkingFlagChanged() throws IOException {
+  public void testRepushWithChunkingFlagChanged() {
     final String storeName = Utils.getUniqueString("reproduce");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema keySchema = AvroCompatibilityHelper.parse(loadFileAsString("UserKey.avsc"));
@@ -492,7 +495,7 @@ public class PartialUpdateTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS * 3)
-  public void testNonAAPartialUpdateChunkDeletion() throws IOException {
+  public void testNonAAPartialUpdateChunkDeletion() {
     final String storeName = Utils.getUniqueString("partialUpdateChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -615,7 +618,6 @@ public class PartialUpdateTest {
     } finally {
       veniceProducer.stop();
     }
-
   }
 
   /**
@@ -628,7 +630,7 @@ public class PartialUpdateTest {
    */
   @Test(timeOut = TEST_TIMEOUT_MS
       * 3, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testActiveActivePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws IOException {
+  public void testActiveActivePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws Exception {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -847,11 +849,15 @@ public class PartialUpdateTest {
     } finally {
       veniceProducer.stop();
     }
+
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RMD_SIZE_IN_BYTES);
+    List<Double> assembledRmdSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
+    MetricsUtils.validateMetricRange(assembledRmdSizes, 290000, 740000);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
-    final String storeName = Utils.getUniqueString("ttlRepsuhAAWC");
+    final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
@@ -932,6 +938,22 @@ public class PartialUpdateTest {
     sendStreamingRecord(veniceProducer, storeName, key3, updateBuilder.build(), FRESH_TS);
 
     /**
+     * Case 4: The delete record is fully fresh, TTL repush should NOT FAIL due to this record.
+     */
+    String key4 = "key4";
+    sendStreamingRecord(veniceProducer, storeName, key4, updateBuilder.build(), FRESH_TS);
+    sendStreamingDeleteRecord(veniceProducer, storeName, key4, FRESH_TS + 1);
+
+    /**
+     * Case 5: The delete record is stale, TTL repush should keep new update.
+     */
+    String key5 = "key5";
+    sendStreamingDeleteRecord(veniceProducer, storeName, key5, STALE_TS);
+    updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue(REGULAR_FIELD, "new_name_5");
+    sendStreamingRecord(veniceProducer, storeName, key5, updateBuilder.build(), FRESH_TS);
+
+    /**
      * Validate the data is ready in storage before TTL repush.
      */
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
@@ -953,6 +975,13 @@ public class PartialUpdateTest {
           valueRecord = readValue(storeReader, key3);
           assertNotNull(valueRecord);
           assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_3"));
+
+          valueRecord = readValue(storeReader, key4);
+          assertNull(valueRecord);
+
+          valueRecord = readValue(storeReader, key5);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_5"));
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -1023,6 +1052,13 @@ public class PartialUpdateTest {
           valueRecord = readValue(storeReader, key3);
           assertNotNull(valueRecord);
           assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_3"));
+
+          valueRecord = readValue(storeReader, key4);
+          assertNull(valueRecord);
+
+          valueRecord = readValue(storeReader, key5);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("new_name_5"));
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -1048,6 +1084,238 @@ public class PartialUpdateTest {
       Assert.assertEquals(timestampRecord.get(REGULAR_FIELD), FRESH_TS);
     });
 
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testEnablePartialUpdateOnActiveActiveStore() {
+    final String storeName = Utils.getUniqueString("testRepushWithDeleteRecord");
+    String parentControllerUrl = parentController.getControllerUrl();
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(1)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(1L)
+              .setHybridOffsetLagThreshold(1L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+    String key1 = "key1";
+
+    GenericRecord record = new GenericData.Record(valueSchema);
+    record.put("name", "value-level TS");
+    record.put("floatArray", Collections.emptyList());
+    record.put("stringMap", Collections.emptyMap());
+
+    sendStreamingRecord(veniceProducer, storeName, key1, record, 10000L);
+
+    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+      VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+          try {
+            GenericRecord valueRecord = readValue(storeReader, key1);
+            assertNotNull(valueRecord);
+            assertEquals(valueRecord.get("name"), new Utf8("value-level TS"));
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setWriteComputationEnabled(true);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+    }
+
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    TestWriteUtils.runPushJob("Run repush job 1", props);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+    // Need to create a new producer to update partial update config from store response.
+    veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+    UpdateBuilder builder = new UpdateBuilderImpl(partialUpdateSchema);
+    builder.setNewFieldValue("name", "field-level TS");
+    sendStreamingRecord(veniceProducer, storeName, key1, builder.build(), 10001L);
+    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+      VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+          try {
+            GenericRecord valueRecord = readValue(storeReader, key1);
+            assertNotNull(valueRecord);
+            assertEquals(valueRecord.get("name"), new Utf8("field-level TS"));
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testRepushWithDeleteRecord() {
+    final String storeName = Utils.getUniqueString("testRepushWithDeleteRecord");
+    String parentControllerUrl = parentController.getControllerUrl();
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(1)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(1L)
+              .setHybridOffsetLagThreshold(1L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+    String STRING_MAP_FILED = "stringMap";
+    String key1 = "key1";
+    String key2 = "key2";
+    String key3 = "key3";
+
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setEntriesToAddToMapField(STRING_MAP_FILED, Collections.singletonMap("k1", "v1"));
+    sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 10000L);
+    sendStreamingDeleteRecord(veniceProducer, storeName, key1, 10001L);
+    sendStreamingRecord(veniceProducer, storeName, key2, updateBuilder.build(), 10001L);
+
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    TestWriteUtils.runPushJob("Run repush job 1", props);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+      VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+          try {
+            // Key 1 is deleted.
+            GenericRecord valueRecord = readValue(storeReader, key1);
+            assertNull(valueRecord);
+
+            // Key 2 is preserved.
+            valueRecord = readValue(storeReader, key2);
+            assertNotNull(valueRecord);
+            assertNotNull(valueRecord.get(STRING_MAP_FILED));
+            Map<Utf8, Utf8> stringMapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FILED);
+            assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+    sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 9999L);
+    sendStreamingRecord(veniceProducer, storeName, key3, updateBuilder.build(), 10000L);
+    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+      VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+          try {
+            // Key 1 is deleted.
+            GenericRecord valueRecord = readValue(storeReader, key1);
+            assertNull(valueRecord);
+
+            // Key 3 is preserved.
+            valueRecord = readValue(storeReader, key3);
+            assertNotNull(valueRecord);
+            assertNotNull(valueRecord.get(STRING_MAP_FILED));
+            Map<Utf8, Utf8> stringMapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FILED);
+            assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+    sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 12345L);
+
+    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+      VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+          try {
+            // Key 1 is preserved.
+            GenericRecord valueRecord = readValue(storeReader, key1);
+            assertNotNull(valueRecord);
+            assertNotNull(valueRecord.get(STRING_MAP_FILED));
+            Map<Utf8, Utf8> stringMapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FILED);
+            assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
   }
 
   private void validateRmdData(
@@ -1085,17 +1353,17 @@ public class PartialUpdateTest {
    * field.
    */
   @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testUpdateWithSupersetSchema() throws IOException {
+  public void testUpdateWithSupersetSchema() {
     final String storeName = Utils.getUniqueString("store");
     String parentControllerUrl = parentController.getControllerUrl();
-    String keySchemaStr = "{\"type\" : \"string\"}";
     Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
     Schema valueSchemaV2 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV2.avsc"));
     String valueFieldName = "name";
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchemaV1.toString()));
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchemaV1.toString()));
 
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)

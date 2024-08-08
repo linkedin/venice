@@ -26,29 +26,34 @@ public class ServerBlobFinder implements BlobFinder {
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     try {
       String currentVersionResource = Version.composeKafkaTopic(storeName, version);
-      // Get the partition assignments for the current version
+      // Get the partition assignments for the specific partition and retrieve the host names
       List<String> hostNames = new ArrayList<>();
       for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
           .getAllPartitions()) {
         if (partition.getId() == partitionId) {
-          for (Instance instance: partition.getReadyToServeInstances()) {
-            String host = instance.getHost();
-            hostNames.add(host);
+          for (Instance instances: partition.getReadyToServeInstances()) {
+            hostNames.add(instances.getHost());
           }
-          break;
         }
       }
       response.setDiscoveryResult(hostNames);
     } catch (VeniceException e) {
       response.setError(true);
-      String errorMsg =
-          "Error finding blob for store: " + storeName + ", version: " + version + ", partitionId: " + partitionId;
-      response.setMessage(errorMsg + ".\n Error: " + e.getMessage());
-      LOGGER.warn(errorMsg, e);
+      String errorMsg = String.format(
+          "Error finding peers for blob transfer in store: %s, version: %d, partitionId: %d",
+          storeName,
+          version,
+          partitionId);
+      response.setErrorMessage(errorMsg + ".\n Error: " + e.getMessage());
+      LOGGER.error(errorMsg, e);
 
     }
 
     return response;
+  }
+
+  @Override
+  public void close() {
   }
 
 }
