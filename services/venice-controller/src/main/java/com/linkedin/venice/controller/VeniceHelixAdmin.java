@@ -332,8 +332,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
-  private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
-  private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
+  protected static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
+  protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
 
@@ -417,7 +417,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int defaultMaxRecordSizeBytes;
 
   private DataRecoveryManager dataRecoveryManager;
-
+  private ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
   private final Object PUSH_JOB_DETAILS_CLIENT_LOCK = new Object();
@@ -585,12 +585,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
-    dataRecoveryManager = new DataRecoveryManager(
-        this,
+    participantStoreClientsManager = new ParticipantStoreClientsManager(
         d2Client,
         commonConfig.getClusterDiscoveryD2ServiceName(),
-        icProvider,
+        topicManagerRepository,
+        veniceWriterFactory,
         pubSubTopicRepository);
+    dataRecoveryManager =
+        new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
@@ -1520,6 +1522,61 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     versionMigrationConsumer.accept(storeName);
   }
 
+  /**
+   * Clear KILL messages from a participant system store.
+   */
+  public void clearIngestionKillMessageAndVerify(String clusterName, String versionTopicName) {
+    long startTs = System.currentTimeMillis();
+    ParticipantMessageKey key = new ParticipantMessageKey();
+    key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
+    key.resourceName = versionTopicName;
+    ParticipantMessageValue value = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> participantStoreClientsManager.getReader(clusterName).get(key).get(),
+        5,
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
+        Collections.singletonList(Exception.class));
+    if (value == null) {
+      return;
+    }
+
+    KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+    LOGGER.info(
+        "Deleting kill message for store-version: {} in cluster: {}. Message age: {}",
+        versionTopicName,
+        clusterName,
+        System.currentTimeMillis() - killPushJobMessage.getTimestamp());
+
+    // Use RetryUtils to add timed-wait
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> deleteParticipantStoreKillMessage(clusterName, versionTopicName),
+        1,
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
+        Collections.singletonList(Exception.class));
+
+    // wait for kill message to be removed
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      if (participantStoreClientsManager.getReader(clusterName).get(key).get() != null) {
+        throw new VeniceException(
+            "Kill message still exists in participant store for store-version: " + versionTopicName + " in cluster: "
+                + clusterName);
+      }
+    },
+        5,
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
+        Collections.singletonList(Exception.class));
+    LOGGER.info(
+        "Spent: {}ms for kill message removal from participant store for store-version: {} in cluster: {}",
+        System.currentTimeMillis() - startTs,
+        versionTopicName,
+        clusterName);
+  }
+
   private Map<String, StoreInfo> getStoreInfoInChildColos(String srcClusterName, String storeName) {
     Map<String, StoreInfo> storeInfoMap = new HashMap<>();
     if (isParent()) {
@@ -1855,28 +1912,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           store.getLargestUsedVersionNumber(),
           storeName,
           clusterName);
-    } else {
-      addVersion(
-          clusterName,
-          storeName,
-          pushJobId,
-          versionNumber,
-          numberOfPartitions,
-          getReplicationFactor(clusterName, storeName),
-          true,
-          false,
-          false,
-          true,
-          pushType,
-          null,
-          remoteKafkaBootstrapServers,
-          Optional.empty(),
-          rewindTimeInSecondsOverride,
-          replicationMetadataVersionId,
-          Optional.empty(),
-          versionSwapDeferred,
-          repushSourceVersion);
+      return;
     }
+    if (!isParent() && store.isMigrating()) {
+      String versionTopicName = Version.composeKafkaTopic(storeName, versionNumber);
+      LOGGER.info(
+          "Deleting any old ingestion kill messages for version: {} in cluster: {} since store: {} is being migrated",
+          versionTopicName,
+          clusterName,
+          storeName);
+      try {
+        clearIngestionKillMessageAndVerify(clusterName, versionTopicName);
+      } catch (Exception e) {
+        throw new VeniceRetriableException(
+            "Failed to clear ingestion kill message for store: " + storeName + " and version: " + versionNumber
+                + " in cluster: " + clusterName,
+            e);
+      }
+    }
+    addVersion(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNumber,
+        numberOfPartitions,
+        getReplicationFactor(clusterName, storeName),
+        true,
+        false,
+        false,
+        true,
+        pushType,
+        null,
+        remoteKafkaBootstrapServers,
+        Optional.empty(),
+        rewindTimeInSecondsOverride,
+        replicationMetadataVersionId,
+        Optional.empty(),
+        versionSwapDeferred,
+        repushSourceVersion);
   }
 
   /**
@@ -6594,7 +6667,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Compose a <code>ParticipantMessageKey</code> message and execute a delete operation on the key to the cluster's participant store.
    */
   public void deleteParticipantStoreKillMessage(String clusterName, String kafkaTopic) {
-    VeniceWriter writer = getParticipantStoreWriter(clusterName);
+    LOGGER.info(
+        "Delete KILL ingestion message for topic: {} from participant store in cluster: {}",
+        kafkaTopic,
+        clusterName);
+    VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName);
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = kafkaTopic;
     key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
@@ -6602,8 +6679,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     writer.flush();
   }
 
-  private void sendKillMessageToParticipantStore(String clusterName, String kafkaTopic) {
-    VeniceWriter writer = getParticipantStoreWriter(clusterName);
+  public void sendKillMessageToParticipantStore(String clusterName, String kafkaTopic) {
+    LOGGER.info("Send kill message for topic: {} to participant store of cluster: {}", kafkaTopic, clusterName);
+    VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName);
     ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = kafkaTopic;
@@ -6614,32 +6692,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     value.messageType = killPushJobType.getValue();
     value.messageUnion = message;
     writer.put(key, value, PARTICIPANT_MESSAGE_STORE_SCHEMA_ID);
-  }
-
-  private VeniceWriter getParticipantStoreWriter(String clusterName) {
-    return participantMessageWriterMap.computeIfAbsent(clusterName, k -> {
-      int attempts = 0;
-      boolean verified = false;
-      PubSubTopic topic = pubSubTopicRepository.getTopic(participantMessageStoreRTTMap.get(clusterName));
-      while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
-        if (getTopicManager().containsTopicAndAllPartitionsAreOnline(topic)) {
-          verified = true;
-          break;
-        }
-        attempts++;
-        Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-      }
-      if (!verified) {
-        throw new VeniceException(
-            "Can't find the expected topic " + topic + " for participant message store "
-                + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
-      }
-      return getVeniceWriterFactory().createVeniceWriter(
-          new VeniceWriterOptions.Builder(topic.getName())
-              .setKeySerializer(new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()))
-              .setValueSerializer(new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()))
-              .build());
-    });
   }
 
   /**
@@ -7006,6 +7058,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     participantMessageWriterMap.forEach((k, v) -> Utils.closeQuietlyWithErrorLogged(v));
     participantMessageWriterMap.clear();
     dataRecoveryManager.close();
+    participantStoreClientsManager.close();
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
     Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
