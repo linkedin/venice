@@ -19,7 +19,7 @@ public class ClientStats extends BasicClientStats {
   private final Sensor unhealthyRequestLatencySensor;
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
   private final Sensor requestRetryCountSensor;
-  private final Lazy<Sensor> successRequestDuplicateKeyCountSensor;
+  private final Sensor successRequestDuplicateKeyCountSensor;
   private final Lazy<Sensor> requestSerializationTime;
   private final Lazy<Sensor> requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
@@ -61,7 +61,7 @@ public class ClientStats extends BasicClientStats {
 
     requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
-    successRequestDuplicateKeyCountSensor = registerLazySensor("success_request_duplicate_key_count", new Rate());
+    successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
      * on the caller's thread.
@@ -137,7 +137,7 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
-    successRequestDuplicateKeyCountSensor.get().record(duplicateKeyCount);
+    successRequestDuplicateKeyCountSensor.record(duplicateKeyCount);
   }
 
   public void recordRequestSerializationTime(double latency) {
