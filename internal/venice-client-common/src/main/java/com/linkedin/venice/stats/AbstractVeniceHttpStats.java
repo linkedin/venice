@@ -35,6 +35,7 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
     return super.registerSensor(getFullMetricName(sensorName), null, stats);
   }
 
+  @Override
   protected Lazy<Sensor> registerLazySensor(String sensorName, MeasurableStat... stats) {
     return Lazy.of(() -> registerSensor(getFullMetricName(sensorName), stats));
   }

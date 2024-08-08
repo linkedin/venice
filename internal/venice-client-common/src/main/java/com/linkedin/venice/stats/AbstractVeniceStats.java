@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TO
 
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
@@ -55,6 +56,10 @@ public class AbstractVeniceStats {
 
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
     return registerSensor(getSensorFullName(getName(), sensorName), null, null, stats);
+  }
+
+  protected Lazy<Sensor> registerLazySensor(String sensorName, MeasurableStat... stats) {
+    return Lazy.of(() -> registerSensor(sensorName, stats));
   }
 
   protected Sensor registerSensor(NamedMeasurableStat... stats) {

@@ -68,27 +68,25 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     Rate requestRate = getRequestRate();
     Rate fastClientSlowerRequestRate = new OccurrenceRate();
     this.dualReadFastClientSlowerRequestCountSensor =
-        Lazy.of(() -> registerSensor("dual_read_fastclient_slower_request_count", fastClientSlowerRequestRate));
+        registerLazySensor("dual_read_fastclient_slower_request_count", fastClientSlowerRequestRate);
     this.dualReadFastClientSlowerRequestRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
             fastClientSlowerRequestRate,
             requestRate,
             "dual_read_fastclient_slower_request_ratio"));
     Rate fastClientErrorThinClientSucceedRequestRate = new OccurrenceRate();
-    this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = Lazy.of(
-        () -> registerSensor(
-            "dual_read_fastclient_error_thinclient_succeed_request_count",
-            fastClientErrorThinClientSucceedRequestRate));
+    this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = registerLazySensor(
+        "dual_read_fastclient_error_thinclient_succeed_request_count",
+        fastClientErrorThinClientSucceedRequestRate);
     this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
             fastClientErrorThinClientSucceedRequestRate,
             requestRate,
             "dual_read_fastclient_error_thinclient_succeed_request_ratio"));
-    this.dualReadThinClientFastClientLatencyDeltaSensor = Lazy.of(
-        () -> registerSensorWithDetailedPercentiles(
-            "dual_read_thinclient_fastclient_latency_delta",
-            new Max(),
-            new Avg()));
+    this.dualReadThinClientFastClientLatencyDeltaSensor = registerLazySensorWithDetailedPercentiles(
+        "dual_read_thinclient_fastclient_latency_delta",
+        new Max(),
+        new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
     this.longTailRetryRequestSensor = registerSensor("long_tail_retry_request", new OccurrenceRate());
     this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
@@ -229,21 +227,18 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
 
     public RouteStats(MetricsRepository metricsRepository, String storeName, String instanceName) {
       super(metricsRepository, storeName + "." + StatsUtils.convertHostnameToMetricName(instanceName));
-      this.requestCountSensor = Lazy.of(() -> registerSensor("request_count", new OccurrenceRate()));
-      this.responseWaitingTimeSensor = Lazy.of(
-          () -> registerSensor(
-              "response_waiting_time",
-              TehutiUtils.getPercentileStat(getName(), "response_waiting_time")));
-      this.healthyRequestCountSensor = Lazy.of(() -> registerSensor("healthy_request_count", new OccurrenceRate()));
-      this.quotaExceededRequestCountSensor =
-          Lazy.of(() -> registerSensor("quota_exceeded_request_count", new OccurrenceRate()));
+      this.requestCountSensor = registerLazySensor("request_count", new OccurrenceRate());
+      this.responseWaitingTimeSensor = registerLazySensor(
+          "response_waiting_time",
+          TehutiUtils.getPercentileStat(getName(), "response_waiting_time"));
+      this.healthyRequestCountSensor = registerLazySensor("healthy_request_count", new OccurrenceRate());
+      this.quotaExceededRequestCountSensor = registerLazySensor("quota_exceeded_request_count", new OccurrenceRate());
       this.internalServerErrorRequestCountSensor =
-          Lazy.of(() -> registerSensor("internal_server_error_request_count", new OccurrenceRate()));
+          registerLazySensor("internal_server_error_request_count", new OccurrenceRate());
       this.serviceUnavailableRequestCountSensor =
-          Lazy.of(() -> registerSensor("service_unavailable_request_count", new OccurrenceRate()));
-      this.leakedRequestCountSensor = Lazy.of(() -> registerSensor("leaked_request_count", new OccurrenceRate()));
-      this.otherErrorRequestCountSensor =
-          Lazy.of(() -> registerSensor("other_error_request_count", new OccurrenceRate()));
+          registerLazySensor("service_unavailable_request_count", new OccurrenceRate());
+      this.leakedRequestCountSensor = registerLazySensor("leaked_request_count", new OccurrenceRate());
+      this.otherErrorRequestCountSensor = registerLazySensor("other_error_request_count", new OccurrenceRate());
     }
 
     public void recordRequest() {
