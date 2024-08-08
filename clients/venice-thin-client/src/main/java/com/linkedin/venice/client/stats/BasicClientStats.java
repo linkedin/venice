@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -20,14 +21,14 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
 
-  private final Sensor requestSensor;
-  private final Sensor healthySensor;
-  private final Sensor unhealthySensor;
-  private final Sensor healthyRequestLatencySensor;
-  private final Sensor requestKeyCountSensor;
-  private final Sensor successRequestKeyCountSensor;
-  private final Sensor successRequestRatioSensor;
-  private final Sensor successRequestKeyRatioSensor;
+  private final Lazy<Sensor> requestSensor;
+  private final Lazy<Sensor> healthySensor;
+  private final Lazy<Sensor> unhealthySensor;
+  private final Lazy<Sensor> healthyRequestLatencySensor;
+  private final Lazy<Sensor> requestKeyCountSensor;
+  private final Lazy<Sensor> successRequestKeyCountSensor;
+  private final Lazy<Sensor> successRequestRatioSensor;
+  private final Lazy<Sensor> successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
   private final Rate successRequestKeyCountRate = new Rate();
 
@@ -46,46 +47,68 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         storeName.startsWith(SYSTEM_STORE_NAME_PREFIX) ? dummySystemStoreMetricRepo : metricsRepository,
         storeName,
         requestType);
-    requestSensor = registerSensor("request", requestRate);
     Rate healthyRequestRate = new OccurrenceRate();
-    healthySensor = registerSensor("healthy_request", healthyRequestRate);
-    unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
-    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
-    successRequestRatioSensor =
-        registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "success_request_ratio"));
-    Rate requestKeyCountRate = new Rate();
-    requestKeyCountSensor = registerSensor("request_key_count", requestKeyCountRate, new Avg(), new Max());
-    successRequestKeyCountSensor =
-        registerSensor("success_request_key_count", successRequestKeyCountRate, new Avg(), new Max());
+    successRequestRatioSensor = Lazy.of(
+        () -> registerSensor(
+            new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "success_request_ratio")));
+    requestSensor = Lazy.of(() -> {
+      Sensor requestSensor = registerSensor("request", requestRate);
+      successRequestRatioSensor.get();
+      return requestSensor;
+    });
+    healthySensor = Lazy.of(() -> {
+      Sensor healthySensor = registerSensor("healthy_request", healthyRequestRate);
+      successRequestRatioSensor.get();
+      return healthySensor;
+    });
+    unhealthySensor = Lazy.of(() -> registerSensor("unhealthy_request", new OccurrenceRate()));
+    healthyRequestLatencySensor =
+        Lazy.of(() -> registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg()));
 
-    successRequestKeyRatioSensor = registerSensor(
-        new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate, "success_request_key_ratio"));
+    Rate requestKeyCountRate = new Rate();
+    successRequestKeyRatioSensor = Lazy.of(
+        () -> registerSensor(
+            new TehutiUtils.SimpleRatioStat(
+                successRequestKeyCountRate,
+                requestKeyCountRate,
+                "success_request_key_ratio")));
+    requestKeyCountSensor = Lazy.of(() -> {
+      Sensor requestKeyCountSensor = registerSensor("request_key_count", requestKeyCountRate, new Avg(), new Max());
+      successRequestKeyRatioSensor.get();
+      return requestKeyCountSensor;
+    });
+    successRequestKeyCountSensor = Lazy.of(() -> {
+      Sensor successRequestKeyCountSensor =
+          registerSensor("success_request_key_count", successRequestKeyCountRate, new Avg(), new Max());
+      successRequestKeyRatioSensor.get();
+      return successRequestKeyCountSensor;
+    });
   }
 
   private void recordRequest() {
-    requestSensor.record();
+    requestSensor.get().record();
   }
 
   public void recordHealthyRequest() {
     recordRequest();
-    healthySensor.record();
+    healthySensor.get().record();
   }
 
   public void recordUnhealthyRequest() {
     recordRequest();
-    unhealthySensor.record();
+    unhealthySensor.get().record();
   }
 
   public void recordHealthyLatency(double latency) {
-    healthyRequestLatencySensor.record(latency);
+    healthyRequestLatencySensor.get().record(latency);
   }
 
   public void recordRequestKeyCount(int keyCount) {
-    requestKeyCountSensor.record(keyCount);
+    requestKeyCountSensor.get().record(keyCount);
   }
 
   public void recordSuccessRequestKeyCount(int successKeyCount) {
-    successRequestKeyCountSensor.record(successKeyCount);
+    successRequestKeyCountSensor.get().record(successKeyCount);
   }
 
   protected final Rate getRequestRate() {

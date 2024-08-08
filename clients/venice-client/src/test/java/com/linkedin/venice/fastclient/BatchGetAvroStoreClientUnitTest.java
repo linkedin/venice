@@ -786,7 +786,7 @@ public class BatchGetAvroStoreClientUnitTest {
     if (totalNumberOfSuccessfulKeys > 0) {
       assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
       assertEquals(metrics.get(metricPrefix + "success_request_key_count.Max").value(), totalNumberOfSuccessfulKeys);
-      assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      assertNull(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate"));
     } else {
       assertFalse(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
       assertFalse(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
