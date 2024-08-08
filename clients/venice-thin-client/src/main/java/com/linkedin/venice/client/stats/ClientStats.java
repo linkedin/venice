@@ -29,7 +29,7 @@ public class ClientStats extends BasicClientStats {
   private final Lazy<Sensor> streamingResponseTimeToReceive90PctRecord;
   private final Lazy<Sensor> streamingResponseTimeToReceive95PctRecord;
   private final Lazy<Sensor> streamingResponseTimeToReceive99PctRecord;
-  private final Lazy<Sensor> appTimedOutRequestSensor;
+  private final Sensor appTimedOutRequestSensor;
   private final Lazy<Sensor> appTimedOutRequestResultRatioSensor;
   private final Lazy<Sensor> clientFutureTimeoutSensor;
   private final Sensor retryRequestKeyCountSensor;
@@ -101,7 +101,7 @@ public class ClientStats extends BasicClientStats {
      *
      * This timeout behavior could actually happen before the D2 timeout, which is specified/configured in a different way.
      */
-    appTimedOutRequestSensor = registerLazySensor("app_timed_out_request", new OccurrenceRate());
+    appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
     appTimedOutRequestResultRatioSensor = registerLazySensorWithDetailedPercentiles(
         "app_timed_out_request_result_ratio",
         new Avg(),
@@ -177,7 +177,7 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordAppTimedOutRequest() {
-    appTimedOutRequestSensor.get().record();
+    appTimedOutRequestSensor.record();
   }
 
   public void recordAppTimedOutRequestResultRatio(double ratio) {
