@@ -2117,10 +2117,11 @@ public class ConfigKeys {
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
 
   /**
-   * Controller config for the default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes}.
-   * Only used in batch push jobs and partial updates.
+   * Config for the default value which is filled in when the store-level config
+   * {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} is left unset. Used as a controller config for
+   * batch push jobs. Used as a server config for nearline jobs / partial updates.
    */
-  public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
+  public static final String DEFAULT_MAX_RECORD_SIZE_BYTES = "default.max.record.size.bytes";
 
   /**
    * Percentage of total single get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the

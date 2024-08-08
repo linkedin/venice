@@ -279,6 +279,10 @@ public class ByteUtils {
     return originalBuffer.getInt();
   }
 
+  public static ByteBuffer prependIntHeaderToByteBuffer(ByteBuffer originalBuffer, int header) {
+    return prependIntHeaderToByteBuffer(originalBuffer, header, false);
+  }
+
   /**
    * This function will return a ByteBuffer that has the integer prepended as a header from the current position. The
    * position of the buffer will be the same as that of the input.

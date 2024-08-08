@@ -2,6 +2,7 @@ package com.linkedin.davinci.config;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -10,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -140,6 +142,8 @@ import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
@@ -480,6 +484,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
+  private final int defaultMaxRecordSizeBytes;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -794,6 +799,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND, -1);
     resubscriptionTriggeredByVersionIngestionContextChangeEnabled =
         serverProperties.getBoolean(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, false);
+    defaultMaxRecordSizeBytes =
+        serverProperties.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL);
+    if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
+      throw new VeniceException(
+          DEFAULT_MAX_RECORD_SIZE_BYTES + ": " + defaultMaxRecordSizeBytes + " must be at least "
+              + generateHumanReadableByteCountString(BYTES_PER_MB));
+    }
   }
 
   long extractIngestionMemoryLimit(
@@ -1402,6 +1414,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getIdentityParserClassName() {
     return identityParserClassName;
+  }
+
+  public int getDefaultMaxRecordSizeBytes() {
+    return defaultMaxRecordSizeBytes;
   }
 
   public String getRocksDBPath() {
