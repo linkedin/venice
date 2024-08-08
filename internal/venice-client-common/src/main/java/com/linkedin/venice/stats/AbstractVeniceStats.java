@@ -232,6 +232,10 @@ public class AbstractVeniceStats {
     return registerSensorIfAbsent(getName(), sensorName, null, null, stats);
   }
 
+  protected Lazy<Sensor> registerLazySensorIfAbsent(String sensorName, MeasurableStat... stats) {
+    return Lazy.of(() -> registerSensorIfAbsent(sensorName, stats));
+  }
+
   protected Sensor registerSensorIfAbsent(NamedMeasurableStat... stats) {
     if (stats.length == 0) {
       throw new IllegalArgumentException("At least one stat must be provided");

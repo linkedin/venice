@@ -21,8 +21,8 @@ public class MetadataUpdateStats extends AbstractVeniceStats {
 
   public MetadataUpdateStats(MetricsRepository metricsRepository) {
     super(metricsRepository, METRICS_PREFIX);
-    metadataUpdateQueueLengthSensor = Lazy.of(() -> registerSensor("queue_length", new Gauge()));
-    metadataUpdateQueueErrorSensor = Lazy.of(() -> registerSensor("queue_update_error", new Gauge()));
+    metadataUpdateQueueLengthSensor = registerLazySensor("queue_length", new Gauge());
+    metadataUpdateQueueErrorSensor = registerLazySensor("queue_update_error", new Gauge());
     // Reset metadata update queue error Gauge.
     recordMetadataQueueUpdateError(0.0);
   }

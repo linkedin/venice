@@ -16,7 +16,7 @@ public class IsolatedIngestionProcessHeartbeatStats extends AbstractVeniceStats 
 
   public IsolatedIngestionProcessHeartbeatStats(MetricsRepository metricsRepository) {
     super(metricsRepository, METRICS_PREFIX);
-    heartbeatAgeSensor = Lazy.of(() -> registerSensor("heartbeat_age", new Gauge()));
+    heartbeatAgeSensor = registerLazySensor("heartbeat_age", new Gauge());
     forkedProcessRestartSensor = registerSensor("forked_process_restart", new OccurrenceRate());
   }
 

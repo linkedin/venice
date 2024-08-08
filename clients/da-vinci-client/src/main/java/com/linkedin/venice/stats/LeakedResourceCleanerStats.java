@@ -16,7 +16,7 @@ public class LeakedResourceCleanerStats extends AbstractVeniceStats {
   public LeakedResourceCleanerStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "LeakedResourceCleaner");
 
-    this.leakedVersionTotalSensor = Lazy.of(() -> registerSensor("leaked_version", new Total()));
+    this.leakedVersionTotalSensor = registerLazySensor("leaked_version", new Total());
   }
 
   public void recordLeakedVersion() {

@@ -39,9 +39,8 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
             (ignored, ignored2) -> minMemoryUsagePerDrainerSupplier.getAsLong(),
             "min_memory_usage_per_writer"));
 
-    internalProcessingLatencySensor =
-        Lazy.of(() -> registerSensor("internal_processing_latency", new Avg(), new Max()));
-    internalProcessingErrorSensor = Lazy.of(() -> registerSensor("internal_processing_error", new OccurrenceRate()));
+    internalProcessingLatencySensor = registerLazySensor("internal_processing_latency", new Avg(), new Max());
+    internalProcessingErrorSensor = registerLazySensor("internal_processing_error", new OccurrenceRate());
   }
 
   public void recordInternalProcessingError() {

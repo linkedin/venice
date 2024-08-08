@@ -41,10 +41,10 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
 
   public ParticipantStoreConsumptionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, clusterName + NAME_SUFFIX);
-    killPushJobLatencySensor = Lazy.of(() -> registerSensorIfAbsent(KILL_PUSH_JOB_LATENCY, new Avg(), new Max()));
-    killedPushJobsSensor = Lazy.of(() -> registerSensorIfAbsent(KILLED_PUSH_JOBS, new Count()));
-    failedInitializationSensor = Lazy.of(() -> registerSensorIfAbsent(FAILED_INITIALIZATION, new Count()));
-    killPushJobFailedConsumption = Lazy.of(() -> registerSensorIfAbsent(KILL_PUSH_JOB_FAILED_CONSUMPTION, new Count()));
+    killPushJobLatencySensor = registerLazySensorIfAbsent(KILL_PUSH_JOB_LATENCY, new Avg(), new Max());
+    killedPushJobsSensor = registerLazySensorIfAbsent(KILLED_PUSH_JOBS, new Count());
+    failedInitializationSensor = registerLazySensorIfAbsent(FAILED_INITIALIZATION, new Count());
+    killPushJobFailedConsumption = registerLazySensorIfAbsent(KILL_PUSH_JOB_FAILED_CONSUMPTION, new Count());
     heartbeatSensor = registerSensorIfAbsent(HEARTBEAT, new OccurrenceRate());
   }
 

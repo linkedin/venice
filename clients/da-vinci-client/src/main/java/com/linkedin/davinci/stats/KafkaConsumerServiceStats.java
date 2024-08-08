@@ -72,12 +72,12 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
      */
 
     // the consumer idle time
-    idleTimeSensor = Lazy.of(() -> registerSensor("idle_time", new Max()));
+    idleTimeSensor = registerLazySensor("idle_time", new Max());
     // the number of poll requests
     pollRequestSensor =
         registerOnlyTotalRate("consumer_poll_request", totalStats, () -> totalStats.pollRequestSensor, time);
     // Notice that "pollRequestLatencySensor" only reports correct data when consumer task threads are not stuck
-    pollRequestLatencySensor = Lazy.of(() -> registerSensor("consumer_poll_request_latency", new Avg(), new Max()));
+    pollRequestLatencySensor = registerLazySensor("consumer_poll_request_latency", new Avg(), new Max());
     pollNonZeroResultNumSensor = registerOnlyTotalRate(
         "consumer_poll_non_zero_result_num",
         totalStats,
@@ -97,17 +97,17 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     pollRequestError = registerSensor("consumer_poll_error", new OccurrenceRate());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsProducingToWriterBufferLatencySensor =
-        Lazy.of(() -> registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max()));
-    detectedDeletedTopicNumSensor = Lazy.of(() -> registerSensor("detected_deleted_topic_num", new Total()));
+        registerLazySensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max());
+    detectedDeletedTopicNumSensor = registerLazySensor("detected_deleted_topic_num", new Total());
     detectedNoRunningIngestionTopicPartitionNumSensor =
-        Lazy.of(() -> registerSensor("detected_no_running_ingestion_topic_partition_num", new Total()));
-    delegateSubscribeLatencySensor = Lazy.of(() -> registerSensor("delegate_subscribe_latency", new Avg(), new Max()));
+        registerLazySensor("detected_no_running_ingestion_topic_partition_num", new Total());
+    delegateSubscribeLatencySensor = registerLazySensor("delegate_subscribe_latency", new Avg(), new Max());
     updateCurrentAssignmentLatencySensor =
-        Lazy.of(() -> registerSensor("update_current_assignment_latency", new Avg(), new Max()));
+        registerLazySensor("update_current_assignment_latency", new Avg(), new Max());
 
-    minPartitionsPerConsumer = Lazy.of(() -> registerSensor("min_partitions_per_consumer", new Gauge()));
-    maxPartitionsPerConsumer = Lazy.of(() -> registerSensor("max_partitions_per_consumer", new Gauge()));
-    avgPartitionsPerConsumer = Lazy.of(() -> registerSensor("avg_partitions_per_consumer", new Gauge()));
+    minPartitionsPerConsumer = registerLazySensor("min_partitions_per_consumer", new Gauge());
+    maxPartitionsPerConsumer = registerLazySensor("max_partitions_per_consumer", new Gauge());
+    avgPartitionsPerConsumer = registerLazySensor("avg_partitions_per_consumer", new Gauge());
 
     Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
     Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
