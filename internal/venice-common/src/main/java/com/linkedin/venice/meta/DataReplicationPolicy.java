@@ -6,8 +6,9 @@ import java.util.Map;
 
 
 /**
- * Enums of the policies used to decide how real-time samza data is replicated.
- * Note: Data replication policy does not play any role for AA enabled hybrid stores.
+ * The data replication policy determines which fabric to use for sending real-time writes from clients and
+ * where to direct servers for real-time data consumption. If active-active replication is enabled,
+ * the data replication policy is bypassed, as writes are sent to the local fabric.
  */
 public enum DataReplicationPolicy {
   /**

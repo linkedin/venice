@@ -11,23 +11,28 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
+import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
+import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
+import static com.linkedin.venice.meta.DataReplicationPolicy.AGGREGATE;
+import static com.linkedin.venice.meta.DataReplicationPolicy.NONE;
+import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -35,6 +40,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -87,7 +93,7 @@ public class CreateVersionTest {
     queryMap.put(NAME, new String[] { STORE_NAME });
     queryMap.put(STORE_SIZE, new String[] { "0" });
     queryMap.put(REPUSH_SOURCE_VERSION, new String[] { "0" });
-    queryMap.put(PUSH_TYPE, new String[] { Version.PushType.INCREMENTAL.name() });
+    queryMap.put(PUSH_TYPE, new String[] { PushType.INCREMENTAL.name() });
     queryMap.put(PUSH_JOB_ID, new String[] { JOB_ID });
     queryMap.put(HOSTNAME, new String[] { "localhost" });
 
@@ -157,7 +163,7 @@ public class CreateVersionTest {
             JOB_ID,
             0,
             0,
-            Version.PushType.INCREMENTAL,
+            PushType.INCREMENTAL,
             false,
             false,
             null,
@@ -211,7 +217,7 @@ public class CreateVersionTest {
             JOB_ID,
             0,
             0,
-            Version.PushType.INCREMENTAL,
+            PushType.INCREMENTAL,
             false,
             false,
             null,
@@ -265,7 +271,7 @@ public class CreateVersionTest {
             JOB_ID,
             0,
             0,
-            Version.PushType.INCREMENTAL,
+            PushType.INCREMENTAL,
             false,
             false,
             null,
@@ -307,8 +313,8 @@ public class CreateVersionTest {
             0,
             1,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
+            NON_AGGREGATE,
+            REWIND_FROM_EOP));
     return store;
   }
 
@@ -383,5 +389,72 @@ public class CreateVersionTest {
     creationResponse.setKafkaBootstrapServers("default.src.region.com");
     doReturn(null).when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc1");
     overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, "dc1", null, true, true);
+  }
+
+  @Test
+  public void testValidatePushTypeForStreamPushType() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
+    // push type is STREAM and store is not hybrid
+    Store store1 = mock(Store.class);
+    when(store1.isHybrid()).thenReturn(false);
+    Exception e = expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.STREAM, store1));
+    assertTrue(e.getMessage().contains("which is not configured to be a hybrid store"));
+
+    // push type is STREAM and store is AA enabled hybrid
+    Store store2 = mock(Store.class);
+    when(store2.isHybrid()).thenReturn(true);
+    when(store2.isActiveActiveReplicationEnabled()).thenReturn(true);
+    createVersion.validatePushType(PushType.STREAM, store2);
+
+    // push type is STREAM and store is not AA enabled hybrid but has NON_AGGREGATE replication policy
+    Store store3 = mock(Store.class);
+    when(store3.isHybrid()).thenReturn(true);
+    when(store3.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store3.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NON_AGGREGATE, REWIND_FROM_EOP));
+    createVersion.validatePushType(PushType.STREAM, store3);
+
+    // push type is STREAM and store is not AA enabled hybrid but has AGGREGATE replication policy
+    Store store4 = mock(Store.class);
+    when(store4.isHybrid()).thenReturn(true);
+    when(store4.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store4.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, AGGREGATE, REWIND_FROM_EOP));
+    createVersion.validatePushType(PushType.STREAM, store4);
+
+    // push type is STREAM and store is not AA enabled hybrid but has NONE replication policy
+    Store store5 = mock(Store.class);
+    when(store5.isHybrid()).thenReturn(true);
+    when(store5.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store5.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NONE, REWIND_FROM_EOP));
+    Exception e5 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.STREAM, store5));
+    assertTrue(e5.getMessage().contains("which is configured to have a hybrid data replication policy"));
+
+    // push type is STREAM and store is not AA enabled hybrid but has ACTIVE_ACTIVE replication policy
+    Store store6 = mock(Store.class);
+    when(store6.isHybrid()).thenReturn(true);
+    when(store6.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store6.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, ACTIVE_ACTIVE, REWIND_FROM_EOP));
+    Exception e6 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.STREAM, store6));
+    assertTrue(e6.getMessage().contains("which is configured to have a hybrid data replication policy"));
+  }
+
+  @Test
+  public void testValidatePushTypeForIncrementalPushPushType() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
+    // push type is INCREMENTAL and store is not hybrid
+    Store store1 = mock(Store.class);
+    when(store1.isHybrid()).thenReturn(false);
+    Exception e =
+        expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.INCREMENTAL, store1));
+    assertTrue(e.getMessage().contains("which does not have hybrid mode enabled"));
+
+    // push type is INCREMENTAL and store is hybrid but incremental push is not enabled
+    Store store2 = mock(Store.class);
+    when(store2.isHybrid()).thenReturn(true);
+    when(store2.isIncrementalPushEnabled()).thenReturn(false);
+    Exception e2 =
+        expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.INCREMENTAL, store2));
+    assertTrue(e2.getMessage().contains("which does not have incremental push enabled"));
   }
 }
