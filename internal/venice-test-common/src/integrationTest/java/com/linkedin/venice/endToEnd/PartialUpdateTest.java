@@ -533,7 +533,7 @@ public class PartialUpdateTest {
       veniceClusterWrapper.waitVersion(storeName, 1);
       // Produce partial updates on batch pushed keys
       SystemProducer veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
-      for (int i = 1; i < 10; i++) {
+      for (int i = 1; i < 100; i++) {
         GenericRecord partialUpdateRecord =
             new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("key", "new_name_" + i).build();
         sendStreamingRecord(veniceProducer, storeName, String.valueOf(i), partialUpdateRecord);
@@ -543,7 +543,7 @@ public class PartialUpdateTest {
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           try {
-            for (int i = 1; i < 10; i++) {
+            for (int i = 1; i < 100; i++) {
               String key = String.valueOf(i);
               GenericRecord value = readValue(storeReader, key);
               assertNotNull(value, "Key " + key + " should not be missing!");

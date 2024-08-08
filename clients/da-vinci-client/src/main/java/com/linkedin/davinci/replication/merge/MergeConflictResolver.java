@@ -13,6 +13,7 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.davinci.serializer.avro.fast.MapOrderPreservingFastSerDeFactory;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -22,6 +23,7 @@ import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
@@ -226,7 +228,7 @@ public class MergeConflictResolver {
   }
 
   public MergeConflictResult update(
-      Lazy<ByteBuffer> oldValueBytesProvider,
+      ByteBuffer oldValueBytesProvider,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       ByteBuffer updateBytes,
       final int incomingValueSchemaId,
@@ -235,7 +237,7 @@ public class MergeConflictResolver {
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
       final int newValueColoID,
-      final int oldValueSchemaId) {
+      final ChunkedValueManifest oldValueManifest) {
     final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema();
     if (supersetValueSchemaEntry == null) {
       throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
@@ -250,10 +252,10 @@ public class MergeConflictResolver {
       return MergeConflictResult.getIgnoredResult();
     }
     ValueAndRmd<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
-        oldValueBytesProvider.get(),
+        oldValueBytesProvider,
         rmdWithValueSchemaId,
         supersetValueSchemaEntry,
-        oldValueSchemaId);
+        oldValueManifest);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaId();
     if (oldValueSchemaID == -1) {
@@ -621,7 +623,7 @@ public class MergeConflictResolver {
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       SchemaEntry superSetSchemaSchemaEntry,
-      int oldSchemaId) {
+      ChunkedValueManifest oldValueManifest) {
 
     if (rmdWithValueSchemaId == null) {
       GenericRecord newValue;
@@ -636,9 +638,18 @@ public class MergeConflictResolver {
          * schema (and therefore should not drop fields after the update).
          */
 
-        int schemaId = superSetSchemaSchemaEntry.getId();
-        newValue = deserializerCacheForFullValue.get(oldSchemaId, superSetSchemaSchemaEntry.getId())
-            .deserialize(oldValueBytes);
+        int schemaId;
+        if (oldValueManifest != null) {
+          schemaId = oldValueManifest.getSchemaId();
+        } else {
+          schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
+        }
+        try {
+          newValue =
+              deserializerCacheForFullValue.get(schemaId, superSetSchemaSchemaEntry.getId()).deserialize(oldValueBytes);
+        } catch (Exception ex) {
+          throw ex;
+        }
       }
       GenericRecord newRmd = newRmdCreator.apply(superSetSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
