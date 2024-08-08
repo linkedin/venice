@@ -29,7 +29,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor pollResultNumSensor;
   private final LongAdderRateGauge pollNonZeroResultNumSensor;
 
-  private final Lazy<Sensor> pollRequestError;
+  private final Sensor pollRequestError;
   private final Lazy<Sensor> consumerRecordsProducingToWriterBufferLatencySensor;
   private final Lazy<Sensor> detectedDeletedTopicNumSensor;
   private final Lazy<Sensor> detectedNoRunningIngestionTopicPartitionNumSensor;
@@ -38,10 +38,10 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Lazy<Sensor> maxPartitionsPerConsumer;
   private final Lazy<Sensor> minPartitionsPerConsumer;
   private final Lazy<Sensor> avgPartitionsPerConsumer;
-  private final Lazy<Sensor> getOffsetLagIsAbsentSensor;
-  private final Lazy<Sensor> getOffsetLagIsPresentSensor;
-  private final Lazy<Sensor> getLatestOffsetIsAbsentSensor;
-  private final Lazy<Sensor> getLatestOffsetIsPresentSensor;
+  private final Sensor getOffsetLagIsAbsentSensor;
+  private final Sensor getOffsetLagIsPresentSensor;
+  private final Sensor getLatestOffsetIsAbsentSensor;
+  private final Sensor getLatestOffsetIsPresentSensor;
   private final Sensor byteSizeSensor;
   private final Lazy<Sensor> idleTimeSensor;
 
@@ -94,7 +94,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
             "max_elapsed_time_since_last_successful_poll"));
     // consumer record number per second returned by Kafka consumer poll.
 
-    pollRequestError = Lazy.of(() -> registerSensor("consumer_poll_error", new OccurrenceRate()));
+    pollRequestError = registerSensor("consumer_poll_error", new OccurrenceRate());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsProducingToWriterBufferLatencySensor =
         Lazy.of(() -> registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max()));
@@ -109,19 +109,17 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     maxPartitionsPerConsumer = Lazy.of(() -> registerSensor("max_partitions_per_consumer", new Gauge()));
     avgPartitionsPerConsumer = Lazy.of(() -> registerSensor("avg_partitions_per_consumer", new Gauge()));
 
-    Lazy<Sensor[]> offsetLagParent =
-        Lazy.of(() -> new Sensor[] { registerSensor("getOffsetLag", new OccurrenceRate()) });
-    this.getOffsetLagIsAbsentSensor =
-        Lazy.of(() -> registerSensor("getOffsetLagIsAbsent", offsetLagParent.get(), new OccurrenceRate()));
-    this.getOffsetLagIsPresentSensor =
-        Lazy.of(() -> registerSensor("getOffsetLagIsPresent", offsetLagParent.get(), new OccurrenceRate()));
+    Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
+    Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
+    this.getOffsetLagIsAbsentSensor = registerSensor("getOffsetLagIsAbsent", offsetLagParent, new OccurrenceRate());
+    this.getOffsetLagIsPresentSensor = registerSensor("getOffsetLagIsPresent", offsetLagParent, new OccurrenceRate());
 
-    Lazy<Sensor[]> latestOffsetParent =
-        Lazy.of(() -> new Sensor[] { registerSensor("getLatestOffset", new OccurrenceRate()) });
+    Sensor getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
+    Sensor[] latestOffsetParent = new Sensor[] { getLatestOffsetSensor };
     this.getLatestOffsetIsAbsentSensor =
-        Lazy.of(() -> registerSensor("getLatestOffsetIsAbsent", latestOffsetParent.get(), new OccurrenceRate()));
+        registerSensor("getLatestOffsetIsAbsent", latestOffsetParent, new OccurrenceRate());
     this.getLatestOffsetIsPresentSensor =
-        Lazy.of(() -> registerSensor("getLatestOffsetIsPresent", latestOffsetParent.get(), new OccurrenceRate()));
+        registerSensor("getLatestOffsetIsPresent", latestOffsetParent, new OccurrenceRate());
   }
 
   public void recordPollRequestLatency(double latency) {
@@ -142,7 +140,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   }
 
   public void recordPollError() {
-    pollRequestError.get().record();
+    pollRequestError.record();
   }
 
   public void recordDetectedDeletedTopicNum(int count) {
@@ -174,19 +172,19 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   }
 
   public void recordOffsetLagIsAbsent() {
-    getOffsetLagIsAbsentSensor.get().record();
+    getOffsetLagIsAbsentSensor.record();
   }
 
   public void recordOffsetLagIsPresent() {
-    getOffsetLagIsPresentSensor.get().record();
+    getOffsetLagIsPresentSensor.record();
   }
 
   public void recordLatestOffsetIsAbsent() {
-    getLatestOffsetIsAbsentSensor.get().record();
+    getLatestOffsetIsAbsentSensor.record();
   }
 
   public void recordLatestOffsetIsPresent() {
-    getLatestOffsetIsPresentSensor.get().record();
+    getLatestOffsetIsPresentSensor.record();
   }
 
   public void recordByteSizePerPoll(double count) {
