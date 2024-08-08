@@ -106,10 +106,10 @@ public class PubSubClientsFactory {
     String className;
     if (properties.containsKey(configKey)) {
       className = properties.getString(configKey);
-      LOGGER.info("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
+      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
     } else {
       className = defaultClassName;
-      LOGGER.info("Creating pub-sub {} adapter factory instance with default class: {}", factoryType, className);
+      LOGGER.debug("Creating pub-sub {} adapter factory instance with default class: {}", factoryType, className);
     }
 
     return createInstance(className);

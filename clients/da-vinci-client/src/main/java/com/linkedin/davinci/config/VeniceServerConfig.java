@@ -743,7 +743,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             .filter(s -> s.length() > 0)
             .collect(Collectors.toList());
     ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
-    LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
+    LOGGER.debug("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
     ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
     if (!serverProperties.getString(INGESTION_MEMORY_LIMIT_STORE_LIST, "").isEmpty()) {
       ingestionMemoryLimitStoreSet =
