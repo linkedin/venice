@@ -85,21 +85,21 @@ public class IngestionStats {
   private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
 
   // write path latency sensors
-  private final WritePathLatencySensor producerSourceBrokerLatencySensor;
-  private final WritePathLatencySensor sourceBrokerLeaderConsumerLatencySensor;
-  private final WritePathLatencySensor producerLocalBrokerLatencySensor;
-  private final WritePathLatencySensor localBrokerFollowerConsumerLatencySensor;
-  private final WritePathLatencySensor leaderProducerCompletionLatencySensor;
-  private final WritePathLatencySensor subscribePrepLatencySensor;
-  private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
-  private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
-  private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
-  private Lazy<WritePathLatencySensor> transformerLatencySensor;
-  private Lazy<WritePathLatencySensor> transformerLifecycleStartLatencySensor;
-  private Lazy<WritePathLatencySensor> transformerLifecycleEndLatencySensor;
-  private final WritePathLatencySensor producerCallBackLatency;
-  private final WritePathLatencySensor leaderPreprocessingLatency;
-  private final WritePathLatencySensor internalPreprocessingLatency;
+  private final Lazy<WritePathLatencySensor> producerSourceBrokerLatencySensor;
+  private final Lazy<WritePathLatencySensor> sourceBrokerLeaderConsumerLatencySensor;
+  private final Lazy<WritePathLatencySensor> producerLocalBrokerLatencySensor;
+  private final Lazy<WritePathLatencySensor> localBrokerFollowerConsumerLatencySensor;
+  private final Lazy<WritePathLatencySensor> leaderProducerCompletionLatencySensor;
+  private final Lazy<WritePathLatencySensor> subscribePrepLatencySensor;
+  private final Lazy<WritePathLatencySensor> consumedRecordEndToEndProcessingLatencySensor;
+  private final Lazy<WritePathLatencySensor> nearlineProducerToLocalBrokerLatencySensor;
+  private final Lazy<WritePathLatencySensor> nearlineLocalBrokerToReadyToServeLatencySensor;
+  private final Lazy<WritePathLatencySensor> transformerLatencySensor;
+  private final Lazy<WritePathLatencySensor> transformerLifecycleStartLatencySensor;
+  private final Lazy<WritePathLatencySensor> transformerLifecycleEndLatencySensor;
+  private final Lazy<WritePathLatencySensor> producerCallBackLatency;
+  private final Lazy<WritePathLatencySensor> leaderPreprocessingLatency;
+  private final Lazy<WritePathLatencySensor> internalPreprocessingLatency;
   // Measure the count of ignored updates due to conflict resolution
   private final LongAdderRateGauge conflictResolutionUpdateIgnoredSensor = new LongAdderRateGauge();
   // Measure the total number of incoming conflict resolutions
@@ -110,14 +110,14 @@ public class IngestionStats {
 
   /** Record a version-level offset rewind events for VTs across all stores. */
   private final Count versionTopicEndOffsetRewindCount = new Count();
-  private final Sensor versionTopicEndOffsetRewindSensor;
+  private final Lazy<Sensor> versionTopicEndOffsetRewindSensor;
   private final MetricsRepository localMetricRepository;
 
   // Measure the max idle time among partitions for a given the store on this host
   private final LongAdderRateGauge idleTimeSensor = new LongAdderRateGauge();
 
   private final Count transformerErrorCount = new Count();
-  private Lazy<Sensor> transformerErrorSensor;
+  private final Lazy<Sensor> transformerErrorSensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -172,35 +172,51 @@ public class IngestionStats {
     registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
     registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
-    versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
-    versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
+    versionTopicEndOffsetRewindSensor = Lazy.of(() -> {
+      Sensor versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
+      versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
+      return versionTopicEndOffsetRewindSensor;
+    });
 
-    producerSourceBrokerLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_source_broker_latency");
-    sourceBrokerLeaderConsumerLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "source_broker_to_leader_consumer_latency");
-    producerLocalBrokerLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_local_broker_latency");
-    localBrokerFollowerConsumerLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "local_broker_to_follower_consumer_latency");
-    leaderProducerCompletionLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "leader_producer_completion_latency");
+    producerSourceBrokerLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_source_broker_latency"));
+    sourceBrokerLeaderConsumerLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(
+            localMetricRepository,
+            METRIC_CONFIG,
+            "source_broker_to_leader_consumer_latency"));
+    producerLocalBrokerLatencySensor = Lazy
+        .of(() -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_local_broker_latency"));
+    localBrokerFollowerConsumerLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(
+            localMetricRepository,
+            METRIC_CONFIG,
+            "local_broker_to_follower_consumer_latency"));
+    leaderProducerCompletionLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "leader_producer_completion_latency"));
     subscribePrepLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, SUBSCRIBE_ACTION_PREP_LATENCY);
-    consumedRecordEndToEndProcessingLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY);
-    nearlineProducerToLocalBrokerLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY);
-    nearlineLocalBrokerToReadyToServeLatencySensor = new WritePathLatencySensor(
-        localMetricRepository,
-        METRIC_CONFIG,
-        NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY);
+        Lazy.of(() -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, SUBSCRIBE_ACTION_PREP_LATENCY));
+    consumedRecordEndToEndProcessingLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(
+            localMetricRepository,
+            METRIC_CONFIG,
+            CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY));
+    nearlineProducerToLocalBrokerLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(
+            localMetricRepository,
+            METRIC_CONFIG,
+            NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY));
+    nearlineLocalBrokerToReadyToServeLatencySensor = Lazy.of(
+        () -> new WritePathLatencySensor(
+            localMetricRepository,
+            METRIC_CONFIG,
+            NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY));
     producerCallBackLatency =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, PRODUCER_CALLBACK_LATENCY);
+        Lazy.of(() -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, PRODUCER_CALLBACK_LATENCY));
     leaderPreprocessingLatency =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, LEADER_PREPROCESSING_LATENCY);
+        Lazy.of(() -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, LEADER_PREPROCESSING_LATENCY));
     internalPreprocessingLatency =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, INTERNAL_PREPROCESSING_LATENCY);
+        Lazy.of(() -> new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, INTERNAL_PREPROCESSING_LATENCY));
 
     registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
     registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
@@ -345,51 +361,51 @@ public class IngestionStats {
   }
 
   public double getSubscribePrepLatencyAvg() {
-    return subscribePrepLatencySensor.getAvg();
+    return subscribePrepLatencySensor.get().getAvg();
   }
 
   public double getSubscribePrepLatencyMax() {
-    return subscribePrepLatencySensor.getMax();
+    return subscribePrepLatencySensor.get().getMax();
   }
 
   public void recordSubscribePrepLatency(double value, long currentTimeMs) {
-    subscribePrepLatencySensor.record(value, currentTimeMs);
+    subscribePrepLatencySensor.get().record(value, currentTimeMs);
   }
 
   public double getProducerCallBackLatencyMax() {
-    return producerCallBackLatency.getMax();
+    return producerCallBackLatency.get().getMax();
   }
 
   public void recordProducerCallBackLatency(double value, long currentTimeMs) {
-    producerCallBackLatency.record(value, currentTimeMs);
+    producerCallBackLatency.get().record(value, currentTimeMs);
   }
 
   public double getLeaderPreprocessingLatencyMax() {
-    return leaderPreprocessingLatency.getMax();
+    return leaderPreprocessingLatency.get().getMax();
   }
 
   public double getLeaderPreprocessingLatencyAvg() {
-    return leaderPreprocessingLatency.getAvg();
+    return leaderPreprocessingLatency.get().getAvg();
   }
 
   public void recordLeaderPreprocessingLatency(double value, long currentTimeMs) {
-    leaderPreprocessingLatency.record(value, currentTimeMs);
+    leaderPreprocessingLatency.get().record(value, currentTimeMs);
   }
 
   public double getInternalPreprocessingLatencyAvg() {
-    return internalPreprocessingLatency.getAvg();
+    return internalPreprocessingLatency.get().getAvg();
   }
 
   public double getInternalPreprocessingLatencyMax() {
-    return internalPreprocessingLatency.getMax();
+    return internalPreprocessingLatency.get().getMax();
   }
 
   public void recordInternalPreprocessingLatency(double value, long currentTimeMs) {
-    internalPreprocessingLatency.record(value, currentTimeMs);
+    internalPreprocessingLatency.get().record(value, currentTimeMs);
   }
 
   public void recordVersionTopicEndOffsetRewind() {
-    versionTopicEndOffsetRewindSensor.record();
+    versionTopicEndOffsetRewindSensor.get().record();
   }
 
   public double getVersionTopicEndOffsetRewindCount() {
@@ -397,15 +413,15 @@ public class IngestionStats {
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyAvg() {
-    return consumedRecordEndToEndProcessingLatencySensor.getAvg();
+    return consumedRecordEndToEndProcessingLatencySensor.get().getAvg();
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyMax() {
-    return consumedRecordEndToEndProcessingLatencySensor.getMax();
+    return consumedRecordEndToEndProcessingLatencySensor.get().getMax();
   }
 
   public void recordConsumedRecordEndToEndProcessingLatency(double value, long currentTimeMs) {
-    consumedRecordEndToEndProcessingLatencySensor.record(value, currentTimeMs);
+    consumedRecordEndToEndProcessingLatencySensor.get().record(value, currentTimeMs);
   }
 
   public double getRecordsConsumed() {
@@ -557,27 +573,27 @@ public class IngestionStats {
   }
 
   public double getNearlineProducerToLocalBrokerLatencyAvg() {
-    return unAvailableToZero(nearlineProducerToLocalBrokerLatencySensor.getAvg());
+    return unAvailableToZero(nearlineProducerToLocalBrokerLatencySensor.get().getAvg());
   }
 
   public double getNearlineProducerToLocalBrokerLatencyMax() {
-    return unAvailableToZero(nearlineProducerToLocalBrokerLatencySensor.getMax());
+    return unAvailableToZero(nearlineProducerToLocalBrokerLatencySensor.get().getMax());
   }
 
   public double getNearlineLocalBrokerToReadyToServeLatencyAvg() {
-    return unAvailableToZero(nearlineLocalBrokerToReadyToServeLatencySensor.getAvg());
+    return unAvailableToZero(nearlineLocalBrokerToReadyToServeLatencySensor.get().getAvg());
   }
 
   public double getNearlineLocalBrokerToReadyToServeLatencyMax() {
-    return unAvailableToZero(nearlineLocalBrokerToReadyToServeLatencySensor.getMax());
+    return unAvailableToZero(nearlineLocalBrokerToReadyToServeLatencySensor.get().getMax());
   }
 
   public void recordNearlineProducerToLocalBrokerLatency(double value, long currentTimeMs) {
-    nearlineProducerToLocalBrokerLatencySensor.record(value, currentTimeMs);
+    nearlineProducerToLocalBrokerLatencySensor.get().record(value, currentTimeMs);
   }
 
   public void recordNearlineLocalBrokerToReadyToServeLatency(double value, long currentTimeMs) {
-    nearlineLocalBrokerToReadyToServeLatencySensor.record(value, currentTimeMs);
+    nearlineLocalBrokerToReadyToServeLatencySensor.get().record(value, currentTimeMs);
   }
 
   public void recordTransformerError(double value, long currentTimeMs) {
@@ -609,43 +625,43 @@ public class IngestionStats {
   }
 
   public WritePathLatencySensor getProducerSourceBrokerLatencySensor() {
-    return producerSourceBrokerLatencySensor;
+    return producerSourceBrokerLatencySensor.get();
   }
 
   public void recordProducerSourceBrokerLatencyMs(double value, long currentTimeMs) {
-    producerSourceBrokerLatencySensor.record(value, currentTimeMs);
+    producerSourceBrokerLatencySensor.get().record(value, currentTimeMs);
   }
 
   public void recordSourceBrokerLeaderConsumerLatencyMs(double value, long currentTimeMs) {
-    sourceBrokerLeaderConsumerLatencySensor.record(value, currentTimeMs);
+    sourceBrokerLeaderConsumerLatencySensor.get().record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getSourceBrokerLeaderConsumerLatencySensor() {
-    return sourceBrokerLeaderConsumerLatencySensor;
+    return sourceBrokerLeaderConsumerLatencySensor.get();
   }
 
   public void recordProducerLocalBrokerLatencyMs(double value, long currentTimeMs) {
-    producerLocalBrokerLatencySensor.record(value, currentTimeMs);
+    producerLocalBrokerLatencySensor.get().record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getProducerLocalBrokerLatencySensor() {
-    return producerLocalBrokerLatencySensor;
+    return producerLocalBrokerLatencySensor.get();
   }
 
   public void recordLocalBrokerFollowerConsumerLatencyMs(double value, long currentTimeMs) {
-    localBrokerFollowerConsumerLatencySensor.record(value, currentTimeMs);
+    localBrokerFollowerConsumerLatencySensor.get().record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getLocalBrokerFollowerConsumerLatencySensor() {
-    return localBrokerFollowerConsumerLatencySensor;
+    return localBrokerFollowerConsumerLatencySensor.get();
   }
 
   public void recordLeaderProducerCompletionLatencyMs(double value, long currentTimeMs) {
-    leaderProducerCompletionLatencySensor.record(value, currentTimeMs);
+    leaderProducerCompletionLatencySensor.get().record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getLeaderProducerCompletionLatencySensor() {
-    return leaderProducerCompletionLatencySensor;
+    return leaderProducerCompletionLatencySensor.get();
   }
 
   public static double unAvailableToZero(double value) {
