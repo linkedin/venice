@@ -12,6 +12,8 @@ public class TopicPartitionIngestionInfo {
   private int consumerIdx;
   private long elapsedTimeSinceLastPollInMs;
 
+  private String versionTopicName;
+
   @JsonCreator
   public TopicPartitionIngestionInfo(
       @JsonProperty("latestOffset") long latestOffset,
@@ -19,13 +21,15 @@ public class TopicPartitionIngestionInfo {
       @JsonProperty("msgRate") double msgRate,
       @JsonProperty("byteRate") double byteRate,
       @JsonProperty("consumerIdx") int consumerIdx,
-      @JsonProperty("elapsedTimeSinceLastPollInMs") long elapsedTimeSinceLastPollInMs) {
+      @JsonProperty("elapsedTimeSinceLastPollInMs") long elapsedTimeSinceLastPollInMs,
+      @JsonProperty("versionTopicName") String versionTopicName) {
     this.latestOffset = latestOffset;
     this.offsetLag = offsetLag;
     this.msgRate = msgRate;
     this.byteRate = byteRate;
     this.consumerIdx = consumerIdx;
     this.elapsedTimeSinceLastPollInMs = elapsedTimeSinceLastPollInMs;
+    this.versionTopicName = versionTopicName;
   }
 
   public long getLatestOffset() {
@@ -72,6 +76,14 @@ public class TopicPartitionIngestionInfo {
     this.elapsedTimeSinceLastPollInMs = elapsedTimeSinceLastPollInMs;
   }
 
+  public String getVersionTopicName() {
+    return versionTopicName;
+  }
+
+  public void setVersionTopicName(String versionTopicName) {
+    this.versionTopicName = versionTopicName;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -86,7 +98,8 @@ public class TopicPartitionIngestionInfo {
         && Double.doubleToLongBits(this.msgRate) == Double.doubleToLongBits(topicPartitionIngestionInfo.getMsgRate())
         && Double.doubleToLongBits(this.byteRate) == Double.doubleToLongBits(topicPartitionIngestionInfo.getByteRate())
         && this.consumerIdx == topicPartitionIngestionInfo.getConsumerIdx()
-        && this.elapsedTimeSinceLastPollInMs == topicPartitionIngestionInfo.getElapsedTimeSinceLastPollInMs();
+        && this.elapsedTimeSinceLastPollInMs == topicPartitionIngestionInfo.getElapsedTimeSinceLastPollInMs()
+        && this.versionTopicName.equals(topicPartitionIngestionInfo.getVersionTopicName());
   }
 
   @Override
@@ -97,6 +110,7 @@ public class TopicPartitionIngestionInfo {
     result = 31 * result + Double.hashCode(byteRate);
     result = 31 * result + consumerIdx;
     result = 31 * result + Long.hashCode(elapsedTimeSinceLastPollInMs);
+    result = 31 * result + versionTopicName.hashCode();
     return result;
   }
 }

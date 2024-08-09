@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -270,6 +271,12 @@ class ConsumptionTask implements Runnable {
       return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
     }
     return 0.0D;
+  }
+
+  PubSubTopic getDestinationIdentifier(PubSubTopicPartition topicPartition) {
+    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
+        dataReceiverMap.get(topicPartition);
+    return dataReceiver == null ? null : dataReceiver.destinationIdentifier();
   }
 
   Long getLastSuccessfulPollTimestamp(PubSubTopicPartition topicPartition) {

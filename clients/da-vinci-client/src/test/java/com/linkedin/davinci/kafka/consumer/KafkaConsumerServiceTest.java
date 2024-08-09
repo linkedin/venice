@@ -191,6 +191,9 @@ public class KafkaConsumerServiceTest {
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdx() == 0);
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getMsgRate() > 0);
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getByteRate() > 0);
+      Assert.assertEquals(
+          topicPartitionIngestionInfoMap.get(topicPartition).getVersionTopicName(),
+          topicForStoreName3.getName());
     });
     consumerService.stop();
   }
