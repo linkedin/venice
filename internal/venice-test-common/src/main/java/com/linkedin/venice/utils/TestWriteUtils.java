@@ -84,6 +84,9 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/SimpleUserWithDefault.avsc"));
   public static final Schema USER_WITH_FLOAT_ARRAY_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithFloatArray.avsc"));
+  public static final Schema USER_WITH_STRING_MAP_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithStringMap.avsc"));
+
   public static final Schema NAME_RECORD_V1_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV1.avsc"));
   public static final Schema NAME_RECORD_V2_SCHEMA =
@@ -125,6 +128,8 @@ public class TestWriteUtils {
           .setValueSchema(STRING_SCHEMA)
           .setFieldSchema("age", INT_SCHEMA)
           .build();
+  public static final Schema STRING_TO_USER_WITH_STRING_MAP_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(USER_WITH_STRING_MAP_SCHEMA).build();
 
   public static File getTempDataDirectory() {
     return Utils.getTempDataDirectory();
@@ -322,6 +327,35 @@ public class TestWriteUtils {
     });
   }
 
+  public static Schema writeSimpleAvroFileWithStringToUserWithStringMapSchema(File parentDir, int itemsPerRecord)
+      throws IOException {
+    String valuePayloadBase = "1234567890";
+    StringBuilder valuePayloadBuilder = new StringBuilder();
+    for (int i = 0; i < 100; i++) {
+      valuePayloadBuilder.append(valuePayloadBase);
+    }
+    return writeAvroFile(
+        parentDir,
+        "many_strings.avro",
+        STRING_TO_USER_WITH_STRING_MAP_SCHEMA,
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+            GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+            keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+            GenericRecord valueRecord = new GenericData.Record(USER_WITH_STRING_MAP_SCHEMA);
+            valueRecord.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i)); // DEFAULT_KEY_FIELD_PROP is the key
+            Map<String, String> stringMap = new HashMap<>();
+            for (int j = 0; j < itemsPerRecord; j++) {
+              stringMap.put("item_" + j, valuePayloadBuilder.toString());
+            }
+            valueRecord.put(DEFAULT_VALUE_FIELD_PROP, stringMap);
+            valueRecord.put("age", i);
+            keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+            writer.append(keyValueRecord);
+          }
+        });
+  }
+
   public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(File parentDir) throws IOException {
     return writeAvroFile(
         parentDir,
@@ -393,6 +427,24 @@ public class TestWriteUtils {
       floatsArray.add(RandomGenUtils.getRandomFloat());
     }
     user.put(DEFAULT_VALUE_FIELD_PROP, floatsArray);
+    user.put("age", index);
+    return user;
+  }
+
+  public static GenericRecord getRecordWithStringMap(Schema recordSchema, int index, int count) {
+    GenericRecord user = new GenericData.Record(recordSchema);
+    user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(index)); // DEFAULT_KEY_FIELD_PROP is the key
+    String valuePayloadBase = "1234567890";
+    StringBuilder valuePayloadBuilder = new StringBuilder();
+    for (int i = 0; i < 10; i++) {
+      valuePayloadBuilder.append(valuePayloadBase);
+    }
+
+    Map<String, String> stringMap = new HashMap<>();
+    for (int j = 0; j < count; j++) {
+      stringMap.put("item_" + j, valuePayloadBuilder.toString());
+    }
+    user.put(DEFAULT_VALUE_FIELD_PROP, stringMap);
     user.put("age", index);
     return user;
   }

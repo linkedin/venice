@@ -23,6 +23,7 @@ import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
@@ -227,7 +228,7 @@ public class MergeConflictResolver {
   }
 
   public MergeConflictResult update(
-      Lazy<ByteBuffer> oldValueBytesProvider,
+      ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       ByteBuffer updateBytes,
       final int incomingValueSchemaId,
@@ -235,7 +236,8 @@ public class MergeConflictResolver {
       final long updateOperationTimestamp,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
-      final int newValueColoID) {
+      final int newValueColoID,
+      final ChunkedValueManifest oldValueManifest) {
     final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema();
     if (supersetValueSchemaEntry == null) {
       throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
@@ -250,7 +252,7 @@ public class MergeConflictResolver {
       return MergeConflictResult.getIgnoredResult();
     }
     ValueAndRmd<GenericRecord> oldValueAndRmd =
-        prepareValueAndRmdForUpdate(oldValueBytesProvider.get(), rmdWithValueSchemaId, supersetValueSchemaEntry);
+        prepareValueAndRmdForUpdate(oldValueBytes, rmdWithValueSchemaId, supersetValueSchemaEntry, oldValueManifest);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaId();
     if (oldValueSchemaID == -1) {
@@ -616,23 +618,32 @@ public class MergeConflictResolver {
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
-      SchemaEntry readerValueSchemaEntry) {
+      SchemaEntry readerValueSchemaSchemaEntry,
+      ChunkedValueManifest oldValueManifest) {
 
     if (rmdWithValueSchemaId == null) {
       GenericRecord newValue;
       if (oldValueBytes == null) {
         // Value and RMD both never existed
-        newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+        newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaSchemaEntry.getSchema());
       } else {
         /**
-         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated. In this
-         * case, the value must be retrieved from storage engine, and is prepended with schema ID.
+         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated. Records
+         * should have the schema id in the first few bytes unless they are assembled from a chunked value. In order
+         * to provide coverage for both cases, we just utilize the supersetSchema entry which should be the latest
+         * schema (and therefore should not drop fields after the update).
          */
-        int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
-        newValue =
-            deserializerCacheForFullValue.get(schemaId, readerValueSchemaEntry.getId()).deserialize(oldValueBytes);
+
+        int schemaId;
+        if (oldValueManifest != null) {
+          schemaId = oldValueManifest.getSchemaId();
+        } else {
+          schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
+        }
+        newValue = deserializerCacheForFullValue.get(schemaId, readerValueSchemaSchemaEntry.getId())
+            .deserialize(oldValueBytes);
       }
-      GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
+      GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, new ArrayList<Long>());
       return new ValueAndRmd<>(Lazy.of(() -> newValue), newRmd);
@@ -640,8 +651,8 @@ public class MergeConflictResolver {
 
     int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();
     return createOldValueAndRmd(
-        readerValueSchemaEntry.getSchema(),
-        readerValueSchemaEntry.getId(),
+        readerValueSchemaSchemaEntry.getSchema(),
+        readerValueSchemaSchemaEntry.getId(),
         oldValueWriterSchemaId,
         Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId.getRmdRecord());

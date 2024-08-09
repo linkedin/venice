@@ -20,7 +20,6 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
@@ -71,7 +70,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> null),
+        null,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -79,7 +78,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
         1,
         1,
-        1);
+        1,
+        null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
         ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
@@ -124,7 +124,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> null),
+        null,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -132,7 +132,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
         1,
         1,
-        1);
+        1,
+        null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
         ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
@@ -193,7 +194,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        oldValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -201,7 +202,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        1);
+        1,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -305,7 +307,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        oldValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -313,7 +315,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        newColoID);
+        newColoID,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -384,7 +387,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             .serialize(updateFieldRecord));
 
     MergeConflictResult mergeConflictResult2 = mergeConflictResolver.update(
-        Lazy.of(() -> updatedValueBytes),
+        updatedValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -392,7 +395,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 2,
         1,
         1,
-        newColoID);
+        newColoID,
+        null);
     ByteBuffer updatedValueBytes2 = mergeConflictResult2.getNewValue();
     updatedValueRecord = MapOrderPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
         .deserialize(updatedValueBytes2.array());
@@ -468,7 +472,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        oldValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -476,7 +480,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        newValueColoID);
+        newValueColoID,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -615,7 +620,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        oldValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -623,7 +628,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        newValueColoID);
+        newValueColoID,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());

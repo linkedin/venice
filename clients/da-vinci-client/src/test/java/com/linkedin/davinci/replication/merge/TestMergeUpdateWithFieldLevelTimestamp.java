@@ -17,7 +17,6 @@ import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
@@ -81,7 +80,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> null),
+        null,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -89,7 +88,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
         1,
         1,
-        1);
+        1,
+        null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
         ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
@@ -146,7 +146,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     ByteBuffer writeComputeBytes1 = ByteBuffer.wrap(
         MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldPartialUpdateRecord1));
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        null,
         rmdWithValueSchemaId,
         writeComputeBytes1,
         incomingValueSchemaId,
@@ -154,7 +154,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1,
         1,
         1,
-        1);
+        1,
+        null);
 
     GenericRecord updateFieldPartialUpdateRecord2 = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord2.put("intArray", Arrays.asList(10, 20, 30, 40));
@@ -163,7 +164,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
 
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> updatedValueBytes),
+        updatedValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes2,
         incomingValueSchemaId,
@@ -171,7 +172,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 2,
         2,
         0,
-        0);
+        0,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
@@ -268,7 +270,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        oldValueBytes,
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -276,7 +278,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        newColoID);
+        newColoID,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());

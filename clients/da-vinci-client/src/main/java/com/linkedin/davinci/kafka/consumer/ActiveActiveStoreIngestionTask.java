@@ -475,7 +475,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case UPDATE:
         mergeConflictResult = mergeConflictResolver.update(
-            oldValueByteBufferProvider,
+            oldValueByteBufferProvider.get(),
             rmdWithValueSchemaID,
             ((Update) kafkaValue.payloadUnion).updateValue,
             incomingValueSchemaId,
@@ -483,7 +483,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             writeTimestamp,
             sourceOffset,
             kafkaClusterId,
-            kafkaClusterId);
+            kafkaClusterId,
+            valueManifestContainer.getManifest());
         getHostLevelIngestionStats()
             .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
