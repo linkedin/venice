@@ -537,14 +537,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
 
       LOGGER.error(
-          "Caught a {}, will bubble up."
-              + "RecordDeserializer: {}\nWriter schema ID: {}\nLatest schema ID: {}\nValue (md5/hex): {}\nKey (hex): {}",
+          "Caught a {}, will bubble up." + "RecordDeserializer: {}\nWriter schema ID: {}\nLatest schema ID: {}\n",
           VeniceSerializationException.class.getSimpleName(),
           dataDeserializer.getClass().getSimpleName(),
           (writerSchemaId == -1 ? "N/A" : writerSchemaId),
-          latestSchemaId,
-          checksumHex,
-          keyHex);
+          latestSchemaId);
       throw e;
     }
 
