@@ -8,6 +8,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import java.util.Properties;
 
 
@@ -26,6 +27,7 @@ public class VeniceMultiRegionClusterCreateOptions {
   private final Properties childControllerProperties;
   private final Properties serverProperties;
   private final AuthorizerService parentAuthorizerService;
+  private final SupersetSchemaGenerator supersetSchemaGenerator;
 
   public int getNumberOfRegions() {
     return numberOfRegions;
@@ -83,6 +85,10 @@ public class VeniceMultiRegionClusterCreateOptions {
     return parentAuthorizerService;
   }
 
+  public SupersetSchemaGenerator getSupersetSchemaGenerator() {
+    return supersetSchemaGenerator;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -127,6 +133,9 @@ public class VeniceMultiRegionClusterCreateOptions {
         .append(", ")
         .append("parentAuthorizerService:")
         .append(parentAuthorizerService)
+        .append(", ")
+        .append("supersetSchemaGenerator:")
+        .append(supersetSchemaGenerator)
         .toString();
   }
 
@@ -145,6 +154,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     sslToKafka = builder.sslToKafka;
     forkServer = builder.forkServer;
     parentAuthorizerService = builder.parentAuthorizerService;
+    supersetSchemaGenerator = builder.supersetSchemaGenerator;
   }
 
   public static class Builder {
@@ -162,6 +172,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     private Properties childControllerProperties;
     private Properties serverProperties;
     private AuthorizerService parentAuthorizerService;
+    private SupersetSchemaGenerator supersetSchemaGenerator;
 
     public Builder numberOfRegions(int numberOfRegions) {
       this.numberOfRegions = numberOfRegions;
@@ -230,6 +241,11 @@ public class VeniceMultiRegionClusterCreateOptions {
 
     public Builder parentAuthorizerService(AuthorizerService parentAuthorizerService) {
       this.parentAuthorizerService = parentAuthorizerService;
+      return this;
+    }
+
+    public Builder supersetSchemaGenerator(SupersetSchemaGenerator supersetSchemaGenerator) {
+      this.supersetSchemaGenerator = supersetSchemaGenerator;
       return this;
     }
 

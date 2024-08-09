@@ -32,6 +32,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -126,8 +127,9 @@ public class PushJobDetailsTest {
         recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException because
     // hadoop job client cannot fetch counters properly.
-    parentControllerClient
-        .updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
+    parentControllerClient.updateStore(
+        testStoreName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(2));
     Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
@@ -221,7 +223,7 @@ public class PushJobDetailsTest {
         recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
         recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // hadoop job client cannot fetch counters properly and should fail the job
-    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
+    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(1));
     Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
@@ -265,10 +267,11 @@ public class PushJobDetailsTest {
         recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
         recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException
-    final UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1)
-        .setPartitionCount(2)
-        .setChunkingEnabled(true)
-        .setMaxRecordSizeBytes(0);
+    final UpdateStoreQueryParams queryParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(2)
+            .setChunkingEnabled(true)
+            .setMaxRecordSizeBytes(0);
     parentControllerClient.updateStore(testStoreName, queryParams);
 
     Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);

@@ -8,8 +8,8 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.TestStoragePersonaUtils;
@@ -26,23 +26,20 @@ import org.testng.annotations.Test;
 
 
 public class TestStoreUpdateStoragePersona {
-  // Ideally this should work with a single region cluster, but today persona only works with a multi region cluster
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
+  private VeniceClusterWrapper venice;
   private ControllerClient controllerClient;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
+    venice = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(2)
             .sslToStorageNodes(false)
             .sslToKafka(false)
             .build());
-    controllerClient = new ControllerClient(venice.getClusterNames()[0], venice.getControllerConnectString());
+    controllerClient = new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
   }
 
   @AfterClass(alwaysRun = true)

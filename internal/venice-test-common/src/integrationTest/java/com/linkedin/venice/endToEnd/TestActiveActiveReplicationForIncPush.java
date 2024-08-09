@@ -208,6 +208,7 @@ public class TestActiveActiveReplicationForIncPush {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
+
       // Run inc push with source fabric preference taking effect.
       try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
         job.run();
@@ -229,6 +230,7 @@ public class TestActiveActiveReplicationForIncPush {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       }
+
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
     }
   }

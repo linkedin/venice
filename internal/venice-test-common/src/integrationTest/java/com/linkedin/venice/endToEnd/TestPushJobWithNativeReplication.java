@@ -481,7 +481,8 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
             .setHybridRewindSeconds(2L)
-            .setIncrementalPushEnabled(true),
+            .setIncrementalPushEnabled(true)
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
@@ -595,6 +596,7 @@ public class TestPushJobWithNativeReplication {
                     .updateStore(
                         storeName,
                         new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+                            .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
                             .setHybridOffsetLagThreshold(1)
                             .setHybridRewindSeconds(Time.SECONDS_PER_DAY))
                     .isError());
