@@ -493,13 +493,16 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           elapsedTimeSinceLastPollInMs =
               LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
         }
+        PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(pubSubTopicPartition);
+        String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
         TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
             latestOffset,
             offsetLag,
             msgRate,
             byteRate,
             consumerIdx,
-            elapsedTimeSinceLastPollInMs);
+            elapsedTimeSinceLastPollInMs,
+            destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
       }
     }
