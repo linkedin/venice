@@ -509,24 +509,23 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     } catch (VeniceSerializationException e) {
       // N.B.: The code below is fairly defensive because we do not want to fail in the process of trying to
       // log debugging details. In practice, these try blocks should never catch anything.
-      String checksumHex, keyHex, latestSchemaId;
+      String latestSchemaId;
       try {
         // Hashing the value because 1) values tend to be too large for logs and 2) they might contain PII
         MD5Digest digest = new MD5Digest();
         byte[] valueChecksum = new byte[digest.getDigestSize()];
         digest.update(data.array(), data.position(), data.limit() - data.position());
         digest.doFinal(valueChecksum, 0);
-        checksumHex = Hex.encodeHexString(valueChecksum);
       } catch (Exception e2) {
-        checksumHex = "failed to compute value checksum";
-        LOGGER.error("{} ...", checksumHex, e2);
+        String msg = "failed to compute value checksum";
+        LOGGER.error("{} ...", msg, e2);
       }
 
       try {
-        keyHex = Hex.encodeHexString(keySerializer.serialize(key));
+        Hex.encodeHexString(keySerializer.serialize(key));
       } catch (Exception e3) {
-        keyHex = "failed to serialize key and encode it as hex";
-        LOGGER.error("{} ...", keyHex, e3);
+        String msg = "failed to serialize key and encode it as hex";
+        LOGGER.error("{} ...", msg, e3);
       }
 
       try {
