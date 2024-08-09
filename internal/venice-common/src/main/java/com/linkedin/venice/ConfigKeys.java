@@ -2097,7 +2097,8 @@ public class ConfigKeys {
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
 
   /**
-   * Pool allocation strategy to rely on pool size to prioritize specific traffic.
+   * Consumer Pool allocation strategy to rely on pool size to prioritize specific traffic. There will be 3 different
+   * types strategy supported decided by #ConsumerPoolStrategyType.
    */
   public static final String SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY = "server.consumer.pool.allocation.strategy";
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =

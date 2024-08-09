@@ -12,6 +12,7 @@ import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.IngestionThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
@@ -158,6 +159,8 @@ public class KafkaConsumptionTest {
     doReturn(2).when(veniceServerConfig).getConsumerPoolSizePerKafkaCluster();
     doReturn(10L).when(veniceServerConfig).getSharedConsumerNonExistingTopicCleanupDelayMS();
     doReturn(true).when(veniceServerConfig).isLiveConfigBasedKafkaThrottlingEnabled();
+    doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(veniceServerConfig)
+        .getConsumerPoolStrategyType();
     if (isTopicWiseSharedConsumerAssignmentStrategy) {
       doReturn(KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY)
           .when(veniceServerConfig)

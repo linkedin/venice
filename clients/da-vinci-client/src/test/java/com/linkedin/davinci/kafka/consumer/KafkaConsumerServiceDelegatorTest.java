@@ -17,7 +17,9 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
@@ -349,5 +351,106 @@ public class KafkaConsumerServiceDelegatorTest {
     verify(mockDefaultConsumerService).startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
     verify(mockDedicatedConsumerService, never())
         .startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
+
+    // Test current version prioritization strategy
+    PartitionReplicaIngestionContext tpForCurrentAAWCLeader = new PartitionReplicaIngestionContext(
+        versionTopic,
+        new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
+    PartitionReplicaIngestionContext tpForCurrentAAWCFollower = new PartitionReplicaIngestionContext(
+        versionTopic,
+        new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID),
+        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
+
+    PubSubTopic futureVersionTopic = TOPIC_REPOSITORY.getTopic("test_store_v2");
+    PartitionReplicaIngestionContext tpForNonCurrentAAWCLeader = new PartitionReplicaIngestionContext(
+        versionTopic,
+        new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
+        PartitionReplicaIngestionContext.VersionRole.FUTURE,
+        PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
+    PartitionReplicaIngestionContext tpForNonCurrentAAWCFollower = new PartitionReplicaIngestionContext(
+        versionTopic,
+        new PubSubTopicPartitionImpl(futureVersionTopic, PARTITION_ID),
+        PartitionReplicaIngestionContext.VersionRole.BACKUP,
+        PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
+
+    doReturn(false).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
+    doReturn(true).when(mockConfig).isResubscriptionTriggeredByVersionIngestionContextChangeEnabled();
+    doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION).when(mockConfig)
+        .getConsumerPoolStrategyType();
+
+    KafkaConsumerService consumerServiceForCurrentVersionAAWCLeader = mock(KafkaConsumerService.class);
+    KafkaConsumerService consumerServiceForCurrentVersionNonAAWCLeader = mock(KafkaConsumerService.class);
+    KafkaConsumerService consumerServiceForNonCurrentVersionAAWCLeader = mock(KafkaConsumerService.class);
+    KafkaConsumerService consumerServiceForNonCurrentVersionNonAAWCLeader = mock(KafkaConsumerService.class);
+
+    Map<PartitionReplicaIngestionContext, KafkaConsumerService> consumerServiceMap = new HashMap<>();
+    consumerServiceMap.put(tpForCurrentAAWCLeader, consumerServiceForCurrentVersionAAWCLeader);
+    consumerServiceMap.put(tpForCurrentAAWCFollower, consumerServiceForCurrentVersionNonAAWCLeader);
+    consumerServiceMap.put(tpForNonCurrentAAWCLeader, consumerServiceForNonCurrentVersionAAWCLeader);
+    consumerServiceMap.put(tpForNonCurrentAAWCFollower, consumerServiceForNonCurrentVersionNonAAWCLeader);
+
+    consumerServiceConstructor = (ignored, statSuffix) -> {
+      if (statSuffix.equals(
+          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX)) {
+        return consumerServiceForCurrentVersionAAWCLeader;
+      } else if (statSuffix.equals(
+          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX)) {
+        return consumerServiceForCurrentVersionNonAAWCLeader;
+      } else if (statSuffix.equals(
+          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.NON_CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX)) {
+        return consumerServiceForNonCurrentVersionAAWCLeader;
+      } else if (statSuffix.equals(
+          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.NON_CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX)) {
+        return consumerServiceForNonCurrentVersionNonAAWCLeader;
+      }
+      return null;
+    };
+
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+    verifyConsumerServiceStartConsumptionIntoDataReceiver(
+        delegator,
+        consumerServiceMap,
+        tpForCurrentAAWCLeader,
+        dataReceiver);
+    verifyConsumerServiceStartConsumptionIntoDataReceiver(
+        delegator,
+        consumerServiceMap,
+        tpForCurrentAAWCFollower,
+        dataReceiver);
+    verifyConsumerServiceStartConsumptionIntoDataReceiver(
+        delegator,
+        consumerServiceMap,
+        tpForNonCurrentAAWCFollower,
+        dataReceiver);
+    verifyConsumerServiceStartConsumptionIntoDataReceiver(
+        delegator,
+        consumerServiceMap,
+        tpForNonCurrentAAWCLeader,
+        dataReceiver);
+  }
+
+  private void verifyConsumerServiceStartConsumptionIntoDataReceiver(
+      KafkaConsumerServiceDelegator delegator,
+      Map<PartitionReplicaIngestionContext, KafkaConsumerService> consumerServiceMap,
+      PartitionReplicaIngestionContext partitionReplicaIngestionContext,
+      ConsumedDataReceiver dataReceiver) {
+    delegator.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, dataReceiver);
+    for (Map.Entry<PartitionReplicaIngestionContext, KafkaConsumerService> entry: consumerServiceMap.entrySet()) {
+      if (entry.getKey().equals(partitionReplicaIngestionContext)) {
+        verify(entry.getValue()).startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, dataReceiver);
+      } else {
+        verify(entry.getValue(), never())
+            .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, dataReceiver);
+      }
+    }
+    for (KafkaConsumerService consumerService: consumerServiceMap.values()) {
+      reset(consumerService);
+    }
+    delegator.unSubscribe(
+        partitionReplicaIngestionContext.getVersionTopic(),
+        partitionReplicaIngestionContext.getPubSubTopicPartition());
   }
 }
