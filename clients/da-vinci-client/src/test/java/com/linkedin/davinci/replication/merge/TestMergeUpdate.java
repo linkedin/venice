@@ -392,7 +392,7 @@ public class TestMergeUpdate extends TestMergeBase {
             .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, null)
             .build();
     result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        serializeValueRecord(updatedValueRecord),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, updateRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),

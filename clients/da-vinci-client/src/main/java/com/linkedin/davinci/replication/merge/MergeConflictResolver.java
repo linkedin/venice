@@ -228,7 +228,7 @@ public class MergeConflictResolver {
   }
 
   public MergeConflictResult update(
-      ByteBuffer oldValueBytesProvider,
+      ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       ByteBuffer updateBytes,
       final int incomingValueSchemaId,
@@ -251,11 +251,8 @@ public class MergeConflictResolver {
     if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
       return MergeConflictResult.getIgnoredResult();
     }
-    ValueAndRmd<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
-        oldValueBytesProvider,
-        rmdWithValueSchemaId,
-        supersetValueSchemaEntry,
-        oldValueManifest);
+    ValueAndRmd<GenericRecord> oldValueAndRmd =
+        prepareValueAndRmdForUpdate(oldValueBytes, rmdWithValueSchemaId, supersetValueSchemaEntry, oldValueManifest);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaId();
     if (oldValueSchemaID == -1) {
@@ -622,14 +619,14 @@ public class MergeConflictResolver {
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
-      SchemaEntry superSetSchemaSchemaEntry,
+      SchemaEntry readerValueSchemaSchemaEntry,
       ChunkedValueManifest oldValueManifest) {
 
     if (rmdWithValueSchemaId == null) {
       GenericRecord newValue;
       if (oldValueBytes == null) {
         // Value and RMD both never existed
-        newValue = AvroSchemaUtils.createGenericRecord(superSetSchemaSchemaEntry.getSchema());
+        newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaSchemaEntry.getSchema());
       } else {
         /**
          * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated. Records
@@ -644,14 +641,10 @@ public class MergeConflictResolver {
         } else {
           schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
         }
-        try {
-          newValue =
-              deserializerCacheForFullValue.get(schemaId, superSetSchemaSchemaEntry.getId()).deserialize(oldValueBytes);
-        } catch (Exception ex) {
-          throw ex;
-        }
+        newValue = deserializerCacheForFullValue.get(schemaId, readerValueSchemaSchemaEntry.getId())
+            .deserialize(oldValueBytes);
       }
-      GenericRecord newRmd = newRmdCreator.apply(superSetSchemaSchemaEntry.getId());
+      GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, new ArrayList<Long>());
       return new ValueAndRmd<>(Lazy.of(() -> newValue), newRmd);
@@ -659,8 +652,8 @@ public class MergeConflictResolver {
 
     int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();
     return createOldValueAndRmd(
-        superSetSchemaSchemaEntry.getSchema(),
-        superSetSchemaSchemaEntry.getId(),
+        readerValueSchemaSchemaEntry.getSchema(),
+        readerValueSchemaSchemaEntry.getId(),
         oldValueWriterSchemaId,
         Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId.getRmdRecord());
