@@ -96,6 +96,8 @@ dependencies {
   implementation libraries.samzaApi
   implementation libraries.spark
   implementation libraries.testng
+  implementation libraries.jacksonDatabind
+
 
   implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
