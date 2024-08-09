@@ -177,13 +177,6 @@ public class ZkRoutersClusterManager
   }
 
   @Override
-  public void unSubscribeRouterCountChangedEvent(RouterCountChangedListener listener) {
-    synchronized (routerCountListeners) {
-      routerCountListeners.remove(listener);
-    }
-  }
-
-  @Override
   public boolean isThrottlingEnabled() {
     // If router's config could not be found, by default we think the throttling is enabled.
     return routersClusterConfig.isThrottlingEnabled();
