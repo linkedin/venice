@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -19,18 +20,18 @@ public class ClientStats extends BasicClientStats {
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
   private final Sensor requestRetryCountSensor;
   private final Sensor successRequestDuplicateKeyCountSensor;
-  private final Sensor requestSerializationTime;
-  private final Sensor requestSubmissionToResponseHandlingTime;
+  private final Lazy<Sensor> requestSerializationTime;
+  private final Lazy<Sensor> requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
-  private final Sensor responseDecompressionTimeSensor;
-  private final Sensor streamingResponseTimeToReceiveFirstRecord;
-  private final Sensor streamingResponseTimeToReceive50PctRecord;
-  private final Sensor streamingResponseTimeToReceive90PctRecord;
-  private final Sensor streamingResponseTimeToReceive95PctRecord;
-  private final Sensor streamingResponseTimeToReceive99PctRecord;
+  private final Lazy<Sensor> responseDecompressionTimeSensor;
+  private final Lazy<Sensor> streamingResponseTimeToReceiveFirstRecord;
+  private final Lazy<Sensor> streamingResponseTimeToReceive50PctRecord;
+  private final Lazy<Sensor> streamingResponseTimeToReceive90PctRecord;
+  private final Lazy<Sensor> streamingResponseTimeToReceive95PctRecord;
+  private final Lazy<Sensor> streamingResponseTimeToReceive99PctRecord;
   private final Sensor appTimedOutRequestSensor;
-  private final Sensor appTimedOutRequestResultRatioSensor;
-  private final Sensor clientFutureTimeoutSensor;
+  private final Lazy<Sensor> appTimedOutRequestResultRatioSensor;
+  private final Lazy<Sensor> clientFutureTimeoutSensor;
   private final Sensor retryRequestKeyCountSensor;
   private final Sensor retryRequestSuccessKeyCountSensor;
   private final Sensor retryKeySuccessRatioSensor;
@@ -66,13 +67,13 @@ public class ClientStats extends BasicClientStats {
      * on the caller's thread.
      */
     requestSerializationTime =
-        registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
+        registerLazySensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
 
     /**
      * The time it took between sending the request to the router and beginning to process the response.
      */
     requestSubmissionToResponseHandlingTime =
-        registerSensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
+        registerLazySensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
 
     /**
      * The total time it took to process the response.
@@ -81,16 +82,16 @@ public class ClientStats extends BasicClientStats {
         registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
 
     responseDecompressionTimeSensor =
-        registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
+        registerLazySensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
 
     /**
      * Metrics to track the latency of each proportion of results received.
      */
-    streamingResponseTimeToReceiveFirstRecord = registerSensorWithDetailedPercentiles("response_ttfr", new Avg());
-    streamingResponseTimeToReceive50PctRecord = registerSensorWithDetailedPercentiles("response_tt50pr", new Avg());
-    streamingResponseTimeToReceive90PctRecord = registerSensorWithDetailedPercentiles("response_tt90pr", new Avg());
-    streamingResponseTimeToReceive95PctRecord = registerSensorWithDetailedPercentiles("response_tt95pr", new Avg());
-    streamingResponseTimeToReceive99PctRecord = registerSensorWithDetailedPercentiles("response_tt99pr", new Avg());
+    streamingResponseTimeToReceiveFirstRecord = registerLazySensorWithDetailedPercentiles("response_ttfr", new Avg());
+    streamingResponseTimeToReceive50PctRecord = registerLazySensorWithDetailedPercentiles("response_tt50pr", new Avg());
+    streamingResponseTimeToReceive90PctRecord = registerLazySensorWithDetailedPercentiles("response_tt90pr", new Avg());
+    streamingResponseTimeToReceive95PctRecord = registerLazySensorWithDetailedPercentiles("response_tt95pr", new Avg());
+    streamingResponseTimeToReceive99PctRecord = registerLazySensorWithDetailedPercentiles("response_tt99pr", new Avg());
 
     /**
      * Metrics to track the timed-out requests.
@@ -101,9 +102,12 @@ public class ClientStats extends BasicClientStats {
      * This timeout behavior could actually happen before the D2 timeout, which is specified/configured in a different way.
      */
     appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
-    appTimedOutRequestResultRatioSensor =
-        registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio", new Avg(), new Min(), new Max());
-    clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
+    appTimedOutRequestResultRatioSensor = registerLazySensorWithDetailedPercentiles(
+        "app_timed_out_request_result_ratio",
+        new Avg(),
+        new Min(),
+        new Max());
+    clientFutureTimeoutSensor = registerLazySensor("client_future_timeout", new Avg(), new Min(), new Max());
     /* Metrics relevant to track long tail retry efficacy for batch get*/
     Rate retryRequestKeyCount = new Rate();
     retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
@@ -137,11 +141,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRequestSerializationTime(double latency) {
-    requestSerializationTime.record(latency);
+    requestSerializationTime.get().record(latency);
   }
 
   public void recordRequestSubmissionToResponseHandlingTime(double latency) {
-    requestSubmissionToResponseHandlingTime.record(latency);
+    requestSubmissionToResponseHandlingTime.get().record(latency);
   }
 
   public void recordResponseDeserializationTime(double latency) {
@@ -149,27 +153,27 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordResponseDecompressionTime(double latency) {
-    responseDecompressionTimeSensor.record(latency);
+    responseDecompressionTimeSensor.get().record(latency);
   }
 
   public void recordStreamingResponseTimeToReceiveFirstRecord(double latency) {
-    streamingResponseTimeToReceiveFirstRecord.record(latency);
+    streamingResponseTimeToReceiveFirstRecord.get().record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive50PctRecord(double latency) {
-    streamingResponseTimeToReceive50PctRecord.record(latency);
+    streamingResponseTimeToReceive50PctRecord.get().record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive90PctRecord(double latency) {
-    streamingResponseTimeToReceive90PctRecord.record(latency);
+    streamingResponseTimeToReceive90PctRecord.get().record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive95PctRecord(double latency) {
-    streamingResponseTimeToReceive95PctRecord.record(latency);
+    streamingResponseTimeToReceive95PctRecord.get().record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive99PctRecord(double latency) {
-    streamingResponseTimeToReceive99PctRecord.record(latency);
+    streamingResponseTimeToReceive99PctRecord.get().record(latency);
   }
 
   public void recordAppTimedOutRequest() {
@@ -177,11 +181,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordAppTimedOutRequestResultRatio(double ratio) {
-    appTimedOutRequestResultRatioSensor.record(ratio);
+    appTimedOutRequestResultRatioSensor.get().record(ratio);
   }
 
   public void recordClientFutureTimeout(long clientFutureTimeout) {
-    clientFutureTimeoutSensor.record(clientFutureTimeout);
+    clientFutureTimeoutSensor.get().record(clientFutureTimeout);
   }
 
   public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {

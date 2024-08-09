@@ -7,6 +7,7 @@ import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -93,9 +94,9 @@ public class IngestionStats {
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
-  private WritePathLatencySensor transformerLatencySensor;
-  private WritePathLatencySensor transformerLifecycleStartLatencySensor;
-  private WritePathLatencySensor transformerLifecycleEndLatencySensor;
+  private final WritePathLatencySensor transformerLatencySensor;
+  private final WritePathLatencySensor transformerLifecycleStartLatencySensor;
+  private final WritePathLatencySensor transformerLifecycleEndLatencySensor;
   private final WritePathLatencySensor producerCallBackLatency;
   private final WritePathLatencySensor leaderPreprocessingLatency;
   private final WritePathLatencySensor internalPreprocessingLatency;
@@ -109,14 +110,14 @@ public class IngestionStats {
 
   /** Record a version-level offset rewind events for VTs across all stores. */
   private final Count versionTopicEndOffsetRewindCount = new Count();
-  private final Sensor versionTopicEndOffsetRewindSensor;
+  private final Lazy<Sensor> versionTopicEndOffsetRewindSensor;
   private final MetricsRepository localMetricRepository;
 
   // Measure the max idle time among partitions for a given the store on this host
   private final LongAdderRateGauge idleTimeSensor = new LongAdderRateGauge();
 
-  private Count transformerErrorCount = new Count();
-  private Sensor transformerErrorSensor;
+  private final Count transformerErrorCount = new Count();
+  private final Lazy<Sensor> transformerErrorSensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -171,8 +172,11 @@ public class IngestionStats {
     registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
     registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
-    versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
-    versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
+    versionTopicEndOffsetRewindSensor = Lazy.of(() -> {
+      Sensor versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
+      versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
+      return versionTopicEndOffsetRewindSensor;
+    });
 
     producerSourceBrokerLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_source_broker_latency");
@@ -207,6 +211,17 @@ public class IngestionStats {
     registerSensor(localMetricRepository, OFFSET_REGRESSION_DCR_ERROR, offsetRegressionDCRErrorSensor);
     registerSensor(localMetricRepository, TOMBSTONE_CREATION_DCR, tombstoneCreationDCRSensor);
     registerSensor(localMetricRepository, IDLE_TIME, idleTimeSensor);
+
+    transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
+    transformerLifecycleStartLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_START_LATENCY);
+    transformerLifecycleEndLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_END_LATENCY);
+    transformerErrorSensor = Lazy.of(() -> {
+      Sensor transformerErrorSensor = localMetricRepository.sensor(TRANSFORMER_ERROR_COUNT);
+      transformerErrorSensor.add(TRANSFORMER_ERROR_COUNT, transformerErrorCount);
+      return transformerErrorSensor;
+    });
   }
 
   private void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
@@ -376,7 +391,7 @@ public class IngestionStats {
   }
 
   public void recordVersionTopicEndOffsetRewind() {
-    versionTopicEndOffsetRewindSensor.record();
+    versionTopicEndOffsetRewindSensor.get().record();
   }
 
   public double getVersionTopicEndOffsetRewindCount() {
@@ -568,53 +583,23 @@ public class IngestionStats {
   }
 
   public void recordTransformerError(double value, long currentTimeMs) {
-    transformerErrorSensor.record(value, currentTimeMs);
-  }
-
-  public void registerTransformerErrorSensor() {
-    if (transformerErrorSensor == null) {
-      transformerErrorSensor = localMetricRepository.sensor(TRANSFORMER_ERROR_COUNT);
-      transformerErrorSensor.add(TRANSFORMER_ERROR_COUNT, transformerErrorCount);
-    }
+    transformerErrorSensor.get().record(value, currentTimeMs);
   }
 
   public double getTransformerErrorCount() {
-    if (transformerErrorCount != null) {
-      return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-    return 0;
+    return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordTransformerLatency(double value, long currentTimeMs) {
     transformerLatencySensor.record(value, currentTimeMs);
   }
 
-  public void registerTransformerLatencySensor() {
-    if (transformerLatencySensor == null) {
-      transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
-    }
-  }
-
   public void recordTransformerLifecycleStartLatency(double value, long currentTimeMs) {
     transformerLifecycleStartLatencySensor.record(value, currentTimeMs);
   }
 
-  public void registerTransformerLifecycleStartLatencySensor() {
-    if (transformerLifecycleStartLatencySensor == null) {
-      transformerLifecycleStartLatencySensor =
-          new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_START_LATENCY);
-    }
-  }
-
   public void recordTransformerLifecycleEndLatency(double value, long currentTimeMs) {
     transformerLifecycleEndLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void registerTransformerLifecycleEndLatencySensor() {
-    if (transformerLifecycleEndLatencySensor == null) {
-      transformerLifecycleEndLatencySensor =
-          new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_END_LATENCY);
-    }
   }
 
   public void recordIdleTime(long value) {
