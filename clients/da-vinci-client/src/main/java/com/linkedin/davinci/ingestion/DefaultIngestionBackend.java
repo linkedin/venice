@@ -59,20 +59,17 @@ public class DefaultIngestionBackend implements IngestionBackend {
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     Pair<Store, Version> storeAndVersion =
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
-    Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
-    syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
-    AbstractStorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
-    topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
-      if (storageEngineAtomicReference != null) {
-        storageEngineAtomicReference.set(storageEngine);
-      }
-      return storageEngineAtomicReference;
-    });
-
-    CompletionStage<Void> bootstrapFuture =
-        bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
-
-    bootstrapFuture.whenComplete((result, throwable) -> {
+    Runnable runnable = () -> {
+      Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
+      syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
+      AbstractStorageEngine storageEngine =
+          storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
+      topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
+        if (storageEngineAtomicReference != null) {
+          storageEngineAtomicReference.set(storageEngine);
+        }
+        return storageEngineAtomicReference;
+      });
       LOGGER.info(
           "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
           storeVersion,
@@ -82,7 +79,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
           "Completed starting consumption in ingestion service for store {} partition {}",
           storeVersion,
           partition);
-    });
+    };
+
+    // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
+    // though
+    // Only DVC would create blobTransferManager.
+    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || storeAndVersion.getFirst().isHybrid()
+        || blobTransferManager == null) {
+      runnable.run();
+    } else {
+      CompletionStage<Void> bootstrapFuture =
+          bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
+
+      bootstrapFuture.whenComplete((result, throwable) -> {
+        runnable.run();
+      });
+    }
   }
 
   /**
