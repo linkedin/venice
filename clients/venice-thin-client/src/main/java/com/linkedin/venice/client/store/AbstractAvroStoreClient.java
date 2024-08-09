@@ -57,7 +57,6 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -522,17 +521,16 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
 
       try {
-        Hex.encodeHexString(keySerializer.serialize(key));
+        keySerializer.serialize(key);
       } catch (Exception e3) {
-        String msg = "failed to serialize key and encode it as hex";
-        LOGGER.error("{} ...", msg, e3);
+        LOGGER.error("Failed to serialize key", e3);
       }
 
       try {
         latestSchemaId = schemaReader.getLatestValueSchemaId().toString();
       } catch (Exception e4) {
-        latestSchemaId = "failed to retrieve latest value schema ID";
-        LOGGER.error("{} ...", latestSchemaId, e4);
+        latestSchemaId = "Invalid";
+        LOGGER.error("Failed to retrieve latest value schema ID.", e4);
       }
 
       LOGGER.error(
