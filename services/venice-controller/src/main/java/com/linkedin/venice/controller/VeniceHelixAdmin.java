@@ -3329,9 +3329,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
       String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
-      LOGGER.info("Deleting helix resource: {} in cluster: {}", resourceName, clusterName);
-      deleteHelixResource(clusterName, resourceName);
       LOGGER.info("Killing offline push for: {} in cluster: {}", resourceName, clusterName);
+
       killOfflinePush(clusterName, resourceName, true);
 
       // Check DIV error in the push status before stopping the monitor.
@@ -5245,12 +5244,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
-    checkControllerLeadershipFor(clusterName);
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
 
-    getHelixAdminClient().dropResource(clusterName, kafkaTopic);
-    LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      if (store == null) {
+        throwStoreDoesNotExist(clusterName, storeName);
+      }
+      Version versionToBeDeleted = store.getVersion(versionNumber);
+      if (versionToBeDeleted == null) {
+        LOGGER
+            .info("Version: {} doesn't exist in store: {}, will skip `deleteHelixResource`", versionNumber, storeName);
+        return;
+      }
 
-    enableDisabledPartition(clusterName, kafkaTopic, false);
+      LOGGER.info("Deleting helix resource: {} in cluster: {}", kafkaTopic, clusterName);
+      checkControllerLeadershipFor(clusterName);
+
+      getHelixAdminClient().dropResource(clusterName, kafkaTopic);
+      LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+
+      enableDisabledPartition(clusterName, kafkaTopic, false);
+    }
   }
 
   public void enableDisabledPartition(String clusterName, String kafkaTopic, boolean enableAll) {
@@ -6579,6 +6596,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.info("Resource: {} doesn't exist, kill job will be skipped", kafkaTopic);
       return;
     }
+
+    if (!isSafeToKillOfflinePush(clusterName, kafkaTopic, isForcedKill)) {
+      LOGGER.info("Aborting killOfflinePush for: {} in cluster: {}", kafkaTopic, clusterName);
+      return;
+    }
+
+    deleteHelixResource(clusterName, kafkaTopic);
+
+    LOGGER.info("Killing offline push for: {} in cluster: {}", kafkaTopic, clusterName);
+
     checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     if (!isForcedKill) {
@@ -6642,7 +6669,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     StatusMessageChannel messageChannel = resources.getMessageChannel();
-    // As we should already have retry outside of this function call, so we do not need to retry again inside.
+    // As we should already have retry outside this function call, so we do not need to retry again inside.
     int retryCount = 1;
     // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
     // message to the live instances.
@@ -6661,6 +6688,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         && participantMessageStoreRTTMap.containsKey(clusterName)) {
       sendKillMessageToParticipantStore(clusterName, kafkaTopic);
     }
+  }
+
+  /**
+   * If the child controllers are using the killJob topic as their current version, the killOfflinePush job should be aborted
+   */
+  public boolean isSafeToKillOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
+    if (isForcedKill) {
+      return true;
+    }
+
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+
+      if (storeResponse.isError()) {
+        LOGGER.error(
+            "Could not query store from region: {} for cluster: {}. Error: {}",
+            region,
+            clusterName,
+            storeResponse.getError());
+        return false;
+      }
+
+      StoreInfo storeInfo = storeResponse.getStore();
+      if (storeInfo == null) {
+        LOGGER.error("Received null store response from region: {} for cluster: {}", region, clusterName);
+        return false;
+      }
+
+      if (versionNumber == storeInfo.getCurrentVersion()) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /**
