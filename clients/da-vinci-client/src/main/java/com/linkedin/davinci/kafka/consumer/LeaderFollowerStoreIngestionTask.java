@@ -1908,7 +1908,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
     int maxRecordSizeBytes = veniceWriter.get().getMaxRecordSizeBytes();
-    if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+    if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE && ratio > 0) {
       hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
     }
   }

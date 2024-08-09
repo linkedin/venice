@@ -23,7 +23,6 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
-import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
@@ -572,12 +571,8 @@ public class PartialUpdateTest {
   public void testLargeValuesPartialUpdate() throws IOException {
     final String storeName = Utils.getUniqueString("largeValuesPartialUpdate");
     String parentControllerUrl = parentController.getControllerUrl();
-    File inputDir = getTempDataDirectory();
-    inputDir.deleteOnExit();
-    final int largeValueSize = BYTES_PER_MB; // 1 MB, intentionally larger than 950 KB
     final String keySchemaStr = "{\"type\" : \"string\"}";
     final Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
-    final String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
     VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -609,10 +604,8 @@ public class PartialUpdateTest {
     String key = "1";
     String primitiveFieldName = "name";
     String listFieldName = "floatArray";
-    // Produce partial updates on batch pushed keys
-    int totalUpdateCount = 40;
-    // Insert large amount of Map entries to trigger RMD chunking.
-    int singleUpdateEntryCount = 10000;
+    int totalUpdateCount = 40; // Produce partial updates on batch pushed keys
+    int singleUpdateEntryCount = 10000; // Insert large amount of Map entries to trigger RMD chunking.
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
     SystemProducer veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
@@ -1307,8 +1300,7 @@ public class PartialUpdateTest {
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
     }
 
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");

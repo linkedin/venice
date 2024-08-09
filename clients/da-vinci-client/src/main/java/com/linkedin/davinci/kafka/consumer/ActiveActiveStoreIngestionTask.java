@@ -702,7 +702,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
    * this function.
    *
-   * @param mergeConflictResult         The result of conflict resolution.
+   * @param mergeConflictResult       The result of conflict resolution.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key                       The key bytes of the incoming record.
    * @param consumerRecord            The {@link PubSubMessage} for the current record.
