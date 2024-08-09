@@ -13,6 +13,7 @@ import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -111,6 +112,30 @@ public class PushStatusStoreWriter implements AutoCloseable {
         && incrementalPushPrefix.isPresent()) {
       addToSupposedlyOngoingIncrementalPushVersions(storeName, version, incrementalPushVersion.get(), status);
     }
+  }
+
+  /**
+   * This only works for "batch push" status update.
+   * Write one single push status for all partitions on this node, which assumes that all partitions are on the same
+   * state. The key only contains version number.
+   */
+  public void writeVersionLevelPushStatus(
+      String storeName,
+      int version,
+      ExecutionStatus status,
+      Set<Integer> partitionIds) {
+    VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version);
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+    updateBuilder.setEntriesToAddToMapField("instances", Collections.singletonMap(instanceName, status.getValue()));
+    LOGGER.info(
+        "Updating pushStatus of {} to {}. Store: {}, version: {}, for all partition on this node: {}",
+        instanceName,
+        status,
+        storeName,
+        version,
+        partitionIds);
+    writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 
   // For storing ongoing incremental push versions, we are (re)using 'instances' field of the PushStatusValue record.
