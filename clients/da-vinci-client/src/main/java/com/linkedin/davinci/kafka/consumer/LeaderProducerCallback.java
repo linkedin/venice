@@ -54,6 +54,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   protected ChunkedValueManifest oldValueManifest = null;
   protected ChunkedValueManifest oldRmdManifest = null;
 
+  private final boolean syncOffsetsOnlyAfterProducing;
+
   public LeaderProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
@@ -61,7 +63,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      boolean syncOffsetsOnlyAfterProducing) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
@@ -70,6 +73,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.leaderProducedRecordContext = leaderProducedRecordContext;
     this.produceTimeNs = ingestionTask.isUserSystemStore() ? 0 : System.nanoTime();
     this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
+    this.syncOffsetsOnlyAfterProducing = syncOffsetsOnlyAfterProducing;
   }
 
   @Override
@@ -146,13 +150,14 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
          */
         if (chunkedValueManifest == null) {
           leaderProducedRecordContext.setProducedOffset(produceResult.getOffset());
-          ingestionTask.produceToStoreBufferService(
+          produceToStoreBufferService(
               sourceConsumerRecord,
               leaderProducedRecordContext,
               partition,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
-              currentTimeForMetricsMs);
+              currentTimeForMetricsMs,
+              false);
 
           producedRecordNum++;
           producedRecordSize = Math.max(0, produceResult.getSerializedSize());
@@ -184,13 +189,14 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               manifestPut,
               leaderProducedRecordContext.getPersistedToDBFuture());
           producedRecordForManifest.setProducedOffset(produceResult.getOffset());
-          ingestionTask.produceToStoreBufferService(
+          produceToStoreBufferService(
               sourceConsumerRecord,
               producedRecordForManifest,
               partition,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
-              currentTimeForMetricsMs);
+              currentTimeForMetricsMs,
+              false);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
         }
@@ -311,13 +317,14 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
       producedRecordForChunk.setProducedOffset(-1);
-      ingestionTask.produceToStoreBufferService(
+      produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
           partition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          currentTimeForMetricsMs,
+          false);
       totalChunkSize += chunkKey.remaining() + chunkValue.remaining();
     }
     return totalChunkSize;
@@ -337,10 +344,34 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkDeleteRecord(ByteUtils.extractByteArray(chunkKey), chunkDelete);
       producedRecordForChunk.setProducedOffset(-1);
-      ingestionTask.produceToStoreBufferService(
+      produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
           partition,
+          kafkaUrl,
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs,
+          true);
+    }
+  }
+
+  protected void produceToStoreBufferService(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumedRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs,
+      boolean chunkDeprecation) throws InterruptedException {
+    if (this.syncOffsetsOnlyAfterProducing && !chunkDeprecation) {
+      // sync offsets
+      ingestionTask
+          .maybeSyncOffsets(consumedRecord, leaderProducedRecordContext, partitionConsumptionState, subPartition);
+    } else {
+      ingestionTask.produceToStoreBufferService(
+          consumedRecord,
+          leaderProducedRecordContext,
+          subPartition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,
           currentTimeForMetricsMs);

@@ -57,7 +57,12 @@ public class TestMergeUpdate extends TestMergeBase {
         1L,
         0,
         0);
-    Assert.assertTrue(result.isUpdateIgnored());
+    if (isUpdateTsSmallerThanRmdTs) {
+      Assert.assertTrue(result.isUpdateIgnored());
+    } else {
+      Assert.assertEquals(deserializeValueRecord(result.getNewValue()), oldValueRecord);
+      Assert.assertFalse(result.isUpdateIgnored());
+    }
   }
 
   /**

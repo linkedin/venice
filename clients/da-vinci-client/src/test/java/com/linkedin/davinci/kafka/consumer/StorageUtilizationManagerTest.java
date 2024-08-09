@@ -52,7 +52,7 @@ public class StorageUtilizationManagerTest {
 
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), true);
+          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), true, false);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
