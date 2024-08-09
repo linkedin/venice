@@ -367,6 +367,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         scheduledRetryTask.cancel();
       }
       requestContext.complete();
+      requestContext.setFanoutSize(originalRequestContext.getFanoutSize());
       if (finalException == null) {
         callback.onCompletion(Optional.empty());
       } else {

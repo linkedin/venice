@@ -44,6 +44,8 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   final boolean isPartialSuccessAllowed;
   private boolean completed;
 
+  private int fanoutSize;
+
   MultiKeyRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
     this.routeRequests = new VeniceConcurrentHashMap<>();
     this.firstRequestSentTS = new AtomicLong(-1);
@@ -165,6 +167,14 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
   public void setRoutesForPartitionMapping(Map<Integer, Set<String>> routesForPartition) {
     this.routesForPartition = routesForPartition;
+  }
+
+  public void setFanoutSize(int fanoutSize) {
+    this.fanoutSize = fanoutSize;
+  }
+
+  public int getFanoutSize() {
+    return fanoutSize;
   }
 
   /**

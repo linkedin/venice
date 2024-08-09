@@ -17,6 +17,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -459,5 +460,36 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             clientConfigBuilder,
             new MetricsRepository(),
             StoreMetadataFetchMode.SERVER_BASED_METADATA));
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testMultiKeyFanoutStats() throws IOException, ExecutionException, InterruptedException {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setLongTailRetryEnabledForBatchGet(true)
+            .setSpeculativeQueryEnabled(false);
+    MetricsRepository clientMetric = new MetricsRepository();
+    String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, RequestType.MULTI_GET_STREAMING);
+    ;
+    String fanoutSizeAverageMetricName = metricPrefix + "multi_key_fanout_size.Avg";
+    String fanoutSizeMaxMetricName = metricPrefix + "multi_key_fanout_size.Max";
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      keys.add(key);
+    }
+    for (int i = 0; i < 10; i++) {
+      final Map<String, GenericRecord> result = genericFastClient.batchGet(keys).get();
+      assertEquals(result.size(), keys.size());
+    }
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertNotNull(clientMetric.getMetric(fanoutSizeAverageMetricName));
+      assertNotNull(clientMetric.getMetric(fanoutSizeMaxMetricName));
+      assertTrue(clientMetric.getMetric(fanoutSizeAverageMetricName).value() >= 1.0);
+      assertTrue(clientMetric.getMetric(fanoutSizeMaxMetricName).value() >= 1.0);
+    });
   }
 }
