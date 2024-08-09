@@ -2097,6 +2097,19 @@ public class ConfigKeys {
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
 
   /**
+   * Pool allocation strategy to rely on pool size to prioritize specific traffic.
+   */
+  public static final String SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY = "server.consumer.pool.allocation.strategy";
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
+      "server.consumer.pool.size.for.current.version.aa.wc.leader";
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
+      "server.consumer.pool.size.for.non.current.version.aa.wc.leader";
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.consumer.pool.size.for.current.version.non.aa.wc.leader";
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.consumer.pool.size.for.non.current.version.non.aa.wc.leader";
+
+  /**
    * Whether to enable record-level metrics when bootstrapping current version.
    * This feature will be mainly used by DaVinci to speed up bootstrapping.
    */
