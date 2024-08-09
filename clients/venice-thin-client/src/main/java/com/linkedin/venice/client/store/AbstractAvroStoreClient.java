@@ -516,8 +516,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         digest.update(data.array(), data.position(), data.limit() - data.position());
         digest.doFinal(valueChecksum, 0);
       } catch (Exception e2) {
-        String msg = "failed to compute value checksum";
-        LOGGER.error("{} ...", msg, e2);
+        LOGGER.error("Failed to compute value checksum", e2);
       }
 
       try {
