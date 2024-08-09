@@ -107,8 +107,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
-    ByteBuffer oldValueBytes =
-        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(personSchemaV2).serialize(oldValueRecord));
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
