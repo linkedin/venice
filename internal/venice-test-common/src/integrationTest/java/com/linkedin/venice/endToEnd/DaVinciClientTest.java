@@ -234,7 +234,8 @@ public class DaVinciClientTest {
         backendConfig)) {
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformerFunction((storeVersion) -> {
-            TestRecordTransformer recordTransformer = new TestRecordTransformer(storeVersion);
+            TestRecordTransformer recordTransformer = null;
+            recordTransformer = new TestRecordTransformer(storeVersion, true);
             recordTransformer.setOriginalSchema(Schema.parse(DEFAULT_VALUE_SCHEMA));
             return recordTransformer;
           }));

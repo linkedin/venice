@@ -991,4 +991,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public RocksDBSstFileWriter getRocksDBSstFileWriter() {
     return rocksDBSstFileWriter;
   }
+
+  @Override
+  public RocksIterator getRocksDBIterator() {
+    return rocksDB.newIterator();
+  }
 }

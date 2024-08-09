@@ -100,7 +100,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -200,7 +199,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformer recordTransformer) {
     super(
         builder,
         store,
@@ -211,7 +210,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer,
+        recordTransformer,
         builder.getLeaderFollowerNotifiers());
     this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**

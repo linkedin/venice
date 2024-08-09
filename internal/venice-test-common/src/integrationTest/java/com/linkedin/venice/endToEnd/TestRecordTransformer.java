@@ -6,8 +6,8 @@ import org.apache.avro.Schema;
 
 
 public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
-  public TestRecordTransformer(int storeVersion) {
-    super(storeVersion);
+  public TestRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+    super(storeVersion, storeRecordsInDaVinci);
   }
 
   Schema originalSchema;
@@ -24,8 +24,13 @@ public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Int
     this.originalSchema = schema;
   }
 
-  public Integer put(Lazy<Integer> key, Lazy<Integer> value) {
+  public Integer transform(Lazy<Integer> key, Lazy<Integer> value) {
     return value.get() * 100;
+  }
+
+  @Override
+  public void processPut(Lazy<Integer> key, Lazy<Integer> value) {
+    return;
   }
 
 }

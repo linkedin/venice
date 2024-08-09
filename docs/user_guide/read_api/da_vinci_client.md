@@ -11,7 +11,8 @@ This allows you to eagerly load some or all partitions of the dataset and perfor
 cache. Future updates to the data continue to be streamed in and applied to the local cache.
 
 ## Record Transformer
-This feature enables applications to transform records as they're being consumed and stored in the Da Vinci Client. 
+This feature enables applications to transform records before they're stored in the Da Vinci Client
+or a custom storage of your choice.
 It's capable of handling records that are compressed and/or chunked.
 
 ### Usage
@@ -31,11 +32,12 @@ package com.linkedin.davinci.transformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 
 
 public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public StringRecordTransformer(int storeVersion) {
-    super(storeVersion);
+  public TestStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+    super(storeVersion, storeRecordsInDaVinci);
   }
 
   public Schema getKeyOutputSchema() {
@@ -46,8 +48,21 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
     return Schema.create(Schema.Type.STRING);
   }
 
-  public String put(Lazy<Integer> key, Lazy<String> value) {
-    return value.get() + "Transformed";
+  public String transform(Lazy<Integer> key, Lazy<String> value) {
+    Object valueObj = value.get();
+    String valueStr;
+
+    if (valueObj instanceof Utf8) {
+      valueStr = valueObj.toString();
+    } else {
+      valueStr = (String) valueObj;
+    }
+
+    return valueStr + "Transformed";
+  }
+
+  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+    return;
   }
 }
 
@@ -56,5 +71,5 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
 Here's an example `setRecordTransformerFunction()` implementation:
 ```
 DaVinciConfig config = new DaVinciConfig();
-config.setRecordTransformerFunction((storeVersion) -> new StringRecordTransformer(storeVersion));
+config.setRecordTransformerFunction((storeVersion) -> new StringRecordTransformer(storeVersion, true));
 ```

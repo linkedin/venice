@@ -24,6 +24,7 @@ import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.RocksIterator;
 import org.rocksdb.SstFileManager;
 
 
@@ -291,5 +292,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   // Only used for testing purposes
   public void setRocksDBServerConfig(RocksDBServerConfig rocksDBServerConfig) {
     this.rocksDBServerConfig = rocksDBServerConfig;
+  }
+
+  @Override
+  public RocksIterator getRocksDBIterator(int partitionId) {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.getRocksDBIterator();
   }
 }
