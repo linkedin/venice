@@ -2157,4 +2157,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED =
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
+
+  /**
+   * Quota for AA/WC leader replica as we know AA/WC messages are expensive, so we would like to use the following throttler
+   * to limit the resource usage.
+   */
+  public static final String SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.aa.wc.leader.quota.records.per.second";
 }

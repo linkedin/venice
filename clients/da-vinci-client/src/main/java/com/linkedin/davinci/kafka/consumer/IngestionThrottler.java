@@ -35,6 +35,7 @@ public class IngestionThrottler implements Closeable {
 
   private volatile EventThrottler finalRecordThrottler;
   private volatile EventThrottler finalBandwidthThrottler;
+  private final EventThrottler aaWCLeaderRecordThrottler;
   private boolean isUsingSpeedupThrottler = false;
 
   public IngestionThrottler(
@@ -66,6 +67,13 @@ public class IngestionThrottler implements Closeable {
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
         serverConfig.getKafkaFetchQuotaTimeWindow(),
         "kafka_consumption_bandwidth",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+
+    this.aaWCLeaderRecordThrottler = new EventThrottler(
+        serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "aa_wc_leader_records_count",
         false,
         EventThrottler.BLOCK_STRATEGY);
 
@@ -128,6 +136,10 @@ public class IngestionThrottler implements Closeable {
 
   public void maybeThrottleBandwidth(int totalBytes) {
     finalBandwidthThrottler.maybeThrottle(totalBytes);
+  }
+
+  public void maybeThrottleAAWCRecordRate(int count) {
+    aaWCLeaderRecordThrottler.maybeThrottle(count);
   }
 
   public boolean isUsingSpeedupThrottler() {

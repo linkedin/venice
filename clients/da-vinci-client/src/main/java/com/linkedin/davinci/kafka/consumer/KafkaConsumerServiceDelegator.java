@@ -11,7 +11,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 
@@ -41,16 +40,23 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
    */
   private final VeniceConcurrentHashMap<String, Boolean> storeVersionAAWCFlagMap = new VeniceConcurrentHashMap<>();
 
+  interface KafkaConsumerServiceBuilder {
+    KafkaConsumerService build(int poolSize, String statsSuffix, ConsumerPoolType poolType);
+  }
+
   public KafkaConsumerServiceDelegator(
       VeniceServerConfig serverConfig,
-      BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor,
+      KafkaConsumerServiceBuilder consumerServiceConstructor,
       Function<String, Boolean> isAAWCStoreFunc) {
 
-    this.defaultConsumerService =
-        consumerServiceConstructor.apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ""); // Empty stats suffix
+    this.defaultConsumerService = consumerServiceConstructor
+        .build(serverConfig.getConsumerPoolSizePerKafkaCluster(), "", ConsumerPoolType.REGULAR_POOL); // Empty stats
+                                                                                                      // suffix
     if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      this.consumerServiceForAAWCLeader = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), "_for_aa_wc_leader");
+      this.consumerServiceForAAWCLeader = consumerServiceConstructor.build(
+          serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(),
+          "_for_aa_wc_leader",
+          ConsumerPoolType.AA_WC_LEADER_POOL);
     } else {
       this.consumerServiceForAAWCLeader = null;
     }

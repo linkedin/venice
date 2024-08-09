@@ -998,6 +998,7 @@ public abstract class StoreIngestionTaskTest {
     Properties localKafkaProps = new Properties();
     localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
+        ConsumerPoolType.REGULAR_POOL,
         mockFactory,
         localKafkaProps,
         10,
@@ -1020,6 +1021,7 @@ public abstract class StoreIngestionTaskTest {
     Properties remoteKafkaProps = new Properties();
     remoteKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     remoteKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
+        ConsumerPoolType.REGULAR_POOL,
         mockFactory,
         remoteKafkaProps,
         10,

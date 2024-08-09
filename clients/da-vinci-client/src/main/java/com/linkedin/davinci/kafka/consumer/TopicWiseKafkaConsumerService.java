@@ -34,6 +34,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   private final Logger LOGGER;
 
   TopicWiseKafkaConsumerService(
+      final ConsumerPoolType poolType,
       final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
@@ -52,6 +53,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled) {
     super(
+        poolType,
         consumerFactory,
         consumerProperties,
         readCycleDelayMs,
