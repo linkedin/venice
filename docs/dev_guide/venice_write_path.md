@@ -40,6 +40,8 @@ describes the data flow of how a store ingestion task's created and ingest data 
 When ingestion is in different stages, the server reports the ingestion status. The ingestion signal is propagated to 
 various downstream for different business logics. The diagram below describes the signal flow of the ingestion report.
 
+![Server Ingestion Report Diagram](../assets/images/server_ingestion_report.svg)
+
 ### Venice Large Record Value Chunking
 
 Due to the ~1MB Kafka size limit, records larger than ~1MB will need to be chunked into multiple Kafka messages by
@@ -58,4 +60,4 @@ is updated with the new keys, and the old chunks are deleted.
 
 The diagram below illustrates the aforementioned chunking system.
 
-![Large Record Value Chunking Diagram]()
+![Large Record Value Chunking Diagram](https://github.com/user-attachments/assets/f0ed6eb2-7558-4300-a75c-5fc842bb2fb5)
