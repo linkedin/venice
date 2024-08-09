@@ -202,7 +202,9 @@ public enum ControllerRoute {
   SET_MIGRATION_PUSH_STRATEGY("/set_push_strategy", HttpMethod.GET, Arrays.asList(VOLDEMORT_STORE_NAME, PUSH_STRATEGY)),
 
   CLUSTER_DISCOVERY("/discover_cluster", HttpMethod.GET, Collections.singletonList(NAME)),
-  LIST_BOOTSTRAPPING_VERSIONS("/list_bootstrapping_versions", HttpMethod.GET, Collections.emptyList()),
+  ACTIVE_PARENT_CONTROLLER_REGION_DISCOVERY(
+      "/discover_active_parent_controller_region", HttpMethod.GET, Collections.emptyList()
+  ), LIST_BOOTSTRAPPING_VERSIONS("/list_bootstrapping_versions", HttpMethod.GET, Collections.emptyList()),
 
   OFFLINE_PUSH_INFO("/offline_push_info", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
 
