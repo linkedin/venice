@@ -20,6 +20,7 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
@@ -194,7 +195,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        oldValueBytes,
+        Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -307,7 +308,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        oldValueBytes,
+        Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -387,7 +388,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             .serialize(updateFieldRecord));
 
     MergeConflictResult mergeConflictResult2 = mergeConflictResolver.update(
-        updatedValueBytes,
+        Lazy.of(() -> updatedValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -472,7 +473,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        oldValueBytes,
+        Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -620,7 +621,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        oldValueBytes,
+        Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,

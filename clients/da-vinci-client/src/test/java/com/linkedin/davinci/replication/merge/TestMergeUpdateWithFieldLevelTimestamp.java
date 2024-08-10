@@ -17,6 +17,7 @@ import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
@@ -80,7 +81,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        null,
+        Lazy.of(() -> null),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
@@ -162,7 +163,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
 
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     mergeConflictResult = mergeConflictResolver.update(
-        updatedValueBytes,
+        Lazy.of(() -> updatedValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes2,
         incomingValueSchemaId,
@@ -268,7 +269,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        oldValueBytes,
+        Lazy.of(() -> oldValueBytes),
         rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,

@@ -8,10 +8,12 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -48,7 +50,7 @@ public class TestMergeUpdate extends TestMergeBase {
 
     long updateTs = isUpdateTsSmallerThanRmdTs ? baselineRmdTs - 1 : baselineRmdTs;
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -94,7 +96,7 @@ public class TestMergeUpdate extends TestMergeBase {
     long updateTs = isUpdateTsSmallerThanRmdTs ? baselineRmdTs - 1 : baselineRmdTs;
     int updateColoId = isUpdateTsSmallerThanRmdTs ? baselineColoID : baselineColoID - 1;
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -155,7 +157,7 @@ public class TestMergeUpdate extends TestMergeBase {
       updateTs -= 1;
     }
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -214,7 +216,7 @@ public class TestMergeUpdate extends TestMergeBase {
 
     long updateTs = updateOnActiveElement ? baselineRmdTs : baselineRmdTs - 1;
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -254,7 +256,7 @@ public class TestMergeUpdate extends TestMergeBase {
     GenericRecord oldRmdRecord = initiateValueLevelRmdRecord(baselineRmdTs);
     long updateTs = updateTsSmallerThanRmdTs ? baselineRmdTs - 1 : baselineRmdTs;
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -326,7 +328,7 @@ public class TestMergeUpdate extends TestMergeBase {
     nullableMapTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L));
 
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -393,7 +395,7 @@ public class TestMergeUpdate extends TestMergeBase {
             .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, null)
             .build();
     result = mergeConflictResolver.update(
-        serializeValueRecord(updatedValueRecord),
+        Lazy.of(() -> serializeValueRecord(updatedValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, updateRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -431,8 +433,10 @@ public class TestMergeUpdate extends TestMergeBase {
             .build();
     ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.setSchemaId(schemaSet.getValueSchemaId());
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    container.setManifest(chunkedValueManifest);
     result = mergeConflictResolver.update(
-        serializeValueRecord(updatedValueRecord),
+        Lazy.of(() -> serializeValueRecord(updatedValueRecord)),
         null,
         // new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, updateRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
@@ -442,7 +446,7 @@ public class TestMergeUpdate extends TestMergeBase {
         1L,
         0,
         0,
-        chunkedValueManifest);
+        container);
 
     newUpdatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
@@ -513,7 +517,7 @@ public class TestMergeUpdate extends TestMergeBase {
     mapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 2L, 3L));
 
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -592,7 +596,7 @@ public class TestMergeUpdate extends TestMergeBase {
     listTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L, 4L));
 
     MergeConflictResult result = mergeConflictResolver.update(
-        serializeValueRecord(oldValueRecord),
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         serializeUpdateRecord(partialUpdateRecord),
         schemaSet.getValueSchemaId(),
@@ -798,7 +802,7 @@ public class TestMergeUpdate extends TestMergeBase {
     }
 
     return mergeConflictResolver.update(
-        oldValueByteBuffer,
+        Lazy.of(() -> oldValueByteBuffer),
         oldRmdRecord == null
             ? null
             : new RmdWithValueSchemaId(
