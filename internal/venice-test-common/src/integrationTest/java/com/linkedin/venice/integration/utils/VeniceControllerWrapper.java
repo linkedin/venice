@@ -368,6 +368,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
           .build();
       VeniceController veniceController = new VeniceController(ctx);
+
+      String zkBasePath;
+      if (options.isParent()) {
+        zkBasePath = "/test-venice-parent";
+      } else {
+        zkBasePath = "/test-venice";
+      }
       return new VeniceControllerWrapper(
           options.getRegionName(),
           serviceName,
@@ -378,7 +385,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           propertiesList,
           options.isParent(),
           d2ServerList,
-          options.getZkAddress(),
+          options.getZkAddress() + zkBasePath,
           metricsRepository);
     };
   }

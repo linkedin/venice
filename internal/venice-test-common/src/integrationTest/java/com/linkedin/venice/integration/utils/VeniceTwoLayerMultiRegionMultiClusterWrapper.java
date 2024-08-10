@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABR
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_REGION_STATE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
@@ -14,6 +15,8 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
+import static com.linkedin.venice.controller.ParentControllerRegionState.PASSIVE;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
@@ -70,7 +73,12 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
       VeniceMultiRegionClusterCreateOptions options) {
     String parentRegionName = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-    final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(options.getNumberOfParentControllers());
+    final List<VeniceControllerWrapper> parentControllers;
+    if (options.isParentControllerInChildRegion()) {
+      parentControllers = new ArrayList<>(options.getNumberOfRegions());
+    } else {
+      parentControllers = new ArrayList<>(options.getNumberOfParentControllers());
+    }
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(options.getNumberOfRegions());
     /**
      * Enable participant system store by default in a two-layer multi-region set-up
@@ -215,21 +223,50 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           false,
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
-      VeniceControllerCreateOptions parentControllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper).multiRegion(true)
-              .veniceZkBasePath(options.getParentVeniceZkBasePath())
-              .replicationFactor(options.getReplicationFactor())
-              .childControllers(childControllers)
-              .extraProperties(finalParentControllerProperties)
-              .clusterToD2(clusterToD2)
-              .clusterToServerD2(clusterToServerD2)
-              .regionName(parentRegionName)
-              .authorizerService(options.getParentAuthorizerService())
-              .build();
-      // Create parentControllers for multi-cluster
-      for (int i = 0; i < options.getNumberOfParentControllers(); i++) {
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(parentControllerCreateOptions);
-        parentControllers.add(parentController);
+
+      if (options.isParentControllerInChildRegion()) {
+        Properties activeParentControllerProperties = new Properties();
+        activeParentControllerProperties.putAll(finalParentControllerProperties);
+        activeParentControllerProperties.setProperty(CONTROLLER_PARENT_REGION_STATE, ACTIVE.name());
+        Properties passiveParentControllerProperties = new Properties();
+        passiveParentControllerProperties.putAll(finalParentControllerProperties);
+        passiveParentControllerProperties.setProperty(CONTROLLER_PARENT_REGION_STATE, PASSIVE.name());
+        for (int i = 0; i < options.getNumberOfRegions(); i++) {
+          String regionName = childRegionName.get(i);
+          // default child region is dc-0 which has active parent controller while other child regions have passive
+          // parent controllers
+          VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
+              new VeniceControllerCreateOptions.Builder(
+                  clusterNames,
+                  zkServerByRegionName.get(regionName),
+                  parentPubSubBrokerWrapper).multiRegion(true)
+                      .replicationFactor(options.getReplicationFactor())
+                      .childControllers(childControllers)
+                      .extraProperties(i == 0 ? activeParentControllerProperties : passiveParentControllerProperties)
+                      .clusterToD2(clusterToD2)
+                      .clusterToServerD2(clusterToServerD2)
+                      .regionName(regionName)
+                      .authorizerService(options.getParentAuthorizerService())
+                      .build());
+          parentControllers.add(parentController);
+        }
+      } else {
+        VeniceControllerCreateOptions parentControllerCreateOptions =
+            new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper)
+                .multiRegion(true)
+                .replicationFactor(options.getReplicationFactor())
+                .childControllers(childControllers)
+                .extraProperties(finalParentControllerProperties)
+                .clusterToD2(clusterToD2)
+                .clusterToServerD2(clusterToServerD2)
+                .regionName(parentRegionName)
+                .authorizerService(options.getParentAuthorizerService())
+                .build();
+        // Create parentControllers for multi-cluster
+        for (int i = 0; i < options.getNumberOfParentControllers(); i++) {
+          VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(parentControllerCreateOptions);
+          parentControllers.add(parentController);
+        }
       }
 
       final ZkServerWrapper finalZkServer = zkServer;
