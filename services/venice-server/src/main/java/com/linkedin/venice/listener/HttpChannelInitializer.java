@@ -186,7 +186,6 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ServerConnectionStatsHandler serverConnectionStatsHandler =
           new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
       pipeline.addLast(serverConnectionStatsHandler);
-      // pipeline.addLast(new FlushConsolidationHandler(256, true));
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
