@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
@@ -63,7 +64,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           body = obj.getResponseBody();
           schemaIdHeader = obj.getResponseSchemaIdHeader();
         } else {
-          body = Unpooled.EMPTY_BUFFER;
+          body = EMPTY_BUFFER;
           responseStatus = NOT_FOUND;
         }
         isStreamingResponse = obj.isStreamingResponse();
@@ -74,9 +75,10 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         responseStatus = shortcutResponse.getStatus();
         String message = shortcutResponse.getMessage();
         if (message == null) {
-          message = "";
+          body = EMPTY_BUFFER;
+        } else {
+          body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         }
-        body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         contentType = HttpConstants.TEXT_PLAIN;
         if (shortcutResponse.getStatus().equals(VeniceRequestEarlyTerminationException.getHttpResponseStatus())) {
           statsHandler.setRequestTerminatedEarly();

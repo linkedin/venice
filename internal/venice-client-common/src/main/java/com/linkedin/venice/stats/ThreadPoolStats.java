@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.ThreadPoolExecutor;
 
 
@@ -23,10 +24,10 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     this.threadPoolExecutor = threadPoolExecutor;
 
     activeThreadNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
+        new AsyncGauge((ignored, ignored2) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
     maxThreadNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
+        new AsyncGauge((ignored, ignored2) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
     queuedTasksNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_number"));
+        new AsyncGauge((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_number"));
   }
 }

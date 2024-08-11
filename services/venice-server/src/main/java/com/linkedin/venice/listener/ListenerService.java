@@ -83,6 +83,8 @@ public class ListenerService extends AbstractVeniceService {
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
 
+    LOGGER.info("#### Experiment with no flush in quota enforcement handler with a separate thread pool");
+
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
     this.isGrpcEnabled = serverConfig.isGrpcEnabled();

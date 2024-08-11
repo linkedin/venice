@@ -23,6 +23,7 @@ import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerQuotaTokenBucketStats;
 import com.linkedin.venice.throttle.TokenBucket;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -35,6 +36,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,6 +62,13 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
+  private final ThreadPoolExecutor quotaThreadPool = new ThreadPoolExecutor(
+      8,
+      8,
+      0,
+      TimeUnit.MILLISECONDS,
+      new LinkedBlockingQueue<>(),
+      new DaemonThreadFactory("QuotaEnforcement"));
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -238,10 +249,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     if (!isGrpc) {
-      ctx.writeAndFlush(
-          new HttpShortcutResponse(
-              "Invalid request resource " + request.getResourceName(),
-              HttpResponseStatus.BAD_REQUEST));
+      CompletableFuture.runAsync(() -> {
+        ctx.write(
+            new HttpShortcutResponse("Store " + request.getStoreName() + " not found", HttpResponseStatus.NOT_FOUND));
+      }, quotaThreadPool);
     } else {
       String error = "Invalid request resource " + request.getResourceName();
       grpcCtx.setError();
@@ -278,22 +289,25 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       Store store,
       int rcu,
       boolean isGrpc) {
-    stats.recordRejected(request.getStoreName(), rcu);
+    CompletableFuture.runAsync(() -> {
 
-    long storeQuota = store.getReadQuotaInCU();
-    float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
-    String errorMessage =
-        "Total quota for store " + request.getStoreName() + " is " + storeQuota + " RCU per second. Storage Node "
-            + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
+      stats.recordRejected(request.getStoreName(), rcu);
 
-    if (!isGrpc) {
-      ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
-    } else {
-      grpcCtx.setError();
-      grpcCtx.getVeniceServerResponseBuilder()
-          .setErrorCode(GrpcErrorCodes.TOO_MANY_REQUESTS)
-          .setErrorMessage(errorMessage);
-    }
+      long storeQuota = store.getReadQuotaInCU();
+      float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
+      String errorMessage =
+          "Total quota for store " + request.getStoreName() + " is " + storeQuota + " RCU per second. Storage Node "
+              + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
+
+      if (!isGrpc) {
+        ctx.write(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+      } else {
+        grpcCtx.setError();
+        grpcCtx.getVeniceServerResponseBuilder()
+            .setErrorCode(GrpcErrorCodes.TOO_MANY_REQUESTS)
+            .setErrorMessage(errorMessage);
+      }
+    }, quotaThreadPool);
 
     return true;
   }
@@ -304,18 +318,19 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       String storeName,
       int rcu,
       boolean isGrpc) {
-    stats.recordRejected(storeName, rcu);
+    CompletableFuture.runAsync(() -> {
+      stats.recordRejected(storeName, rcu);
 
-    if (!isGrpc) {
-      ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
-    } else {
-      String errorMessage = "Server over capacity";
-      grpcCtx.setError();
-      grpcCtx.getVeniceServerResponseBuilder()
-          .setErrorCode(GrpcErrorCodes.SERVICE_UNAVAILABLE)
-          .setErrorMessage(errorMessage);
-    }
-
+      if (!isGrpc) {
+        ctx.write(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
+      } else {
+        String errorMessage = "Server over capacity";
+        grpcCtx.setError();
+        grpcCtx.getVeniceServerResponseBuilder()
+            .setErrorCode(GrpcErrorCodes.SERVICE_UNAVAILABLE)
+            .setErrorMessage(errorMessage);
+      }
+    }, quotaThreadPool);
     return true;
   }
 
