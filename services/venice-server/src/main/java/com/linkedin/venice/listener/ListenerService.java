@@ -88,6 +88,18 @@ public class ListenerService extends AbstractVeniceService {
     this.isGrpcEnabled = serverConfig.isGrpcEnabled();
     this.grpcPort = serverConfig.getGrpcPort();
 
+    VeniceServerNettyStats nettyStats = new VeniceServerNettyStats(metricsRepository, "NettyStats");
+
+    PriorityBasedResponseSchedulerContext priorityBasedResponseSchedulerContext =
+        new PriorityBasedResponseSchedulerContext(
+            serverConfig.getNettyWorkerThreadCount(),
+            serverConfig.getNettyWorkerThreadCount());
+
+    PriorityBasedResponseScheduler responseScheduler =
+        new PriorityBasedResponseScheduler(priorityBasedResponseSchedulerContext);
+    // nettyStats.setPriorityBasedResponseScheduler(responseScheduler);
+    nettyStats.setPriorityBasedResponseScheduler(null);
+
     executor = createThreadPool(
         serverConfig.getRestServiceStorageThreadNum(),
         "StorageExecutionThread",
@@ -121,10 +133,10 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.isEnableParallelBatchGet(),
         serverConfig.getParallelBatchGetChunkSize(),
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        nettyStats);
 
     storageReadRequestHandler = requestHandler;
-
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
         customizedViewRepository,
@@ -134,15 +146,19 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig,
         routerAccessController,
         storeAccessController,
-        requestHandler);
+        requestHandler,
+        nettyStats);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();
+    int workerThreadCount = serverConfig.getNettyWorkerThreadCount();
+    // workerThreadCount = Runtime.getRuntime().availableProcessors();
+
     if (epollEnabled) {
       try {
         bossGroup = new EpollEventLoopGroup(1);
-        workerGroup = new EpollEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu
-                                                                                         // count
+        workerGroup = new EpollEventLoopGroup(workerThreadCount); // if 0, defaults to 2*cpu
+                                                                  // count
         serverSocketChannelClass = EpollServerSocketChannel.class;
         LOGGER.info("Epoll is enabled in Server Rest Service");
       } catch (LinkageError error) {
@@ -152,9 +168,12 @@ public class ListenerService extends AbstractVeniceService {
     }
     if (!epollEnabled) {
       bossGroup = new NioEventLoopGroup(1);
-      workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); // if 0, defaults to 2*cpu count
+      workerGroup = new NioEventLoopGroup(workerThreadCount); // if 0, defaults to 2*cpu count
       serverSocketChannelClass = NioServerSocketChannel.class;
     }
+
+    nettyStats.setEventLoopGroup(workerGroup);
+
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup)
         .channel(serverSocketChannelClass)
@@ -162,6 +181,7 @@ public class ListenerService extends AbstractVeniceService {
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
+        // .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     if (isGrpcEnabled && grpcServer == null) {
@@ -236,7 +256,8 @@ public class ListenerService extends AbstractVeniceService {
       boolean parallelBatchGetEnabled,
       int parallelBatchGetChunkSize,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      VeniceServerNettyStats nettyStats) {
     return new StorageReadRequestHandler(
         executor,
         computeExecutor,
@@ -251,6 +272,7 @@ public class ListenerService extends AbstractVeniceService {
         parallelBatchGetChunkSize,
         serverConfig,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        nettyStats);
   }
 }

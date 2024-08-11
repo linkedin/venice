@@ -58,6 +58,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
+  private final VeniceServerNettyStats nettyStats;
+  private PriorityBasedResponseScheduler priorityBasedResponseScheduler;
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -73,6 +75,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         nodeId,
         stats,
         metricsRepository,
+        null,
         Clock.systemUTC());
   }
 
@@ -83,7 +86,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       String nodeId,
       AggServerQuotaUsageStats stats,
       MetricsRepository metricsRepository,
+      VeniceServerNettyStats nettyStats,
       Clock clock) {
+    this.nettyStats = nettyStats;
+    if (nettyStats != null) {
+      this.priorityBasedResponseScheduler = nettyStats.getPriorityBasedResponseScheduler();
+    }
     this.clock = clock;
     this.storageNodeBucket = tokenBucketfromRcuPerSecond(storageNodeRcuCapacity, 1);
     this.storageNodeTokenBucketStats =
@@ -186,6 +194,17 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
+    long startTs = System.nanoTime();
+    try {
+      channelReadInner(ctx, request);
+    } finally {
+      if (nettyStats != null) {
+        nettyStats.recordTimeSpentInQuotaEnforcement(startTs);
+      }
+    }
+  }
+
+  private void channelReadInner(ChannelHandlerContext ctx, RouterRequest request) {
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
 
@@ -204,8 +223,20 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      */
     TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
     if (tokenBucket != null) {
-      if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
-          && handleTooManyRequests(ctx, request, null, store, rcu, false)) {
+      if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)) {
+        stats.recordRejected(request.getStoreName(), rcu);
+        long storeQuota = store.getReadQuotaInCU();
+        float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
+        String errorMessage =
+            "Total quota for store " + request.getStoreName() + " is " + storeQuota + " RCU per second. Storage Node "
+                + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
+
+        writeAndFlush(ctx, new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+
+        // request.markAsQuotaRejectedRequest(HttpResponseStatus.TOO_MANY_REQUESTS, errorMessage);
+        // ReferenceCountUtil.retain(request);
+        // ctx.fireChannelRead(request);
+
         // Enforce store version quota for non-retry requests.
         // TODO: check if extra node capacity and can still process this request out of quota
         return;
@@ -238,7 +269,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     if (!isGrpc) {
-      ctx.writeAndFlush(
+      writeAndFlush(
+          ctx,
           new HttpShortcutResponse(
               "Invalid request resource " + request.getResourceName(),
               HttpResponseStatus.BAD_REQUEST));
@@ -249,6 +281,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     return true;
+  }
+
+  private void writeAndFlush(ChannelHandlerContext context, Object message) {
+    context.writeAndFlush(message);
   }
 
   public boolean checkInitAndQuotaEnabledToSkipQuotaEnforcement(
@@ -287,7 +323,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
             + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
 
     if (!isGrpc) {
-      ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+      writeAndFlush(ctx, new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
     } else {
       grpcCtx.setError();
       grpcCtx.getVeniceServerResponseBuilder()
@@ -307,7 +343,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     stats.recordRejected(storeName, rcu);
 
     if (!isGrpc) {
-      ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
+      writeAndFlush(ctx, new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
     } else {
       String errorMessage = "Server over capacity";
       grpcCtx.setError();

@@ -1,5 +1,11 @@
 package com.linkedin.venice;
 
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+
+import io.netty.util.AsciiString;
+
+
 public class HttpConstants {
   public static final String TEXT_PLAIN = "text/plain";
   public static final String TEXT_HTML = "text/html";
@@ -37,6 +43,14 @@ public class HttpConstants {
   public static final String VENICE_CLIENT_COMPUTE = "X-VENICE-CLIENT-COMPUTE";
 
   public static final int SC_MISDIRECTED_REQUEST = 421;
+
+  public static final AsciiString VENICE_SCHEMA_ID_HEADER = new AsciiString(VENICE_SCHEMA_ID);
+  public static final AsciiString VENICE_COMPRESSION_STRATEGY_HEADER = new AsciiString(VENICE_COMPRESSION_STRATEGY);
+  public static final AsciiString VENICE_REQUEST_RCU_HEADER = new AsciiString(VENICE_REQUEST_RCU);
+  public static final AsciiString CONTENT_TYPE_HEADER = new AsciiString(CONTENT_TYPE);
+  public static final AsciiString CONTENT_LENGTH_HEADER = new AsciiString(CONTENT_LENGTH);
+  public static final AsciiString VENICE_STREAMING_RESPONSE_HEADER = new AsciiString(VENICE_STREAMING_RESPONSE);
+  public static final AsciiString VENICE_STREAMING_RESPONSE_HEADER_VALUE = new AsciiString("1");
 
   private HttpConstants() {
   }

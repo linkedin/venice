@@ -90,6 +90,7 @@ public class ReadQuotaEnforcementHandlerTest {
         thisNodeId,
         stats,
         metricsRepository,
+        null,
         clock);
     grpcQuotaEnforcer = new GrpcReadQuotaEnforcementHandler(quotaEnforcer);
     VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);

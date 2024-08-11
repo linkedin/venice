@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.streaming.StreamingUtils;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 /**
@@ -21,6 +22,10 @@ public abstract class RouterRequest {
   private final String resourceName;
   private final String storeName;
   private final boolean isStreamingRequest;
+  private boolean isQuotaRejectedRequest;
+  private HttpResponseStatus httpResponseStatus;
+  private String errorMessage;
+  private long arrivalTimeInNS;
 
   public RouterRequest(String resourceName, HttpRequest request) {
     this.isRetryRequest = containRetryHeader(request);
@@ -66,5 +71,31 @@ public abstract class RouterRequest {
 
   public boolean shouldRequestBeTerminatedEarly() {
     return requestTimeoutInNS != NO_REQUEST_TIMEOUT && System.nanoTime() > requestTimeoutInNS;
+  }
+
+  public void markAsQuotaRejectedRequest(HttpResponseStatus status, String errorMessage) {
+    isQuotaRejectedRequest = true;
+    httpResponseStatus = status;
+    this.errorMessage = errorMessage;
+  }
+
+  public boolean isQuotaRejectedRequest() {
+    return isQuotaRejectedRequest;
+  }
+
+  public HttpResponseStatus getQuotaRejectedResponseStatus() {
+    return httpResponseStatus;
+  }
+
+  public String getQuotaRejectedErrorMessage() {
+    return errorMessage;
+  }
+
+  public long getArrivalTimeInNS() {
+    return arrivalTimeInNS;
+  }
+
+  public void setArrivalTimeInNS(long arrivalTimeInNS) {
+    this.arrivalTimeInNS = arrivalTimeInNS;
   }
 }

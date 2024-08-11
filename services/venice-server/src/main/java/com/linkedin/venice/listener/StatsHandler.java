@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.listener.VeniceServerNettyStats.FIRST_HANDLER_TIMESTAMP_KEY;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
@@ -10,28 +11,34 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import it.unimi.dsi.fastutil.ints.IntList;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class StatsHandler extends ChannelDuplexHandler {
+  private static final Logger LOGGER = LogManager.getLogger(StatsHandler.class);
   private final ServerStatsContext serverStatsContext;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
+  private final VeniceServerNettyStats nettyStats;
 
   public StatsHandler(
       AggServerHttpRequestStats singleGetStats,
       AggServerHttpRequestStats multiGetStats,
-      AggServerHttpRequestStats computeStats) {
+      AggServerHttpRequestStats computeStats,
+      VeniceServerNettyStats nettyStats) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
     this.computeStats = computeStats;
-
+    this.nettyStats = nettyStats;
     this.serverStatsContext = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
   }
 
@@ -107,10 +114,6 @@ public class StatsHandler extends ChannelDuplexHandler {
     serverStatsContext.setCountOperatorCount(count);
   }
 
-  public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
-    serverStatsContext.setStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
-  }
-
   public void setStorageExecutionQueueLen(int storageExecutionQueueLen) {
     serverStatsContext.setStorageExecutionQueueLen(storageExecutionQueueLen);
   }
@@ -154,8 +157,11 @@ public class StatsHandler extends ChannelDuplexHandler {
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
     if (serverStatsContext.isNewRequest()) {
+      nettyStats.recordRequestArrivalRate();
       // Reset for every request
       serverStatsContext.resetContext();
+      nettyStats.incrementAllInflightRequests();
+      ctx.channel().attr(FIRST_HANDLER_TIMESTAMP_KEY).set(System.nanoTime());
       /**
        * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
        * registered by the pipeline to be executed in the same thread.
@@ -179,10 +185,21 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
+    long startTimeInNS = System.nanoTime();
     ChannelFuture future = ctx.writeAndFlush(msg);
     future.addListener((result) -> {
+      Channel channel = ctx.channel();
+      if (channel != null && !channel.isWritable()) {
+        nettyStats.recordChannelNotWritable();
+      }
+
+      if (result.isSuccess()) {
+        nettyStats.recordWriteAndFlushTime(startTimeInNS);
+      }
+
       // reset the StatsHandler for the new request. This is necessary since instances are channel-based
       // and channels are ready for the future requests as soon as the current has been handled.
+      nettyStats.decrementAllInflightRequests();
       serverStatsContext.setNewRequest();
 
       if (serverStatsContext.getResponseStatus() == null) {
@@ -210,10 +227,17 @@ public class StatsHandler extends ChannelDuplexHandler {
         // wrong interpretation of latency, recording error would give out impression that server failed to serve
         if (result.isSuccess() && (serverStatsContext.getResponseStatus().equals(OK)
             || serverStatsContext.getResponseStatus().equals(NOT_FOUND))) {
+          nettyStats.decrementIoInflightRequests();
           serverStatsContext.successRequest(serverHttpRequestStats, elapsedTime);
         } else if (!serverStatsContext.getResponseStatus().equals(TOO_MANY_REQUESTS)) {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
         }
+
+        if (result.isSuccess() && !serverStatsContext.getResponseStatus().equals(OK)) {
+          nettyStats.recordNonOkResponseLatency(elapsedTime);
+        }
+
+        nettyStats.recordRequestProcessingRate();
         serverStatsContext.setStatCallBackExecuted(true);
       }
     });

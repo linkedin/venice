@@ -86,6 +86,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
             GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req, requestParts);
             setupRequestTimeout(getRouterRequest);
             statsHandler.setRequestInfo(getRouterRequest);
+            getRouterRequest.setArrivalTimeInNS(statsHandler.getRequestStartTimeInNS());
             ctx.fireChannelRead(getRouterRequest);
           } else if (requestMethod.equals(HttpMethod.POST)) {
             // Multi-get
@@ -93,6 +94,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
                 MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req, requestParts);
             setupRequestTimeout(multiGetRouterReq);
             statsHandler.setRequestInfo(multiGetRouterReq);
+            multiGetRouterReq.setArrivalTimeInNS(statsHandler.getRequestStartTimeInNS());
             ctx.fireChannelRead(multiGetRouterReq);
           } else {
             throw new VeniceException("Unknown request method: " + requestMethod + " for " + QueryAction.STORAGE);

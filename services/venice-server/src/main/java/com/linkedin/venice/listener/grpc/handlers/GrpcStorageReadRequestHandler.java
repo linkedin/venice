@@ -59,7 +59,6 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
     }
 
     if (!ctx.hasError() && response != null) {
-      response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
       response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
       if (request.isStreamingRequest()) {
         response.setStreamingResponse();

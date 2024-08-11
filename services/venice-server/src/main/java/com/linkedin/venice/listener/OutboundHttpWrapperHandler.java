@@ -1,7 +1,12 @@
 package com.linkedin.venice.listener;
 
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static com.linkedin.venice.HttpConstants.CONTENT_LENGTH_HEADER;
+import static com.linkedin.venice.HttpConstants.CONTENT_TYPE_HEADER;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY_HEADER;
+import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU_HEADER;
+import static com.linkedin.venice.HttpConstants.VENICE_SCHEMA_ID_HEADER;
+import static com.linkedin.venice.HttpConstants.VENICE_STREAMING_RESPONSE_HEADER;
+import static com.linkedin.venice.HttpConstants.VENICE_STREAMING_RESPONSE_HEADER_VALUE;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -166,13 +171,13 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     }
 
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
-    response.headers().set(CONTENT_TYPE, contentType);
-    response.headers().set(CONTENT_LENGTH, body.readableBytes());
-    response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
-    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
-    response.headers().set(HttpConstants.VENICE_REQUEST_RCU, responseRcu);
+    response.headers().set(CONTENT_TYPE_HEADER, contentType);
+    response.headers().set(CONTENT_LENGTH_HEADER, body.readableBytes());
+    response.headers().set(VENICE_COMPRESSION_STRATEGY_HEADER, compressionStrategy.getValue());
+    response.headers().set(VENICE_SCHEMA_ID_HEADER, schemaIdHeader);
+    response.headers().set(VENICE_REQUEST_RCU_HEADER, responseRcu);
     if (isStreamingResponse) {
-      response.headers().set(HttpConstants.VENICE_STREAMING_RESPONSE, "1");
+      response.headers().set(VENICE_STREAMING_RESPONSE_HEADER, VENICE_STREAMING_RESPONSE_HEADER_VALUE);
     }
 
     /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
@@ -183,22 +188,21 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     ctx.writeAndFlush(response);
   }
 
-  public void setStats(ServerStatsContext statsContext, ReadResponse obj) {
-    statsContext.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
-    statsContext.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
-    statsContext.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
-    statsContext.setSuccessRequestKeyCount(obj.getRecordCount());
-    statsContext.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
-    statsContext.setReadComputeLatency(obj.getReadComputeLatency());
-    statsContext.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
-    statsContext.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
-    statsContext.setDotProductCount(obj.getDotProductCount());
-    statsContext.setCosineSimilarityCount(obj.getCosineSimilarityCount());
-    statsContext.setHadamardProductCount(obj.getHadamardProductCount());
-    statsContext.setCountOperatorCount(obj.getCountOperatorCount());
-    statsContext.setKeySizeList(obj.getKeySizeList());
-    statsContext.setValueSizeList(obj.getValueSizeList());
-    statsContext.setValueSize(obj.getValueSize());
-    statsContext.setReadComputeOutputSize(obj.getReadComputeOutputSize());
+  public void setStats(ServerStatsContext statsContext, ReadResponse readResponse) {
+    statsContext.setDatabaseLookupLatency(readResponse.getDatabaseLookupLatency());
+    statsContext.setStorageExecutionQueueLen(readResponse.getStorageExecutionQueueLen());
+    statsContext.setSuccessRequestKeyCount(readResponse.getRecordCount());
+    statsContext.setMultiChunkLargeValueCount(readResponse.getMultiChunkLargeValueCount());
+    statsContext.setReadComputeLatency(readResponse.getReadComputeLatency());
+    statsContext.setReadComputeDeserializationLatency(readResponse.getReadComputeDeserializationLatency());
+    statsContext.setReadComputeSerializationLatency(readResponse.getReadComputeSerializationLatency());
+    statsContext.setDotProductCount(readResponse.getDotProductCount());
+    statsContext.setCosineSimilarityCount(readResponse.getCosineSimilarityCount());
+    statsContext.setHadamardProductCount(readResponse.getHadamardProductCount());
+    statsContext.setCountOperatorCount(readResponse.getCountOperatorCount());
+    statsContext.setKeySizeList(readResponse.getKeySizeList());
+    statsContext.setValueSizeList(readResponse.getValueSizeList());
+    statsContext.setValueSize(readResponse.getValueSize());
+    statsContext.setReadComputeOutputSize(readResponse.getReadComputeOutputSize());
   }
 }

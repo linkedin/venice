@@ -1,9 +1,12 @@
 package com.linkedin.venice.listener;
 
+import static io.netty.handler.codec.http.HttpObjectDecoder.*;
+
 import com.linkedin.alpini.netty4.handlers.BasicHttpServerCodec;
 import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
@@ -36,6 +39,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -61,10 +65,12 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
   private final ServerConnectionStats serverConnectionStats;
+  private VeniceServerNettyStats nettyStats;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
+  private final FlushCounterHandler flushCounterHandler;
 
   private boolean isDaVinciClient;
 
@@ -78,6 +84,31 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       StorageReadRequestHandler requestHandler) {
+    this(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactory,
+        sslHandshakeExecutor,
+        serverConfig,
+        routerAccessController,
+        storeAccessController,
+        requestHandler,
+        null);
+  }
+
+  public HttpChannelInitializer(
+      ReadOnlyStoreRepository storeMetadataRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      MetricsRepository metricsRepository,
+      Optional<SSLFactory> sslFactory,
+      Executor sslHandshakeExecutor,
+      VeniceServerConfig serverConfig,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
+      StorageReadRequestHandler requestHandler,
+      VeniceServerNettyStats nettyStats) {
+    this.nettyStats = nettyStats;
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
@@ -124,6 +155,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         ? Optional.of(new ServerAclHandler(routerAccessController.get(), aclHandlerFailOnAccessRejection))
         : Optional.empty();
 
+    this.flushCounterHandler = new FlushCounterHandler(nettyStats);
+
     if (serverConfig.isQuotaEnforcementEnabled()) {
       String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
       this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
@@ -133,7 +166,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           customizedViewRepository,
           nodeId,
           quotaUsageStats,
-          metricsRepository);
+          metricsRepository,
+          nettyStats,
+          Clock.systemUTC());
 
       // Token Bucket Stats for a store must be initialized when that store is created
       this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
@@ -174,6 +209,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   @Override
   public void initChannel(SocketChannel ch) {
+    serverConnectionStats.incrementClientChannelCount();
+
+    ch.pipeline().addLast(flushCounterHandler);
     if (sslFactory.isPresent()) {
       SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (sslHandshakeExecutor != null) {
@@ -182,14 +220,20 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       ch.pipeline().addLast(sslInitializer);
     }
+
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
       ServerConnectionStatsHandler serverConnectionStatsHandler =
           new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
       pipeline.addLast(serverConnectionStatsHandler);
-      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, nettyStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
-        pipeline.addLast(new HttpServerCodec());
+        pipeline.addLast(
+            new HttpServerCodec(
+                DEFAULT_MAX_INITIAL_LINE_LENGTH,
+                DEFAULT_MAX_HEADER_SIZE,
+                DEFAULT_MAX_CHUNK_SIZE,
+                false));
       } else {
         // Hack!!!
         /**
@@ -197,34 +241,40 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
          * which is different from the default server codec handler, and we would like to resume the original one for HTTP/1.1.
          * This might not be necessary, but it will change the current behavior of HTTP/1.1 in Venice Server.
          */
-        final String codecHandlerName = "http";
-        ChannelHandler codecHandler = pipeline.get(codecHandlerName);
+        ChannelHandler codecHandler = pipeline.get(HttpConstants.HTTP);
         if (codecHandler != null) {
           // For HTTP/1.1 code path
           if (!(codecHandler instanceof BasicHttpServerCodec)) {
             throw new VeniceException(
                 "BasicHttpServerCodec is expected when the pipeline is instrumented by 'Http2PipelineInitializer'");
           }
-          pipeline.remove(codecHandlerName);
-          pipeline.addLast(new HttpServerCodec());
+          pipeline.remove(HttpConstants.HTTP);
+          pipeline.addLast(
+              new HttpServerCodec(
+                  DEFAULT_MAX_INITIAL_LINE_LENGTH,
+                  DEFAULT_MAX_HEADER_SIZE,
+                  DEFAULT_MAX_CHUNK_SIZE,
+                  false));
         }
       }
 
       pipeline.addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
           .addLast(new OutboundHttpWrapperHandler(statsHandler))
           .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
+
       if (sslFactory.isPresent()) {
         pipeline.addLast(verifySsl);
         if (aclHandler.isPresent()) {
           pipeline.addLast(aclHandler.get());
         }
         /**
-         * {@link #storeAclHandler} if present must come after {@link #aclHandler}
-         */
+        * {@link #storeAclHandler} if present must come after {@link #aclHandler}
+        */
         if (storeAclHandler.isPresent()) {
           pipeline.addLast(storeAclHandler.get());
         }
       }
+
       pipeline
           .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
@@ -240,12 +290,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     } else {
       httpPipelineInitializer.accept(ch.pipeline(), true);
     }
+
+    ch.closeFuture().addListener(future -> serverConnectionStats.decrementClientChannelCount());
   }
 
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
     VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
 
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, nettyStats);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
     grpcServerRequestProcessor.addHandler(grpcStatsHandler);
 

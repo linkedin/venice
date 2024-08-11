@@ -117,7 +117,6 @@ public class ServerStatsContextTest {
 
     context.setRequestType(RequestType.MULTI_GET);
     context.setDatabaseLookupLatency(10.5);
-    context.setStorageExecutionHandlerSubmissionWaitTime(20.5);
     context.setMultiChunkLargeValueCount(10);
     context.setRequestKeyCount(105);
     context.setSuccessRequestKeyCount(100);

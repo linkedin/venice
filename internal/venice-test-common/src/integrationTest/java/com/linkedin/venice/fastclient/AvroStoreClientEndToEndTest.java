@@ -280,6 +280,18 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
+  @Test
+  public void testFastClientForNettyStats() throws Exception {
+    testFastClientGet(
+        false,
+        false,
+        false,
+        false,
+        2,
+        RequestType.MULTI_GET,
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+  }
+
   @Test(dataProvider = "FastClient-Test-Permutations", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean dualRead,

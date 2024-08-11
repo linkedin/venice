@@ -30,7 +30,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor requestKeyCountSensor;
   private final Sensor successRequestKeyCountSensor;
   private final Sensor requestSizeInBytesSensor;
-  private final Sensor storageExecutionHandlerSubmissionWaitTime;
   private final Sensor storageExecutionQueueLenSensor;
 
   private final Sensor requestFirstPartLatencySensor;
@@ -69,6 +68,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       ServerHttpRequestStats totalStats,
       boolean isDaVinciClient) {
     super(isDaVinciClient ? dummySystemStoreMetricRepo : metricsRepository, storeName, requestType);
+    isKeyValueProfilingEnabled = true;
 
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
@@ -116,12 +116,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStatWithAvgAndMax(
             getName(),
             getFullMetricName("storage_engine_query_latency_for_large_value")));
-
-    storageExecutionHandlerSubmissionWaitTime = registerSensor(
-        "storage_execution_handler_submission_wait_time",
-        TehutiUtils.getPercentileStatWithAvgAndMax(
-            getName(),
-            getFullMetricName("storage_execution_handler_submission_wait_time")));
 
     storageExecutionQueueLenSensor = registerSensor("storage_execution_queue_len", new Max(), new Avg());
 
@@ -364,10 +358,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordMultiChunkLargeValueCount(int multiChunkLargeValueCount) {
     multiChunkLargeValueCountSensor.record(multiChunkLargeValueCount);
-  }
-
-  public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
-    storageExecutionHandlerSubmissionWaitTime.record(submissionWaitTime);
   }
 
   public void recordStorageExecutionQueueLen(int len) {
