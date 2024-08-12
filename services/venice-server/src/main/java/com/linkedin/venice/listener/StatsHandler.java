@@ -16,22 +16,27 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import it.unimi.dsi.fastutil.ints.IntList;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class StatsHandler extends ChannelDuplexHandler {
+  private static final Logger LOGGER = LogManager.getLogger(StatsHandler.class);
   private final ServerStatsContext serverStatsContext;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
+  private final VeniceServerNettyStats nettyStats;
 
   public StatsHandler(
       AggServerHttpRequestStats singleGetStats,
       AggServerHttpRequestStats multiGetStats,
-      AggServerHttpRequestStats computeStats) {
+      AggServerHttpRequestStats computeStats,
+      VeniceServerNettyStats nettyStats) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
     this.computeStats = computeStats;
-
+    this.nettyStats = nettyStats;
     this.serverStatsContext = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
   }
 
@@ -215,6 +220,11 @@ public class StatsHandler extends ChannelDuplexHandler {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
         }
         serverStatsContext.setStatCallBackExecuted(true);
+
+        long responseWriteAndFlushStartTimeNanosStartTime = serverStatsContext.getResponseWriteAndFlushStartTimeNanos();
+        if (responseWriteAndFlushStartTimeNanosStartTime > 0) {
+          nettyStats.recordWriteAndFlushCompletionTimeForDataRequest(responseWriteAndFlushStartTimeNanosStartTime);
+        }
       }
     });
   }

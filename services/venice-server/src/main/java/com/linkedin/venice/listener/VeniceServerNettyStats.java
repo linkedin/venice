@@ -22,6 +22,7 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
   private final AtomicInteger activeReadHandlerThreads = new AtomicInteger();
   private final Sensor writeAndFlushTimeOkRequests;
   private final Sensor writeAndFlushTimeBadRequests;
+  private final Sensor writeAndFlushCompletionTimeForDataRequest;
 
   public VeniceServerNettyStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -49,6 +50,16 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
         new Avg(),
         TehutiUtils
             .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + writeAndFlushTimeBadRequestsSensorName));
+
+    String responseWriteAndFlushStartTimeNanosSensorName = "WriteAndFlushCompletionTimeForDataRequest";
+    writeAndFlushCompletionTimeForDataRequest = registerSensorIfAbsent(
+        responseWriteAndFlushStartTimeNanosSensorName,
+        new OccurrenceRate(),
+        new Max(),
+        new Min(),
+        new Avg(),
+        TehutiUtils.getPercentileStat(
+            getName() + AbstractVeniceStats.DELIMITER + responseWriteAndFlushStartTimeNanosSensorName));
   }
 
   public static long getElapsedTimeInMicros(long startTimeNanos) {
@@ -76,10 +87,14 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
   }
 
   public void recordWriteAndFlushTimeOkRequests(long startTimeNanos) {
-    writeAndFlushTimeOkRequests.record(getElapsedTimeInNanos(startTimeNanos));
+    writeAndFlushTimeOkRequests.record(getElapsedTimeInMicros(startTimeNanos));
   }
 
   public void recordWriteAndFlushTimeBadRequests(long startTimeNanos) {
-    writeAndFlushTimeBadRequests.record(getElapsedTimeInNanos(startTimeNanos));
+    writeAndFlushTimeBadRequests.record(getElapsedTimeInMicros(startTimeNanos));
+  }
+
+  public void recordWriteAndFlushCompletionTimeForDataRequest(long startTimeNanos) {
+    writeAndFlushCompletionTimeForDataRequest.record(getElapsedTimeInMicros(startTimeNanos));
   }
 }

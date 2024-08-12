@@ -36,6 +36,7 @@ public class ServerStatsContext {
   private int hadamardProductCount = 0;
   private int countOperatorCount = 0;
   private boolean isRequestTerminatedEarly = false;
+  private long responseWriteAndFlushStartTimeNanos = -1;
 
   private IntList keySizeList;
   private IntList valueSizeList;
@@ -157,8 +158,8 @@ public class ServerStatsContext {
     isRequestTerminatedEarly = false;
     isComplete = false;
     isMisroutedStoreVersion = false;
-
     newRequest = false;
+    responseWriteAndFlushStartTimeNanos = -1;
   }
 
   public void setFirstPartLatency(double firstPartLatency) {
@@ -434,5 +435,13 @@ public class ServerStatsContext {
 
   public boolean isMisroutedStoreVersion() {
     return isMisroutedStoreVersion;
+  }
+
+  public void setResponseWriteAndFlushStartTimeNanos(long startTimeNanos) {
+    responseWriteAndFlushStartTimeNanos = startTimeNanos;
+  }
+
+  public long getResponseWriteAndFlushStartTimeNanos() {
+    return responseWriteAndFlushStartTimeNanos;
   }
 }

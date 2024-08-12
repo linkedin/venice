@@ -213,7 +213,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ServerConnectionStatsHandler serverConnectionStatsHandler =
           new ServerConnectionStatsHandler(serverConnectionStats, nettyStats, serverConfig.getRouterPrincipalName());
       pipeline.addLast(serverConnectionStatsHandler);
-      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, nettyStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
         pipeline.addLast(new HttpServerCodec());
@@ -272,7 +272,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
     VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
 
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, nettyStats);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
     grpcServerRequestProcessor.addHandler(grpcStatsHandler);
 

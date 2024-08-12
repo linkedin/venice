@@ -349,6 +349,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
             response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
             response.setStorageExecutionQueueLen(queueLen);
             response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
+            response.recordResponseWriteAndFlushStartTimeNanos();
             if (request.isStreamingRequest()) {
               response.setStreamingResponse();
             }

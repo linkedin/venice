@@ -27,6 +27,7 @@ public abstract class ReadResponse {
   private int hadamardProductCount = 0;
   private int countOperatorCount = 0;
   private int rcu = 0;
+  private long responseWriteAndFlushStartTimeNanos = -1;
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
@@ -205,4 +206,16 @@ public abstract class ReadResponse {
   public abstract ByteBuf getResponseBody();
 
   public abstract int getResponseSchemaIdHeader();
+
+  public void setResponseWriteAndFlushStartTimeNanos(long responseWriteAndFlushStartTimeNanos) {
+    this.responseWriteAndFlushStartTimeNanos = responseWriteAndFlushStartTimeNanos;
+  }
+
+  public void recordResponseWriteAndFlushStartTimeNanos() {
+    this.responseWriteAndFlushStartTimeNanos = System.nanoTime();
+  }
+
+  public long getResponseWriteAndFlushStartTimeNanos() {
+    return responseWriteAndFlushStartTimeNanos;
+  }
 }

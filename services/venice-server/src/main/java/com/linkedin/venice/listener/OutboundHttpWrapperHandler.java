@@ -183,22 +183,24 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     ctx.writeAndFlush(response);
   }
 
-  public void setStats(ServerStatsContext statsContext, ReadResponse obj) {
-    statsContext.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
-    statsContext.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
-    statsContext.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
-    statsContext.setSuccessRequestKeyCount(obj.getRecordCount());
-    statsContext.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
-    statsContext.setReadComputeLatency(obj.getReadComputeLatency());
-    statsContext.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
-    statsContext.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
-    statsContext.setDotProductCount(obj.getDotProductCount());
-    statsContext.setCosineSimilarityCount(obj.getCosineSimilarityCount());
-    statsContext.setHadamardProductCount(obj.getHadamardProductCount());
-    statsContext.setCountOperatorCount(obj.getCountOperatorCount());
-    statsContext.setKeySizeList(obj.getKeySizeList());
-    statsContext.setValueSizeList(obj.getValueSizeList());
-    statsContext.setValueSize(obj.getValueSize());
-    statsContext.setReadComputeOutputSize(obj.getReadComputeOutputSize());
+  public void setStats(ServerStatsContext statsContext, ReadResponse readResponse) {
+    statsContext.setDatabaseLookupLatency(readResponse.getDatabaseLookupLatency());
+    statsContext
+        .setStorageExecutionHandlerSubmissionWaitTime(readResponse.getStorageExecutionHandlerSubmissionWaitTime());
+    statsContext.setStorageExecutionQueueLen(readResponse.getStorageExecutionQueueLen());
+    statsContext.setSuccessRequestKeyCount(readResponse.getRecordCount());
+    statsContext.setMultiChunkLargeValueCount(readResponse.getMultiChunkLargeValueCount());
+    statsContext.setReadComputeLatency(readResponse.getReadComputeLatency());
+    statsContext.setReadComputeDeserializationLatency(readResponse.getReadComputeDeserializationLatency());
+    statsContext.setReadComputeSerializationLatency(readResponse.getReadComputeSerializationLatency());
+    statsContext.setDotProductCount(readResponse.getDotProductCount());
+    statsContext.setCosineSimilarityCount(readResponse.getCosineSimilarityCount());
+    statsContext.setHadamardProductCount(readResponse.getHadamardProductCount());
+    statsContext.setCountOperatorCount(readResponse.getCountOperatorCount());
+    statsContext.setKeySizeList(readResponse.getKeySizeList());
+    statsContext.setValueSizeList(readResponse.getValueSizeList());
+    statsContext.setValueSize(readResponse.getValueSize());
+    statsContext.setReadComputeOutputSize(readResponse.getReadComputeOutputSize());
+    statsContext.setResponseWriteAndFlushStartTimeNanos(readResponse.getResponseWriteAndFlushStartTimeNanos());
   }
 }
