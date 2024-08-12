@@ -262,7 +262,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
   protected int idleCounter = 0;
 
-  private final StorageUtilizationManager storageUtilizationManager;
+  protected final StorageUtilizationManager storageUtilizationManager;
 
   protected final AggKafkaConsumerService aggKafkaConsumerService;
 
@@ -470,7 +470,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         store,
         kafkaVersionTopic,
         partitionCount,
-        Collections.unmodifiableMap(partitionConsumptionStateMap),
+        (ConcurrentMap<Integer, PartitionConsumptionState>) Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
         ingestionNotificationDispatcher,
@@ -1282,7 +1282,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * are available records, this function needs to check whether we need to resume the consumption when there are
      * paused consumption because of hybrid quota violation.
      */
-    if (storageUtilizationManager.hasPausedPartitionIngestion()) {
+    if (storageUtilizationManager.hasPausedPartitionForQuotaExceeded()) {
       storageUtilizationManager.checkAllPartitionsQuota();
     }
     Thread.sleep(readCycleDelayMs);

@@ -788,8 +788,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           oldValueManifest,
           oldRmdManifest,
           valueSchemaId,
-          // TODO: Or should this be consumerRecord.getTopicPartition().getPartitionNumber()?
-          consumerRecord.getTopicPartition().getTopicName(),
+          partition,
           mergeConflictResult.doesResultReuseInput());
       // TODO: should the try-catching be done here instead of inside the produceToTopicFunction?
       produceToLocalKafka(
@@ -1441,7 +1440,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
       int valueSchemaId,
-      String topicName,
+      int partition,
       boolean resultReuseInput) {
     return (callback, leaderMetadataWrapper) -> {
       if (resultReuseInput) {
@@ -1468,23 +1467,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       } catch (RecordTooLargeException e) {
         int kafkaSizeLimit = getVeniceWriter().get().getMaxSizeForUserPayloadPerMessageInBytes();
         if (e.getMessage().contains(ByteUtils.generateHumanReadableByteCountString(kafkaSizeLimit))) {
-          return; // unlikely, but this means that chunking was not enabled and the record can't fit into Kafka
+          return; // unlikely, this means that chunking was not enabled and the record can't fit into Kafka
         }
 
-        LOGGER.error("Pausing consumption on all partitions for topic: {} due to a too large record.", topicName, e);
+        String errorMessage = "Pausing consumption on partition: {} for topic: {} because a large record was detected.";
+        LOGGER.error(errorMessage, partition, kafkaVersionTopic, e);
 
-        // TODO: does this need the leaderfollower state / getLeaderTopic / getConsumingTopic?
-        // TODO: Or should this not be pausing for all partitions for a topic? Would this be a performance issue?
-        partitionConsumptionStateMap.forEach((partitionId, pcs) -> {
-          String consumingTopic = topicName;
-          if (pcs.getLeaderFollowerState().equals(LEADER)) {
-            final OffsetRecord offsetRecord = pcs.getOffsetRecord();
-            if (offsetRecord.getLeaderTopic() != null) {
-              consumingTopic = offsetRecord.getLeaderTopic();
-            }
-          }
-          pauseConsumption(consumingTopic, partitionId);
-        });
+        // TODO: Or should this be pausing for all partitions for a topic? Would this be a performance issue?
+        storageUtilizationManager.pausePartitionForRecordTooLarge(partition, kafkaVersionTopic);
       }
     };
   }
