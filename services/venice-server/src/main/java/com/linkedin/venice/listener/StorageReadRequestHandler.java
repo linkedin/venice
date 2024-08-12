@@ -321,6 +321,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       final ThreadPoolExecutor executor = getExecutor(request.getRequestType());
       executor.submit(() -> {
         try {
+          nettyStats.incrementActiveReadHandlerThreads();
 
           try {
             if (request.shouldRequestBeTerminatedEarly()) {
@@ -376,8 +377,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
             context.writeAndFlush(shortcutResponse);
           }
         } finally {
-          // a
-
+          nettyStats.decrementActiveReadHandlerThreads();
         }
       });
 

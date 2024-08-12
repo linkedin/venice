@@ -29,21 +29,23 @@ public class ServerConnectionStats extends AbstractVeniceStats {
     clientConnectionRequestSensor = registerSensorIfAbsent(CLIENT_CONNECTION_REQUEST, new OccurrenceRate());
   }
 
-  public void incrementRouterConnectionCount() {
-    routerConnectionCount.incrementAndGet();
+  public long incrementRouterConnectionCount() {
+    long count = routerConnectionCount.incrementAndGet();
     routerConnectionRequestSensor.record(1);
+    return count;
   }
 
-  public void decrementRouterConnectionCount() {
-    routerConnectionCount.decrementAndGet();
+  public long decrementRouterConnectionCount() {
+    return routerConnectionCount.decrementAndGet();
   }
 
-  public void incrementClientConnectionCount() {
-    clientConnectionCount.incrementAndGet();
+  public long incrementClientConnectionCount() {
+    long count = clientConnectionCount.incrementAndGet();
     clientConnectionRequestSensor.record(1);
+    return count;
   }
 
-  public void decrementClientConnectionCount() {
-    clientConnectionCount.decrementAndGet();
+  public long decrementClientConnectionCount() {
+    return clientConnectionCount.decrementAndGet();
   }
 }

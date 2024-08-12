@@ -7,9 +7,12 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.ssl.SslHandler;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLPeerUnverifiedException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
+  private static final Logger LOGGER = LogManager.getLogger(ServerConnectionStatsHandler.class);
   private final ServerConnectionStats serverConnectionStats;
   private final String routerPrincipalName;
   private VeniceServerNettyStats nettyStats;
@@ -33,25 +36,30 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     SslHandler sslHandler = extractSslHandler(ctx);
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
-      serverConnectionStats.incrementClientConnectionCount();
+      long cnt = serverConnectionStats.incrementClientConnectionCount();
+      LOGGER.info("####Channel registered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
       return;
     }
+    long cnt;
     String principalName = getPrincipal(sslHandler);
     if (principalName != null && principalName.contains("venice-router")) {
-      serverConnectionStats.incrementRouterConnectionCount();
+      cnt = serverConnectionStats.incrementRouterConnectionCount();
     } else {
-      serverConnectionStats.incrementClientConnectionCount();
+      cnt = serverConnectionStats.incrementClientConnectionCount();
     }
+    LOGGER.info("####Channel registered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
   }
 
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
-    nettyStats.incrementActiveConnections();
+    int activeConnections = nettyStats.incrementActiveConnections();
+    LOGGER.info("####Channel active: {} - activeCount: {}", ctx.channel().remoteAddress(), activeConnections);
   }
 
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-    nettyStats.decrementActiveConnections();
+    int activeConnections = nettyStats.decrementActiveConnections();
+    LOGGER.info("####Channel inactive: {} - activeCount: {}", ctx.channel().remoteAddress(), activeConnections);
   }
 
   @Override
@@ -59,15 +67,18 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     SslHandler sslHandler = extractSslHandler(ctx);
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
-      serverConnectionStats.decrementClientConnectionCount();
+      long cnt = serverConnectionStats.decrementClientConnectionCount();
+      LOGGER.info("####Channel unregistered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
       return;
     }
     String principalName = getPrincipal(sslHandler);
+    long cnt;
     if (principalName != null && principalName.contains("venice-router")) {
-      serverConnectionStats.decrementRouterConnectionCount();
+      cnt = serverConnectionStats.decrementRouterConnectionCount();
     } else {
-      serverConnectionStats.decrementClientConnectionCount();
+      cnt = serverConnectionStats.decrementClientConnectionCount();
     }
+    LOGGER.info("####Channel unregistered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
   }
 
   protected SslHandler extractSslHandler(ChannelHandlerContext ctx) {
