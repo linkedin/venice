@@ -472,8 +472,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     MetricsRepository clientMetric = new MetricsRepository();
     String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, RequestType.MULTI_GET_STREAMING);
     ;
-    String fanoutSizeAverageMetricName = metricPrefix + "multi_key_fanout_size.Avg";
-    String fanoutSizeMaxMetricName = metricPrefix + "multi_key_fanout_size.Max";
+    String fanoutSizeAverageMetricName = metricPrefix + "fanout_size.Avg";
+    String fanoutSizeMaxMetricName = metricPrefix + "fanout_size.Max";
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
     Set<String> keys = new HashSet<>();
