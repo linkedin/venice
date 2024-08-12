@@ -87,6 +87,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitio
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -335,6 +336,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
   protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
 
+  private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
+
+  protected final boolean runInThreadSafeMode;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -495,6 +500,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.runnableForKillIngestionTasksForNonCurrentVersions =
         builder.getRunnableForKillIngestionTasksForNonCurrentVersions();
     this.ingestionTaskMaxIdleCount = serverConfig.getIngestionTaskMaxIdleCount();
+    this.runInThreadSafeMode = serverConfig.isThreadSafeMode();
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
@@ -1044,6 +1050,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     boolean metricsEnabled = emitMetrics.get();
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
+    // Loop through all polled messages and process
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       PartitionConsumptionState partitionConsumptionState =
@@ -1057,7 +1064,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         continue;
       }
-
       if (record.getKey().isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) record.getValue().payloadUnion;
         if (ControlMessageType.valueOf(controlMessage.controlMessageType) == ControlMessageType.START_OF_PUSH) {
@@ -1089,7 +1095,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingPerRecordTimestampNs,
           beforeProcessingBatchRecordsTimestampMs);
       switch (delegateConsumerRecordResult) {
-        case QUEUED_TO_DRAINER:
+        case QUEUE_TO_DRAINER:
           long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
 
           // blocking call
@@ -1105,9 +1111,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             elapsedTimeForPuttingIntoQueue += LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS);
           }
           break;
-        case PRODUCED_TO_KAFKA:
-        case SKIPPED_MESSAGE:
-        case DUPLICATE_MESSAGE:
+        case PRODUCE_TO_KAFKA:
+          // TODO: PRODUCE_TO_KAFKA is an unused enum at this stage, we could delete it. Or, use it in a future
+          // refactor.
+          // It might be cleaner to treat processing of each kafka message as a state machine (we've previously
+          // discussed,
+          // leveraging the actor pattern, and this would be along the same lines). We would iterate until we get to a
+          // terminal state.
+          // At the moment, delegateConsumerRecord bundles together quite a lot of steps, and that seems to complicate
+          // the code quite a bit
+        case END_PROCESSING:
+          // Nothing left to do for this message
           break;
         default:
           throw new VeniceException(
@@ -1848,7 +1862,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             Utils.getReplicaId(versionTopic, partition),
             partition,
             offsetRecord,
-            hybridStoreConfig.isPresent());
+            hybridStoreConfig.isPresent(),
+            this.runInThreadSafeMode);
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
         kafkaDataIntegrityValidator.setPartitionState(partition, offsetRecord);
@@ -1993,7 +2008,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               Utils.getReplicaId(versionTopic, partition),
               partition,
               new OffsetRecord(partitionStateSerializer),
-              hybridStoreConfig.isPresent()));
+              hybridStoreConfig.isPresent(),
+              this.runInThreadSafeMode));
       storageUtilizationManager.initPartition(partition);
       // Reset the error partition tracking
       partitionIngestionExceptionList.set(partition, null);
@@ -2211,6 +2227,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) {
+    processConsumerRecord(
+        record,
+        leaderProducedRecordContext,
+        partition,
+        kafkaUrl,
+        beforeProcessingRecordTimestampNs,
+        true);
+  }
+
+  public void processConsumerRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int partition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestampNs,
+      boolean maybeSyncOffset) {
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when
     // unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -2290,9 +2322,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
 
+    if (maybeSyncOffset) {
+      maybeSyncOffsets(record, leaderProducedRecordContext, partitionConsumptionState, partition);
+    }
+  }
+
+  /**
+   * Syncing offset checking in syncOffset() should be the very last step for processing a record.
+   */
+  public void maybeSyncOffsets(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition) {
+
+    long syncBytesInterval = partitionConsumptionState.isDeferredWrite()
+        ? databaseSyncBytesIntervalForDeferredWriteMode
+        : databaseSyncBytesIntervalForTransactionalMode;
+    boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
+        && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
+    defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+
     /**
-     * Syncing offset checking in syncOffset() should be the very last step for processing a record.
-     *
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
@@ -2910,6 +2961,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
       } else {
+        // TODO: This is a hack. Today the code kind of does a backdoor change to a key in the leaderProducer callback.
+        // However, we need to persist before
+        // producing in thread safe mode. Keys which need to be
+        if (this.isChunked && this.runInThreadSafeMode && leaderProducedRecordContext != null
+            && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+          leaderProducedRecordContext
+              .setKeyBytes(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(consumerRecord.getKey().getKey()));
+        }
         updateLatestInMemoryProcessedOffset(
             partitionConsumptionState,
             consumerRecord,
@@ -3454,12 +3513,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param schemaId
    */
   private void waitReadyToProcessDataRecord(int schemaId) throws InterruptedException {
-    if (schemaId == -1) {
-      // TODO: Once Venice Client (VeniceShellClient) finish the integration with schema registry,
-      // we need to remove this check here.
-      return;
-    }
-
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
         || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       StoreVersionState storeVersionState = waitVersionStateAvailable(kafkaVersionTopic);
@@ -3905,27 +3958,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long, long)}.
+   * It is termed to describe what next steps should be taken after the function is called.  Across different modes our steps for ingestion
+   * roughly boil down to:
+   *
+   * Filter messages
+   * Produce to Kafka
+   * Write to local storage
+   * Update Progress metadata
+   *
+   * delegateConsumerRecord may do any of the above, and in different modes will dictate to the caller what should be done
+   * next.
+   *
+   * NOTE: At this stage, usage of this RecordResult is only partially defined.  Right now, only END_PROCESSING and
+   * QUEUE_TO_DRAINER are actually used.
+   *
    */
   protected enum DelegateConsumerRecordResult {
     /**
-     * The consumer record has been produced to local version topic by leader.
+     * The consumer record should be produced to Kafka
      */
-    PRODUCED_TO_KAFKA,
+    PRODUCE_TO_KAFKA,
     /**
-     * The consumer record has been put into drainer queue; the following cases will result in putting to drainer directly:
+     * The consumer record needs to be put into drainer queue; the following cases will result in putting to drainer directly:
      * 1. Online/Offline ingestion task
      * 2. Follower replicas
      * 3. Leader is consuming from local version topics
      */
-    QUEUED_TO_DRAINER,
+    QUEUE_TO_DRAINER,
     /**
-     * The consumer record is a duplicated message.
+     * The consumption task shouldn't do any more processing.  This can be returned if the message is a duplicate,
+     * or skipped
      */
-    DUPLICATE_MESSAGE,
-    /**
-     * The consumer record is skipped. e.g. remote VT's TS message during data recovery.
-     */
-    SKIPPED_MESSAGE
+    END_PROCESSING
   }
 
   /**

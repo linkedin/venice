@@ -1568,13 +1568,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs) {
+
+    if (this.runInThreadSafeMode) {
+      // Write to rocksdb. At time of writing, this is the last step after a huge amount of processing and compression
+      // and whatnot. At this stage we do not sync the offset, instead doing that after successfully produce.
+      this.processConsumerRecord(
+          consumerRecord,
+          leaderProducedRecordContext,
+          partition,
+          kafkaUrl,
+          beforeProcessingRecordTimestampNs,
+          false);
+    }
+
     LeaderProducerCallback callback = createProducerCallback(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
         partition,
         kafkaUrl,
-        beforeProcessingRecordTimestampNs);
+        beforeProcessingRecordTimestampNs,
+        this.runInThreadSafeMode);
     long sourceTopicOffset = consumerRecord.getOffset();
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
@@ -2060,7 +2074,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderProducedRecordContext,
         partition,
         kafkaUrl,
-        beforeProcessingRecordTimestampNs);
+        beforeProcessingRecordTimestampNs,
+        this.runInThreadSafeMode);
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
@@ -2116,7 +2131,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * This function should be called as one of the first steps in processing pipeline for all messages consumed from any kafka topic.
    *
    * The caller of this function should only process this {@param consumerRecord} further if the return is
-   * {@link DelegateConsumerRecordResult#QUEUED_TO_DRAINER}.
+   * {@link DelegateConsumerRecordResult#QUEUE_TO_DRAINER}.
    *
    * This function assumes {@link #shouldProcessRecord(PubSubMessage)} has been called which happens in
    * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
@@ -2153,7 +2168,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
       if (partitionConsumptionState == null) {
         // The partition is likely unsubscribed, will skip these messages.
-        return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
+        return DelegateConsumerRecordResult.END_PROCESSING;
       }
       boolean produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
       // UPDATE message is only expected in LEADER which must be produced to kafka.
@@ -2177,7 +2192,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * (i) it's a follower or (ii) leader is consuming from VT
        */
       if (!produceToLocalKafka) {
-        return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+        // TODO: The next step will put in the drainer queue. When threadsafe mode is enabled, it means we skip
+        // the drainer during rt consumption and commit straight to rocksdb. To remove drainer completely,
+        // we should do the same here
+        return DelegateConsumerRecordResult.QUEUE_TO_DRAINER;
       }
 
       // If we are here the message must be produced to local kafka or silently consumed.
@@ -2225,7 +2243,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord.getTopicPartition(),
             consumerRecord.getOffset(),
             partitionConsumptionState.getReplicaId());
-        return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
+        return DelegateConsumerRecordResult.END_PROCESSING;
       }
 
       // heavy leader processing starts here
@@ -2386,7 +2404,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (isDataRecovery && !partitionConsumptionState.isBatchOnly()) {
               // Ignore remote VT's TS message since we might need to consume more RT or incremental push data from VT
               // that's no longer in the local/remote RT due to retention.
-              return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
+              return DelegateConsumerRecordResult.END_PROCESSING;
             }
             leaderProducedRecordContext =
                 LeaderProducedRecordContext.newControlMessageRecord(kafkaKey.getKey(), controlMessage);
@@ -2407,7 +2425,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case VERSION_SWAP:
-            return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+            return DelegateConsumerRecordResult.QUEUE_TO_DRAINER;
           default:
             // do nothing
             break;
@@ -2438,7 +2456,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             beforeProcessingPerRecordTimestampNs,
             beforeProcessingBatchRecordsTimestampMs);
       }
-      return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
+      return DelegateConsumerRecordResult.END_PROCESSING;
     } catch (Exception e) {
       throw new VeniceException(
           ingestionTaskName + " hasProducedToKafka: exception for message received from: "
@@ -3337,7 +3355,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      boolean syncOffsetsOnlyAfterProducing) {
     return new LeaderProducerCallback(
         this,
         consumerRecord,
@@ -3345,7 +3364,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderProducedRecordContext,
         partition,
         kafkaUrl,
-        beforeProcessingRecordTimestampNs);
+        beforeProcessingRecordTimestampNs,
+        syncOffsetsOnlyAfterProducing);
   }
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
