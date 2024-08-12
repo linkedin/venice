@@ -58,6 +58,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
+  private final VeniceServerNettyStats nettyStats;
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -65,7 +66,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
       AggServerQuotaUsageStats stats,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      VeniceServerNettyStats nettyStats) {
     this(
         storageNodeRcuCapacity,
         storeRepository,
@@ -73,6 +75,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         nodeId,
         stats,
         metricsRepository,
+        nettyStats,
         Clock.systemUTC());
   }
 
@@ -84,6 +87,27 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       AggServerQuotaUsageStats stats,
       MetricsRepository metricsRepository,
       Clock clock) {
+    this(
+        storageNodeRcuCapacity,
+        storeRepository,
+        customizedViewRepository,
+        nodeId,
+        stats,
+        metricsRepository,
+        null,
+        clock);
+  }
+
+  public ReadQuotaEnforcementHandler(
+      long storageNodeRcuCapacity,
+      ReadOnlyStoreRepository storeRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      String nodeId,
+      AggServerQuotaUsageStats stats,
+      MetricsRepository metricsRepository,
+      VeniceServerNettyStats nettyStats,
+      Clock clock) {
+    this.nettyStats = nettyStats;
     this.clock = clock;
     this.storageNodeBucket = tokenBucketfromRcuPerSecond(storageNodeRcuCapacity, 1);
     this.storageNodeTokenBucketStats =
@@ -238,7 +262,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     if (!isGrpc) {
-      ctx.writeAndFlush(
+      writeAndFlushBadRequests(
+          ctx,
           new HttpShortcutResponse(
               "Invalid request resource " + request.getResourceName(),
               HttpResponseStatus.BAD_REQUEST));
@@ -287,7 +312,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
             + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
 
     if (!isGrpc) {
-      ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+      writeAndFlushBadRequests(ctx, new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
     } else {
       grpcCtx.setError();
       grpcCtx.getVeniceServerResponseBuilder()
@@ -307,7 +332,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     stats.recordRejected(storeName, rcu);
 
     if (!isGrpc) {
-      ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
+      writeAndFlushBadRequests(
+          ctx,
+          new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
     } else {
       String errorMessage = "Server over capacity";
       grpcCtx.setError();
@@ -317,6 +344,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     return true;
+  }
+
+  private void writeAndFlushBadRequests(ChannelHandlerContext context, Object message) {
+    long startTime = System.nanoTime();
+    context.writeAndFlush(message);
+    nettyStats.recordWriteAndFlushTimeBadRequests(startTime);
   }
 
   private void handleEpilogue(
