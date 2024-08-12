@@ -145,7 +145,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     ByteBuffer writeComputeBytes1 = ByteBuffer.wrap(
         MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldPartialUpdateRecord1));
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        null,
+        Lazy.of(() -> null),
         rmdWithValueSchemaId,
         writeComputeBytes1,
         incomingValueSchemaId,
