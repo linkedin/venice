@@ -12,6 +12,7 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StorageReadRequestHandler;
+import com.linkedin.venice.listener.VeniceServerNettyStats;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
@@ -82,7 +83,8 @@ public class TestVeniceServer extends VeniceServer {
           boolean parallelBatchGetEnabled,
           int parallelBatchGetChunkSize,
           StorageEngineBackedCompressorFactory compressorFactory,
-          Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+          Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+          VeniceServerNettyStats nettyStats) {
 
         return new StorageReadRequestHandler(
             executor,
@@ -98,7 +100,8 @@ public class TestVeniceServer extends VeniceServer {
             parallelBatchGetChunkSize,
             serverConfig,
             compressorFactory,
-            resourceReadUsageTracker) {
+            resourceReadUsageTracker,
+            nettyStats) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();

@@ -12,10 +12,20 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   private final ServerConnectionStats serverConnectionStats;
   private final String routerPrincipalName;
+  private VeniceServerNettyStats nettyStats;
 
   public ServerConnectionStatsHandler(ServerConnectionStats serverConnectionStats, String routerPrincipalName) {
     this.serverConnectionStats = serverConnectionStats;
     this.routerPrincipalName = routerPrincipalName;
+  }
+
+  public ServerConnectionStatsHandler(
+      ServerConnectionStats serverConnectionStats,
+      VeniceServerNettyStats nettyStats,
+      String routerPrincipalName) {
+    this.serverConnectionStats = serverConnectionStats;
+    this.routerPrincipalName = routerPrincipalName;
+    this.nettyStats = nettyStats;
   }
 
   @Override
@@ -27,11 +37,21 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.equals(routerPrincipalName)) {
+    if (principalName != null && principalName.contains("venice-router")) {
       serverConnectionStats.incrementRouterConnectionCount();
     } else {
       serverConnectionStats.incrementClientConnectionCount();
     }
+  }
+
+  @Override
+  public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    nettyStats.incrementActiveConnections();
+  }
+
+  @Override
+  public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    nettyStats.decrementActiveConnections();
   }
 
   @Override
@@ -43,7 +63,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.equals(routerPrincipalName)) {
+    if (principalName != null && principalName.contains("venice-router")) {
       serverConnectionStats.decrementRouterConnectionCount();
     } else {
       serverConnectionStats.decrementClientConnectionCount();

@@ -61,6 +61,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
   private final ServerConnectionStats serverConnectionStats;
+  private VeniceServerNettyStats nettyStats;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
   List<ServerInterceptor> aclInterceptors;
@@ -78,6 +79,31 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       StorageReadRequestHandler requestHandler) {
+    this(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactory,
+        sslHandshakeExecutor,
+        serverConfig,
+        routerAccessController,
+        storeAccessController,
+        requestHandler,
+        null);
+  }
+
+  public HttpChannelInitializer(
+      ReadOnlyStoreRepository storeMetadataRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      MetricsRepository metricsRepository,
+      Optional<SSLFactory> sslFactory,
+      Executor sslHandshakeExecutor,
+      VeniceServerConfig serverConfig,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
+      StorageReadRequestHandler requestHandler,
+      VeniceServerNettyStats nettyStats) {
+    this.nettyStats = nettyStats;
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
@@ -184,7 +210,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
       ServerConnectionStatsHandler serverConnectionStatsHandler =
-          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
+          new ServerConnectionStatsHandler(serverConnectionStats, nettyStats, serverConfig.getRouterPrincipalName());
       pipeline.addLast(serverConnectionStatsHandler);
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
       pipeline.addLast(statsHandler);
