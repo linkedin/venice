@@ -7,10 +7,13 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.zookeeper.CreateMode;
 
 
 /**
@@ -27,6 +30,7 @@ public class IntegrationTestUtils {
   static VeniceProperties getClusterProps(
       String clusterName,
       String zkAddress,
+      String zkBasePath,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToKafka) {
     // TODO: Validate that these configs are all still used.
@@ -35,7 +39,7 @@ public class IntegrationTestUtils {
     VeniceProperties clusterProperties = new PropertyBuilder()
 
         // Helix-related config
-        .put(ZOOKEEPER_ADDRESS, zkAddress)
+        .put(ZOOKEEPER_ADDRESS, zkAddress + zkBasePath)
 
         // Kafka-related config
         .put(
@@ -50,5 +54,12 @@ public class IntegrationTestUtils {
         .build();
 
     return clusterProperties;
+  }
+
+  static void ensureZkPathExists(String zkAddress, String zkBasePath) {
+    ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
+    if (!zkClient.exists(zkBasePath)) {
+      zkClient.create(zkBasePath, null, CreateMode.PERSISTENT);
+    }
   }
 }

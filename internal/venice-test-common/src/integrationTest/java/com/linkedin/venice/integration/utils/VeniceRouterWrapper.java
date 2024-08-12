@@ -91,6 +91,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
+      String veniceZkBasePath,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
@@ -133,7 +134,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       PropertyBuilder builder = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPort)
-          .put(ZOOKEEPER_ADDRESS, zkAddress)
+          .put(ZOOKEEPER_ADDRESS, zkAddress + veniceZkBasePath)
           .put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(finalClusterToD2))

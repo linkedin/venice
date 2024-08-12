@@ -26,6 +26,8 @@ public class VeniceMultiRegionClusterCreateOptions {
   private final Properties childControllerProperties;
   private final Properties serverProperties;
   private final AuthorizerService parentAuthorizerService;
+  private final String parentVeniceZkBasePath;
+  private final String childVeniceZkBasePath;
 
   public int getNumberOfRegions() {
     return numberOfRegions;
@@ -83,6 +85,14 @@ public class VeniceMultiRegionClusterCreateOptions {
     return parentAuthorizerService;
   }
 
+  public String getParentVeniceZkBasePath() {
+    return parentVeniceZkBasePath;
+  }
+
+  public String getChildVeniceZkBasePath() {
+    return childVeniceZkBasePath;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -127,6 +137,12 @@ public class VeniceMultiRegionClusterCreateOptions {
         .append(", ")
         .append("parentAuthorizerService:")
         .append(parentAuthorizerService)
+        .append(", ")
+        .append("parentVeniceZkBasePath:")
+        .append(parentVeniceZkBasePath)
+        .append(", ")
+        .append("childVeniceZkBasePath:")
+        .append(childVeniceZkBasePath)
         .toString();
   }
 
@@ -145,6 +161,8 @@ public class VeniceMultiRegionClusterCreateOptions {
     sslToKafka = builder.sslToKafka;
     forkServer = builder.forkServer;
     parentAuthorizerService = builder.parentAuthorizerService;
+    parentVeniceZkBasePath = builder.parentVeniceZkBasePath;
+    childVeniceZkBasePath = builder.childVeniceZkBasePath;
   }
 
   public static class Builder {
@@ -162,6 +180,8 @@ public class VeniceMultiRegionClusterCreateOptions {
     private Properties childControllerProperties;
     private Properties serverProperties;
     private AuthorizerService parentAuthorizerService;
+    private String parentVeniceZkBasePath = "/";
+    private String childVeniceZkBasePath = "/";
 
     public Builder numberOfRegions(int numberOfRegions) {
       this.numberOfRegions = numberOfRegions;
@@ -230,6 +250,24 @@ public class VeniceMultiRegionClusterCreateOptions {
 
     public Builder parentAuthorizerService(AuthorizerService parentAuthorizerService) {
       this.parentAuthorizerService = parentAuthorizerService;
+      return this;
+    }
+
+    public Builder parentVeniceZkBasePath(String veniceZkBasePath) {
+      if (veniceZkBasePath == null || !veniceZkBasePath.startsWith("/")) {
+        throw new IllegalArgumentException("Venice Zk base path must start with /");
+      }
+
+      this.parentVeniceZkBasePath = veniceZkBasePath;
+      return this;
+    }
+
+    public Builder childVeniceZkBasePath(String veniceZkBasePath) {
+      if (veniceZkBasePath == null || !veniceZkBasePath.startsWith("/")) {
+        throw new IllegalArgumentException("Venice Zk base path must start with /");
+      }
+
+      this.childVeniceZkBasePath = veniceZkBasePath;
       return this;
     }
 

@@ -33,6 +33,7 @@ public class VeniceControllerCreateOptions {
   private final Map<String, String> clusterToServerD2;
   private final VeniceControllerWrapper[] childControllers;
   private final ZkServerWrapper zkServer;
+  private final String veniceZkBasePath;
   private final PubSubBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
@@ -52,6 +53,7 @@ public class VeniceControllerCreateOptions {
     clusterToServerD2 = builder.clusterToServerD2;
     childControllers = builder.childControllers;
     zkServer = builder.zkServer;
+    veniceZkBasePath = builder.veniceZkBasePath;
     kafkaBroker = builder.kafkaBroker;
     extraProperties = builder.extraProperties;
     authorizerService = builder.authorizerService;
@@ -93,6 +95,9 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("zkAddress:")
         .append(zkServer.getAddress())
+        .append(", ")
+        .append("veniceZkBasePath:")
+        .append(veniceZkBasePath)
         .append(", ")
         .append("kafkaBroker:")
         .append(kafkaBroker == null ? "null" : kafkaBroker.getAddress())
@@ -168,6 +173,10 @@ public class VeniceControllerCreateOptions {
     return zkServer.getAddress();
   }
 
+  public String getVeniceZkBasePath() {
+    return veniceZkBasePath;
+  }
+
   public Map<String, String> getClusterToD2() {
     return clusterToD2;
   }
@@ -200,6 +209,7 @@ public class VeniceControllerCreateOptions {
     private boolean multiRegion = false;
     private final String[] clusterNames;
     private final ZkServerWrapper zkServer;
+    private String veniceZkBasePath = "/";
     private final PubSubBrokerWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
@@ -228,6 +238,15 @@ public class VeniceControllerCreateOptions {
 
     public Builder multiRegion(boolean multiRegion) {
       this.multiRegion = multiRegion;
+      return this;
+    }
+
+    public Builder veniceZkBasePath(String veniceZkBasePath) {
+      if (veniceZkBasePath == null || !veniceZkBasePath.startsWith("/")) {
+        throw new IllegalArgumentException("Venice Zk base path must start with /");
+      }
+
+      this.veniceZkBasePath = veniceZkBasePath;
       return this;
     }
 
