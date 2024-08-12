@@ -66,27 +66,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
       AggServerQuotaUsageStats stats,
-      MetricsRepository metricsRepository,
-      VeniceServerNettyStats nettyStats) {
-    this(
-        storageNodeRcuCapacity,
-        storeRepository,
-        customizedViewRepository,
-        nodeId,
-        stats,
-        metricsRepository,
-        nettyStats,
-        Clock.systemUTC());
-  }
-
-  public ReadQuotaEnforcementHandler(
-      long storageNodeRcuCapacity,
-      ReadOnlyStoreRepository storeRepository,
-      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
-      String nodeId,
-      AggServerQuotaUsageStats stats,
-      MetricsRepository metricsRepository,
-      Clock clock) {
+      MetricsRepository metricsRepository) {
     this(
         storageNodeRcuCapacity,
         storeRepository,
@@ -95,7 +75,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         stats,
         metricsRepository,
         null,
-        clock);
+        Clock.systemUTC());
   }
 
   public ReadQuotaEnforcementHandler(

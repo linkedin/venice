@@ -36,6 +36,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -160,7 +161,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           nodeId,
           quotaUsageStats,
           metricsRepository,
-          nettyStats);
+          nettyStats,
+          Clock.systemUTC());
 
       // Token Bucket Stats for a store must be initialized when that store is created
       this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
