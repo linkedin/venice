@@ -34,6 +34,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
@@ -212,6 +213,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
+      pipeline.addLast(new FlushConsolidationHandler());
       ServerConnectionStatsHandler serverConnectionStatsHandler =
           new ServerConnectionStatsHandler(serverConnectionStats, nettyStats, serverConfig.getRouterPrincipalName());
       pipeline.addLast(serverConnectionStatsHandler);
