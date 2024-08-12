@@ -190,6 +190,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       if (zkServerWrapper == null) {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
+      IntegrationTestUtils.ensureZkPathExists(zkServerWrapper.getAddress(), options.getVeniceZkBasePath());
       if (pubSubBrokerWrapper == null) {
         pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper)
@@ -221,6 +222,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
                 .multiRegion(options.isMultiRegion())
+                .veniceZkBasePath(options.getVeniceZkBasePath())
                 .replicationFactor(options.getReplicationFactor())
                 .partitionSize(options.getPartitionSize())
                 .numberOfPartitions(options.getNumberOfPartitions())
@@ -549,6 +551,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     try {
       veniceControllerWrapper = ServiceFactory.getVeniceController(
           new VeniceControllerCreateOptions.Builder(getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
+              .veniceZkBasePath(options.getVeniceZkBasePath())
               .regionName(options.getRegionName())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())

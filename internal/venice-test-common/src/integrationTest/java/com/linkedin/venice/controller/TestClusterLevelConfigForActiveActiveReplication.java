@@ -29,6 +29,9 @@ public class TestClusterLevelConfigForActiveActiveReplication {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private ControllerClient parentControllerClient;
 
+  private static final String PARENT_VENICE_ZK_BASE_PATH = "/test-venice-parent";
+  private static final String CHILD_VENICE_ZK_BASE_PATH = "/test-venice-child";
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
@@ -42,6 +45,8 @@ public class TestClusterLevelConfigForActiveActiveReplication {
             .numberOfRouters(1)
             .numberOfServers(1)
             .parentControllerProperties(parentControllerProps)
+            .parentVeniceZkBasePath(PARENT_VENICE_ZK_BASE_PATH)
+            .childVeniceZkBasePath(CHILD_VENICE_ZK_BASE_PATH)
             .build());
     String clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
     parentControllerClient =

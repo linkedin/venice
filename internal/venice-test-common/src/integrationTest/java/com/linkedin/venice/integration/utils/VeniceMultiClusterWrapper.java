@@ -59,6 +59,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       if (zkServerWrapper == null) {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
+      IntegrationTestUtils.ensureZkPathExists(zkServerWrapper.getAddress(), options.getVeniceZkBasePath());
       if (pubSubBrokerWrapper == null) {
         pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper)

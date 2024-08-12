@@ -84,6 +84,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
     try {
       zkServer = ServiceFactory.getZkServer();
+      IntegrationTestUtils.ensureZkPathExists(zkServer.getAddress(), options.getParentVeniceZkBasePath());
       parentPubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
           new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
               .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
@@ -138,6 +139,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentRegionName, parentPubSubBrokerWrapper.getAddress());
       for (String regionName: childRegionName) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
+        IntegrationTestUtils.ensureZkPathExists(zkServer.getAddress(), options.getChildVeniceZkBasePath());
         PubSubBrokerWrapper regionalPubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).setRegionName(regionName).build());
         allPubSubBrokerWrappers.add(regionalPubSubBrokerWrapper);
