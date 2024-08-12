@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.listener.VeniceServerNettyStats.FIRST_HANDLER_TIMESTAMP_KEY;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
@@ -158,6 +159,7 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    ctx.channel().attr(FIRST_HANDLER_TIMESTAMP_KEY).set(System.nanoTime());
     if (serverStatsContext.isNewRequest()) {
       // Reset for every request
       serverStatsContext.resetContext();

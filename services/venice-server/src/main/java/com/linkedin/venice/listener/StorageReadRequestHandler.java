@@ -392,6 +392,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           nettyStats.recordTimeSpentInReadHandler(startTime);
         }
       });
+      Long startTime = context.channel().attr(VeniceServerNettyStats.FIRST_HANDLER_TIMESTAMP_KEY).get();
+      if (startTime != null) {
+        nettyStats.recordTimeSpentTillHandoffToReadHandler(startTime);
+      }
       nettyStats.incrementQueuedTasksForReadHandler();
     } else if (message instanceof HealthCheckRequest) {
       if (diskHealthCheckService.isDiskHealthy()) {
