@@ -62,6 +62,7 @@ import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -81,7 +82,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -124,6 +127,14 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
   private final VeniceServerNettyStats nettyStats;
+
+  private final ThreadPoolExecutor writeAndFlushHandoff = new ThreadPoolExecutor(
+      64,
+      64,
+      60,
+      TimeUnit.MINUTES,
+      new LinkedBlockingQueue<>(),
+      new DaemonThreadFactory("writeAndFlushHandoff"));
 
   private static class PerStoreVersionState {
     final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
@@ -346,14 +357,17 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
               default:
                 throw new VeniceException("Unknown request type: " + request.getRequestType());
             }
-            response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
-            response.setStorageExecutionQueueLen(queueLen);
-            response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
-            response.recordResponseWriteAndFlushStartTimeNanos();
-            if (request.isStreamingRequest()) {
-              response.setStreamingResponse();
-            }
-            writeAndFlush(context, response);
+
+            CompletableFuture.runAsync(() -> {
+              response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+              response.setStorageExecutionQueueLen(queueLen);
+              response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
+              response.recordResponseWriteAndFlushStartTimeNanos();
+              if (request.isStreamingRequest()) {
+                response.setStreamingResponse();
+              }
+              writeAndFlush(context, response);
+            }, writeAndFlushHandoff);
           } catch (VeniceNoStoreException e) {
             String msg = "No storage exists for store: " + e.getStoreName();
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
