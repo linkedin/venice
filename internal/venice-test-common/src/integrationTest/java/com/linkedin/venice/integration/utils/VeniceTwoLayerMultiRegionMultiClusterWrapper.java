@@ -179,6 +179,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       additionalServerProps.putAll(pubSubBrokerProps);
 
       VeniceMultiClusterCreateOptions.Builder builder = new VeniceMultiClusterCreateOptions.Builder().multiRegion(true)
+          .veniceZkBasePath(options.getChildVeniceZkBasePath())
           .numberOfClusters(options.getNumberOfClusters())
           .numberOfControllers(options.getNumberOfChildControllers())
           .numberOfServers(options.getNumberOfServers())
@@ -214,6 +215,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
       VeniceControllerCreateOptions parentControllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper).multiRegion(true)
+              .veniceZkBasePath(options.getParentVeniceZkBasePath())
               .replicationFactor(options.getReplicationFactor())
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)

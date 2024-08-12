@@ -27,6 +27,7 @@ public class IntegrationTestUtils {
   static VeniceProperties getClusterProps(
       String clusterName,
       String zkAddress,
+      String zkBasePath,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToKafka) {
     // TODO: Validate that these configs are all still used.
@@ -35,7 +36,7 @@ public class IntegrationTestUtils {
     VeniceProperties clusterProperties = new PropertyBuilder()
 
         // Helix-related config
-        .put(ZOOKEEPER_ADDRESS, zkAddress)
+        .put(ZOOKEEPER_ADDRESS, zkAddress + zkBasePath)
 
         // Kafka-related config
         .put(

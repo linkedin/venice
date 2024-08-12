@@ -33,6 +33,7 @@ public class VeniceMultiClusterCreateOptions {
   private final boolean forkServer;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
+  private final String veniceZkBasePath;
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Properties childControllerProperties;
   private final Properties extraProperties;
@@ -105,6 +106,10 @@ public class VeniceMultiClusterCreateOptions {
     return zkServerWrapper;
   }
 
+  public String getVeniceZkBasePath() {
+    return veniceZkBasePath;
+  }
+
   public PubSubBrokerWrapper getKafkaBrokerWrapper() {
     return pubSubBrokerWrapper;
   }
@@ -171,9 +176,11 @@ public class VeniceMultiClusterCreateOptions {
         .append("veniceProperties:")
         .append(extraProperties)
         .append(", ")
-        .append(", ")
         .append("zk:")
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
+        .append(", ")
+        .append("veniceZkBasePath:")
+        .append(veniceZkBasePath)
         .append(", ")
         .append("kafka:")
         .append(pubSubBrokerWrapper == null ? "null" : pubSubBrokerWrapper.getAddress())
@@ -199,6 +206,7 @@ public class VeniceMultiClusterCreateOptions {
     sslToKafka = builder.sslToKafka;
     randomizeClusterName = builder.randomizeClusterName;
     zkServerWrapper = builder.zkServerWrapper;
+    veniceZkBasePath = builder.veniceZkBasePath;
     pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
     childControllerProperties = builder.childControllerProperties;
     extraProperties = builder.extraProperties;
@@ -224,6 +232,7 @@ public class VeniceMultiClusterCreateOptions {
     private boolean forkServer = false;
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
+    private String veniceZkBasePath = "/";
     private PubSubBrokerWrapper pubSubBrokerWrapper;
     private Properties childControllerProperties;
     private Properties extraProperties;
@@ -310,6 +319,15 @@ public class VeniceMultiClusterCreateOptions {
 
     public Builder zkServerWrapper(ZkServerWrapper zkServerWrapper) {
       this.zkServerWrapper = zkServerWrapper;
+      return this;
+    }
+
+    public Builder veniceZkBasePath(String veniceZkBasePath) {
+      if (veniceZkBasePath == null || !veniceZkBasePath.startsWith("/")) {
+        throw new IllegalArgumentException("Venice Zk base path must start with /");
+      }
+
+      this.veniceZkBasePath = veniceZkBasePath;
       return this;
     }
 
