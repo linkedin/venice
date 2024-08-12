@@ -19,6 +19,7 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
   private final Sensor writeAndFlushTimeOkRequests;
   private final Sensor writeAndFlushTimeBadRequests;
   private final Sensor writeAndFlushCompletionTimeForDataRequest;
+  private final Sensor timeSpentInReadHandler;
   private final AtomicInteger queuedTasksForReadHandler = new AtomicInteger();
 
   public VeniceServerNettyStats(MetricsRepository metricsRepository, String name) {
@@ -60,6 +61,15 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
         new Avg(),
         TehutiUtils.getPercentileStat(
             getName() + AbstractVeniceStats.DELIMITER + responseWriteAndFlushStartTimeNanosSensorName));
+
+    String timeSpentInReadHandlerSensorName = "TimeSpentInReadHandler";
+    timeSpentInReadHandler = registerSensorIfAbsent(
+        timeSpentInReadHandlerSensorName,
+        new OccurrenceRate(),
+        new Max(),
+        new Min(),
+        new Avg(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + timeSpentInReadHandlerSensorName));
   }
 
   public static long getElapsedTimeInMicros(long startTimeNanos) {
@@ -104,5 +114,9 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
 
   public void decrementQueuedTasksForReadHandler() {
     queuedTasksForReadHandler.decrementAndGet();
+  }
+
+  public void recordTimeSpentInReadHandler(long startTimeNanos) {
+    timeSpentInReadHandler.record(getElapsedTimeInMicros(startTimeNanos));
   }
 }

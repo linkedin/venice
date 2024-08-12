@@ -23,7 +23,7 @@ public final class ThreadPoolFactory {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(
         threadCount,
         threadCount,
-        0,
+        600,
         TimeUnit.MILLISECONDS,
         getExecutionQueue(capacity, blockingQueueType),
         new DaemonThreadFactory(threadNamePrefix));

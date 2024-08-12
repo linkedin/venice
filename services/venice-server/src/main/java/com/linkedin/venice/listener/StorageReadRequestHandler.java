@@ -270,67 +270,67 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
     if (message instanceof RouterRequest) {
       RouterRequest request = (RouterRequest) message;
-      resourceReadUsageTracker.ifPresent(tracker -> tracker.recordReadUsage(request.getResourceName()));
-      // Check before putting the request to the intermediate queue
-      if (request.shouldRequestBeTerminatedEarly()) {
-        // Try to make the response short
-        VeniceRequestEarlyTerminationException earlyTerminationException =
-            new VeniceRequestEarlyTerminationException(request.getStoreName());
-        writeAndFlushBadRequests(
-            context,
-            new HttpShortcutResponse(
-                earlyTerminationException.getMessage(),
-                earlyTerminationException.getHttpResponseStatus()));
-        return;
-      }
-      /**
-       * For now, we are evaluating whether parallel lookup is good overall or not.
-       * Eventually, we either pick up the new parallel implementation or keep the original one, so it is fine
-       * to have some duplicate code for the time-being.
-       */
-      if (parallelBatchGetEnabled && request.getRequestType().equals(RequestType.MULTI_GET)) {
-        handleMultiGetRequestInParallel((MultiGetRouterRequestWrapper) request, parallelBatchGetChunkSize)
-            .whenComplete((v, e) -> {
-              if (e == null) {
-                writeAndFlush(context, v);
-                return;
-              }
-              if (e instanceof VeniceRequestEarlyTerminationException) {
-                VeniceRequestEarlyTerminationException earlyTerminationException =
-                    (VeniceRequestEarlyTerminationException) e;
-                writeAndFlushBadRequests(
-                    context,
-                    new HttpShortcutResponse(
-                        earlyTerminationException.getMessage(),
-                        earlyTerminationException.getHttpResponseStatus()));
-              } else if (e instanceof VeniceNoStoreException) {
-                HttpResponseStatus status = getHttpResponseStatus((VeniceNoStoreException) e);
-                writeAndFlushBadRequests(
-                    context,
-                    new HttpShortcutResponse(
-                        "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
-                        status));
-              } else {
-                LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
-                HttpShortcutResponse shortcutResponse =
-                    new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-                shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
-                writeAndFlushBadRequests(context, shortcutResponse);
-              }
-            });
-        return;
-      }
+      // resourceReadUsageTracker.ifPresent(tracker -> tracker.recordReadUsage(request.getResourceName()));
+      // // Check before putting the request to the intermediate queue
+      // if (request.shouldRequestBeTerminatedEarly()) {
+      // // Try to make the response short
+      // VeniceRequestEarlyTerminationException earlyTerminationException =
+      // new VeniceRequestEarlyTerminationException(request.getStoreName());
+      // writeAndFlushBadRequests(
+      // context,
+      // new HttpShortcutResponse(
+      // earlyTerminationException.getMessage(),
+      // earlyTerminationException.getHttpResponseStatus()));
+      // return;
+      // }
+      // /**
+      // * For now, we are evaluating whether parallel lookup is good overall or not.
+      // * Eventually, we either pick up the new parallel implementation or keep the original one, so it is fine
+      // * to have some duplicate code for the time-being.
+      // */
+      // if (parallelBatchGetEnabled && request.getRequestType().equals(RequestType.MULTI_GET)) {
+      // handleMultiGetRequestInParallel((MultiGetRouterRequestWrapper) request, parallelBatchGetChunkSize)
+      // .whenComplete((v, e) -> {
+      // if (e == null) {
+      // writeAndFlush(context, v);
+      // return;
+      // }
+      // if (e instanceof VeniceRequestEarlyTerminationException) {
+      // VeniceRequestEarlyTerminationException earlyTerminationException =
+      // (VeniceRequestEarlyTerminationException) e;
+      // writeAndFlushBadRequests(
+      // context,
+      // new HttpShortcutResponse(
+      // earlyTerminationException.getMessage(),
+      // earlyTerminationException.getHttpResponseStatus()));
+      // } else if (e instanceof VeniceNoStoreException) {
+      // HttpResponseStatus status = getHttpResponseStatus((VeniceNoStoreException) e);
+      // writeAndFlushBadRequests(
+      // context,
+      // new HttpShortcutResponse(
+      // "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
+      // status));
+      // } else {
+      // LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
+      // HttpShortcutResponse shortcutResponse =
+      // new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      // shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
+      // writeAndFlushBadRequests(context, shortcutResponse);
+      // }
+      // });
+      // return;
+      // }
 
       final ThreadPoolExecutor executor = getExecutor(request.getRequestType());
       executor.execute(() -> {
+        long startTime = System.nanoTime();
         try {
           nettyStats.incrementActiveReadHandlerThreads();
-
+          double submissionWaitTime = LatencyUtils.convertNSToMS(startTime - preSubmissionTimeNs);
           try {
             if (request.shouldRequestBeTerminatedEarly()) {
               throw new VeniceRequestEarlyTerminationException(request.getStoreName());
             }
-            double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
             int queueLen = executor.getQueue().size();
             ReadResponse response;
             switch (request.getRequestType()) {
@@ -389,6 +389,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         } finally {
           nettyStats.decrementActiveReadHandlerThreads();
           nettyStats.decrementQueuedTasksForReadHandler();
+          nettyStats.recordTimeSpentInReadHandler(startTime);
         }
       });
       nettyStats.incrementQueuedTasksForReadHandler();
