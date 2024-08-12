@@ -322,7 +322,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       }
 
       final ThreadPoolExecutor executor = getExecutor(request.getRequestType());
-      executor.submit(() -> {
+      executor.execute(() -> {
         try {
           nettyStats.incrementActiveReadHandlerThreads();
 
@@ -388,9 +388,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           }
         } finally {
           nettyStats.decrementActiveReadHandlerThreads();
+          nettyStats.decrementQueuedTasksForReadHandler();
         }
       });
-
+      nettyStats.incrementQueuedTasksForReadHandler();
     } else if (message instanceof HealthCheckRequest) {
       if (diskHealthCheckService.isDiskHealthy()) {
         writeAndFlush(context, new HttpShortcutResponse("OK", HttpResponseStatus.OK));

@@ -13,23 +13,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class VeniceServerNettyStats extends AbstractVeniceStats {
-  private static final String NETTY_SERVER = "netty_server";
-  // active concurrent connections
-  private static final String ACTIVE_CONNECTIONS = "active_connections";
   private final AtomicInteger activeConnections = new AtomicInteger();
 
-  private static final String ACTIVE_READ_HANDLER_THREADS = "active_read_handler_threads";
   private final AtomicInteger activeReadHandlerThreads = new AtomicInteger();
   private final Sensor writeAndFlushTimeOkRequests;
   private final Sensor writeAndFlushTimeBadRequests;
   private final Sensor writeAndFlushCompletionTimeForDataRequest;
+  private final AtomicInteger queuedTasksForReadHandler = new AtomicInteger();
 
   public VeniceServerNettyStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> activeConnections.get(), ACTIVE_CONNECTIONS));
+    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> activeConnections.get(), "active_connections"));
 
     registerSensorIfAbsent(
-        new AsyncGauge((ignored, ignored2) -> activeReadHandlerThreads.get(), ACTIVE_READ_HANDLER_THREADS));
+        new AsyncGauge((ignored, ignored2) -> activeReadHandlerThreads.get(), "active_read_handler_threads"));
+
+    registerSensorIfAbsent(
+        new AsyncGauge((ignored, ignored2) -> queuedTasksForReadHandler.get(), "queued_tasks_for_read_handler"));
 
     String writeAndFlushTimeOkRequestsSensorName = "WriteAndFlushTimeOkRequests";
     writeAndFlushTimeOkRequests = registerSensorIfAbsent(
@@ -96,5 +96,13 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
 
   public void recordWriteAndFlushCompletionTimeForDataRequest(long startTimeNanos) {
     writeAndFlushCompletionTimeForDataRequest.record(getElapsedTimeInMicros(startTimeNanos));
+  }
+
+  public void incrementQueuedTasksForReadHandler() {
+    queuedTasksForReadHandler.incrementAndGet();
+  }
+
+  public void decrementQueuedTasksForReadHandler() {
+    queuedTasksForReadHandler.decrementAndGet();
   }
 }
