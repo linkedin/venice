@@ -37,7 +37,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
       long cnt = serverConnectionStats.incrementClientConnectionCount();
-      LOGGER.info("####Channel registered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
+      LOGGER.debug("####Channel registered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
       return;
     }
     long cnt;
@@ -47,19 +47,19 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     } else {
       cnt = serverConnectionStats.incrementClientConnectionCount();
     }
-    LOGGER.info("####Channel registered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
+    LOGGER.debug("####Channel registered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
   }
 
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
     int activeConnections = nettyStats.incrementActiveConnections();
-    LOGGER.info("####Channel active: {} - activeCount: {}", ctx.channel().remoteAddress(), activeConnections);
+    LOGGER.debug("####Channel active: {} - activeCount: {}", ctx.channel().remoteAddress(), activeConnections);
   }
 
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     int activeConnections = nettyStats.decrementActiveConnections();
-    LOGGER.info("####Channel inactive: {} - activeCount: {}", ctx.channel().remoteAddress(), activeConnections);
+    LOGGER.debug("####Channel inactive: {} - activeCount: {}", ctx.channel().remoteAddress(), activeConnections);
   }
 
   @Override
@@ -68,7 +68,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
       long cnt = serverConnectionStats.decrementClientConnectionCount();
-      LOGGER.info("####Channel unregistered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
+      LOGGER.debug("####Channel unregistered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
       return;
     }
     String principalName = getPrincipal(sslHandler);
@@ -78,7 +78,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     } else {
       cnt = serverConnectionStats.decrementClientConnectionCount();
     }
-    LOGGER.info("####Channel unregistered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
+    LOGGER.debug("####Channel unregistered: {} - clientCount: {}", ctx.channel().remoteAddress(), cnt);
   }
 
   protected SslHandler extractSslHandler(ChannelHandlerContext ctx) {
