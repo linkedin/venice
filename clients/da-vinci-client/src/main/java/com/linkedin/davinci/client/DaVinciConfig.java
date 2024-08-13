@@ -125,6 +125,10 @@ public class DaVinciConfig {
     return null;
   }
 
+  public DaVinciRecordTransformerFunctionalInterface getRecordTransformerFunction() {
+    return recordTransformerFunction;
+  }
+
   public DaVinciConfig setRecordTransformerFunction(
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     this.recordTransformerFunction = recordTransformerFunction;

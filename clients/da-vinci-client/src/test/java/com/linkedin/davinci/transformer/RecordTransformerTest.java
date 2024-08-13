@@ -23,19 +23,22 @@ import org.testng.annotations.Test;
 
 
 public class RecordTransformerTest {
+  final int storeVersion = 1;
+
   @BeforeMethod
   @AfterClass
   public void deleteClassHash() {
-    File file = new File("./classHash-0.txt");
+    File file = new File(String.format("./classHash-%d.txt", storeVersion));
     if (file.exists()) {
       assertTrue(file.delete());
     }
   }
 
   @Test
-  public void testRecordTransformer() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, false);
-    assertEquals(recordTransformer.getStoreVersion(), 0);
+  public void testRecordTransformer() throws NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
+        new TestStringRecordTransformer(storeVersion, false);
+    assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     Schema keyOutputSchema = recordTransformer.getKeyOutputSchema();
     assertEquals(keyOutputSchema.getType(), Schema.Type.INT);
@@ -71,7 +74,8 @@ public class RecordTransformerTest {
 
   @Test
   public void testOnRecovery() {
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(1, true);
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
+        new TestStringRecordTransformer(storeVersion, true);
 
     RocksIterator iterator = mock(RocksIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);

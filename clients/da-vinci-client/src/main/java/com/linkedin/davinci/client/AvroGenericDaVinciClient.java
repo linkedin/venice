@@ -770,7 +770,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         managedClients,
         icProvider,
         cacheConfig,
-        daVinciConfig::getRecordTransformer);
+        daVinciConfig.getRecordTransformerFunction());
 
     try {
       if (!getBackend().compareCacheConfig(cacheConfig)) {

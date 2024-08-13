@@ -218,6 +218,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
       throw new VeniceException("Blob transfer is not supported in DaVinciRecordTransformer");
     }
 
+    // ToDo: Store class hash in RocksDB to support blob transfer
     int classHash = getClassHash();
     boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
 
