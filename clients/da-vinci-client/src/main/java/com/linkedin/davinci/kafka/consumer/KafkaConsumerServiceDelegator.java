@@ -8,7 +8,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,7 +21,7 @@ import java.util.stream.Collectors;
 
 /**
  * This delegator impl is used to distribute different partition requests into different consumer service.
- * When {@text ConfigKeys#SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED} is off, this class
+ * When {#link ConfigKeys#SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED} is off, this class
  * will always return the default consumer service.
  * When the option is on, it will return the dedicated consumer service when the topic partition belongs
  * to a Real-time topic and the corresponding store has active/active or write compute enabled.
@@ -31,8 +30,14 @@ import java.util.stream.Collectors;
  */
 public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService {
   private final Function<String, Boolean> isAAWCStoreFunc;
-  // Map from a pair of <Version Topic, Version topic/Real time topic partition> to the consumer service assigned to it.
-  private final Map<Pair<PubSubTopic, PubSubTopicPartition>, KafkaConsumerService> vtTopicPartitionPairToConsumerService =
+
+  /**
+   * Map from {@link TopicPartitionForIngestion} to the {@link KafkaConsumerService} assigned to it.
+   * {@link TopicPartitionForIngestion} wrapping version topic and pub-sub topic partition to identify a unique partition
+   * in the specific host. For example, the server host may ingestion same real-time pub-sub topic partition from
+   * different version topics, and we should avoid sharing the same consumer for them.
+   */
+  private final Map<TopicPartitionForIngestion, KafkaConsumerService> topicPartitionToConsumerService =
       new VeniceConcurrentHashMap<>();
   private final List<KafkaConsumerService> consumerServices;
 
@@ -65,6 +70,9 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     // TODO: Remove this boolean check after new pooling strategy is verified in production environment.
     if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
       this.consumerPoolStrategy = new AAOrWCLeaderConsumerPoolStrategy();
+      logger.info(
+          "Initializing Consumer Service Delegator with Consumer pool strategy: "
+              + ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED);
     } else {
       switch (consumerPoolStrategyType) {
         case AA_OR_WC_LEADER_DEDICATED:
@@ -81,22 +89,25 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         default:
           consumerPoolStrategy = new DefaultConsumerPoolStrategy();
       }
+      logger.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
     }
+
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
 
   private KafkaConsumerService assignKafkaConsumerServiceFor(
       PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-    Pair<PubSubTopic, PubSubTopicPartition> versionTopicPartitionPair =
-        new Pair<>(topicPartitionReplicaRole.getVersionTopic(), topicPartitionReplicaRole.getPubSubTopicPartition());
-    return vtTopicPartitionPairToConsumerService.computeIfAbsent(
-        versionTopicPartitionPair,
+    TopicPartitionForIngestion topicPartitionForIngestion = new TopicPartitionForIngestion(
+        topicPartitionReplicaRole.getVersionTopic(),
+        topicPartitionReplicaRole.getPubSubTopicPartition());
+    return topicPartitionToConsumerService.computeIfAbsent(
+        topicPartitionForIngestion,
         pair -> consumerPoolStrategy.delegateKafkaConsumerServiceFor(topicPartitionReplicaRole));
   }
 
   private KafkaConsumerService getKafkaConsumerService(PubSubTopic versionTopic, PubSubTopicPartition topicPartition) {
-    Pair<PubSubTopic, PubSubTopicPartition> versionTopicPartitionPair = new Pair<>(versionTopic, topicPartition);
-    return vtTopicPartitionPairToConsumerService.get(versionTopicPartitionPair);
+    TopicPartitionForIngestion versionTopicPartitionPair = new TopicPartitionForIngestion(versionTopic, topicPartition);
+    return topicPartitionToConsumerService.get(versionTopicPartitionPair);
   }
 
   @Override
@@ -132,7 +143,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   @Override
   public void unsubscribeAll(PubSubTopic versionTopic) {
     consumerServices.forEach(kafkaConsumerService -> kafkaConsumerService.unsubscribeAll(versionTopic));
-    vtTopicPartitionPairToConsumerService.entrySet().removeIf(entry -> entry.getKey().getFirst().equals(versionTopic));
+    topicPartitionToConsumerService.entrySet().removeIf(entry -> entry.getKey().getVersionTopic().equals(versionTopic));
     storeVersionAAWCFlagMap.remove(versionTopic.getName());
   }
 
@@ -141,7 +152,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     KafkaConsumerService kafkaConsumerService = getKafkaConsumerService(versionTopic, pubSubTopicPartition);
     if (kafkaConsumerService != null) {
       kafkaConsumerService.unSubscribe(versionTopic, pubSubTopicPartition);
-      vtTopicPartitionPairToConsumerService.remove(new Pair<>(versionTopic, pubSubTopicPartition));
+      topicPartitionToConsumerService.remove(new TopicPartitionForIngestion(versionTopic, pubSubTopicPartition));
     } else {
       logger.warn(
           "No consumer service found for version topic {} and partition {} when unsubscribing.",
@@ -155,7 +166,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     consumerServices
         .forEach(kafkaConsumerService -> kafkaConsumerService.batchUnsubscribe(versionTopic, topicPartitionsToUnSub));
     for (PubSubTopicPartition pubSubTopicPartition: topicPartitionsToUnSub) {
-      vtTopicPartitionPairToConsumerService.remove(new Pair<>(versionTopic, pubSubTopicPartition));
+      topicPartitionToConsumerService.remove(new TopicPartitionForIngestion(versionTopic, pubSubTopicPartition));
     }
   }
 
@@ -293,11 +304,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       }
       return defaultConsumerService;
     }
-
-    @Override
-    public List<KafkaConsumerService> getConsumerServices() {
-      return consumerServices;
-    }
   }
 
   public class CurrentVersionConsumerPoolStrategy extends ConsumerPoolStrategy {
@@ -360,6 +366,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   public enum ConsumerPoolStrategyType {
-    DEFAULT, AA_OR_WC_LEADER_DEDICATED, CURRENT_VERSION_PRIORITIZATION;
+    DEFAULT, AA_OR_WC_LEADER_DEDICATED, CURRENT_VERSION_PRIORITIZATION
   }
 }
