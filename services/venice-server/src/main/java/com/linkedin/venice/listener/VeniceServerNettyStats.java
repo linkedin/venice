@@ -25,6 +25,8 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
   private final Sensor writeAndFlushCompletionTimeForDataRequest;
   private final Sensor timeSpentInReadHandler;
   private final Sensor timeSpentTillHandoffToReadHandler;
+  // time spent in quota enforcement logic
+  private final Sensor timeSpentInQuotaEnforcement;
   private final AtomicInteger queuedTasksForReadHandler = new AtomicInteger();
 
   public VeniceServerNettyStats(MetricsRepository metricsRepository, String name) {
@@ -94,10 +96,20 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
         new Avg(),
         TehutiUtils.getPercentileStat(
             getName() + AbstractVeniceStats.DELIMITER + timeSpentTillHandoffToReadHandlerSensorName));
+
+    String timeSpentInQuotaEnforcementSensorName = "TimeSpentInQuotaEnforcement";
+    timeSpentInQuotaEnforcement = registerSensorIfAbsent(
+        timeSpentInQuotaEnforcementSensorName,
+        new OccurrenceRate(),
+        new Max(),
+        new Min(),
+        new Avg(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + timeSpentInQuotaEnforcementSensorName));
   }
 
-  public static long getElapsedTimeInMicros(long startTimeNanos) {
-    return (System.nanoTime() - startTimeNanos) / 1000;
+  public static double getElapsedTimeInMicros(long startTimeNanos) {
+    return (System.nanoTime() - startTimeNanos) / 1000.0;
   }
 
   public static long getElapsedTimeInNanos(long startTimeNanos) {
@@ -153,5 +165,9 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
 
   public void recordTimeSpentTillHandoffToReadHandler(long startTimeNanos) {
     timeSpentTillHandoffToReadHandler.record(getElapsedTimeInMicros(startTimeNanos));
+  }
+
+  public void recordTimeSpentInQuotaEnforcement(long startTimeNanos) {
+    timeSpentInQuotaEnforcement.record(getElapsedTimeInMicros(startTimeNanos));
   }
 }

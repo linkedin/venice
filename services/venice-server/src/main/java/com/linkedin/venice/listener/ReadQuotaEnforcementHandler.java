@@ -190,45 +190,53 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
-    String storeName = request.getStoreName();
-    Store store = storeRepository.getStore(storeName);
+    long startTime = System.nanoTime();
+    try {
 
-    if (checkStoreNull(ctx, request, null, false, store)) {
-      return;
-    }
+      String storeName = request.getStoreName();
+      Store store = storeRepository.getStore(storeName);
 
-    if (checkInitAndQuotaEnabledToSkipQuotaEnforcement(ctx, request, store, false)) {
-      return;
-    }
-
-    int rcu = getRcu(request); // read capacity units
-
-    /**
-     * First check store bucket for capacity don't throttle retried request at store version level
-     */
-    TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
-    if (tokenBucket != null) {
-      if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
-          && handleTooManyRequests(ctx, request, null, store, rcu, false)) {
-        // Enforce store version quota for non-retry requests.
-        // TODO: check if extra node capacity and can still process this request out of quota
+      if (checkStoreNull(ctx, request, null, false, store)) {
         return;
       }
-    } else {
-      // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
-      // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics accordingly.
-      stats.recordAllowedUnintentionally(storeName, rcu);
-    }
 
-    /**
-     * Once we know store bucket has capacity, check node bucket for capacity;
-     * retried requests need to be throttled at node capacity level
-     */
-    if (!storageNodeBucket.tryConsume(rcu)) {
-      if (handleServerOverCapacity(ctx, null, storeName, rcu, false))
+      if (checkInitAndQuotaEnabledToSkipQuotaEnforcement(ctx, request, store, false)) {
         return;
+      }
+
+      int rcu = getRcu(request); // read capacity units
+
+      /**
+       * First check store bucket for capacity don't throttle retried request at store version level
+       */
+      TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
+      if (tokenBucket != null) {
+        if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
+            && handleTooManyRequests(ctx, request, null, store, rcu, false)) {
+          // Enforce store version quota for non-retry requests.
+          // TODO: check if extra node capacity and can still process this request out of quota
+          return;
+        }
+      } else {
+        // If this happens it is probably due to a short-lived race condition where the resource is being accessed
+        // before
+        // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics
+        // accordingly.
+        stats.recordAllowedUnintentionally(storeName, rcu);
+      }
+
+      /**
+       * Once we know store bucket has capacity, check node bucket for capacity;
+       * retried requests need to be throttled at node capacity level
+       */
+      if (!storageNodeBucket.tryConsume(rcu)) {
+        if (handleServerOverCapacity(ctx, null, storeName, rcu, false))
+          return;
+      }
+      handleEpilogue(ctx, request, storeName, rcu, false);
+    } finally {
+      nettyStats.recordTimeSpentInQuotaEnforcement(startTime);
     }
-    handleEpilogue(ctx, request, storeName, rcu, false);
   }
 
   public boolean checkStoreNull(
