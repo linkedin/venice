@@ -190,7 +190,7 @@ public class ListenerService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     LOGGER.info("Listener service started on port: {}", port);
-    LOGGER.info("####EXPERIMENT#### -- Skip flush in quota path");
+    LOGGER.info("####EXPERIMENT#### -- No flush in quota code path");
 
     if (isGrpcEnabled) {
       grpcServer.start();

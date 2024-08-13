@@ -52,7 +52,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     int responseRcu = 1;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean isStreamingResponse = false;
-    boolean skipFlush = false;
     try {
       if (msg instanceof ReadResponse) {
         ReadResponse obj = (ReadResponse) msg;
@@ -70,16 +69,14 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         isStreamingResponse = obj.isStreamingResponse();
         responseRcu = obj.getRCU();
       } else if (msg instanceof HttpShortcutResponse) {
-        skipFlush = true;
         // For Early terminated requests
         HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) msg;
         responseStatus = shortcutResponse.getStatus();
         String message = shortcutResponse.getMessage();
         if (message == null) {
-          body = Unpooled.wrappedBuffer(Unpooled.EMPTY_BUFFER);
-        } else {
-          body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
+          message = "";
         }
+        body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         contentType = HttpConstants.TEXT_PLAIN;
         if (shortcutResponse.getStatus().equals(VeniceRequestEarlyTerminationException.getHttpResponseStatus())) {
           statsHandler.setRequestTerminatedEarly();
@@ -183,11 +180,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
      *
      *  writeAndFlush may have some performance issue since it will call the actual send every time.
      */
-    if (skipFlush) {
-      ctx.write(response);
-    } else {
-      ctx.writeAndFlush(response);
-    }
+    ctx.writeAndFlush(response);
   }
 
   public void setStats(ServerStatsContext statsContext, ReadResponse readResponse) {
