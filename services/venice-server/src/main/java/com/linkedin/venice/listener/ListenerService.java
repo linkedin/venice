@@ -30,8 +30,6 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.util.concurrent.DefaultEventExecutorGroup;
-import io.netty.util.concurrent.EventExecutorGroup;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Optional;
@@ -61,7 +59,6 @@ public class ListenerService extends AbstractVeniceService {
   private final ThreadPoolExecutor computeExecutor;
   private final ThreadPoolExecutor grpcExecutor;
   private ThreadPoolExecutor sslHandshakeExecutor;
-  private final EventExecutorGroup expensiveHandlers;
 
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
@@ -131,8 +128,6 @@ public class ListenerService extends AbstractVeniceService {
 
     storageReadRequestHandler = requestHandler;
 
-    expensiveHandlers = new DefaultEventExecutorGroup(
-        Math.max(serverConfig.getNettyWorkerThreadCount(), Runtime.getRuntime().availableProcessors()));
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
         customizedViewRepository,
@@ -143,7 +138,6 @@ public class ListenerService extends AbstractVeniceService {
         routerAccessController,
         storeAccessController,
         requestHandler,
-        expensiveHandlers,
         nettyStats);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -196,7 +190,7 @@ public class ListenerService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     LOGGER.info("Listener service started on port: {}", port);
-    LOGGER.info("####EXPERIMENT#### -- expensiveHandlersExecutor - restrict to acl and quota");
+    LOGGER.info("####EXPERIMENT#### -- No flush in quota code path");
 
     if (isGrpcEnabled) {
       grpcServer.start();
@@ -221,7 +215,6 @@ public class ListenerService extends AbstractVeniceService {
     Thread.sleep(TimeUnit.SECONDS.toMillis(serverConfig.getNettyGracefulShutdownPeriodSeconds()));
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
-    expensiveHandlers.shutdownGracefully();
     shutdown.sync();
 
     if (grpcServer != null) {
