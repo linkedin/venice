@@ -19,7 +19,10 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   }
 
   @Override
-  public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+  public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    if (ctx.channel().remoteAddress() == null) {
+      return;
+    }
     SslHandler sslHandler = extractSslHandler(ctx);
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
@@ -27,7 +30,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.equals(routerPrincipalName)) {
+    if (principalName != null && principalName.contains(routerPrincipalName)) {
       serverConnectionStats.incrementRouterConnectionCount();
     } else {
       serverConnectionStats.incrementClientConnectionCount();
@@ -35,7 +38,11 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   }
 
   @Override
-  public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+  public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    if (ctx.channel().remoteAddress() == null) {
+      return;
+    }
+
     SslHandler sslHandler = extractSslHandler(ctx);
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
@@ -43,7 +50,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.equals(routerPrincipalName)) {
+    if (principalName != null && principalName.contains(routerPrincipalName)) {
       serverConnectionStats.decrementRouterConnectionCount();
     } else {
       serverConnectionStats.decrementClientConnectionCount();
