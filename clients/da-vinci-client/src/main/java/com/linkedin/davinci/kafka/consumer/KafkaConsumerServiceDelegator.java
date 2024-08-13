@@ -342,6 +342,11 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       PartitionReplicaIngestionContext.WorkloadType workloadType = topicPartitionReplicaRole.getWorkloadType();
       PubSubTopicPartition pubSubTopicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic pubSubTopic = pubSubTopicPartition.getPubSubTopic();
+      /**
+       * The logic to assign consumer service is with these 2 dimensions:
+       * 1. If the version role is current.
+       * 2. If the workload type is active-active leader and write-computer leader.
+       */
       if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime()) {

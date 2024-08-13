@@ -2101,12 +2101,28 @@ public class ConfigKeys {
    * types strategy supported decided by #ConsumerPoolStrategyType.
    */
   public static final String SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY = "server.consumer.pool.allocation.strategy";
+  /**
+   * Consumer Pool for active-active or write computer leader of current version, the traffic we need to isolate due to
+   * it is more costly than normal leader processing and current version should be allocated more resources to prioritize.
+   */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
       "server.consumer.pool.size.for.current.version.aa.wc.leader";
+  /**
+   * Consumer Pool for active-active or write computer leader of future or backup version, the traffic we need to isolate
+   * due to it is still more costly than normal leader processing and it has less priority than current version.
+   */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
       "server.consumer.pool.size.for.non.current.version.aa.wc.leader";
+  /**
+   * Consumer Pool for all followers, non-active-active and non-write compute leader of current version, the traffic
+   * is less costly and but it is current version with high priority.
+   */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
       "server.consumer.pool.size.for.current.version.non.aa.wc.leader";
+  /**
+   * Consumer Pool for all followers, non-active-active leader and non-write compute leader of backup and future version,
+   * the traffic is less costly and with low priority.
+   */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
       "server.consumer.pool.size.for.non.current.version.non.aa.wc.leader";
 
