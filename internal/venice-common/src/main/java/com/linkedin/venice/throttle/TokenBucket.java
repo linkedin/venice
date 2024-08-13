@@ -86,7 +86,6 @@ public class TokenBucket {
         return Math.min(newTokens, capacity);
       });
       previousRefillTime.set(timeNow);
-      nextUpdateTime.set(timeNow + refillIntervalMs);
       tokensRequestedSinceLastRefill.set(0);
     }
   }
