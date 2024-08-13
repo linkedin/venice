@@ -116,6 +116,11 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
     return activeConnections.incrementAndGet();
   }
 
+  // get activeConnections
+  public int getActiveConnections() {
+    return activeConnections.get();
+  }
+
   public int decrementActiveConnections() {
     return activeConnections.decrementAndGet();
   }
