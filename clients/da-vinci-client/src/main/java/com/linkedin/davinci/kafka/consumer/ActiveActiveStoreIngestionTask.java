@@ -1474,9 +1474,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         LOGGER.error(errorMessage, partition, kafkaVersionTopic, e);
 
         // TODO: Or should this be pausing for all partitions for a topic? Would this be a performance issue?
-        storageUtilizationManager.pausePartitionForRecordTooLarge(partition, kafkaVersionTopic);
+        // TODO: should an exception be thrown here, or is it safe to proceed?
+        getStorageUtilizationManager().pausePartitionForRecordTooLarge(partition, kafkaVersionTopic);
       }
     };
+  }
+
+  protected StorageUtilizationManager getStorageUtilizationManager() {
+    return storageUtilizationManager;
   }
 
   protected LeaderProducerCallback createProducerCallback(

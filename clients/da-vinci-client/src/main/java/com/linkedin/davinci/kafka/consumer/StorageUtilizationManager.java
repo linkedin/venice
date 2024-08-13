@@ -196,24 +196,24 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     versionIsOnline = isVersionOnline(version);
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       LOGGER.info(
-          "Store: {} changed, updated quota from {} to {} and store quota is {} enabled, "
+          "Store: {} changed, updated quota from {} to {} and store quota is {}, "
               + "so we reset the store quota and resume all partitions.",
           this.storeName,
           this.storeQuotaInBytes,
           store.getStorageQuotaInByte(),
-          store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
+          store.isHybridStoreDiskQuotaEnabled() ? "enabled" : "not enabled");
       resumeAllPartitions(PausedConsumptionReason.QUOTA_EXCEEDED);
     }
 
-    final int oldMaxRecordSizeBytes = this.maxRecordSizeBytes.get();
+    int oldMaxRecordSizeBytes = this.maxRecordSizeBytes.get();
     if (this.maxRecordSizeBytes.compareAndSet(oldMaxRecordSizeBytes, store.getMaxRecordSizeBytes())) {
-      final boolean isRecordLimitIncreased = oldMaxRecordSizeBytes < store.getMaxRecordSizeBytes();
+      boolean isRecordLimitIncreased = oldMaxRecordSizeBytes < store.getMaxRecordSizeBytes();
       LOGGER.info(
-          "Store: {} changed, updated max record size from {} to {}{}.",
+          "Store: {} changed, updated max record size from {} to {}. {}",
           this.storeName,
           oldMaxRecordSizeBytes,
           store.getMaxRecordSizeBytes(),
-          (isRecordLimitIncreased) ? ", so we resume all partitions" : "");
+          (isRecordLimitIncreased) ? "Resuming consumption on all partitions paused by RecordTooLarge issue." : "");
       if (isRecordLimitIncreased) {
         resumeAllPartitions(PausedConsumptionReason.RECORD_TOO_LARGE);
       }

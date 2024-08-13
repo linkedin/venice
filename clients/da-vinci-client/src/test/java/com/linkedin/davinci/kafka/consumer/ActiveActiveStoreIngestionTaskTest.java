@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -97,9 +98,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -274,9 +273,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
   }
 
+  // TODO: removing these throws exceptions is ok right?
   @Test
-  public void testLeaderCanSendValueChunksIntoDrainer()
-      throws ExecutionException, InterruptedException, TimeoutException {
+  public void testLeaderCanSendValueChunksIntoDrainer() throws InterruptedException {
     String testTopic = "test";
     int valueSchemaId = 1;
     int rmdProtocolVersionID = 1;
@@ -334,14 +333,15 @@ public class ActiveActiveStoreIngestionTaskTest {
             .setTime(SystemTime.INSTANCE)
             .setChunkingEnabled(true)
             .setRmdChunkingEnabled(true)
+            .setMaxRecordSizeBytes(BYTES_PER_MB)
             .setPartitionCount(1)
             .build();
-    VeniceWriter<byte[], byte[], byte[]> writer =
-        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    VeniceProperties props = VeniceProperties.empty();
+    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriter(veniceWriterOptions, props, mockedProducer);
     when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
     when(ingestionTask.getVeniceWriter()).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
-    for (int i = 0; i < 50000; i++) {
+    for (int i = 0; i < 32000; i++) { // for maxSizeForUserPayloadPerMessageInBytes < recordSize < maxRecordSizeBytes
       stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
     }
     ByteBuffer valueBytes = ByteBuffer.wrap(stringBuilder.toString().getBytes());
@@ -424,6 +424,35 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(3).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(4).getKey());
+
+    // Increase the size of the value to be greater than maxRecordSizeBytes, so ingestion is paused
+    for (int i = 0; i < 3000; i++) {
+      stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
+    }
+    valueBytes = ByteBuffer.wrap(stringBuilder.toString().getBytes());
+    updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
+
+    StorageUtilizationManager mockedStorageUtilizationManager = mock(StorageUtilizationManager.class);
+    when(ingestionTask.getStorageUtilizationManager()).thenReturn(mockedStorageUtilizationManager);
+
+    ingestionTask.produceToLocalKafka(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        ingestionTask.getProduceToTopicFunction(
+            updatedKeyBytes,
+            updatedValueBytes,
+            updatedRmdBytes,
+            null,
+            null,
+            valueSchemaId,
+            partition,
+            resultReuseInput),
+        partition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestamp);
+    verify(mockedStorageUtilizationManager, times(1)).pausePartitionForRecordTooLarge(anyInt(), any());
   }
 
   @Test
