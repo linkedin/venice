@@ -176,11 +176,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       } else if (requestContext instanceof MultiKeyRequestContext) {
         // MultiKeyRequestContext is the superclass for ComputeRequestContext and BatchGetRequestContext
         MultiKeyRequestContext<K, V> multiKeyRequestContext = (MultiKeyRequestContext<K, V>) requestContext;
+        clientStats.recordFanoutSize(multiKeyRequestContext.getFanoutSize());
         if (multiKeyRequestContext.retryContext != null
             && multiKeyRequestContext.retryContext.retryRequestContext != null) {
           clientStats.recordLongTailRetryRequest();
           clientStats
               .recordRetryRequestKeyCount(multiKeyRequestContext.retryContext.retryRequestContext.numKeysInRequest);
+          clientStats.recordRetryFanoutSize(multiKeyRequestContext.retryContext.retryRequestContext.getFanoutSize());
           if (!exceptionReceived) {
             clientStats.recordRetryRequestSuccessKeyCount(
                 multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get());
