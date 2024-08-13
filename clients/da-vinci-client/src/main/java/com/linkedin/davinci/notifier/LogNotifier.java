@@ -73,8 +73,6 @@ public class LogNotifier implements VeniceNotifier {
           "{} for replica: {}{}{}",
           header,
           Utils.getReplicaId(pubSubTopic, partitionId),
-          pubSubTopic,
-          partitionId,
           offset == null ? "" : " offset " + offset,
           (message == null || message.isEmpty()) ? "" : " message " + message);
     } else {

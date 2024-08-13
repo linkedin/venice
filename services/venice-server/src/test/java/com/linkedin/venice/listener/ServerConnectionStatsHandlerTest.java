@@ -13,6 +13,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.Attribute;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLEngine;
@@ -27,7 +28,7 @@ public class ServerConnectionStatsHandlerTest {
   private ChannelPipeline pipeline;
   private Channel channel;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     context = mock(ChannelHandlerContext.class);
     pipeline = mock(ChannelPipeline.class);
@@ -41,10 +42,14 @@ public class ServerConnectionStatsHandlerTest {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
     ServerConnectionStatsHandler serverConnectionStatsHandler =
         new ServerConnectionStatsHandler(serverConnectionStats, "venice-router");
-    serverConnectionStatsHandler.channelRegistered(context);
+    Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
+    when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
+    when(channelActivatedAttr.get()).thenReturn(false);
+    serverConnectionStatsHandler.channelActive(context);
     verify(serverConnectionStats, times(1)).incrementClientConnectionCount();
     verify(serverConnectionStats, never()).decrementClientConnectionCount();
-    serverConnectionStatsHandler.channelUnregistered(context);
+    when(channelActivatedAttr.get()).thenReturn(true);
+    serverConnectionStatsHandler.channelInactive(context);
     verify(serverConnectionStats, times(1)).incrementClientConnectionCount();
     verify(serverConnectionStats, times(1)).decrementClientConnectionCount();
     verify(serverConnectionStats, never()).incrementRouterConnectionCount();
@@ -69,14 +74,20 @@ public class ServerConnectionStatsHandlerTest {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
     ServerConnectionStatsHandler serverConnectionStatsHandler =
         new ServerConnectionStatsHandler(serverConnectionStats, veniceRouterPrincipalString);
-    serverConnectionStatsHandler.channelRegistered(context);
-    serverConnectionStatsHandler.channelUnregistered(context);
+    Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
+    when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
+    when(channelActivatedAttr.get()).thenReturn(false);
+    serverConnectionStatsHandler.channelActive(context);
+    when(channelActivatedAttr.get()).thenReturn(true);
+    serverConnectionStatsHandler.channelInactive(context);
     verify(serverConnectionStats, times(1)).incrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementRouterConnectionCount();
     verify(serverConnectionStats, never()).incrementClientConnectionCount();
     verify(serverConnectionStats, never()).decrementClientConnectionCount();
-    serverConnectionStatsHandler.channelRegistered(context);
-    serverConnectionStatsHandler.channelUnregistered(context);
+    when(channelActivatedAttr.get()).thenReturn(false);
+    serverConnectionStatsHandler.channelActive(context);
+    when(channelActivatedAttr.get()).thenReturn(true);
+    serverConnectionStatsHandler.channelInactive(context);
     verify(serverConnectionStats, times(1)).incrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).incrementClientConnectionCount();
