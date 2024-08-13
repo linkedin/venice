@@ -23,7 +23,7 @@ import org.testng.annotations.Test;
 
 
 public class RecordTransformerTest {
-  final int storeVersion = 1;
+  static final int storeVersion = 1;
 
   @BeforeMethod
   @AfterClass
