@@ -36,6 +36,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.util.concurrent.EventExecutorGroup;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -68,7 +69,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
-
+  private final EventExecutorGroup expensiveHandlersExecutor;
   private boolean isDaVinciClient;
 
   public HttpChannelInitializer(
@@ -91,6 +92,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         routerAccessController,
         storeAccessController,
         requestHandler,
+        null,
         null);
   }
 
@@ -104,11 +106,13 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       StorageReadRequestHandler requestHandler,
+      EventExecutorGroup expensiveHandlersExecutor,
       VeniceServerNettyStats nettyStats) {
     this.nettyStats = nettyStats;
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
+    this.expensiveHandlersExecutor = expensiveHandlersExecutor;
 
     boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
@@ -247,19 +251,20 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       if (sslFactory.isPresent()) {
         pipeline.addLast(verifySsl);
         if (aclHandler.isPresent()) {
-          pipeline.addLast(aclHandler.get());
+          pipeline.addLast(expensiveHandlersExecutor, aclHandler.get());
         }
         /**
          * {@link #storeAclHandler} if present must come after {@link #aclHandler}
          */
         if (storeAclHandler.isPresent()) {
-          pipeline.addLast(storeAclHandler.get());
+          pipeline.addLast(expensiveHandlersExecutor, storeAclHandler.get());
         }
       }
-      pipeline
-          .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+      pipeline.addLast(
+          expensiveHandlersExecutor,
+          new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
-        pipeline.addLast(quotaEnforcer);
+        pipeline.addLast(expensiveHandlersExecutor, quotaEnforcer);
       }
       pipeline.addLast(requestHandler).addLast(new ErrorCatchingHandler());
     };
