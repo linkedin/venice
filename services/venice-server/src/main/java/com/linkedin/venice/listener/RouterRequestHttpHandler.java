@@ -56,10 +56,10 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     ctx.close();
   }
 
-  @Override
-  public void channelReadComplete(ChannelHandlerContext ctx) {
-    ctx.flush();
-  }
+  // @Override
+  // public void channelReadComplete(ChannelHandlerContext ctx) {
+  // ctx.flush();
+  // }
 
   private void setupRequestTimeout(RouterRequest routerRequest) {
     String storeName = routerRequest.getStoreName();
