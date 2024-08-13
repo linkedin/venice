@@ -5,18 +5,16 @@ import static org.testng.Assert.*;
 import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
 
-import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.rocksdb.RocksIterator;
 import org.testng.annotations.AfterClass;
@@ -35,7 +33,7 @@ public class RecordTransformerTest {
   }
 
   @Test
-  public void testRecordTransformer() {
+  public void testRecordTransformer() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, false);
     assertEquals(recordTransformer.getStoreVersion(), 0);
 
@@ -61,17 +59,19 @@ public class RecordTransformerTest {
     assertEquals(outputValueClass, String.class);
 
     int classHash = recordTransformer.getClassHash();
-    assertTrue(recordTransformer.hasTransformationLogicChanged(classHash));
-    assertFalse(recordTransformer.hasTransformationLogicChanged(classHash));
+
+    // Use reflection to access the hasTransformationLogicChanged method
+    Method hasTransformationLogicChanged =
+        DaVinciRecordTransformer.class.getDeclaredMethod("hasTransformationLogicChanged", int.class);
+    hasTransformationLogicChanged.setAccessible(true);
+
+    assertTrue((boolean) hasTransformationLogicChanged.invoke(recordTransformer, classHash));
+    assertFalse((boolean) hasTransformationLogicChanged.invoke(recordTransformer, classHash));
   }
 
   @Test
   public void testOnRecovery() {
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
-
-    StoreBackend storeBackend = mock(StoreBackend.class);
-    CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
-    when(storeBackend.subscribe(any())).thenReturn(future);
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(1, true);
 
     RocksIterator iterator = mock(RocksIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
@@ -80,11 +80,10 @@ public class RecordTransformerTest {
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
 
-    Optional<Version> version = Optional.of(mock(Version.class));
     List<Integer> partitions = new ArrayList<>();
     int partitionId = 1;
     partitions.add(partitionId);
-    recordTransformer.onRecovery(storageEngine, storeBackend, null, partitions, version);
+    recordTransformer.onRecovery(storageEngine, null, partitions);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
 
     // Reset the mock to clear previous interactions
@@ -92,14 +91,13 @@ public class RecordTransformerTest {
 
     // Execute the onRecovery method again to test the case where the classHash file exists
     when(storageEngine.getRocksDBIterator(partitionId)).thenReturn(iterator);
-    recordTransformer.onRecovery(storageEngine, storeBackend, null, partitions, version);
+    recordTransformer.onRecovery(storageEngine, null, partitions);
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
     verify(storageEngine, times(1)).getRocksDBIterator(partitionId);
 
     // Should throw an error if a user tries to use blob transfer wit the record transformer
     BlobTransferManager blobTransferManager = mock(BlobTransferManager.class);
-    assertThrows(
-        () -> recordTransformer.onRecovery(storageEngine, storeBackend, blobTransferManager, partitions, version));
+    assertThrows(() -> recordTransformer.onRecovery(storageEngine, blobTransferManager, partitions));
   }
 
   @Test

@@ -128,7 +128,7 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty());
   }
 
-  public synchronized CompletableFuture<Void> subscribe(
+  synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {

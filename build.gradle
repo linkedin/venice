@@ -269,7 +269,7 @@ subprojects {
     implementation libraries.grpcProtobuf
     implementation libraries.grpcServices
     implementation libraries.grpcStub
-    compileOnly 'org.ow2.asm:asm:9.7'
+    implementation 'org.ow2.asm:asm:9.7'
     compileOnly libraries.tomcatAnnotations
   }
 

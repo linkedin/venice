@@ -1,14 +1,11 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.BufferedReader;
 import java.io.File;
@@ -21,7 +18,6 @@ import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.objectweb.asm.ClassReader;
 import org.rocksdb.RocksIterator;
@@ -188,8 +184,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * @return true if the transformation logic has changed since the last time the class was loaded
    */
-  // Visible for testing
-  public final boolean hasTransformationLogicChanged(int classHash) {
+  private boolean hasTransformationLogicChanged(int classHash) {
     try {
       String classHashPath = String.format("./classHash-%d.txt", storeVersion);
       File f = new File(classHashPath);
@@ -216,10 +211,8 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   public final void onRecovery(
       AbstractStorageEngine storageEngine,
-      StoreBackend storeBackend,
       BlobTransferManager blobTransferManager,
-      List<Integer> partitions,
-      Optional<Version> version) {
+      List<Integer> partitions) {
 
     if (blobTransferManager != null) {
       throw new VeniceException("Blob transfer is not supported in DaVinciRecordTransformer");
@@ -253,8 +246,6 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
         }
       }
     }
-
-    storeBackend.subscribe(ComplementSet.newSet(partitions), version);
   }
 
   /**
