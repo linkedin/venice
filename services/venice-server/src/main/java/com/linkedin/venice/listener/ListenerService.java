@@ -190,6 +190,7 @@ public class ListenerService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     LOGGER.info("Listener service started on port: {}", port);
+    LOGGER.info("####EXPERIMENT#### -- FlushConsolidationHandler: 16 and true - BEGINNING");
 
     if (isGrpcEnabled) {
       grpcServer.start();
