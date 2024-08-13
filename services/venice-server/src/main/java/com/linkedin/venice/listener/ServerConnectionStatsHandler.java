@@ -5,11 +5,14 @@ import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.Attribute;
+import io.netty.util.AttributeKey;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLPeerUnverifiedException;
 
 
 public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
+  public static final AttributeKey<Boolean> CHANNEL_ACTIVATED = AttributeKey.valueOf("channelActivated");
   private final ServerConnectionStats serverConnectionStats;
   private final String routerPrincipalName;
 
@@ -20,9 +23,11 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
-    if (ctx.channel().remoteAddress() == null) {
+    Attribute<Boolean> activated = ctx.channel().attr(CHANNEL_ACTIVATED);
+    if (activated.get() != null && activated.get()) {
       return;
     }
+    activated.set(true);
     SslHandler sslHandler = extractSslHandler(ctx);
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
@@ -39,10 +44,11 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-    if (ctx.channel().remoteAddress() == null) {
+    Attribute<Boolean> activated = ctx.channel().attr(CHANNEL_ACTIVATED);
+    if (activated.get() == null || !activated.get()) {
       return;
     }
-
+    activated.set(false);
     SslHandler sslHandler = extractSslHandler(ctx);
     if (sslHandler == null) {
       // No ssl enabled, record all connections as client connections
