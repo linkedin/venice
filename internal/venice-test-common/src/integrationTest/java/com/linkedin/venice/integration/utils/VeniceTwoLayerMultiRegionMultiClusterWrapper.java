@@ -148,12 +148,6 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       for (String regionName: childRegionName) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
         IntegrationTestUtils.ensureZkPathExists(zkServerWrapper.getAddress(), options.getChildVeniceZkBasePath());
-        if (options.isParentControllerInChildRegion()) {
-          ZkServerWrapper parentZkServerWrapper = ServiceFactory.getZkServer();
-          IntegrationTestUtils
-              .ensureZkPathExists(parentZkServerWrapper.getAddress(), options.getParentVeniceZkBasePath());
-          zkServerByRegionName.put(parentRegionName + regionName, parentZkServerWrapper);
-        }
         PubSubBrokerWrapper regionalPubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).setRegionName(regionName).build());
         allPubSubBrokerWrappers.add(regionalPubSubBrokerWrapper);
@@ -244,9 +238,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
               new VeniceControllerCreateOptions.Builder(
                   clusterNames,
-                  zkServerByRegionName.get(parentRegionName + regionName),
+                  zkServerByRegionName.get(regionName),
                   parentPubSubBrokerWrapper).multiRegion(true)
-                      .veniceZkBasePath(options.getChildVeniceZkBasePath())
+                      .veniceZkBasePath(options.getParentVeniceZkBasePath())
                       .replicationFactor(options.getReplicationFactor())
                       .childControllers(childControllers)
                       .extraProperties(i == 0 ? activeParentControllerProperties : passiveParentControllerProperties)
@@ -261,7 +255,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         VeniceControllerCreateOptions parentControllerCreateOptions =
             new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper)
                 .multiRegion(true)
-                .veniceZkBasePath(options.getChildVeniceZkBasePath())
+                .veniceZkBasePath(options.getParentVeniceZkBasePath())
                 .replicationFactor(options.getReplicationFactor())
                 .childControllers(childControllers)
                 .extraProperties(finalParentControllerProperties)

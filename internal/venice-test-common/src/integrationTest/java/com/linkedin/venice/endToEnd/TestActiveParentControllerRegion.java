@@ -44,10 +44,13 @@ public class TestActiveParentControllerRegion {
     venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(2)
             .numberOfClusters(1)
+            .numberOfParentControllers(1)
             .numberOfChildControllers(1)
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
+            .parentVeniceZkBasePath("/test-venice-parent")
+            .childVeniceZkBasePath("/test-venice-child")
             .parentControllerInChildRegion(true)
             .build());
   }
@@ -58,6 +61,7 @@ public class TestActiveParentControllerRegion {
   }
 
   /**
+   * TODO: Rewrite this workflow summary
    * 1. Create two child regions with one ACTIVE parent controller in one region and one PASSIVE parent controller in the other region.
    * 2. Perform store operation and VPJ job to both parent controllers.
    * 3. Verify ACTIVE parent controller successfully completes operations and PASSIVE parent controller throws exception.
@@ -70,7 +74,7 @@ public class TestActiveParentControllerRegion {
    * 10. Verify child controllers are updated
    */
   @Test
-  public void testActiveParentControllerRegion() {
+  public void testActiveParentControllerRegionE2E() {
     List<VeniceControllerWrapper> parentControllers = venice.getParentControllers();
     List<VeniceMultiClusterWrapper> childDatacenters = venice.getChildRegions();
     String clusterName = venice.getClusterNames()[0];
@@ -134,6 +138,7 @@ public class TestActiveParentControllerRegion {
       VersionCreationResponse parentController1VersionCreationResponse =
           parentControllerClient1.emptyPush(storeName, "test-push-1", 1L);
       Assert.assertTrue(parentController1VersionCreationResponse.isError());
+
       // step 4
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -164,17 +169,10 @@ public class TestActiveParentControllerRegion {
       });
 
       String parentController0ZkAddress = parentController0.getZkAddress();
-      String parentController1ZkAddress = parentController1.getZkAddress();
-      // parentController0ZkAddress = parentController0ZkAddress.substring(0,
-      // parentController0ZkAddress.lastIndexOf('/'));
-      // parentController1ZkAddress = parentController1ZkAddress.substring(0,
-      // parentController1ZkAddress.lastIndexOf('/'));
       ZkClient parent0ZkClient = ZkClientFactory.newZkClient(parentController0ZkAddress);
-      ZkClient parent1ZkClient = ZkClientFactory.newZkClient(parentController1ZkAddress);
 
-      String parentController1RegionName = parentController1.getVeniceAdmin().getRegionName();
       String[] clusterNames = new String[] { clusterName };
-      ZkServerWrapper zkServerWrapper = venice.getZkServerByRegionName().get("dc-parent-0dc-1");
+      ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
       PubSubBrokerWrapper pubSubBrokerWrapper = venice.getParentKafkaBrokerWrapper();
       VeniceControllerWrapper[] childControllers = childDatacenters.stream()
           .map(VeniceMultiClusterWrapper::getRandomController)
@@ -196,10 +194,10 @@ public class TestActiveParentControllerRegion {
               .regionName("dc1")
               .build());
 
-      // kill parent controllers and zkservers
+      // kill parent controllers and zkServers
       Utils.closeQuietlyWithErrorLogged(parentController0);
       Utils.closeQuietlyWithErrorLogged(parentController1);
-      // TODO: kill zkservers
+      // TODO: kill zkServers
 
       LOGGER.info(
           "new active parent controller is ready"
@@ -208,13 +206,11 @@ public class TestActiveParentControllerRegion {
           new ControllerClient(clusterName, newActiveParentController.getControllerUrl());
 
       String newActiveParentControllerZkAddress = newActiveParentController.getZkAddress();
-      // newActiveParentControllerZkAddress = newActiveParentControllerZkAddress.substring(0,
-      // newActiveParentControllerZkAddress.lastIndexOf('/'));
       ZkClient newActiveParentZkClient = ZkClientFactory.newZkClient(newActiveParentControllerZkAddress);
       newActiveParentZkClient.setZkSerializer(new ByteArraySerializer());
       parent0ZkClient.setZkSerializer(new ByteArraySerializer());
       LOGGER.info("WWWW" + newActiveParentZkClient.getChildren("/"));
-      // TODO: change to admintool
+      // TODO: change to AdminTool
       ZkCopier
           .migrateVenicePaths(parent0ZkClient, newActiveParentZkClient, Collections.singleton("venice-cluster0"), "/");
     }
