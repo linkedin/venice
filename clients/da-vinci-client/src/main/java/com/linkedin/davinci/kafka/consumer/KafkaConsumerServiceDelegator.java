@@ -270,8 +270,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     protected final KafkaConsumerService defaultConsumerService;
 
     public DefaultConsumerPoolStrategy() {
-      defaultConsumerService = consumerServiceConstructor.apply(
-          serverConfig.getConsumerPoolSizePerKafkaCluster(), "", ConsumerPoolType.REGULAR_POOL);
+      defaultConsumerService = consumerServiceConstructor
+          .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), "", ConsumerPoolType.REGULAR_POOL);
       consumerServices.add(defaultConsumerService);
     }
 
@@ -292,8 +292,10 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
     public AAOrWCLeaderConsumerPoolStrategy() {
       super();
-      dedicatedConsumerService = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), "_for_aa_wc_leader", ConsumerPoolType.AA_WC_LEADER_POOL);
+      dedicatedConsumerService = consumerServiceConstructor.apply(
+          serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(),
+          "_for_aa_wc_leader",
+          ConsumerPoolType.AA_WC_LEADER_POOL);
       consumerServices.add(dedicatedConsumerService);
     }
 

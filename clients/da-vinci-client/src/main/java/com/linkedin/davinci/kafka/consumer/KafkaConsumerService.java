@@ -84,7 +84,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final ConsumerPoolType poolType;
   private final IntConsumer poolTypeThrottlerFunc;
 
-
   /**
    * @param statsOverride injection of stats, for test purposes
    */
@@ -112,15 +111,19 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.poolType = poolType;
     if (this.poolType.equals(ConsumerPoolType.AA_WC_LEADER_POOL)) {
-        this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleAAWCRecordRate(recordsCount);
+      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleAAWCRecordRate(recordsCount);
     } else if (this.poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL)) {
-      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleCurrentVersionAAWCLeaderRecordRate(recordsCount);
+      this.poolTypeThrottlerFunc =
+          recordsCount -> ingestionThrottler.maybeThrottleCurrentVersionAAWCLeaderRecordRate(recordsCount);
     } else if (this.poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
-      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleCurrentVersionNonAAWCLeaderRecordRate(recordsCount);
+      this.poolTypeThrottlerFunc =
+          recordsCount -> ingestionThrottler.maybeThrottleCurrentVersionNonAAWCLeaderRecordRate(recordsCount);
     } else if (this.poolType.equals(ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL)) {
-      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleNonCurrentVersionAAWCLeaderRecordRate(recordsCount);
+      this.poolTypeThrottlerFunc =
+          recordsCount -> ingestionThrottler.maybeThrottleNonCurrentVersionAAWCLeaderRecordRate(recordsCount);
     } else if (this.poolType.equals(ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
-      this.poolTypeThrottlerFunc = recordsCount -> ingestionThrottler.maybeThrottleNonCurrentVersionNonAAWCLeaderRecordRate(recordsCount);
+      this.poolTypeThrottlerFunc =
+          recordsCount -> ingestionThrottler.maybeThrottleNonCurrentVersionNonAAWCLeaderRecordRate(recordsCount);
     } else {
       LOGGER.info("No pool type specific record throttling for type: {}", poolType);
       this.poolTypeThrottlerFunc = null;

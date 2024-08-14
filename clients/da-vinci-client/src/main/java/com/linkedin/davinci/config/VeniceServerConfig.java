@@ -841,10 +841,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
               + generateHumanReadableByteCountString(BYTES_PER_MB));
     }
     aaWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
-    currentVersionAAWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
-    currentVersionNonAAWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
-    nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
-    nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionNonAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
   }
 
   long extractIngestionMemoryLimit(
