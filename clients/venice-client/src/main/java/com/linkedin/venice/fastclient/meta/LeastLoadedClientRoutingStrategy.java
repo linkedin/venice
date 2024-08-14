@@ -23,20 +23,20 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
   }
 
   @Override
-  public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
+  public List<String> getReplicas(long ignored, List<String> replicas, int requiredReplicaCount) {
     if (replicas.isEmpty()) {
       return Collections.emptyList();
     }
-    int replicaCnt = replicas.size();
-    int startPos = (int) (requestId % replicaCnt);
     List<String> availReplicas = new ArrayList<>();
-    for (int i = 0; i < replicaCnt; ++i) {
-      String replica = replicas.get((i + startPos) % replicaCnt);
+    /**
+     * For even distribution, we need to shuffle the replicas.
+     */
+    Collections.shuffle(replicas);
+    for (String replica: replicas) {
       if (!instanceHealthMonitor.isInstanceBlocked(replica)) {
         availReplicas.add(replica);
       }
     }
-
     availReplicas.sort(Comparator.comparingInt(instanceHealthMonitor::getPendingRequestCounter));
 
     if (requiredReplicaCount < availReplicas.size()) {

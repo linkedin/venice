@@ -5,17 +5,13 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
  * This class is used to include all the intermediate fields required for the communication between the different tiers.
  */
 public class RequestContext {
-  private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong();
-
   int currentVersion = -1;
-  final long requestId;
   boolean noAvailableReplica = false;
 
   double decompressionTime = -1;
@@ -33,6 +29,5 @@ public class RequestContext {
   Map<String, CompletableFuture<Integer>> routeRequestMap = new VeniceConcurrentHashMap<>();
 
   public RequestContext() {
-    this.requestId = REQUEST_ID_GENERATOR.getAndIncrement();
   }
 }

@@ -16,9 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public abstract class AbstractStoreMetadata implements StoreMetadata {
+  private static final Logger LOGGER = LogManager.getLogger(AbstractStoreMetadata.class);
   private final InstanceHealthMonitor instanceHealthMonitor;
   protected AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
@@ -26,6 +29,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.instanceHealthMonitor = new InstanceHealthMonitor(clientConfig);
     ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
+    LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, getStoreName());
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
         this.routingStrategy = new HelixScatterGatherRoutingStrategy(instanceHealthMonitor);

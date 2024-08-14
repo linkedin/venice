@@ -56,6 +56,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -68,6 +69,8 @@ import org.apache.logging.log4j.Logger;
  * This class is in charge of routing and serialization/de-serialization.
  */
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
+  private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong();
+
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
   private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
@@ -217,7 +220,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
      * might return more than required number of routes
      */
     List<String> routes = metadata.getReplicas(
-        requestContext.requestId,
+        REQUEST_ID_GENERATOR.getAndIncrement(),
         currentVersion,
         partitionId,
         requiredReplicaCount,
@@ -425,6 +428,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       return;
     }
 
+    long requestId = REQUEST_ID_GENERATOR.getAndIncrement();
+
     /* Prepare each of the routes needed to query the keys */
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     int currentVersion = requestContext.currentVersion;
@@ -438,7 +443,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       List<String> routes = partitionRouteMap.computeIfAbsent(
           partitionId,
           (ignored) -> metadata.getReplicas(
-              requestContext.requestId,
+              requestId,
               currentVersion,
               partitionId,
               1,
