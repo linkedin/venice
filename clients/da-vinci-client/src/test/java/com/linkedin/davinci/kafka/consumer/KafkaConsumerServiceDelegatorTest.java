@@ -99,9 +99,6 @@ public class KafkaConsumerServiceDelegatorTest {
     delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, 0, dataReceiver);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, 0, dataReceiver);
-//=======
-//    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
-//>>>>>>> 5457c7f69 ([server] Added a throttler for AAWC workload of leader replica)
 
     testMethod.invoke(delegator, versionTopic, topicPartitionForVT);
     verifyMethod.invoke(verify(mockDefaultConsumerService), versionTopic, topicPartitionForVT);
@@ -233,9 +230,6 @@ public class KafkaConsumerServiceDelegatorTest {
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, 0, dataReceiver);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, 0, dataReceiver);
 
-//=======
-//    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
-//>>>>>>> 5457c7f69 ([server] Added a throttler for AAWC workload of leader replica)
     reset(mockDefaultConsumerService);
     reset(mockDedicatedConsumerService);
     delegator.startInner();
