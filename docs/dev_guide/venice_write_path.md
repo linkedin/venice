@@ -58,6 +58,6 @@ Using these components, the `Consumer` can reconstruct the large record, apply t
 divide it into a new set of chunks and a new manifest. The new chunks are written to `RocksDB`, the stored manifest
 is updated with the new keys, and the old chunks are deleted.
 
-The diagram below illustrates the aforementioned chunking system.
+The diagram below illustrates the aforementioned chunking system. ([Link to diagram source](https://whimsical.com/venice-chunking-KMT4sVwV67iZ4zjVzTH9uC))
 
 ![Large Record Value Chunking Diagram](https://github.com/user-attachments/assets/f0ed6eb2-7558-4300-a75c-5fc842bb2fb5)
