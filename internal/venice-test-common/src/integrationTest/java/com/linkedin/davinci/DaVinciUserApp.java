@@ -1,9 +1,7 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
-import static com.linkedin.venice.meta.IngestionMode.ISOLATED;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -36,6 +34,9 @@ public class DaVinciUserApp {
     String storeName = args[2];
     int sleepSeconds = Integer.parseInt(args[3]);
     int heartbeatTimeoutSeconds = Integer.parseInt(args[4]);
+    boolean ingestionIsolation = Boolean.parseBoolean(args[5]);
+    int blobTransferServerPort = Integer.parseInt(args[6]);
+    int blobTransferClientPort = Integer.parseInt(args[7]);
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
@@ -43,9 +44,13 @@ public class DaVinciUserApp {
     D2ClientUtils.startClient(d2Client);
 
     Map<String, Object> extraBackendConfig = new HashMap<>();
-    extraBackendConfig.put(SERVER_INGESTION_MODE, ISOLATED);
+    extraBackendConfig.put(SERVER_INGESTION_MODE, ingestionIsolation ? ISOLATED : BUILT_IN);
     extraBackendConfig.put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, heartbeatTimeoutSeconds);
     extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
+    extraBackendConfig.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
+    extraBackendConfig.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
+    extraBackendConfig.put(PUSH_STATUS_STORE_ENABLED, true);
+    extraBackendConfig.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(

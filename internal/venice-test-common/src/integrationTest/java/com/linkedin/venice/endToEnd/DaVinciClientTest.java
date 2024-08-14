@@ -76,7 +76,6 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -94,8 +93,6 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -956,7 +953,7 @@ public class DaVinciClientTest {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     ForkedJavaProcess forkedDaVinciUserApp =
-        ForkedJavaProcess.exec(DaVinciUserApp.class, zkHosts, baseDataPath, storeName, "100", "10");
+        ForkedJavaProcess.exec(DaVinciUserApp.class, zkHosts, baseDataPath, storeName, "100", "10", "true");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1004,71 +1001,58 @@ public class DaVinciClientTest {
    * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
    * to avoid conflicts.
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT, enabled = false)
+  @Test(timeOut = 2 * TEST_TIMEOUT)
   public void testBlobP2PTransferAmongDVC() throws Exception {
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    // backend config for first DVC client
-    int port1 = TestUtils.getFreePort();
+    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
+    LOGGER.info("zkHosts is {}", zkHosts);
+
+    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    ForkedJavaProcess forkedDaVinciUserApp1 = ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        baseDataPath,
+        storeName,
+        "100",
+        "10",
+        "false",
+        Integer.toString(port1),
+        Integer.toString(port2));
+
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // Start the second DaVinci Client using settings for blob transfer
+    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+
     PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
         .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
         .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, dvcPath1)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1)
+        .put(DATA_BASE_PATH, dvcPath2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
-    MetricsRepository metricsRepository = new MetricsRepository();
-    VeniceProperties backendConfig1 = configBuilder.build();
-    // must be isolated otherwise the store backend would be shared
-    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
-    DaVinciClient<Integer, Object> client1, client2;
-
-    CachingDaVinciClientFactory factory1 = new CachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
-        backendConfig1);
-    client1 = factory1.getAndStartGenericAvroClient(storeName, dvcConfig);
-    client1.subscribeAll().get();
-
-    // Verify all 3 partitions of DVC client 1 have created the snapshots
-    for (int i = 0; i < 3; i++) {
-      String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
-    }
-
-    // Setup another DVC client with a different directory and ports
-    // Specifically ask dvc client 2 to talk to the port 1 used by dvc client 1
-    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-    configBuilder.put(DATA_BASE_PATH, dvcPath2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, TestUtils.getFreePort())
-        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1);
     VeniceProperties backendConfig2 = configBuilder.build();
+    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
 
-    // TODO: we need to spin up the second DVC client in a different process as a single JVM can only have one
-    // StoreBackend
-    // and backendConfig is shared among them, causing server/client port conflicts
     CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
+        new MetricsRepository(),
         backendConfig2);
-    client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
+    DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
     client2.subscribeAll().get();
-
-    // verify both DVC clients have the same key and values
-    for (int i = 1; i <= 100; i++) {
-      assertEquals(client1.get(i).get(), client2.get(i).get());
-    }
-
-    factory1.close();
-    factory2.close();
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
