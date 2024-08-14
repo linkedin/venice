@@ -2,7 +2,6 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -17,7 +16,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.List;
 import org.apache.avro.Schema;
 import org.objectweb.asm.ClassReader;
 import org.rocksdb.RocksIterator;
@@ -207,26 +205,16 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * Bootstraps the client after it comes online and {@link #onStart()} completes.
+   * Bootstraps the client after it comes online.
    */
-  public final void onRecovery(
-      AbstractStorageEngine storageEngine,
-      BlobTransferManager blobTransferManager,
-      List<Integer> partitions) {
-
-    if (blobTransferManager != null) {
-      throw new VeniceException("Blob transfer is not supported in DaVinciRecordTransformer");
-    }
-
+  public final void onRecovery(AbstractStorageEngine storageEngine, Integer partition) {
     // ToDo: Store class hash in RocksDB to support blob transfer
     int classHash = getClassHash();
     boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
 
     if (!storeRecordsInDaVinci || transformationLogicChanged) {
       // Bootstrap from VT
-      for (Integer partition: partitions) {
-        storageEngine.clearPartitionOffset(partition);
-      }
+      storageEngine.clearPartitionOffset(partition);
     } else {
       // Bootstrap from local storage
       Schema keySchema = getKeyOutputSchema();
@@ -236,15 +224,13 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
       AvroGenericDeserializer<O> outputValueDeserializer =
           new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
 
-      for (Integer partition: partitions) {
-        RocksIterator iterator = storageEngine.getRocksDBIterator(partition);
-        for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
-          byte[] keyBytes = iterator.key();
-          byte[] valueBytes = iterator.value();
-          Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(ByteBuffer.wrap(keyBytes)));
-          Lazy<O> lazyValue = Lazy.of(() -> outputValueDeserializer.deserialize(ByteBuffer.wrap(valueBytes)));
-          processPut(lazyKey, lazyValue);
-        }
+      RocksIterator iterator = storageEngine.getRocksDBIterator(partition);
+      for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
+        byte[] keyBytes = iterator.key();
+        byte[] valueBytes = iterator.value();
+        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(ByteBuffer.wrap(keyBytes)));
+        Lazy<O> lazyValue = Lazy.of(() -> outputValueDeserializer.deserialize(ByteBuffer.wrap(valueBytes)));
+        processPut(lazyKey, lazyValue);
       }
     }
   }

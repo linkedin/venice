@@ -17,7 +17,9 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -302,7 +304,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
-  private final DaVinciRecordTransformer recordTransformer;
+  private DaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -341,7 +343,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer,
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -440,12 +442,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
-    this.recordTransformer = recordTransformer;
-    if (this.recordTransformer != null) {
+    if (recordTransformerFunction != null) {
+      DaVinciRecordTransformer clientRecordTransformer = recordTransformerFunction.apply(versionNumber);
+      this.recordTransformer = new BlockingDaVinciRecordTransformer(
+          clientRecordTransformer,
+          clientRecordTransformer.getStoreRecordsInDaVinci());
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
+
+      // onStart called here instead of run() because this needs to finish running before bootstrapping starts
+      long startTime = System.currentTimeMillis();
+      recordTransformer.onStart();
+      long endTime = System.currentTimeMillis();
+      versionedIngestionStats.recordTransformerLifecycleStartLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromMsToMs(startTime),
+          endTime);
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -570,8 +585,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
+    int partitionNumber = topicPartition.getPartitionNumber();
+
+    if (recordTransformer != null) {
+      recordTransformer.onRecovery(storageEngine, partitionNumber);
+    }
+
+    partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
     consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
   }
@@ -1359,17 +1379,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
-
-      if (recordTransformer != null) {
-        long startTime = System.currentTimeMillis();
-        recordTransformer.onStart();
-        long endTime = System.currentTimeMillis();
-        versionedIngestionStats.recordTransformerLifecycleStartLatency(
-            storeName,
-            versionNumber,
-            LatencyUtils.getElapsedTimeFromMsToMs(startTime),
-            endTime);
-      }
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);

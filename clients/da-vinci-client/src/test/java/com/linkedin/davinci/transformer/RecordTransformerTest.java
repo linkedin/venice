@@ -8,13 +8,10 @@ import static org.testng.AssertJUnit.assertTrue;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.avro.Schema;
 import org.rocksdb.RocksIterator;
 import org.testng.annotations.AfterClass;
@@ -84,24 +81,18 @@ public class RecordTransformerTest {
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
 
-    List<Integer> partitions = new ArrayList<>();
-    int partitionId = 1;
-    partitions.add(partitionId);
-    recordTransformer.onRecovery(storageEngine, null, partitions);
-    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
+    int partitionNumber = 1;
+    recordTransformer.onRecovery(storageEngine, partitionNumber);
+    verify(storageEngine, times(1)).clearPartitionOffset(partitionNumber);
 
     // Reset the mock to clear previous interactions
     reset(storageEngine);
 
     // Execute the onRecovery method again to test the case where the classHash file exists
-    when(storageEngine.getRocksDBIterator(partitionId)).thenReturn(iterator);
-    recordTransformer.onRecovery(storageEngine, null, partitions);
-    verify(storageEngine, never()).clearPartitionOffset(partitionId);
-    verify(storageEngine, times(1)).getRocksDBIterator(partitionId);
-
-    // Should throw an error if a user tries to use blob transfer wit the record transformer
-    BlobTransferManager blobTransferManager = mock(BlobTransferManager.class);
-    assertThrows(() -> recordTransformer.onRecovery(storageEngine, blobTransferManager, partitions));
+    when(storageEngine.getRocksDBIterator(partitionNumber)).thenReturn(iterator);
+    recordTransformer.onRecovery(storageEngine, partitionNumber);
+    verify(storageEngine, never()).clearPartitionOffset(partitionNumber);
+    verify(storageEngine, times(1)).getRocksDBIterator(partitionNumber);
   }
 
   @Test

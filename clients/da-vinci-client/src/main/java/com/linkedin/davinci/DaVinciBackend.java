@@ -7,7 +7,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static java.lang.Thread.currentThread;
 
-import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -118,7 +117,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerFunctionalInterface getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -250,19 +249,6 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
-      String storeName = clientConfig.getStoreName();
-
-      if (getRecordTransformer != null) {
-        storeRepository.refreshOneStore(storeName);
-        Store store = storeRepository.getStoreOrThrow(storeName);
-        int version = store.getCurrentVersion();
-
-        DaVinciRecordTransformer clientRecordTransformer = getRecordTransformer.apply(version);
-        recordTransformer = new BlockingDaVinciRecordTransformer(
-            clientRecordTransformer,
-            clientRecordTransformer.getStoreRecordsInDaVinci());
-      }
-
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,
@@ -280,7 +266,7 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          recordTransformer,
+          recordTransformerFunction,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
@@ -304,6 +290,10 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
+        if (recordTransformerFunction != null) {
+          throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
+        }
+
         blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
@@ -477,10 +467,6 @@ public class DaVinciBackend implements Closeable {
       AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
       aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
       StoreBackend storeBackend = getStoreOrThrow(storeName);
-
-      if (recordTransformer != null) {
-        recordTransformer.onRecovery(storageEngine, blobTransferManager, partitions);
-      }
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
   }
