@@ -333,7 +333,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
-  protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
+  protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -1294,9 +1294,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
         PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
-      // TODO: Add support workload type change in the future, as enabling write computing during normal hybrid
-      // ingestion could cause workload type change.
-      if (!newVersionRole.equals(versionRole)) {
+      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
         LOGGER.info(
             "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
                 + "changed to New: version role: {}, workload type: {}",
@@ -1306,6 +1304,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newVersionRole,
             newWorkloadType);
         versionRole = newVersionRole;
+        workloadType = newWorkloadType;
         resubscribeForAllPartitions();
       }
     }
