@@ -28,8 +28,9 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.instanceHealthMonitor = new InstanceHealthMonitor(clientConfig);
+    this.storeName = clientConfig.getStoreName();
     ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
-    LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, getStoreName());
+    LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
         this.routingStrategy = new HelixScatterGatherRoutingStrategy(instanceHealthMonitor);
@@ -38,9 +39,9 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
         this.routingStrategy = new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
         break;
       default:
-        throw new VeniceClientException("Unexpected routing strategy type: " + clientRoutingStrategyType.toString());
+        throw new VeniceClientException("Unexpected routing strategy type: " + clientRoutingStrategyType);
     }
-    this.storeName = clientConfig.getStoreName();
+
   }
 
   /**
