@@ -916,4 +916,14 @@ public class Utils {
   public static String escapeFilePathComponent(final String component) {
     return component.replaceAll("[^a-zA-Z0-9-_/\\.]", "_");
   }
+
+  public static String getTaskStackTrace(String threadName) {
+    Thread thread = Thread.getAllStackTraces()
+        .keySet()
+        .stream()
+        .filter(t -> t.getName().equals(threadName))
+        .findFirst()
+        .orElse(null);
+    return ExceptionUtils.threadToThrowableToString(thread);
+  }
 }

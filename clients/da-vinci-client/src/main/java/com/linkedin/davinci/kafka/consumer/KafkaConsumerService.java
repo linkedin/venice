@@ -81,6 +81,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
+  private final String KAFKA_CONSUMER_THREAD_NAME_PREFIX = "venice-shared-consumer-for-";
+
   /**
    * @param statsOverride injection of stats, for test purposes
    */
@@ -109,7 +111,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(
         numOfConsumersPerKafkaCluster,
-        new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
+        new DaemonThreadFactory(KAFKA_CONSUMER_THREAD_NAME_PREFIX + kafkaUrl));
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride
@@ -360,6 +362,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             kafkaUrl,
             slowestTaskId,
             maxElapsedTimeSinceLastPollInConsumerPool);
+        LOGGER.info(
+            String.format(
+                "Stack trace for slow consumer: %s\n %s",
+                getConsumerThreadName(slowestTaskId),
+                Utils.getTaskStackTrace(getConsumerThreadName(slowestTaskId))));
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
@@ -529,4 +536,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
+  private String getConsumerThreadName(int index) {
+    return KAFKA_CONSUMER_THREAD_NAME_PREFIX + kafkaUrl + "-t" + index;
+  }
 }
