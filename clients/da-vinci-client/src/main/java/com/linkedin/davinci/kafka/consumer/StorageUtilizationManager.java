@@ -202,7 +202,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
           this.storeQuotaInBytes,
           store.getStorageQuotaInByte(),
           store.isHybridStoreDiskQuotaEnabled() ? "enabled" : "not enabled");
-      resumeAllPartitions(PausedConsumptionReason.QUOTA_EXCEEDED);
+      resumeAllPartitionsIfPossible(PausedConsumptionReason.QUOTA_EXCEEDED);
     }
 
     int oldMaxRecordSizeBytes = this.maxRecordSizeBytes.get();
@@ -215,7 +215,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
           store.getMaxRecordSizeBytes(),
           (isRecordLimitIncreased) ? "Resuming consumption on all partitions paused by RecordTooLarge issue." : "");
       if (isRecordLimitIncreased) {
-        resumeAllPartitions(PausedConsumptionReason.RECORD_TOO_LARGE);
+        resumeAllPartitionsIfPossible(PausedConsumptionReason.RECORD_TOO_LARGE);
       }
     }
 
@@ -371,10 +371,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
   /**
    * Resumes consumption on all partitions. Intentionally loops over {@link partitionConsumptionStateMap} to avoid
-   * missing any partitions that were untracked in {@link pausedPartitionsForQuotaExceeded} or
-   * {@link pausedPartitionsForRecordTooLarge}
+   * any partitions missing from {@link pausedPartitionsForQuotaExceeded} or {@link pausedPartitionsForRecordTooLarge}.
+   * In the unlikely case that partition is paused for both reasons, we can't resume it until both reasons are resolved.
    */
-  private void resumeAllPartitions(PausedConsumptionReason reason) {
+  private void resumeAllPartitionsIfPossible(PausedConsumptionReason reason) {
     partitionConsumptionStateMap.forEach((partition, pcs) -> {
       String consumingTopic = getConsumingTopic(pcs);
       resumePartitionIfPossible(partition, consumingTopic, reason);
@@ -401,6 +401,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       }
     }
     return consumingTopic;
+  }
+
+  protected boolean isPartitionPausedForRecordTooLarge(int partition) {
+    return pausedPartitionsForRecordTooLarge.contains(partition);
   }
 
   protected boolean isPartitionPausedForQuotaExceeded(int partition) {
