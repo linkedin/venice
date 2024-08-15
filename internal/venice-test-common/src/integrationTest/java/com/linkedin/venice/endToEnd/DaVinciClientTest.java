@@ -955,8 +955,21 @@ public class DaVinciClientTest {
     String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
-    ForkedJavaProcess forkedDaVinciUserApp =
-        ForkedJavaProcess.exec(DaVinciUserApp.class, zkHosts, baseDataPath, storeName, "100", "10", "true");
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        baseDataPath,
+        storeName,
+        "100",
+        "10",
+        "true",
+        Integer.toString(port1),
+        Integer.toString(port2));
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1001,6 +1014,7 @@ public class DaVinciClientTest {
   }
 
   /**
+   * TODO: Add asserts to accurately validate if the blob transfer was performed correctly.
    * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
    * to avoid conflicts.
    */
