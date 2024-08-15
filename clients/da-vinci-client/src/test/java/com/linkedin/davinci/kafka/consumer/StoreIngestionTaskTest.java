@@ -747,7 +747,7 @@ public abstract class StoreIngestionTaskTest {
       AAConfig aaConfig,
       Map<String, Object> extraServerProperties,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) throws Exception {
     runTest(
         pollStrategy,
         partitions,
@@ -761,7 +761,7 @@ public abstract class StoreIngestionTaskTest {
         aaConfig,
         extraServerProperties,
         storeVersionConfigOverride,
-        getRecordTransformer);
+        recordTransformerFunction);
   }
 
   /**
