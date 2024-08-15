@@ -16,7 +16,6 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -56,7 +55,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(StorageUtilizationManager.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = getRedundantExceptionFilter();
 
-  private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  private final Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap; // UnmodifiableMap
   private final AbstractStorageEngine storageEngine;
   private final Function<Integer, StoragePartitionDiskUsage> storagePartitionDiskUsageFunctionConstructor;
   private final String versionTopic;
@@ -100,7 +99,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       Store store,
       String versionTopic,
       int partitionCount,
-      ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
+      Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
       boolean isHybridQuotaEnabledInServer,
       boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled,
       IngestionNotificationDispatcher ingestionNotificationDispatcher,

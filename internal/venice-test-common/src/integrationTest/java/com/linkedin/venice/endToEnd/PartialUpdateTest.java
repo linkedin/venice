@@ -505,8 +505,7 @@ public class PartialUpdateTest {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties vpjProperties =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
 
     Schema valueSchema = AvroCompatibilityHelper.parse(valueSchemaStr);
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);

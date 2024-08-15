@@ -470,7 +470,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         store,
         kafkaVersionTopic,
         partitionCount,
-        (ConcurrentMap<Integer, PartitionConsumptionState>) Collections.unmodifiableMap(partitionConsumptionStateMap),
+        Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
         ingestionNotificationDispatcher,
@@ -3217,13 +3217,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  protected void pauseConsumption(String topic, int partitionId) {
+  private void pauseConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
-  protected void resumeConsumption(String topic, int partitionId) {
+  private void resumeConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
