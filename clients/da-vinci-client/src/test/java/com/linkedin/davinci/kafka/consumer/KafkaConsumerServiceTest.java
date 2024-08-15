@@ -57,6 +57,7 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
+    String testKafkaClusterAlias = "test_kafka_cluster_alias";
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
@@ -93,7 +94,7 @@ public class KafkaConsumerServiceTest {
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
-        "test_kafka_cluster_alias",
+        testKafkaClusterAlias,
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
@@ -152,6 +153,7 @@ public class KafkaConsumerServiceTest {
     when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1);
 
     Properties properties = new Properties();
+    String testKafkaUrl = "test_kafka_url";
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
@@ -201,7 +203,8 @@ public class KafkaConsumerServiceTest {
           consumerService.getIngestionInfoFromConsumer(versionTopic, topicPartition);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
       Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdx() == 0);
+      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains("0"));
+      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains(testKafkaUrl));
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getMsgRate() > 0);
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getByteRate() > 0);
       Assert.assertEquals(

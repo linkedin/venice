@@ -113,7 +113,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.poolType = poolType;
 
     // Initialize consumers and consumerExecutor
-    threadFactory = new RandomAccessDaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl);
+    String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
+    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix);
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
@@ -159,7 +160,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           time);
 
       ConsumptionTask consumptionTask = new ConsumptionTask(
-          this.kafkaUrl,
+          consumerNamePrefix,
           i,
           readCycleDelayMs,
           pollFunction,
@@ -497,7 +498,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
-      int consumerIdx = consumptionTask.getTaskId();
+      String consumerIdStr = consumptionTask.getTaskIdStr();
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);
@@ -516,7 +517,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             offsetLag,
             msgRate,
             byteRate,
-            consumerIdx,
+            consumerIdStr,
             elapsedTimeSinceLastPollInMs,
             destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
