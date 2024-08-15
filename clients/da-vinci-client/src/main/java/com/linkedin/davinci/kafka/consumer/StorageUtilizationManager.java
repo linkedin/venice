@@ -94,6 +94,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    *              stale when the store config changes. Refreshing the things we need out of the store object
    *              is handled in {@link #handleStoreChanged(Store)}.
    */
+  // TODO: rename class after PR is reviewed because it's no longer just about hybrid quota
   public StorageUtilizationManager(
       AbstractStorageEngine storageEngine,
       Store store,
@@ -131,6 +132,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     versionIsOnline = isVersionOnline(version);
   }
 
+  // TODO: possibly better naming?
   protected enum PausedConsumptionReason {
     QUOTA_EXCEEDED, RECORD_TOO_LARGE
   }
@@ -350,7 +352,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    * After the partition gets paused, consumer.poll() in {@link StoreIngestionTask} won't return any records from this
    * partition without affecting partition subscription
    */
-  private void pausePartition(int partition, String consumingTopic, PausedConsumptionReason reason) {
+  protected void pausePartition(int partition, String consumingTopic, PausedConsumptionReason reason) {
     getPausedPartitionsForReason(reason).add(partition);
     pausePartition.execute(consumingTopic, partition);
   }
@@ -401,6 +403,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       }
     }
     return consumingTopic;
+  }
+
+  protected boolean isPartitionPausedForReason(int partition, PausedConsumptionReason reason) {
+    return getPausedPartitionsForReason(reason).contains(partition);
   }
 
   protected boolean isPartitionPausedForRecordTooLarge(int partition) {
