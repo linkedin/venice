@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 public abstract class AbstractStoreMetadata implements StoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStoreMetadata.class);
   private final InstanceHealthMonitor instanceHealthMonitor;
-  protected AbstractClientRoutingStrategy routingStrategy;
+  protected volatile AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
@@ -31,17 +31,23 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     this.storeName = clientConfig.getStoreName();
     ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
     LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);
+    this.routingStrategy = getRoutingStrategy(clientRoutingStrategyType);
+  }
+
+  private AbstractClientRoutingStrategy getRoutingStrategy(ClientRoutingStrategyType clientRoutingStrategyType) {
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
-        this.routingStrategy = new HelixScatterGatherRoutingStrategy(instanceHealthMonitor);
-        break;
+        return new HelixScatterGatherRoutingStrategy(instanceHealthMonitor);
       case LEAST_LOADED:
-        this.routingStrategy = new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
-        break;
+        return new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
       default:
         throw new VeniceClientException("Unexpected routing strategy type: " + clientRoutingStrategyType);
     }
+  }
 
+  public void setRoutingStrategy(ClientRoutingStrategyType strategyType) {
+    this.routingStrategy = getRoutingStrategy(strategyType);
+    LOGGER.info("Switched to the following routing strategy: {} for store: {}", strategyType, storeName);
   }
 
   /**

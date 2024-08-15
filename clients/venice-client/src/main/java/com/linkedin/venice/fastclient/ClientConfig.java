@@ -16,7 +16,9 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
@@ -92,6 +94,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long longTailRetryBudgetEnforcementWindowInMs;
 
   private boolean projectionFieldValidation;
+  private Set<String> harClusters;
 
   private ClientConfig(
       String storeName,
@@ -128,7 +131,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean useGrpc,
       GrpcClientConfig grpcClientConfig,
       boolean projectionFieldValidation,
-      long longTailRetryBudgetEnforcementWindowInMs) {
+      long longTailRetryBudgetEnforcementWindowInMs,
+      Set<String> harClusters) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -260,6 +264,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.projectionFieldValidation = projectionFieldValidation;
     this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryBudgetEnforcementWindowInMs;
+    this.harClusters = harClusters;
   }
 
   public String getStoreName() {
@@ -403,6 +408,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryBudgetEnforcementWindowInMs;
   }
 
+  public Set<String> getHarClusters() {
+    return Collections.unmodifiableSet(harClusters);
+  }
+
   public ClientConfig setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
     this.projectionFieldValidation = projectionFieldValidation;
     return this;
@@ -453,6 +462,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean projectionFieldValidation = true;
 
     private long longTailRetryBudgetEnforcementWindowInMs = 60000; // 1 minute
+
+    private Set<String> harClusters = Collections.EMPTY_SET;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -642,6 +653,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setHARClusters(Set<String> clusters) {
+      this.harClusters = clusters;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -677,7 +693,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setUseGrpc(useGrpc)
           .setGrpcClientConfig(grpcClientConfig)
           .setProjectionFieldValidationEnabled(projectionFieldValidation)
-          .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs);
+          .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
+          .setHARClusters(harClusters);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -716,7 +733,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           useGrpc,
           grpcClientConfig,
           projectionFieldValidation,
-          longTailRetryBudgetEnforcementWindowInMs);
+          longTailRetryBudgetEnforcementWindowInMs,
+          harClusters);
     }
   }
 }

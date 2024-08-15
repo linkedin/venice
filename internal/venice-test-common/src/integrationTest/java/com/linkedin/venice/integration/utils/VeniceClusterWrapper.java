@@ -470,6 +470,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return options.getClusterName();
   }
 
+  public String getServerD2ServiceName() {
+    return clusterToServerD2.get(getClusterName());
+  }
+
   public ZkServerWrapper getZk() {
     return zkServerWrapper;
   }
