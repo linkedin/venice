@@ -76,6 +76,7 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -93,6 +94,8 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1003,10 +1006,13 @@ public class DaVinciClientTest {
    */
   @Test(timeOut = 2 * TEST_TIMEOUT)
   public void testBlobP2PTransferAmongDVC() throws Exception {
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
     int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
@@ -1017,7 +1023,7 @@ public class DaVinciClientTest {
     ForkedJavaProcess forkedDaVinciUserApp1 = ForkedJavaProcess.exec(
         DaVinciUserApp.class,
         zkHosts,
-        baseDataPath,
+        dvcPath1,
         storeName,
         "100",
         "10",
@@ -1053,6 +1059,12 @@ public class DaVinciClientTest {
         backendConfig2);
     DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
     client2.subscribeAll().get();
+
+    for (int i = 0; i < 3; i++) {
+      String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+    }
+
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {

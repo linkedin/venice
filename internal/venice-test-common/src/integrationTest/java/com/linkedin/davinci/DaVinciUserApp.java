@@ -14,6 +14,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -66,7 +67,7 @@ public class DaVinciUserApp {
             Optional.empty(),
             zkHosts,
             storeName,
-            new DaVinciConfig(),
+            new DaVinciConfig().setStorageClass(StorageClass.DISK),
             extraBackendConfig);
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
