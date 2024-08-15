@@ -314,10 +314,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     private final KafkaConsumerService consumerServiceForCurrentVersionNonAAWCLeader;
     private final KafkaConsumerService consumerServiceForNonCurrentVersionAAWCLeader;
     private final KafkaConsumerService consumerServiceNonCurrentNonAAWCLeader;
-    public final static String CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX = "_for_current_aa_wc_leader";
-    public final static String CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX = "_for_current_non_aa_wc_leader";
-    public final static String NON_CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX = "_for_non_current_aa_wc_leader";
-    public final static String NON_CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX = "_for_non_current_non_aa_wc_leader";
 
     public CurrentVersionConsumerPoolStrategy() {
       this.consumerServiceForCurrentVersionAAWCLeader = consumerServiceConstructor.apply(
