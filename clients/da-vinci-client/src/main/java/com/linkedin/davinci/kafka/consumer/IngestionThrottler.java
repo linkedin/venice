@@ -196,4 +196,13 @@ public class IngestionThrottler implements Closeable {
       }
     }
   }
+
+  // For test
+  void setupRecordThrottlerForPoolType(ConsumerPoolType poolType, EventThrottler throttler) {
+    poolTypeRecordThrottlerMap.put(poolType, throttler);
+  }
+
+  void setupGlobalRecordThrottler(EventThrottler globalRecordThrottler) {
+    this.finalRecordThrottler = globalRecordThrottler;
+  }
 }
