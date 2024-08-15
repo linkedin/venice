@@ -98,6 +98,9 @@ public class D2ControllerClient extends ControllerClient {
   @Override
   protected String discoverLeaderController() {
     LeaderControllerResponse controllerResponse = null;
+    if (d2Clients.isEmpty()) {
+      throw new VeniceException("No D2 clients available to discover leader controller");
+    }
     for (D2Client d2Client: d2Clients) {
       try {
         controllerResponse = d2ClientGet(
@@ -108,11 +111,11 @@ public class D2ControllerClient extends ControllerClient {
             LeaderControllerResponse.class);
         // we get a successful response, so we break out of loop
         break;
-      } catch (VeniceException e) {
+      } catch (Exception e) {
         LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
       }
     }
-    if (controllerResponse == null) {
+    if (!d2ServiceName.equals("ChildController") && controllerResponse == null) {
       throw new VeniceException("Failed to discover leader controller with D2 client");
     }
 

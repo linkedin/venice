@@ -59,6 +59,9 @@ public class ZkCopier {
     LOGGER.info("Starting Migration");
     for (String path: destZkPathsList) {
       try {
+        if (destZkClient.exists(path)) {
+          destZkClient.deleteRecursively(path);
+        }
         destZkClient.create(path, srcZkClient.readData(path), CreateMode.PERSISTENT);
       } catch (Exception e) {
         LOGGER.error("Failed to create path: " + path, e);

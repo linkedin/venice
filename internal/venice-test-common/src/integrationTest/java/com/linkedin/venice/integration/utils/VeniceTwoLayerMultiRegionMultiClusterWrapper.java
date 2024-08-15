@@ -51,6 +51,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   private final String[] clusterNames;
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper parentPubSubBrokerWrapper;
+  private final Map<String, ZkServerWrapper> zkServerByRegionName;
 
   VeniceTwoLayerMultiRegionMultiClusterWrapper(
       File dataDirectory,
@@ -59,7 +60,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       List<VeniceMultiClusterWrapper> childRegions,
       List<VeniceControllerWrapper> parentControllers,
       String parentRegionName,
-      List<String> childRegionNames) {
+      List<String> childRegionNames,
+      Map<String, ZkServerWrapper> zkServerByRegionName) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.parentPubSubBrokerWrapper = parentPubSubBrokerWrapper;
@@ -68,6 +70,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     this.parentRegionName = parentRegionName;
     this.childRegionNames = childRegionNames;
     this.clusterNames = childRegions.get(0).getClusterNames();
+    this.zkServerByRegionName = zkServerByRegionName;
   }
 
   static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
@@ -231,24 +234,37 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         Properties passiveParentControllerProperties = new Properties();
         passiveParentControllerProperties.putAll(finalParentControllerProperties);
         passiveParentControllerProperties.setProperty(CONTROLLER_PARENT_REGION_STATE, PASSIVE.name());
+        List<String> zkServerAddressesList = new ArrayList<>();
+        for (int i = 0; i < options.getNumberOfRegions(); i++) {
+          String regionName = childRegionName.get(i);
+          ZkServerWrapper childZkServer = zkServerByRegionName.get(regionName);
+          D2TestUtils.setupD2Config(
+              childZkServer.getAddress(),
+              false,
+              VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
+              VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
+          zkServerAddressesList.add(childZkServer.getAddress());
+        }
         for (int i = 0; i < options.getNumberOfRegions(); i++) {
           String regionName = childRegionName.get(i);
           // default child region is dc-0 which has active parent controller while other child regions have passive
           // parent controllers
+          ZkServerWrapper childZkServer = zkServerByRegionName.get(regionName);
+          IntegrationTestUtils.ensureZkPathExists(childZkServer.getAddress(), options.getParentVeniceZkBasePath());
           VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-              new VeniceControllerCreateOptions.Builder(
-                  clusterNames,
-                  zkServerByRegionName.get(regionName),
-                  parentPubSubBrokerWrapper).multiRegion(true)
-                      .veniceZkBasePath(options.getParentVeniceZkBasePath())
-                      .replicationFactor(options.getReplicationFactor())
-                      .childControllers(childControllers)
-                      .extraProperties(i == 0 ? activeParentControllerProperties : passiveParentControllerProperties)
-                      .clusterToD2(clusterToD2)
-                      .clusterToServerD2(clusterToServerD2)
-                      .regionName(regionName)
-                      .authorizerService(options.getParentAuthorizerService())
-                      .build());
+              new VeniceControllerCreateOptions.Builder(clusterNames, childZkServer, parentPubSubBrokerWrapper)
+                  .multiRegion(true)
+                  .veniceZkBasePath(options.getParentVeniceZkBasePath())
+                  .replicationFactor(options.getReplicationFactor())
+                  .childControllers(childControllers)
+                  .extraProperties(i == 0 ? activeParentControllerProperties : passiveParentControllerProperties)
+                  .clusterToD2(clusterToD2)
+                  .clusterToServerD2(clusterToServerD2)
+                  .regionName(regionName)
+                  .authorizerService(options.getParentAuthorizerService())
+                  .parentControllerInChildRegion(options.isParentControllerInChildRegion())
+                  .zkServerAddressesList(zkServerAddressesList)
+                  .build());
           parentControllers.add(parentController);
         }
       } else {
@@ -281,7 +297,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           multiClusters,
           parentControllers,
           parentRegionName,
-          childRegionName);
+          childRegionName,
+          zkServerByRegionName);
     } catch (Exception e) {
       parentControllers.forEach(IOUtils::closeQuietly);
       multiClusters.forEach(IOUtils::closeQuietly);
@@ -411,6 +428,10 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
   public String[] getClusterNames() {
     return clusterNames;
+  }
+
+  public Map<String, ZkServerWrapper> getZkServerByRegionName() {
+    return zkServerByRegionName;
   }
 
   public String getControllerConnectString() {

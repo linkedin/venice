@@ -12,6 +12,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -38,6 +39,8 @@ public class VeniceControllerCreateOptions {
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
+  private final boolean parentControllerInChildRegion;
+  private final List<String> zkServerAddressesList;
 
   private VeniceControllerCreateOptions(Builder builder) {
     multiRegion = builder.multiRegion;
@@ -59,6 +62,8 @@ public class VeniceControllerCreateOptions {
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
     regionName = builder.regionName;
+    parentControllerInChildRegion = builder.parentControllerInChildRegion;
+    zkServerAddressesList = builder.zkServerAddressesList;
   }
 
   @Override
@@ -116,6 +121,12 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("childControllers:")
         .append(getAddressesOfChildControllers())
+        .append(", ")
+        .append("parentControllerInChildRegion:")
+        .append(parentControllerInChildRegion)
+        .append(", ")
+        .append("zkServerAddressesList:")
+        .append(zkServerAddressesList)
         .toString();
   }
 
@@ -205,6 +216,14 @@ public class VeniceControllerCreateOptions {
     return regionName;
   }
 
+  public boolean isParentControllerInChildRegion() {
+    return parentControllerInChildRegion;
+  }
+
+  public List<String> getZkServerAddressesList() {
+    return zkServerAddressesList;
+  }
+
   public static class Builder {
     private boolean multiRegion = false;
     private final String[] clusterNames;
@@ -224,6 +243,8 @@ public class VeniceControllerCreateOptions {
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String regionName;
+    private boolean parentControllerInChildRegion = false;
+    private List<String> zkServerAddressesList = null;
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
@@ -315,6 +336,16 @@ public class VeniceControllerCreateOptions {
       return this;
     }
 
+    public Builder parentControllerInChildRegion(boolean parentControllerInChildRegion) {
+      this.parentControllerInChildRegion = parentControllerInChildRegion;
+      return this;
+    }
+
+    public Builder zkServerAddressesList(List<String> zkServerAddressesList) {
+      this.zkServerAddressesList = zkServerAddressesList;
+      return this;
+    }
+
     private void verifyAndAddParentControllerSpecificDefaults() {
       extraProperties.setProperty(LOCAL_REGION_NAME, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
       if (!extraProperties.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
@@ -326,6 +357,10 @@ public class VeniceControllerCreateOptions {
       d2Enabled = clusterToD2 != null;
       if (regionName == null || regionName.isEmpty()) {
         regionName = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+      }
+      if (parentControllerInChildRegion && (zkServerAddressesList == null || zkServerAddressesList.isEmpty())) {
+        throw new IllegalArgumentException(
+            "Zk server addresses list cannot be null or empty when parent controller is in child region");
       }
     }
 
