@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
@@ -204,9 +205,9 @@ public class KafkaConsumerServiceTest {
       Assert.assertEquals(
           topicPartitionIngestionInfoMap.get(topicPartition).getVersionTopicName(),
           topicForStoreName3.getName());
-      verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleRecordRate(anyInt());
       verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleBandwidth(anyInt());
-      verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleAAWCRecordRate(anyInt());
+      verify(mockIngestionThrottler, atLeastOnce())
+          .maybeThrottleRecordRate(eq(ConsumerPoolType.AA_WC_LEADER_POOL), anyInt());
     });
     consumerService.stop();
   }

@@ -6,6 +6,7 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Map;
@@ -35,12 +36,9 @@ public class IngestionThrottler implements Closeable {
 
   private volatile EventThrottler finalRecordThrottler;
   private volatile EventThrottler finalBandwidthThrottler;
-  private final EventThrottler aaWCLeaderRecordThrottler;
-  private final EventThrottler currentVersionAAWCLeaderRecordThrottler;
-  private final EventThrottler currentVersionNonAAWCLeaderRecordThrottler;
-  private final EventThrottler nonCurrentVersionAAWCLeaderRecordThrottler;
-  private final EventThrottler nonCurrentVersionNonAAWCLeaderRecordThrottler;
   private boolean isUsingSpeedupThrottler = false;
+
+  private final Map<ConsumerPoolType, EventThrottler> poolTypeRecordThrottlerMap;
 
   public IngestionThrottler(
       boolean isDaVinciClient,
@@ -73,37 +71,47 @@ public class IngestionThrottler implements Closeable {
         "kafka_consumption_bandwidth",
         false,
         EventThrottler.BLOCK_STRATEGY);
-
-    this.aaWCLeaderRecordThrottler = new EventThrottler(
-        serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "aa_wc_leader_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-    this.currentVersionAAWCLeaderRecordThrottler = new EventThrottler(
-        serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "current_version_aa_wc_leader_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-    this.currentVersionNonAAWCLeaderRecordThrottler = new EventThrottler(
-        serverConfig.getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "current_version_non_aa_wc_leader_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-    this.nonCurrentVersionAAWCLeaderRecordThrottler = new EventThrottler(
-        serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "non_current_version_aa_wc_leader_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-    this.nonCurrentVersionNonAAWCLeaderRecordThrottler = new EventThrottler(
-        serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "non_current_version_non_aa_wc_leader_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
+    this.poolTypeRecordThrottlerMap = new VeniceConcurrentHashMap<>();
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "current_version_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "current_version_non_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "non_current_version_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "non_current_version_non_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
 
     if (isDaVinciClient && serverConfig.isDaVinciCurrentVersionBootstrappingSpeedupEnabled()) {
       EventThrottler speedupRecordThrottler = new EventThrottler(
@@ -158,32 +166,16 @@ public class IngestionThrottler implements Closeable {
     this.finalBandwidthThrottler = regularBandwidthThrottler;
   }
 
-  public void maybeThrottleRecordRate(int count) {
+  public void maybeThrottleRecordRate(ConsumerPoolType poolType, int count) {
+    EventThrottler poolTypeRecordThrottler = poolTypeRecordThrottlerMap.get(poolType);
+    if (poolTypeRecordThrottler != null) {
+      poolTypeRecordThrottler.maybeThrottle(count);
+    }
     finalRecordThrottler.maybeThrottle(count);
   }
 
   public void maybeThrottleBandwidth(int totalBytes) {
     finalBandwidthThrottler.maybeThrottle(totalBytes);
-  }
-
-  public void maybeThrottleAAWCRecordRate(int count) {
-    aaWCLeaderRecordThrottler.maybeThrottle(count);
-  }
-
-  public void maybeThrottleCurrentVersionAAWCLeaderRecordRate(int count) {
-    currentVersionAAWCLeaderRecordThrottler.maybeThrottle(count);
-  }
-
-  public void maybeThrottleCurrentVersionNonAAWCLeaderRecordRate(int count) {
-    currentVersionNonAAWCLeaderRecordThrottler.maybeThrottle(count);
-  }
-
-  public void maybeThrottleNonCurrentVersionAAWCLeaderRecordRate(int count) {
-    nonCurrentVersionAAWCLeaderRecordThrottler.maybeThrottle(count);
-  }
-
-  public void maybeThrottleNonCurrentVersionNonAAWCLeaderRecordRate(int count) {
-    nonCurrentVersionNonAAWCLeaderRecordThrottler.maybeThrottle(count);
   }
 
   public boolean isUsingSpeedupThrottler() {

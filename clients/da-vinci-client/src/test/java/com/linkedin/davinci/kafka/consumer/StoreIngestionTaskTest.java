@@ -1719,7 +1719,8 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(new RandomPollStrategy(1), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
-      verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottleRecordRate(1);
+      verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4))
+          .maybeThrottleRecordRate(ConsumerPoolType.REGULAR_POOL, 1);
       verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottleBandwidth(anyInt());
     }, aaConfig, null);
   }
