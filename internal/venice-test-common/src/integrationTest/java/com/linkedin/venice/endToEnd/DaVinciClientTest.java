@@ -1020,7 +1020,7 @@ public class DaVinciClientTest {
     LOGGER.info("zkHosts is {}", zkHosts);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess forkedDaVinciUserApp1 = ForkedJavaProcess.exec(
+    ForkedJavaProcess.exec(
         DaVinciUserApp.class,
         zkHosts,
         dvcPath1,
