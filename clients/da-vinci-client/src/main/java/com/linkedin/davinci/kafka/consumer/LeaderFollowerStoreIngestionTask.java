@@ -187,6 +187,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
+  protected final int maxRecordSizeBytes; // TODO: move into VeniceWriter when nearline jobs enforce max record size
+
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -283,6 +285,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setPartitionCount(storeVersionPartitionCount)
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
+    this.maxRecordSizeBytes = (store.getMaxRecordSizeBytes() < 0) // TODO: move to VeniceWriter when nearline supported
+        ? serverConfig.getDefaultMaxRecordSizeBytes()
+        : store.getMaxRecordSizeBytes();
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
@@ -1891,6 +1896,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       versionedIngestionStats.recordFollowerConsumed(storeName, versionNumber, processedRecordSize);
       hostLevelIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
       hostLevelIngestionStats.recordTotalFollowerRecordsConsumed();
+    }
+  }
+
+  @Override
+  protected final double calculateAssembledRecordSizeRatio(long recordSize) {
+    return (double) recordSize / maxRecordSizeBytes;
+  }
+
+  @Override
+  protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
+    if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+      hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
     }
   }
 

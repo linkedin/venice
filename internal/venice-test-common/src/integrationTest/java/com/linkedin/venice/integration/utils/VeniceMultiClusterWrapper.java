@@ -59,6 +59,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       if (zkServerWrapper == null) {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
+      IntegrationTestUtils.ensureZkPathExists(zkServerWrapper.getAddress(), options.getVeniceZkBasePath());
       if (pubSubBrokerWrapper == null) {
         pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper)
@@ -108,6 +109,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, pubSubBrokerWrapper)
               .multiRegion(options.isMultiRegion())
               .regionName(options.getRegionName())
+              .veniceZkBasePath(options.getVeniceZkBasePath())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
               .rebalanceDelayMs(options.getRebalanceDelayMs())
@@ -131,6 +133,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .multiRegion(options.isMultiRegion())
               .standalone(false)
               .zkServerWrapper(zkServerWrapper)
+              .veniceZkBasePath(options.getVeniceZkBasePath())
               .kafkaBrokerWrapper(pubSubBrokerWrapper)
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)

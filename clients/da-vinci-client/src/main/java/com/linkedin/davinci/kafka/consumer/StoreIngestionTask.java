@@ -170,6 +170,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
+  private static final int CHUNK_MANIFEST_SCHEMA_ID =
+      AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -325,13 +327,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
+  protected final boolean isRmdChunked;
   protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
-  protected final PartitionReplicaIngestionContext.WorkloadType workloadType;
+  protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -493,6 +496,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
+    this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[partitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
@@ -1305,9 +1309,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
         PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
-      // TODO: Add support workload type change in the future, as enabling write computing during normal hybrid
-      // ingestion could cause workload type change.
-      if (!newVersionRole.equals(versionRole)) {
+      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
         LOGGER.info(
             "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
                 + "changed to New: version role: {}, workload type: {}",
@@ -1317,6 +1319,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newVersionRole,
             newWorkloadType);
         versionRole = newVersionRole;
+        workloadType = newWorkloadType;
         resubscribeForAllPartitions();
       }
     }
@@ -2432,6 +2435,44 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
   }
 
+  /**
+   * Records metrics for the original size of full-assembled records (key + value) and RMD by utilizing the field
+   * {@link ChunkedValueManifest#size}.
+   * Also records the ratio of assembled record size to maximum allowed size, which is intended to be used to alert
+   * customers about how close they are to hitting the size limit.
+   * @param keyLen The size of the record's key
+   * @param valueBytes {@link Put#putValue} which is expected to be a serialized {@link ChunkedValueManifest}
+   * @param rmdBytes {@link Put#replicationMetadataPayload} which can be a serialized {@link ChunkedValueManifest} if
+   * RMD chunking was enabled or just the RMD payload otherwise
+   */
+  protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
+    try {
+      byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
+      ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
+      int recordSize = keyLen + valueManifest.getSize();
+      hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+      recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
+
+      if (rmdBytes == null || rmdBytes.remaining() == 0) {
+        return;
+      }
+
+      int rmdSize = rmdBytes.remaining();
+      if (isRmdChunked) {
+        byte[] rmdByteArray = ByteUtils.extractByteArray(rmdBytes);
+        ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(rmdByteArray, CHUNK_MANIFEST_SCHEMA_ID);
+        rmdSize = rmdManifest.getSize();
+      }
+      hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
+    } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
+      LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record or RMD size", e);
+    }
+  }
+
+  protected abstract void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs);
+
+  protected abstract double calculateAssembledRecordSizeRatio(long recordSize);
+
   public abstract long getBatchReplicationLag();
 
   public abstract long getLeaderOffsetLag();
@@ -2958,13 +2999,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  protected void recordWriterStats(
+  protected abstract void recordWriterStats(
       long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
-      PartitionConsumptionState partitionConsumptionState) {
-
-  }
+      PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Message validation using DIV. Leaders should pass in the validator instance from {@link LeaderFollowerStoreIngestionTask};
@@ -3237,16 +3276,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        if (metricsEnabled && recordLevelMetricEnabled.get()
-            && put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-          try {
-            ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
-                ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
-                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-            hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
-          } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
-            LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
-          }
+        if (metricsEnabled && recordLevelMetricEnabled.get() && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+          // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
+          recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
         // Check if put.getSchemaId is positive, if not default to 1
@@ -4076,7 +4108,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean hasAllPartitionReportedCompleted() {
     for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
-      if (entry.getValue().isCompletionReported()) {
+      if (!entry.getValue().isCompletionReported()) {
         return false;
       }
     }

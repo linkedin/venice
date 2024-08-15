@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -58,6 +59,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   public static final String SERVICE_NAME = "VeniceRouter";
   public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
       ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
+  private static final String ROUTER_SERVICE_NAME = "venice-router";
   private final VeniceProperties properties;
   private final String zkAddress;
   private RouterServer service;
@@ -89,6 +91,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
+      String veniceZkBasePath,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
@@ -131,7 +134,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       PropertyBuilder builder = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPort)
-          .put(ZOOKEEPER_ADDRESS, zkAddress)
+          .put(ZOOKEEPER_ADDRESS, zkAddress + veniceZkBasePath)
           .put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(finalClusterToD2))
@@ -145,7 +148,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 1)
           .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
           // To speed up test
-          .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
+          .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 1)
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
@@ -171,7 +174,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           routerProperties,
           d2Servers,
           Optional.empty(),
-          Optional.of(SslUtils.getVeniceLocalSslFactory()));
+          Optional.of(SslUtils.getVeniceLocalSslFactory()),
+          TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+          D2TestUtils.getAndStartD2Client(zkAddress),
+          CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       return new VeniceRouterWrapper(
           regionName,
           serviceName,
@@ -226,8 +232,14 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
     d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
-    service =
-        new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));
+    service = new RouterServer(
+        properties,
+        d2Servers,
+        Optional.empty(),
+        Optional.of(SslUtils.getVeniceLocalSslFactory()),
+        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     LOGGER.info("Started VeniceRouterWrapper: {}", this);
   }
 

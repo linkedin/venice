@@ -165,8 +165,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       PubSubClientsFactory pubSubClientsFactory = options.getKafkaBroker().getPubSubClientsFactory();
       for (String clusterName: options.getClusterNames()) {
-        VeniceProperties clusterProps = IntegrationTestUtils
-            .getClusterProps(clusterName, options.getZkAddress(), options.getKafkaBroker(), options.isSslToKafka());
+        VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(
+            clusterName,
+            options.getZkAddress(),
+            options.getVeniceZkBasePath(),
+            options.getKafkaBroker(),
+            options.isSslToKafka());
 
         // TODO: Validate that these configs are all still used.
         // TODO: Centralize default config values in a single place

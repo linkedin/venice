@@ -703,7 +703,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     isChunkingFlagInvoked = true;
 
-    // TODO: does a check for size > maxRecordSizeBytes need to be done here?
     int rmdPayloadSize = deleteMetadata == null ? 0 : deleteMetadata.getSerializedSize();
     if (isChunkingNeededForRecord(serializedKey.length + rmdPayloadSize)) {
       throw new RecordTooLargeException(
@@ -908,7 +907,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
      */
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      if (isChunkingEnabled && !isRecordTooLarge(veniceRecordSize)) {
+      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
+      if (isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) {
         return putLargeValue(
             serializedKey,
             serializedValue,

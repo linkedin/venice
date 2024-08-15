@@ -4,7 +4,6 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.meta.Store;
@@ -12,11 +11,13 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,7 +36,7 @@ public class ReadRequestThrottler
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
 
   private static final Logger LOGGER = LogManager.getLogger(ReadRequestThrottler.class);
-  private final ZkRoutersClusterManager zkRoutersManager;
+  private final RoutersClusterManager zkRoutersManager;
   private final ReadOnlyStoreRepository storeRepository;
   private final long maxRouterReadCapacity;
   private int lastRouterCount;
@@ -49,10 +50,10 @@ public class ReadRequestThrottler
    * The atomic reference of all store throttlers. While updating any throttler, lock this reference to prevent race
    * condition. We could not use volatile variable here because we will replace the whole inside map once router count
    * is changed(ReadRequestThrottler#handleRouterCountChanged), in that case lock will fail because the object that
-   * this
-   * reference points to has been changed.
+   * this reference points to has been changed.
    */
-  private final AtomicReference<ConcurrentMap<String, EventThrottler>> storesThrottlers;
+  private final AtomicReference<ConcurrentMap<String, EventThrottler>> storesThrottlers =
+      new AtomicReference<>(new VeniceConcurrentHashMap<>());
 
   private final AggRouterHttpRequestStats stats;
 
@@ -63,7 +64,7 @@ public class ReadRequestThrottler
   private volatile boolean isNoopThrottlerEnabled;
 
   public ReadRequestThrottler(
-      ZkRoutersClusterManager zkRoutersManager,
+      RoutersClusterManager zkRoutersManager,
       ReadOnlyStoreRepository storeRepository,
       AggRouterHttpRequestStats stats,
       VeniceRouterConfig routerConfig) {
@@ -77,7 +78,7 @@ public class ReadRequestThrottler
   }
 
   public ReadRequestThrottler(
-      ZkRoutersClusterManager zkRoutersManager,
+      RoutersClusterManager zkRoutersManager,
       ReadOnlyStoreRepository storeRepository,
       long maxRouterReadCapacity,
       AggRouterHttpRequestStats stats,
@@ -88,16 +89,16 @@ public class ReadRequestThrottler
     this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
     this.stats = stats;
     this.maxRouterReadCapacity = maxRouterReadCapacity;
-    this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
     this.isNoopThrottlerEnabled = false;
 
     /** Calling {@link #buildAllStoreReadThrottlers()} should be done after all internal state is initialized */
-    this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
+    this.storesThrottlers.set(buildAllStoreReadThrottlers());
 
     /** Subscribing to listeners should be the very last thing, to avoid calls prior to full initialization */
+    this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.storeRepository.registerStoreDataChangedListener(this);
   }
 
@@ -113,7 +114,7 @@ public class ReadRequestThrottler
     if (!zkRoutersManager.isThrottlingEnabled() || isNoopThrottlerEnabled) {
       return;
     }
-    EventThrottler throttler = storesThrottlers.get().get(storeName);
+    EventThrottler throttler = getStoreReadThrottler(storeName);
     if (throttler == null) {
       throw new VeniceException("Could not find the throttler for store: " + storeName);
     } else {
@@ -186,7 +187,7 @@ public class ReadRequestThrottler
   }
 
   protected EventThrottler getStoreReadThrottler(String storeName) {
-    return storesThrottlers.get().get(storeName);
+    return this.storesThrottlers.get().get(storeName);
   }
 
   private EventThrottler buildStoreReadThrottler(String storeName, long storeQuotaPerRouter) {
@@ -227,22 +228,22 @@ public class ReadRequestThrottler
     if (storeHasNoValidVersion(store)) {
       return;
     }
-    updateStoreThrottler(() -> {
+    updateStoreThrottler(storesThrottlerInstance -> {
       long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
       LOGGER.info(
           "Store: {} is created. Add a throttler with quota: {} for this store.",
           store.getName(),
           storeQuotaPerRouter);
-      storesThrottlers.get().put(store.getName(), buildStoreReadThrottler(store.getName(), storeQuotaPerRouter));
+      storesThrottlerInstance.get().put(store.getName(), buildStoreReadThrottler(store.getName(), storeQuotaPerRouter));
     });
   }
 
-  private void updateStoreThrottler(Runnable updater) {
-    synchronized (storesThrottlers) {
+  private void updateStoreThrottler(Consumer<AtomicReference<ConcurrentMap<String, EventThrottler>>> updater) {
+    synchronized (this.storesThrottlers) {
       // Total store quota should be changed because of add/update/delete store.
       long oldIdealTotalQuotaPerRouter = idealTotalQuotaPerRouter;
       idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
-      updater.run();
+      updater.accept(this.storesThrottlers);
       if (oldIdealTotalQuotaPerRouter > maxRouterReadCapacity || idealTotalQuotaPerRouter > maxRouterReadCapacity) {
         // Old router's quota and/or new router's quota exceed the router's max capacity, update all store throttlers
         // 1. If the new router's quota exceeded the router's max capacity, we have to reduce the quota for each store
@@ -254,7 +255,7 @@ public class ReadRequestThrottler
         if (oldIdealTotalQuotaPerRouter != idealTotalQuotaPerRouter) {
           LOGGER.info(
               "Old router's quota and/or new router's quota exceeds the router's max capacity, update throttlers for all stores.");
-          storesThrottlers.set(buildAllStoreReadThrottlers());
+          this.storesThrottlers.set(buildAllStoreReadThrottlers());
         }
       }
     }
@@ -262,9 +263,9 @@ public class ReadRequestThrottler
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    updateStoreThrottler(() -> {
+    updateStoreThrottler(storesThrottlerInstance -> {
       LOGGER.info("Store: {} has been deleted. Remove the throttler for this store.", storeName);
-      EventThrottler throttler = storesThrottlers.get().remove(storeName);
+      EventThrottler throttler = storesThrottlerInstance.get().remove(storeName);
       if (throttler == null) {
         return;
       }
@@ -277,8 +278,8 @@ public class ReadRequestThrottler
     if (storeHasNoValidVersion(store)) {
       return;
     }
-    updateStoreThrottler(() -> {
-      EventThrottler eventThrottler = storesThrottlers.get().get(store.getName());
+    updateStoreThrottler(storesThrottlerInstance -> {
+      EventThrottler eventThrottler = getStoreReadThrottler(store.getName());
       if (eventThrottler == null) {
         LOGGER.warn(
             "Throttler have not been created for store: {}. Router might miss the creation event.",
@@ -288,14 +289,15 @@ public class ReadRequestThrottler
       }
 
       long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
-      if (storeQuotaPerRouter != storesThrottlers.get().get(store.getName()).getMaxRatePerSecond()) {
+      if (storeQuotaPerRouter != getStoreReadThrottler(store.getName()).getMaxRatePerSecond()) {
         // Handle store's quota was updated.
         LOGGER.info(
             "Read quota has been changed for store: {} - oldQuota: {}, newQuota: {}. Updating the store read throttler.",
             store.getName(),
             eventThrottler.getMaxRatePerSecond(),
             storeQuotaPerRouter);
-        storesThrottlers.get().put(store.getName(), buildStoreReadThrottler(store.getName(), storeQuotaPerRouter));
+        storesThrottlerInstance.get()
+            .put(store.getName(), buildStoreReadThrottler(store.getName(), storeQuotaPerRouter));
       }
     });
   }
@@ -305,21 +307,21 @@ public class ReadRequestThrottler
   }
 
   private void resetAllThrottlers() {
-    synchronized (storesThrottlers) {
+    synchronized (this.storesThrottlers) {
       long newIdealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
       if (idealTotalQuotaPerRouter != newIdealTotalQuotaPerRouter) {
         idealTotalQuotaPerRouter = newIdealTotalQuotaPerRouter;
         // Total quota for this router is changed, we have to update all store throttlers.
-        storesThrottlers.set(buildAllStoreReadThrottlers());
+        this.storesThrottlers.set(buildAllStoreReadThrottlers());
       }
     }
   }
 
   // This function is for testing
   protected void restoreAllThrottlers() {
-    synchronized (storesThrottlers) {
+    synchronized (this.storesThrottlers) {
       // Restore all throttlers.
-      storesThrottlers.set(buildAllStoreReadThrottlers());
+      this.storesThrottlers.set(buildAllStoreReadThrottlers());
     }
   }
 }

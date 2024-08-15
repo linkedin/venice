@@ -736,6 +736,34 @@ public abstract class StoreIngestionTaskTest {
         null);
   }
 
+  private void runTest(
+      PollStrategy pollStrategy,
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      Optional<HybridStoreConfig> hybridStoreConfig,
+      boolean incrementalPushEnabled,
+      Optional<DiskUsage> diskUsageForTest,
+      AAConfig aaConfig,
+      Map<String, Object> extraServerProperties,
+      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+    runTest(
+        pollStrategy,
+        partitions,
+        beforeStartingConsumption,
+        assertions,
+        hybridStoreConfig,
+        incrementalPushEnabled,
+        false,
+        false,
+        diskUsageForTest,
+        aaConfig,
+        extraServerProperties,
+        storeVersionConfigOverride,
+        getRecordTransformer);
+  }
+
   /**
    * A simple framework to specify how to run the task and how to assert the results
    * @param pollStrategy, the polling strategy for Kakfa consumer to poll messages written by local venice writer
@@ -760,6 +788,8 @@ public abstract class StoreIngestionTaskTest {
       Runnable assertions,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean incrementalPushEnabled,
+      boolean chunkingEnabled,
+      boolean rmdChunkingEnabled,
       Optional<DiskUsage> diskUsageForTest,
       AAConfig aaConfig,
       Map<String, Object> extraServerProperties,
@@ -776,6 +806,8 @@ public abstract class StoreIngestionTaskTest {
         partitionerConfig,
         hybridStoreConfig,
         incrementalPushEnabled,
+        chunkingEnabled,
+        rmdChunkingEnabled,
         true,
         aaConfig,
         storeVersionConfigOverride);
@@ -838,6 +870,8 @@ public abstract class StoreIngestionTaskTest {
         partitionerConfig,
         hybridStoreConfig,
         incrementalPushEnabled,
+        false,
+        false,
         isNativeReplicationEnabled,
         aaConfig,
         storeVersionConfigOverride -> {});
@@ -848,13 +882,15 @@ public abstract class StoreIngestionTaskTest {
       PartitionerConfig partitionerConfig,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean incrementalPushEnabled,
+      boolean chunkingEnabled,
+      boolean rmdChunkingEnabled,
       boolean isNativeReplicationEnabled,
       AAConfig aaConfig,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     boolean isHybrid = hybridStoreConfig.isPresent();
-    HybridStoreConfig hybridSoreConfigValue = null;
+    HybridStoreConfig hybridStoreConfigValue = null;
     if (isHybrid) {
-      hybridSoreConfigValue = hybridStoreConfig.get();
+      hybridStoreConfigValue = hybridStoreConfig.get();
     }
 
     // mock the store config
@@ -871,14 +907,19 @@ public abstract class StoreIngestionTaskTest {
     version.setIncrementalPushEnabled(incrementalPushEnabled);
     doReturn(incrementalPushEnabled).when(mockStore).isIncrementalPushEnabled();
 
-    version.setHybridStoreConfig(hybridSoreConfigValue);
-    doReturn(hybridSoreConfigValue).when(mockStore).getHybridStoreConfig();
+    version.setHybridStoreConfig(hybridStoreConfigValue);
+    doReturn(hybridStoreConfigValue).when(mockStore).getHybridStoreConfig();
     doReturn(isHybrid).when(mockStore).isHybrid();
 
     version.setBufferReplayEnabledForHybrid(true);
 
     version.setNativeReplicationEnabled(isNativeReplicationEnabled);
     doReturn(isNativeReplicationEnabled).when(mockStore).isNativeReplicationEnabled();
+
+    version.setChunkingEnabled(chunkingEnabled);
+    doReturn(chunkingEnabled).when(mockStore).isChunkingEnabled();
+    version.setRmdChunkingEnabled(rmdChunkingEnabled);
+    doReturn(rmdChunkingEnabled).when(mockStore).isRmdChunkingEnabled();
 
     version.setPushStreamSourceAddress("");
     doReturn("").when(mockStore).getPushStreamSourceAddress();
@@ -2311,6 +2352,7 @@ public abstract class StoreIngestionTaskTest {
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
+      assertTrue(storeIngestionTaskUnderTest.hasAllPartitionReportedCompleted());
     }, aaConfig);
   }
 
@@ -3053,7 +3095,7 @@ public abstract class StoreIngestionTaskTest {
           100,
           100,
           -1,
-          DataReplicationPolicy.ACTIVE_ACTIVE,
+          DataReplicationPolicy.NON_AGGREGATE,
           BufferReplayPolicy.REWIND_FROM_EOP);
     }
 
@@ -4531,26 +4573,31 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
   }
 
+  public enum RmdState {
+    NO_RMD, NON_CHUNKED, CHUNKED
+  }
+
   @DataProvider
   public static Object[][] testAssembledValueSizeProvider() {
-    Set<Integer> schemaIdSet = new HashSet<>();
-    for (AvroProtocolDefinition avroProtocolDefinition: AvroProtocolDefinition.values()) {
-      avroProtocolDefinition.currentProtocolVersion.ifPresent(schemaIdSet::add);
-    }
-    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), schemaIdSet.toArray());
+    Object[] testSchemaIds =
+        { VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion() };
+    Object[] rmdState = { RmdState.NO_RMD, RmdState.NON_CHUNKED, RmdState.CHUNKED };
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), testSchemaIds, rmdState);
   }
 
   /**
-   * Create messages for a chunked record (in multiple chunks) and its manifest, and verify that the drainer
-   * records the size of the chunked record as described in the size field of the manifest.
+   * Create messages for a chunked record (in multiple chunks and a manifest), and verify that the drainer
+   * records the size of the chunked record as described by the size field of the manifest + size of key.
+   * Ensure that RMD size is also recorded when included in the manifest.
    * Also, verify that metrics are only emitted when the correct schemaId=-20 is on the manifest message,
    * and not emitted on any other invalid schemaId values.
-   * @throws Exception
    */
   @Test(dataProvider = "testAssembledValueSizeProvider")
-  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
+  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId, RmdState rmdState) throws Exception {
     int numChunks = 10;
-    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH;
+    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH + putKeyFoo.length;
+    int rmdSize = 5 * ByteUtils.BYTES_PER_KB; // arbitrary size
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
     for (int i = 0; i < numChunks; i++) {
@@ -4560,9 +4607,7 @@ public abstract class StoreIngestionTaskTest {
         ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
     messages.add(manifestMessage);
 
-    // The only expected real-life case should be when schemaId values are chunk=-10 and manifest=-20
-    boolean useRealSchemaId = testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
+    runTest(new RandomPollStrategy(), Collections.singleton(PARTITION_FOO), () -> {}, () -> {
       TestUtils.waitForNonDeterministicAssertion(
           5,
           TimeUnit.SECONDS,
@@ -4571,8 +4616,20 @@ public abstract class StoreIngestionTaskTest {
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
         try {
           Put put = (Put) message.getValue().getPayloadUnion();
-          if (!useRealSchemaId) {
-            put.schemaId = testSchemaId;
+          if (put.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+            put.schemaId = testSchemaId; // set manifest schemaId to testSchemaId to see if metrics are still recorded
+            switch (rmdState) {
+              case NON_CHUNKED:
+                put.replicationMetadataPayload = ByteBuffer.allocate(rmdSize + ByteUtils.SIZE_OF_INT);
+                put.replicationMetadataPayload.position(ByteUtils.SIZE_OF_INT); // for getIntHeaderFromByteBuffer()
+                break;
+              case CHUNKED:
+                put.replicationMetadataPayload = ChunkingTestUtils.createReplicationMetadataPayload(rmdSize);
+                break;
+              default:
+                put.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;
+                break;
+            }
           }
           LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
           when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
@@ -4591,15 +4648,35 @@ public abstract class StoreIngestionTaskTest {
         }
       }
 
-      // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
-      HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
-      if (useRealSchemaId) {
-        verify(hostLevelIngestionStats, timeout(1000)).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
-        verify(hostLevelIngestionStats, timeout(1000).times(1)).recordAssembledValueSize(anyLong(), anyLong());
+      // Verify that the assembled record metrics are only recorded if schemaId=-20 which indicates a manifest
+      HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+      if (testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+        ArgumentCaptor<Long> sizeCaptor = ArgumentCaptor.forClass(long.class);
+        verify(stats, timeout(1000).times(1)).recordAssembledRecordSize(sizeCaptor.capture(), anyLong());
+        assertEquals(sizeCaptor.getValue().longValue(), expectedRecordSize);
+        verify(stats, timeout(1000).times(1)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+
+        if (rmdState != RmdState.NO_RMD) {
+          verify(stats, timeout(1000).times(1)).recordAssembledRmdSize(sizeCaptor.capture(), anyLong());
+          assertEquals(sizeCaptor.getValue().longValue(), rmdSize);
+        } else {
+          verify(stats, times(0)).recordAssembledRmdSize(anyLong(), anyLong());
+        }
       } else {
-        verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
+        verify(stats, times(0)).recordAssembledRmdSize(anyLong(), anyLong());
+        verify(stats, times(0)).recordAssembledRecordSize(anyLong(), anyLong());
+        verify(stats, times(0)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
       }
-    }, aaConfig);
+    },
+        hybridStoreConfig,
+        false,
+        true,
+        rmdState == RmdState.CHUNKED,
+        Optional.empty(),
+        aaConfig,
+        Collections.emptyMap(),
+        storeVersionConfigOverride -> {},
+        null);
   }
 
   @Test

@@ -25,7 +25,7 @@ import spark.Route;
 
 
 public class TestVeniceParentControllerRegionStateHandler {
-  private Logger logger = LogManager.getLogger(TestVeniceParentControllerRegionStateHandler.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestVeniceParentControllerRegionStateHandler.class);
   private Admin admin = mock(Admin.class);
   private Request request = mock(Request.class);
   private Response response = mock(Response.class);
@@ -33,7 +33,7 @@ public class TestVeniceParentControllerRegionStateHandler {
       new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
         @Override
         public void internalHandle(Request request, ControllerResponse veniceResponse) {
-          logger.info("VeniceParentControllerRegionStateHandler is working");
+          LOGGER.info("VeniceParentControllerRegionStateHandler is working");
           veniceResponse.setName("working test response");
           veniceResponse.setCluster("working test cluster");
         }

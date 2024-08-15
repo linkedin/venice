@@ -41,8 +41,9 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   private final Sensor longTailRetryRequestSensor;
   private final Sensor errorRetryRequestSensor;
   private final Sensor retryRequestWinSensor;
-
   private final Sensor metadataStalenessSensor;
+  private final Sensor fanoutSizeSensor;
+  private final Sensor retryFanoutSizeSensor;
   private long cacheTimeStampInMs = 0;
 
   // Routing stats
@@ -96,6 +97,8 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
         return System.currentTimeMillis() - this.cacheTimeStampInMs;
       }
     }, "metadata_staleness_high_watermark_ms"));
+    this.fanoutSizeSensor = registerSensor("fanout_size", new Avg(), new Max());
+    this.retryFanoutSizeSensor = registerSensor("retry_fanout_size", new Avg(), new Max());
   }
 
   public void recordNoAvailableReplicaRequest() {
@@ -174,6 +177,14 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
 
   public void updateCacheTimestamp(long cacheTimeStampInMs) {
     this.cacheTimeStampInMs = cacheTimeStampInMs;
+  }
+
+  public void recordFanoutSize(int fanoutSize) {
+    fanoutSizeSensor.record(fanoutSize);
+  }
+
+  public void recordRetryFanoutSize(int retryFanoutSize) {
+    retryFanoutSizeSensor.record(retryFanoutSize);
   }
 
   /**

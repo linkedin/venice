@@ -6,8 +6,10 @@ import static org.testng.Assert.assertFalse;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -18,6 +20,7 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -433,5 +436,84 @@ public class ReadRequestThrottlerTest {
     assertFalse(listenerThrewException.get(), "The listener should not receive an exception!");
 
     readRequestThrottler.handleStoreDeleted("testStore"); // Should still work post-construction too.
+
+    // One more listener can cause a race condition if not handled properly...
+    listenerThrewException.set(false);
+    RoutersClusterManager routersClusterManager = new RoutersClusterManager() {
+      @Override
+      public void registerRouter(String instanceId) {
+
+      }
+
+      @Override
+      public void unregisterRouter(String instanceId) {
+
+      }
+
+      @Override
+      public int getLiveRoutersCount() {
+        return 0;
+      }
+
+      @Override
+      public int getExpectedRoutersCount() {
+        return 0;
+      }
+
+      @Override
+      public void updateExpectedRouterCount(int expectedNumber) {
+
+      }
+
+      @Override
+      public void subscribeRouterCountChangedEvent(RouterCountChangedListener listener) {
+        try {
+          listener.handleRouterCountChanged(0);
+        } catch (Throwable t) {
+          LOGGER.error("Caught a throwable when calling the listener immediately after subscription", t);
+          listenerThrewException.set(true);
+        }
+      }
+
+      @Override
+      public Set<Instance> getLiveRouterInstances() {
+        return null;
+      }
+
+      @Override
+      public boolean isThrottlingEnabled() {
+        return false;
+      }
+
+      @Override
+      public boolean isMaxCapacityProtectionEnabled() {
+        return false;
+      }
+
+      @Override
+      public void enableThrottling(boolean enable) {
+
+      }
+
+      @Override
+      public void enableMaxCapacityProtection(boolean enable) {
+
+      }
+
+      @Override
+      public void createRouterClusterConfig() {
+
+      }
+    };
+
+    readRequestThrottler = new ReadRequestThrottler(
+        routersClusterManager,
+        mock(ReadOnlyStoreRepository.class),
+        mock(AggRouterHttpRequestStats.class),
+        mock(VeniceRouterConfig.class));
+
+    assertFalse(listenerThrewException.get(), "The listener should not receive an exception!");
+
+    readRequestThrottler.handleRouterCountChanged(0); // Should still work post-construction too.
   }
 }

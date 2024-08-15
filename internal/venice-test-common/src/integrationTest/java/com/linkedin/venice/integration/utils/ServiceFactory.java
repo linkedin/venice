@@ -175,7 +175,7 @@ public class ServiceFactory {
   }
 
   /**
-   * @deprecated Future use should use {@link #getVeniceServer(String, String, PubSubBrokerWrapper, String, Properties, Properties, boolean, String, Map, String)}
+   * @deprecated Future use should use {@link #getVeniceServer(String, String, PubSubBrokerWrapper, String, String, Properties, Properties, boolean, String, Map, String)}
    * to have the correct kafka cluster map in multi-fabric environment for essential features like A/A and heartbeat to work.
    */
   public static VeniceServerWrapper getVeniceServer(
@@ -183,6 +183,7 @@ public class ServiceFactory {
       String clusterName,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       String zkAddress,
+      String veniceZkBasePath,
       Properties featureProperties,
       Properties configProperties,
       String serverD2ServiceName) {
@@ -191,6 +192,7 @@ public class ServiceFactory {
         clusterName,
         pubSubBrokerWrapper,
         zkAddress,
+        veniceZkBasePath,
         featureProperties,
         configProperties,
         false,
@@ -204,6 +206,7 @@ public class ServiceFactory {
       String clusterName,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       String zkAddress,
+      String veniceZkBasePath,
       Properties featureProperties,
       Properties configProperties,
       boolean forkServer,
@@ -218,6 +221,7 @@ public class ServiceFactory {
             regionName,
             clusterName,
             zkAddress,
+            veniceZkBasePath,
             pubSubBrokerWrapper,
             featureProperties,
             configProperties,
@@ -231,6 +235,7 @@ public class ServiceFactory {
       String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
+      String veniceZkBasePath,
       PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
@@ -242,6 +247,7 @@ public class ServiceFactory {
             regionName,
             clusterName,
             zkServerWrapper,
+            veniceZkBasePath,
             pubSubBrokerWrapper,
             sslToStorageNodes,
             clusterToD2,

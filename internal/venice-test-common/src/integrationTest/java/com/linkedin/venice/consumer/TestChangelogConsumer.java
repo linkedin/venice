@@ -1,4 +1,4 @@
-package com.linkedin.venice.endToEnd;
+package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -38,6 +38,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -49,7 +50,9 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -532,6 +535,15 @@ public class TestChangelogConsumer {
       checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
       allChangeEvents.putAll(polledChangeEvents);
       polledChangeEvents.clear();
+
+      // Seek to a bogus checkpoint
+      PubSubPosition badPubSubPosition = new ApacheKafkaOffsetPosition(1337L);
+      VeniceChangeCoordinate badCoordinate =
+          new MockVeniceChangeCoordinate(storeName + "_v777777", badPubSubPosition, 0);
+      Set<VeniceChangeCoordinate> badCheckpointSet = new HashSet<>();
+      badCheckpointSet.add(badCoordinate);
+
+      Assert.assertThrows(() -> veniceChangelogConsumer.seekToCheckpoint(badCheckpointSet).get());
 
       // Seek the consumer by checkpoint
       veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();

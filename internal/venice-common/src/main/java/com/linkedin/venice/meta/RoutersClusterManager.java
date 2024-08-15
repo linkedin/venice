@@ -40,11 +40,6 @@ public interface RoutersClusterManager {
 
   Set<Instance> getLiveRouterInstances();
 
-  /**
-   * Stop listening on the router count.
-   */
-  void unSubscribeRouterCountChangedEvent(RouterCountChangedListener listener);
-
   boolean isThrottlingEnabled();
 
   boolean isMaxCapacityProtectionEnabled();

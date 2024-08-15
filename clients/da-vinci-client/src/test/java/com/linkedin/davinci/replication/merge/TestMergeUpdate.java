@@ -8,8 +8,10 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
@@ -56,7 +58,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        0);
+        0,
+        null);
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -101,7 +104,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        updateColoId);
+        updateColoId,
+        null);
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -161,7 +165,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        -2);
+        -2,
+        null);
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -219,7 +224,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        -2);
+        -2,
+        null);
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -258,7 +264,8 @@ public class TestMergeUpdate extends TestMergeBase {
         updateTs,
         1L,
         0,
-        -2);
+        -2,
+        null);
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
@@ -329,7 +336,8 @@ public class TestMergeUpdate extends TestMergeBase {
         2L,
         1L,
         0,
-        0);
+        0,
+        null);
 
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(
@@ -395,13 +403,56 @@ public class TestMergeUpdate extends TestMergeBase {
         10L,
         1L,
         0,
-        0);
+        0,
+        null);
 
     GenericRecord newUpdatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
     Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME));
     GenericRecord newUpdatedRmdRecord = result.getRmdRecord();
     GenericRecord newUpdatedRmdTsRecord = (GenericRecord) newUpdatedRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
+
+    updatedNullableListTsRecord = (GenericRecord) newUpdatedRmdTsRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME);
+    Assert.assertEquals(updatedNullableListTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
+    Assert.assertEquals(updatedNullableListTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
+    Assert.assertEquals(updatedNullableListTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.emptyList());
+
+    updatedNullableMapTsRecord = (GenericRecord) newUpdatedRmdTsRecord.get(NULLABLE_STRING_MAP_FIELD_NAME);
+    Assert.assertEquals(updatedNullableMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
+    Assert.assertEquals(updatedNullableMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
+    Assert.assertEquals(updatedNullableMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals(updatedNullableMapTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
+    Assert.assertEquals(updatedNullableMapTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.emptyList());
+
+    // Set nullable collection field to NULL value by updating it in a large enough TS.
+    partialUpdateRecord =
+        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(NULLABLE_STRING_MAP_FIELD_NAME, null)
+            .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, null)
+            .build();
+    ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
+    chunkedValueManifest.setSchemaId(schemaSet.getValueSchemaId());
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
+    container.setManifest(chunkedValueManifest);
+    result = mergeConflictResolver.update(
+        Lazy.of(() -> serializeValueRecord(updatedValueRecord)),
+        null,
+        // new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, updateRmdRecord),
+        serializeUpdateRecord(partialUpdateRecord),
+        schemaSet.getValueSchemaId(),
+        schemaSet.getUpdateSchemaProtocolVersion(),
+        10L,
+        1L,
+        0,
+        0,
+        container);
+
+    newUpdatedValueRecord = deserializeValueRecord(result.getNewValue());
+    Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
+    Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME));
+    newUpdatedRmdRecord = result.getRmdRecord();
+    newUpdatedRmdTsRecord = (GenericRecord) newUpdatedRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
 
     updatedNullableListTsRecord = (GenericRecord) newUpdatedRmdTsRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME);
     Assert.assertEquals(updatedNullableListTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
@@ -474,7 +525,8 @@ public class TestMergeUpdate extends TestMergeBase {
         2L,
         1L,
         0,
-        0);
+        0,
+        null);
 
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(
@@ -552,7 +604,8 @@ public class TestMergeUpdate extends TestMergeBase {
         3L,
         1L,
         0,
-        0);
+        0,
+        null);
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME), Collections.emptyList());
     IndexedHashMap<Utf8, Utf8> expectedNullableMap = new IndexedHashMap<>();
@@ -762,7 +815,8 @@ public class TestMergeUpdate extends TestMergeBase {
         timestamp,
         1L,
         0,
-        0);
+        0,
+        null);
   }
 
   private void validateNullableCollectionUpdateResult(

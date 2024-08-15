@@ -482,7 +482,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             writeTimestamp,
             sourceOffset,
             kafkaClusterId,
-            kafkaClusterId);
+            kafkaClusterId,
+            valueManifestContainer);
         getHostLevelIngestionStats()
             .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;

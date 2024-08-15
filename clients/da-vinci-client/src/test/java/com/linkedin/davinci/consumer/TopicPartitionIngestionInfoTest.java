@@ -18,10 +18,11 @@ public class TopicPartitionIngestionInfoTest {
 
   @Test
   public void testJsonParse() throws Exception {
-    TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(0, 1, 2.0, 4.0, 5, 7);
-    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic("test_store_v1");
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("test_store_v1");
+    TopicPartitionIngestionInfo topicPartitionIngestionInfo =
+        new TopicPartitionIngestionInfo(0, 1, 2.0, 4.0, 5, 7, versionTopic.getName());
     String kafkaUrl = "localhost:1234";
-    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
     Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContext = new HashMap<>();
     topicPartitionIngestionContext.computeIfAbsent(kafkaUrl, k -> new HashMap<>())
         .put(pubSubTopicPartition.toString(), topicPartitionIngestionInfo);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES;
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_IN_BYTES;
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_RATIO;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -15,6 +16,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
@@ -63,7 +65,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -79,7 +80,6 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -631,7 +631,10 @@ public abstract class TestBatch {
         validator);
 
     // Since chunking was not enabled, verify that the assembled record size metrics are not collected
-    assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES);
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
+    MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers()).forEach(value -> {
+      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Must be invalid");
+    });
 
     // Re-push with Kafka Input
     testRepush(storeName, validator);
@@ -767,7 +770,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA);
@@ -794,7 +797,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithoutNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithoutNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithoutNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA);
@@ -893,6 +896,7 @@ public abstract class TestBatch {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     extraProps.accept(props);
 
     if (StringUtils.isEmpty(existingStore)) {
@@ -953,28 +957,6 @@ public abstract class TestBatch {
         MetricsRepository metricsRepository) throws Exception;
   }
 
-  private List<Double> getPerStoreMetricValues(String storeName, String sensorName) {
-    String metricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
-    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
-    return Arrays.asList(
-        MetricsUtils.getMin(metricName + ".Min", veniceServers), // default=Double.MIN_VALUE
-        MetricsUtils.getMax(metricName + ".Max", veniceServers), // default=Double.MAX_VALUE
-        MetricsUtils.getAvg(metricName + ".Avg", veniceServers)); // default=NaN
-  }
-
-  private void validatePerStoreMetricsRange(String storeName, String sensorName, double minValue, double maxValue) {
-    getPerStoreMetricValues(storeName, sensorName).forEach(value -> {
-      Assert.assertTrue(value >= minValue, "Metric value expected >= " + minValue + " actual=" + value);
-      Assert.assertTrue(value <= maxValue, "Metric value expected <= " + maxValue + " actual=" + value);
-    });
-  }
-
-  private void assertUnusedPerStoreMetrics(String storeName, String sensorName) {
-    getPerStoreMetricValues(storeName, sensorName).forEach(value -> {
-      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Needs to be invalid");
-    });
-  }
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testLargeValues() throws Exception {
     try {
@@ -988,20 +970,28 @@ public abstract class TestBatch {
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
-    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, BYTES_PER_MB, LARGE_VALUE_SIZE);
+    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
+    List<Double> assembledRecordSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
+    MetricsUtils.validateMetricRange(assembledRecordSizes, BYTES_PER_MB, LARGE_VALUE_SIZE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
-    final int tooLargeValueSize = 11 * BYTES_PER_MB; // 11 MB
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * BYTES_PER_MB : VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+    final int tooLargeValueSize = 5 * BYTES_PER_MB; // 5 MB
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? 4 * BYTES_PER_MB : 6 * BYTES_PER_MB;
     try {
-      testStoreWithLargeValues(properties -> {}, storeParams -> {
+      final String storeName = testStoreWithLargeValues(properties -> {}, storeParams -> {
         storeParams.setChunkingEnabled(true);
         storeParams.setMaxRecordSizeBytes(maxRecordSizeBytesForTest);
       }, null, tooLargeValueSize);
-      Assert.assertFalse(enforceLimit, "Too large values should fail only when not allowed");
+      Assert.assertFalse(enforceLimit, "Too large values should fail only when the limit is not enforced");
+
+      // Add a little wiggle room (1e-3) for generating the test data / record sizes
+      final double maxRatio = (double) tooLargeValueSize / maxRecordSizeBytesForTest + 1e-3;
+      String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_RATIO);
+      List<Double> assembledRecordSizeRatios = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
+      MetricsUtils.validateMetricRange(assembledRecordSizeRatios, 0, maxRatio);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());
@@ -1431,7 +1421,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
+  public void testBatchJobSnapshots(Boolean isKafkaPush) throws Exception {
 
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 1; i <= 100; i++) {
@@ -1449,7 +1439,7 @@ public abstract class TestBatch {
     deleteDirectory(Paths.get(BASE_DATA_PATH_1).toFile());
     deleteDirectory(Paths.get(BASE_DATA_PATH_2).toFile());
 
-    if (isKakfaPush) {
+    if (isKafkaPush) {
       testRepush(storeName, validator);
     } else {
       testBatchStore(

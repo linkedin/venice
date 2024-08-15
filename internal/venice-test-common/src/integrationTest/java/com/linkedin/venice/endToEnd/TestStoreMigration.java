@@ -13,6 +13,12 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -29,6 +35,7 @@ import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -38,12 +45,16 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
+import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
+import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -80,7 +91,7 @@ import org.testng.annotations.Test;
  */
 @Test(singleThreaded = true)
 public class TestStoreMigration {
-  private static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 180 * Time.MS_PER_SECOND;
   private static final int RECORD_COUNT = 20;
   private static final String NEW_OWNER = "newtest@linkedin.com";
   private static final String FABRIC0 = "dc-0";
@@ -285,7 +296,7 @@ public class TestStoreMigration {
         }
       });
       // Test end migration
-      endMigration(parentControllerUrl, storeName);
+      endMigration(parentControllerUrl, childControllerUrl0, storeName);
     }
   }
 
@@ -363,11 +374,12 @@ public class TestStoreMigration {
 
       // Verify that store and system store only exist in destination cluster after ending migration
       statusOutput.clear();
-      endMigration(parentControllerUrl, storeName);
+      endMigration(parentControllerUrl, childControllerUrl0, storeName);
       checkMigrationStatus(parentControllerUrl, storeName, printFunction);
 
-      Assert
-          .assertFalse(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)));
+      Assert.assertFalse(
+          statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)),
+          statusOutput.toString());
       Assert
           .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
       Assert.assertFalse(
@@ -534,13 +546,13 @@ public class TestStoreMigration {
     }
   }
 
-  private void endMigration(String controllerUrl, String storeName) throws Exception {
-    String[] endMigration = { "--end-migration", "--url", controllerUrl, "--store", storeName, "--cluster-src",
+  private void endMigration(String parentControllerUrl, String childControllerUrl, String storeName) throws Exception {
+    String[] endMigration = { "--end-migration", "--url", parentControllerUrl, "--store", storeName, "--cluster-src",
         srcClusterName, "--cluster-dest", destClusterName };
     AdminTool.main(endMigration);
 
-    try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, controllerUrl);
-        ControllerClient destControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
+    try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         // Store should be deleted in source cluster. Store in destination cluster should not be migrating.
         StoreResponse storeResponse = srcControllerClient.getStore(storeName);
@@ -552,6 +564,25 @@ public class TestStoreMigration {
         Assert.assertFalse(storeResponse.getStore().isMigrationDuplicateStore());
       });
     }
+    if (childControllerUrl == null) {
+      return;
+    }
+
+    // Perform the same check on child controller too
+    try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, childControllerUrl);
+        ControllerClient destControllerClient = new ControllerClient(destClusterName, childControllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // Store should be deleted in source cluster. Store in destination cluster should not be migrating.
+        StoreResponse storeResponse = srcControllerClient.getStore(storeName);
+        Assert.assertNull(storeResponse.getStore());
+
+        storeResponse = destControllerClient.getStore(storeName);
+        Assert.assertNotNull(storeResponse.getStore());
+        Assert.assertFalse(storeResponse.getStore().isMigrating());
+        Assert.assertFalse(storeResponse.getStore().isMigrationDuplicateStore());
+      });
+    }
+
   }
 
   private void readFromStore(AvroGenericStoreClient<String, Object> client) {
@@ -594,6 +625,143 @@ public class TestStoreMigration {
                 + storeResponse.getError());
       }
       return storeResponse.getStore();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationStaleKillIngestionMessageDeletion() {
+    String storeName = Utils.getUniqueString("testWithFailedAttempt");
+    String currentVersionTopicName = Version.composeKafkaTopic(storeName, 1);
+
+    VeniceClusterWrapper destClusterWrapper = multiClusterWrapper.getClusters().get(destClusterName);
+    VeniceHelixAdmin destClusterVhaDc0 = destClusterWrapper.getLeaderVeniceController().getVeniceHelixAdmin();
+    assertFalse(destClusterVhaDc0.isParent());
+    // add kill message to dest cluster
+    destClusterVhaDc0.sendKillMessageToParticipantStore(destClusterName, currentVersionTopicName);
+    // Verify the kill push message is in the participant message store.
+    verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, true);
+    // delete kill message from dest cluster
+    destClusterVhaDc0.clearIngestionKillMessageAndVerify(destClusterName, currentVersionTopicName);
+    // Verify the kill push message is removed from the participant message store.
+    verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
+  }
+
+  /**
+   * Tests store migration after a failed attempt. This test creates a store and induces a kill message in the
+   * participant store for the current version topic in the destination cluster. It then starts and completes the
+   * migration. The test ensures that the kill message is removed from the participant store before migration begins,
+   * allowing ingestion for migrating versions to succeed without errors and ensuring a successful migration.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationAfterFailedAttempt() throws Exception {
+    String storeName = Utils.getUniqueString("testWithFailedAttempt");
+    createAndPushStore(srcClusterName, storeName);
+
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      StoreResponse storeResponse = TestUtils.assertCommand(srcParentControllerClient.getStore(storeName));
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertNotNull(storeInfo);
+      String currentVersionTopicName = Version.composeKafkaTopic(storeName, 1);
+
+      // induce a kill message in the participant store for the current version topic in the destination cluster
+      VeniceClusterWrapper destClusterWrapper = multiClusterWrapper.getClusters().get(destClusterName);
+      VeniceHelixAdmin destClusterVhaDc0 = destClusterWrapper.getLeaderVeniceController().getVeniceHelixAdmin();
+      assertFalse(destClusterVhaDc0.isParent());
+      // add kill message to dest cluster
+      destClusterVhaDc0.sendKillMessageToParticipantStore(destClusterName, currentVersionTopicName);
+      // Verify the kill push message is in the participant message store.
+      verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, true);
+
+      startMigration(parentControllerUrl, storeName);
+      // Ensure migration status is updated in source parent controller
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
+
+      // Store migration status output via closure PrintFunction
+      Set<String> statusOutput = new HashSet<String>();
+      AdminTool.PrintFunction printFunction = (message) -> {
+        statusOutput.add(message.trim());
+        System.err.println(message);
+      };
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        statusOutput.clear();
+        checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+        assertTrue(
+            statusOutput
+                .contains(storeName + " belongs to cluster " + srcClusterName + " according to cluster discovery"));
+        assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
+      });
+
+      verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
+      completeMigration(parentControllerUrl, storeName);
+      endMigration(parentControllerUrl, childControllerUrl0, storeName);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        // Store migration status output via closure PrintFunction
+        statusOutput.clear();
+        checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+        assertTrue(
+            statusOutput
+                .contains(storeName + " belongs to cluster " + destClusterName + " according to cluster discovery"));
+        assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
+      });
+
+      assertTrue(srcParentControllerClient.getStore(storeName).isError());
+      StoreResponse destStoreResponse = TestUtils.assertCommand(destParentControllerClient.getStore(storeName));
+      StoreInfo destStoreInfo = destStoreResponse.getStore();
+      assertNotNull(destStoreInfo);
+      assertFalse(destStoreInfo.isMigrating());
+      assertFalse(destStoreInfo.isMigrationDuplicateStore());
+    }
+
+    try (ControllerClient childControllerClient0 = new ControllerClient(destClusterName, childControllerUrl0)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse response = childControllerClient0.getStore(storeName);
+        StoreInfo storeInfo = response.getStore();
+        assertNotNull(storeInfo);
+        StoreResponse destStoreResponse = TestUtils.assertCommand(childControllerClient0.getStore(storeName));
+        StoreInfo destStoreInfo = destStoreResponse.getStore();
+        assertNotNull(destStoreInfo);
+        assertFalse(destStoreInfo.isMigrating());
+        assertFalse(destStoreInfo.isMigrationDuplicateStore());
+        assertEquals(destStoreInfo.getCurrentVersion(), 1);
+      });
+    }
+  }
+
+  private void verifyKillMessageInParticipantStore(
+      VeniceClusterWrapper clusterWrapper,
+      String topic,
+      boolean shouldPresent) {
+    // Verify the kill push message is in the participant message store.
+    ParticipantMessageKey key = new ParticipantMessageKey();
+    key.resourceName = topic;
+    key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
+    String participantStoreName =
+        VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterWrapper.getClusterName());
+    try (AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> client =
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig.defaultSpecificClientConfig(participantStoreName, ParticipantMessageValue.class)
+                .setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        try {
+          if (shouldPresent) {
+            // Verify that the kill offline message has made it to the participant message store.
+            assertNotNull(
+                client.get(key).get(),
+                "Kill message not found in participant store: " + participantStoreName + " for topic: " + topic);
+          } else {
+            assertNull(
+                client.get(key).get(),
+                "Kill message found in participant store: " + participantStoreName + " for topic: " + topic);
+          }
+        } catch (Exception e) {
+          fail();
+        }
+      });
     }
   }
 }

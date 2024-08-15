@@ -49,7 +49,6 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       ClientConfig<ParticipantMessageValue> clientConfig,
       long participantMessageConsumptionDelayMs,
       ICProvider icProvider) {
-
     this.stats = Validate.notNull(stats);
     this.storeIngestionService = Validate.notNull(storeIngestionService);
     this.clusterInfoProvider = Validate.notNull(clusterInfoProvider);
@@ -87,6 +86,12 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
             if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
               KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+              LOGGER.info(
+                  "Terminating ingestion task for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms.",
+                  topic,
+                  clusterName,
+                  killPushJobMessage.getTimestamp(),
+                  System.currentTimeMillis() - killPushJobMessage.getTimestamp());
               if (storeIngestionService.killConsumptionTask(topic)) {
                 // emit metrics only when a confirmed kill is made
                 stats.recordKilledPushJobs();

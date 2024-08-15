@@ -190,6 +190,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       if (zkServerWrapper == null) {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
+      IntegrationTestUtils.ensureZkPathExists(zkServerWrapper.getAddress(), options.getVeniceZkBasePath());
       if (pubSubBrokerWrapper == null) {
         pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper)
@@ -221,6 +222,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
                 .multiRegion(options.isMultiRegion())
+                .veniceZkBasePath(options.getVeniceZkBasePath())
                 .replicationFactor(options.getReplicationFactor())
                 .partitionSize(options.getPartitionSize())
                 .numberOfPartitions(options.getNumberOfPartitions())
@@ -246,6 +248,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getRegionName(),
             options.getClusterName(),
             zkServerWrapper,
+            options.getVeniceZkBasePath(),
             pubSubBrokerWrapper,
             options.isSslToStorageNodes(),
             clusterToD2,
@@ -287,6 +290,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getClusterName(),
             pubSubBrokerWrapper,
             zkAddress,
+            options.getVeniceZkBasePath(),
             featureProperties,
             options.getExtraProperties(),
             options.isForkServer(),
@@ -547,6 +551,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     try {
       veniceControllerWrapper = ServiceFactory.getVeniceController(
           new VeniceControllerCreateOptions.Builder(getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
+              .veniceZkBasePath(options.getVeniceZkBasePath())
               .regionName(options.getRegionName())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
@@ -581,6 +586,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         options.getRegionName(),
         getClusterName(),
         zkServerWrapper,
+        options.getVeniceZkBasePath(),
         pubSubBrokerWrapper,
         options.isSslToStorageNodes(),
         clusterToD2,
@@ -608,6 +614,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         getClusterName(),
         pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
+        options.getVeniceZkBasePath(),
         featureProperties,
         new Properties(),
         clusterToServerD2.get(getClusterName()));
@@ -629,6 +636,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         getClusterName(),
         pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
+        options.getVeniceZkBasePath(),
         new Properties(),
         properties,
         clusterToServerD2.get(getClusterName()));
@@ -646,6 +654,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         getClusterName(),
         pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
+        options.getVeniceZkBasePath(),
         featureProperties,
         mergedProperties,
         options.isForkServer(),

@@ -1,11 +1,7 @@
 package com.linkedin.venice.controller.datarecovery;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ParticipantStoreClientsManager;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -20,11 +16,9 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Map;
 import java.util.Optional;
 
 
@@ -38,36 +32,19 @@ import java.util.Optional;
  */
 public class DataRecoveryManager implements Closeable {
   private final VeniceHelixAdmin veniceAdmin;
-  private final D2Client d2Client;
-  private final String clusterDiscoveryD2ServiceName;
   private final Optional<ICProvider> icProvider;
-  private final Map<String, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientMap =
-      new VeniceConcurrentHashMap<>();
-
   private final PubSubTopicRepository pubSubTopicRepository;
+  private ParticipantStoreClientsManager participantStoreClientsManager;
 
   public DataRecoveryManager(
       VeniceHelixAdmin veniceAdmin,
-      D2Client d2Client,
-      String clusterDiscoveryD2ServiceName,
       Optional<ICProvider> icProvider,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      ParticipantStoreClientsManager participantStoreClientsManager) {
     this.veniceAdmin = veniceAdmin;
-    this.d2Client = d2Client;
-    this.clusterDiscoveryD2ServiceName = clusterDiscoveryD2ServiceName;
     this.icProvider = icProvider;
     this.pubSubTopicRepository = pubSubTopicRepository;
-  }
-
-  /**
-   * Some functionality of the data recovery manager requires ClientConfig which requires D2Client to be available.
-   * Check and throw exceptions if D2Client is not provided.
-   * @param feature name of the data recovery manager that requires ClientConfig for logging/informative purpose.
-   */
-  private void ensureClientConfigIsAvailable(String feature) {
-    if (d2Client == null) {
-      throw new VeniceException("DataRecoveryManger requires D2Client to " + feature + " but null is provided");
-    }
+    this.participantStoreClientsManager = participantStoreClientsManager;
   }
 
   private String getRecoveryPushJobId(String srcPushJobId) {
@@ -172,7 +149,6 @@ public class DataRecoveryManager implements Closeable {
    */
   public void verifyStoreVersionIsReadyForDataRecovery(String clusterName, String storeName, int versionNumber) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName);
-    ensureClientConfigIsAvailable("verify store version is ready for data recovery");
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -207,35 +183,17 @@ public class DataRecoveryManager implements Closeable {
     ParticipantMessageValue value;
     if (icProvider.isPresent()) {
       value = icProvider.get()
-          .call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key))
+          .call(
+              this.getClass().getCanonicalName(),
+              () -> participantStoreClientsManager.getReader(clusterName).get(key))
           .get();
     } else {
-      value = getParticipantStoreClient(clusterName).get(key).get();
+      value = participantStoreClientsManager.getReader(clusterName).get(key).get();
     }
     return value == null;
   }
 
-  private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
-      String clusterName) {
-    return clientMap.computeIfAbsent(clusterName, k -> {
-      ClientConfig<ParticipantMessageValue> newClientConfig =
-          ClientConfig
-              .defaultSpecificClientConfig(
-                  VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName),
-                  ParticipantMessageValue.class)
-              .setD2Client(d2Client)
-              .setD2ServiceName(clusterDiscoveryD2ServiceName);
-      return ClientFactory.getAndStartSpecificAvroClient(newClientConfig);
-    });
-  }
-
-  /**
-   * Cause all Venice avro client to close.
-   */
   @Override
   public void close() {
-    for (AvroSpecificStoreClient client: clientMap.values()) {
-      client.close();
-    }
   }
 }

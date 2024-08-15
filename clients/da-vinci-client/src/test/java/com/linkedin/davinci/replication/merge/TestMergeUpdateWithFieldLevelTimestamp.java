@@ -89,7 +89,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
         1,
         1,
-        1);
+        1,
+        null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
         ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
@@ -107,8 +108,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
-    ByteBuffer oldValueBytes =
-        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(personSchemaV2).serialize(oldValueRecord));
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
@@ -146,7 +145,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     ByteBuffer writeComputeBytes1 = ByteBuffer.wrap(
         MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldPartialUpdateRecord1));
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
-        Lazy.of(() -> oldValueBytes),
+        Lazy.of(() -> null),
         rmdWithValueSchemaId,
         writeComputeBytes1,
         incomingValueSchemaId,
@@ -154,7 +153,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1,
         1,
         1,
-        1);
+        1,
+        null);
 
     GenericRecord updateFieldPartialUpdateRecord2 = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord2.put("intArray", Arrays.asList(10, 20, 30, 40));
@@ -171,7 +171,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 2,
         2,
         0,
-        0);
+        0,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
@@ -276,7 +277,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
         1,
         1,
-        newColoID);
+        newColoID,
+        null);
 
     // Validate updated replication metadata.
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());

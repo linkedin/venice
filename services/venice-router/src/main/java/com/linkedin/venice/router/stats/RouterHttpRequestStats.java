@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -8,7 +8,9 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -19,10 +21,17 @@ import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
+  private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(10, TimeUnit.SECONDS);
+  private static final MetricsRepository localMetricRepo = new MetricsRepository(METRIC_CONFIG);
+  private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
+  static {
+    totalInflightRequestSensor.add("total_inflight_request_count", new Rate());
+  }
   private final Sensor requestSensor;
   private final Sensor healthySensor;
   private final Sensor unhealthySensor;
@@ -197,6 +206,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordRequest() {
     requestSensor.record();
     inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
+    totalInflightRequestSensor.record();
   }
 
   public void recordHealthyRequest(Double latency) {
@@ -354,6 +364,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * there is no need to record into the sensor again. We just want to maintain the bookkeeping.
      */
     currentInFlightRequest.decrementAndGet();
+    totalInflightRequestSensor.record(-1);
   }
 
   public void recordAllowedRetryRequest() {
@@ -379,5 +390,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   @Override
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
     return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
+  }
+
+  static public boolean hasInFlightRequests() {
+    Metric metric = localMetricRepo.getMetric("total_inflight_request_count");
+    // max return -infinity when there are no samples. validate only against finite value
+    return Double.isFinite(metric.value()) ? metric.value() > 0.0 : false;
   }
 }

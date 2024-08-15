@@ -459,6 +459,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       }
     }
 
+    requestContext.setFanoutSize(requestContext.getRoutes().size());
     int numberOfRequestCompletionFutures =
         requestContext.getRoutes().size() + (partitionsWithNoRoutes.isEmpty() ? 0 : 1);
     CompletableFuture<Integer>[] requestCompletionFutures = new CompletableFuture[numberOfRequestCompletionFutures];

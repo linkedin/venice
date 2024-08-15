@@ -280,7 +280,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     File databaseDir = new File(rocksDBPath);
     if (databaseDir.exists() && databaseDir.isDirectory()) {
       String[] storeDirs = databaseDir.list();
-      LOGGER.info("Found the following RocksDB databases: {}", Arrays.toString(storeDirs));
+      LOGGER.debug("Found the following RocksDB databases: {}", Arrays.toString(storeDirs));
       if (storeDirs != null) {
         return new HashSet<>(Arrays.asList(storeDirs));
       }

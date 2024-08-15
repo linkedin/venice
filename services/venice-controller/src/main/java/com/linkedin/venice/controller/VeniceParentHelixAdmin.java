@@ -502,8 +502,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (initRoutineForHeartbeatSystemStore != null) {
       if (initializeBatchJobHeartbeatStore) {
         UpdateStoreQueryParams updateStoreQueryParamsForHeartbeatSystemStore =
-            new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
-                .setActiveActiveReplicationEnabled(true);
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
         initRoutineForHeartbeatSystemStore.setDelegate(
             new SharedInternalRTStoreInitializationRoutine(
                 batchJobHeartbeatStoreClusterName,
@@ -2429,15 +2428,6 @@ public class VeniceParentHelixAdmin implements Admin {
           && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-        if (!hybridDataReplicationPolicy.isPresent()) {
-          LOGGER.info(
-              "Data replication policy was not explicitly set when converting store to hybrid store: {}."
-                  + " Setting it to active-active replication policy.",
-              storeName);
-
-          updatedHybridStoreConfig.setDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
-          updatedConfigsList.add(DATA_REPLICATION_POLICY);
-        }
       }
       // When turning off hybrid store, we will also turn off A/A store config.
       if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
@@ -2490,7 +2480,7 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
         hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
         updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
-        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
+        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
         updatedConfigsList.add(DATA_REPLICATION_POLICY);
         hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);

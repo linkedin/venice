@@ -81,7 +81,6 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -219,7 +218,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         100L,
         100L,
         100L,
-        DataReplicationPolicy.ACTIVE_ACTIVE,
+        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     mockVersion.setHybridStoreConfig(hybridStoreConfig);
@@ -345,8 +344,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     for (int i = 0; i < 50000; i++) {
       stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
     }
-    String valueString = stringBuilder.toString();
-    ByteBuffer updatedValueBytes = ChunkingTestUtils.prependSchemaId(valueString.getBytes(), 1);
+    ByteBuffer valueBytes = ByteBuffer.wrap(stringBuilder.toString().getBytes());
+    ByteBuffer updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
     when(consumerRecord.getOffset()).thenReturn(100L);
@@ -514,11 +513,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedValueManifest.size = 8;
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
     int manifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    byte[] chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
-    chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
+    ByteBuffer chunkedManifestBytes = chunkedValueManifestSerializer.serialize(chunkedValueManifest);
+    chunkedManifestBytes = ByteUtils.prependIntHeaderToByteBuffer(chunkedManifestBytes, manifestSchemaId);
     byte[] topLevelKey2 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key2);
     byte[] chunkedKey1InKey2 = chunkedKeyWithSuffix1.array();
-    when(storageEngine.getReplicationMetadata(partition, topLevelKey2)).thenReturn(chunkedManifestBytes);
+    when(storageEngine.getReplicationMetadata(partition, topLevelKey2)).thenReturn(chunkedManifestBytes.array());
     when(storageEngine.getReplicationMetadata(partition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
     byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key2, container, 0L);
     Assert.assertNotNull(result2);
@@ -547,12 +546,12 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedValueManifest.size = 8 + 12;
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix2);
-    chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
-    chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
+    chunkedManifestBytes = chunkedValueManifestSerializer.serialize(chunkedValueManifest);
+    chunkedManifestBytes = ByteUtils.prependIntHeaderToByteBuffer(chunkedManifestBytes, manifestSchemaId);
     byte[] topLevelKey3 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key3);
     byte[] chunkedKey1InKey3 = chunkedKeyWithSuffix1.array();
     byte[] chunkedKey2InKey3 = chunkedKeyWithSuffix2.array();
-    when(storageEngine.getReplicationMetadata(partition, topLevelKey3)).thenReturn(chunkedManifestBytes);
+    when(storageEngine.getReplicationMetadata(partition, topLevelKey3)).thenReturn(chunkedManifestBytes.array());
     when(storageEngine.getReplicationMetadata(partition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(partition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
     byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key3, container, 0L);

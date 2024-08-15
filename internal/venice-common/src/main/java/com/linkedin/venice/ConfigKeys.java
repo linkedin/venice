@@ -223,6 +223,11 @@ public class ConfigKeys {
    */
   public static final String DEPRECATED_TOPIC_RETENTION_MS = "deprecated.topic.retention.ms";
 
+  /**
+   * Time interval to retry registering service discovery announcers that failed to register. By default, this is set to 30000L ms.
+   */
+  public static final String SERVICE_DISCOVERY_REGISTRATION_RETRY_MS = "service.discovery.registration.retry.ms";
+
   public static final String FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS =
       "fatal.data.validation.failure.topic.retention.ms";
 
@@ -2092,6 +2097,36 @@ public class ConfigKeys {
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
 
   /**
+   * Consumer Pool allocation strategy to rely on pool size to prioritize specific traffic. There will be 3 different
+   * types strategy supported decided by #ConsumerPoolStrategyType.
+   */
+  public static final String SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY = "server.consumer.pool.allocation.strategy";
+  /**
+   * Consumer Pool for active-active or write computer leader of current version, the traffic we need to isolate due to
+   * it is more costly than normal leader processing and current version should be allocated more resources to prioritize.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
+      "server.consumer.pool.size.for.current.version.aa.wc.leader";
+  /**
+   * Consumer Pool for active-active or write computer leader of future or backup version, the traffic we need to isolate
+   * due to it is still more costly than normal leader processing and it has less priority than current version.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
+      "server.consumer.pool.size.for.non.current.version.aa.wc.leader";
+  /**
+   * Consumer Pool for all followers, non-active-active and non-write compute leader of current version, the traffic
+   * is less costly and but it is current version with high priority.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.consumer.pool.size.for.current.version.non.aa.wc.leader";
+  /**
+   * Consumer Pool for all followers, non-active-active leader and non-write compute leader of backup and future version,
+   * the traffic is less costly and with low priority.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.consumer.pool.size.for.non.current.version.non.aa.wc.leader";
+
+  /**
    * Whether to enable record-level metrics when bootstrapping current version.
    * This feature will be mainly used by DaVinci to speed up bootstrapping.
    */
@@ -2112,10 +2147,11 @@ public class ConfigKeys {
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
 
   /**
-   * Controller config for the default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes}.
-   * Only used in batch push jobs and partial updates.
+   * Config for the default value which is filled in when the store-level config
+   * {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} is left unset. Used as a controller config for
+   * batch push jobs. Used as a server config for nearline jobs / partial updates.
    */
-  public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
+  public static final String DEFAULT_MAX_RECORD_SIZE_BYTES = "default.max.record.size.bytes";
 
   /**
    * Percentage of total single get requests that are allowed for retry in decimal. e.g. 0.1 would mean up to 10% of the
