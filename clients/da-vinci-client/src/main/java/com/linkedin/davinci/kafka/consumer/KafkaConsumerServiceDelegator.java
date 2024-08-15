@@ -56,7 +56,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   private final VeniceServerConfig serverConfig;
 
   interface KafkaConsumerServiceBuilder {
-    KafkaConsumerService apply(int poolSize, String statsSuffix, ConsumerPoolType poolType);
+    KafkaConsumerService apply(int poolSize, ConsumerPoolType poolType);
   }
 
   public KafkaConsumerServiceDelegator(
@@ -271,7 +271,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
     public DefaultConsumerPoolStrategy() {
       defaultConsumerService = consumerServiceConstructor
-          .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), "", ConsumerPoolType.REGULAR_POOL);
+          .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ConsumerPoolType.REGULAR_POOL);
       consumerServices.add(defaultConsumerService);
     }
 
@@ -292,10 +292,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
     public AAOrWCLeaderConsumerPoolStrategy() {
       super();
-      dedicatedConsumerService = consumerServiceConstructor.apply(
-          serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(),
-          "_for_aa_wc_leader",
-          ConsumerPoolType.AA_WC_LEADER_POOL);
+      dedicatedConsumerService = consumerServiceConstructor
+          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), ConsumerPoolType.AA_WC_LEADER_POOL);
       consumerServices.add(dedicatedConsumerService);
     }
 
@@ -324,22 +322,18 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     public CurrentVersionConsumerPoolStrategy() {
       this.consumerServiceForCurrentVersionAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader(),
-          CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX,
           ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForCurrentVersionAAWCLeader);
       this.consumerServiceForCurrentVersionNonAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader(),
-          CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX,
           ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForCurrentVersionNonAAWCLeader);
       this.consumerServiceForNonCurrentVersionAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader(),
-          NON_CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX,
           ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForNonCurrentVersionAAWCLeader);
       this.consumerServiceNonCurrentNonAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader(),
-          NON_CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX,
           ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceNonCurrentNonAAWCLeader);
     }

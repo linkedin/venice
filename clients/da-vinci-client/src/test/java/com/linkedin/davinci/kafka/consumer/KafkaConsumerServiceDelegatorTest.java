@@ -51,7 +51,7 @@ public class KafkaConsumerServiceDelegatorTest {
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, statSuffix, poolType) -> statSuffix.isEmpty()
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
             ? mockDefaultConsumerService
             : mockDedicatedConsumerService;
 
@@ -121,7 +121,7 @@ public class KafkaConsumerServiceDelegatorTest {
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, statSuffix, poolType) -> statSuffix.isEmpty()
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
             ? mockDefaultConsumerService
             : mockDedicatedConsumerService;
 
@@ -145,7 +145,7 @@ public class KafkaConsumerServiceDelegatorTest {
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, statSuffix, poolType) -> statSuffix.isEmpty()
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
             ? mockDefaultConsumerService
             : mockDedicatedConsumerService;
 
@@ -267,7 +267,7 @@ public class KafkaConsumerServiceDelegatorTest {
     AtomicBoolean retValueForIsAAWCStoreFunc = new AtomicBoolean(false);
     Function<String, Boolean> isAAWCStoreFunc = vt -> retValueForIsAAWCStoreFunc.get();
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, statSuffix, poolType) -> statSuffix.isEmpty()
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
             ? mockDefaultConsumerService
             : mockDedicatedConsumerService;
 
@@ -310,7 +310,7 @@ public class KafkaConsumerServiceDelegatorTest {
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, statSuffix, poolType) -> statSuffix.isEmpty()
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
             ? mockDefaultConsumerService
             : mockDedicatedConsumerService;
 
@@ -401,7 +401,7 @@ public class KafkaConsumerServiceDelegatorTest {
     consumerServiceMap.put(tpForNonCurrentAAWCLeader, consumerServiceForNonCurrentVersionAAWCLeader);
     consumerServiceMap.put(tpForNonCurrentAAWCFollower, consumerServiceForNonCurrentVersionNonAAWCLeader);
 
-    consumerServiceBuilder = (ignored, statSuffix, poolType) -> {
+    consumerServiceBuilder = (ignored, poolType) -> {
       if (poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL)) {
         return consumerServiceForCurrentVersionAAWCLeader;
       } else if (poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
