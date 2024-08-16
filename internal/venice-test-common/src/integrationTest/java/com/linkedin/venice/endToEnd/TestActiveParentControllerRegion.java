@@ -1,8 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controller.ParentControllerRegionState.*;
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
+import static com.linkedin.venice.controller.ParentControllerRegionState.PASSIVE;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.d2.D2ClientFactory;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -56,19 +57,6 @@ public class TestActiveParentControllerRegion {
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
-  /**
-   * TODO: Rewrite this workflow summary
-   * 1. Create two child regions with one ACTIVE parent controller in one region and one PASSIVE parent controller in the other region.
-   * 2. Perform store operation and run VPJ jobs to both parent controllers.
-   * 3. Verify ACTIVE parent controller successfully completes operations(createNewStore) and PASSIVE parent controller throws exception.
-   * 4. Verify child controllers are updated.
-   * 5. To imitate a region going down, we create a new ACTIVE parent controller in the PASSIVE parent controller region.
-   * 6. Migrate metadata from old ACTIVE parent controller to the new ACTIVE parent controller
-   * 7. Verify both parent controllers ZooKeeper data are synced.
-   * 8. Perform store operations and run VPJ jobs to both parent controllers.
-   * 9. Verify new ACTIVE parent controller successfully completes operation(getStore).
-   * 10. Verify child controllers are updated.
-   */
   @Test
   public void testActiveParentControllerRegionE2E() {
     List<VeniceControllerWrapper> parentControllers = venice.getParentControllers();
@@ -115,28 +103,23 @@ public class TestActiveParentControllerRegion {
         ControllerClient dc1ControllerClient =
             new ControllerClient(clusterName, childDataCenters.get(1).getControllerConnectString())) {
 
-      // String d2ControllerClientLeaderControllerUrl = d2ControllerClient.getLeaderControllerUrl();
-      // LOGGER.info("D2 controller client leader controller url: " + d2ControllerClientLeaderControllerUrl);
-      // String activeParentControllerClientLeaderControllerUrl = activeParentControllerClient.getLeaderControllerUrl();
-      // LOGGER.info("Active parent controller client leader controller url: " +
-      // activeParentControllerClientLeaderControllerUrl);
-      // Assert.assertEquals(d2ControllerClientLeaderControllerUrl, activeParentControllerClientLeaderControllerUrl);
-      // VeniceException veniceException1 = Assert.expectThrows(
-      // VeniceHttpException.class, () -> {LOGGER.info("Passive parent controller client leader controller url: " +
-      // passiveParentControllerClient.getLeaderControllerUrl());});
-      // Assert.assertTrue(veniceException1.getMessage().startsWith("421"));
-      // LOGGER.info("DC0 controller client leader controller url: " + dc0ControllerClient.getLeaderControllerUrl());
-      // LOGGER.info("DC1 controller client leader controller url: " + dc1ControllerClient.getLeaderControllerUrl());
+      String d2ControllerClientLeaderControllerUrl = d2ControllerClient.getLeaderControllerUrl();
+      LOGGER.info("D2 controller client leader controller url: " + d2ControllerClientLeaderControllerUrl);
+      String activeParentControllerClientLeaderControllerUrl = activeParentControllerClient.getLeaderControllerUrl();
+      LOGGER.info(
+          "Active parent controller client leader controller url: " + activeParentControllerClientLeaderControllerUrl);
+      Assert.assertEquals(d2ControllerClientLeaderControllerUrl, activeParentControllerClientLeaderControllerUrl);
+      Assert.assertThrows(VeniceException.class, () -> {
+        LOGGER.info(
+            "Passive parent controller client leader controller url: "
+                + passiveParentControllerClient.getLeaderControllerUrl());
+      });
+      LOGGER.info("DC0 controller client leader controller url: " + dc0ControllerClient.getLeaderControllerUrl());
+      LOGGER.info("DC1 controller client leader controller url: " + dc1ControllerClient.getLeaderControllerUrl());
 
       String storeName = "test-store";
       String keySchemaStr = "\"string\"";
       String valueSchemaStr = "\"string\"";
-
-      // // Passive parent controller should throw an exception
-      // Assert.assertThrows(VeniceHttpException.class, () -> {passiveParentControllerClient.createNewStore(storeName,
-      // "", keySchemaStr, valueSchemaStr);});
-      // Assert.assertThrows(VeniceHttpException.class, () -> {passiveParentControllerClient.emptyPush(storeName,
-      // "test-push-1", 1L);});
 
       // D2 controller client should successfully complete operations (createNewStore, emptyPush)
       assertCommand(d2ControllerClient.createNewStore(storeName, "", keySchemaStr, valueSchemaStr));
@@ -168,70 +151,6 @@ public class TestActiveParentControllerRegion {
         StoreResponse storeResponse = assertCommand(dc1ControllerClient.getStore(storeName));
         Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 2);
       });
-
-      // String parentController0ZkAddress = parentController0.getZkAddress();
-      // ZkClient parent0ZkClient = ZkClientFactory.newZkClient(parentController0ZkAddress);
-      //
-      // String[] clusterNames = new String[] { clusterName };
-      // ZkServerWrapper zkServerWrapper = venice.getZkServerByRegionName().get("dc-1");
-      // String newActiveParentControllerZkAddress = zkServerWrapper.getAddress();
-      // ZkClient newActiveParentZkClient = ZkClientFactory.newZkClient(newActiveParentControllerZkAddress);
-      // PubSubBrokerWrapper pubSubBrokerWrapper = venice.getParentKafkaBrokerWrapper();
-      // VeniceControllerWrapper[] childControllers = childDatacenters.stream()
-      // .map(VeniceMultiClusterWrapper::getRandomController)
-      // .toArray(VeniceControllerWrapper[]::new);
-      // Map<String, String> clusterToD2 = Collections.singletonMap(clusterName, "venice-0");
-      // Map<String, String> clusterToServerD2 =
-      // Collections.singletonMap(clusterName, parentController0.getVeniceAdmin().getServerD2Service(clusterName));
-      // Properties props = new Properties();
-      // props.put(CONTROLLER_PARENT_REGION_STATE, ACTIVE);
-      // props.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-      // VeniceControllerWrapper newActiveParentController = ServiceFactory.getVeniceController(
-      // new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, pubSubBrokerWrapper)
-      // .multiRegion(true)
-      // .replicationFactor(1)
-      // .childControllers(childControllers)
-      // .extraProperties(props)
-      // .clusterToD2(clusterToD2)
-      // .clusterToServerD2(clusterToServerD2)
-      // .regionName("dc-1")
-      // .veniceZkBasePath("/test-venice-parent")
-      // .build());
-      //
-      // // kill parent controllers and zkServers
-      // Utils.closeQuietlyWithErrorLogged(parentController0);
-      // Utils.closeQuietlyWithErrorLogged(parentController1);
-      //
-      // D2Client newActiveD2Client = D2ClientFactory.getD2Client(newActiveParentController.getZkAddress(),
-      // Optional.empty());
-      // d2Clients.add(newActiveD2Client);
-      // LOGGER.info(
-      // "new active parent controller is ready"
-      // + newActiveParentController.getVeniceAdmin().getParentControllerRegionState());
-      // D2ControllerClient newActiveD2ControllerClient =
-      // new D2ControllerClient(serviceName,
-      // clusterName, d2Clients, Optional.empty());
-      // ControllerClient newActiveParentControllerClient =
-      // new ControllerClient(clusterName, newActiveParentController.getControllerUrl());
-      //
-      // newActiveParentZkClient.setZkSerializer(new ByteArraySerializer());
-      // parent0ZkClient.setZkSerializer(new ByteArraySerializer());
-      //
-      // // TODO: change to AdminTool
-      // ZkCopier
-      // .migrateVenicePaths(parent0ZkClient, newActiveParentZkClient, Collections.singleton(clusterName),
-      // "/test-venice-parent");
-      //
-      // LOGGER.info("Get store");
-      // assertCommand(newActiveD2ControllerClient.getStore(storeName));
-      // LOGGER.info("Error creating new store in new active parent controller since it exists");
-      // assertCommand(newActiveD2ControllerClient.createNewStore(storeName, "", keySchemaStr, valueSchemaStr));
-      //
-      //
-      // LOGGER.info("Empty push to new active parent controller");
-      // VersionCreationResponse newActiveParentControllerVersionCreationResponse =
-      // assertCommand(newActiveD2ControllerClient.emptyPush(storeName, "test-push-3", 1L));
-      // Assert.assertEquals(newActiveParentControllerVersionCreationResponse.getVersion(), 3);
     }
   }
 }

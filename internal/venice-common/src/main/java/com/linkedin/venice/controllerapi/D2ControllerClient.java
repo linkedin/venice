@@ -110,12 +110,14 @@ public class D2ControllerClient extends ControllerClient {
             newParams(),
             LeaderControllerResponse.class);
         // we get a successful response, so we break out of loop
-        break;
-      } catch (Exception e) {
+        if (controllerResponse != null && !controllerResponse.isError()) {
+          break;
+        }
+      } catch (VeniceException e) {
         LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
       }
     }
-    if (!d2ServiceName.equals("ChildController") && controllerResponse == null) {
+    if (controllerResponse == null || controllerResponse.isError()) {
       throw new VeniceException("Failed to discover leader controller with D2 client");
     }
 
