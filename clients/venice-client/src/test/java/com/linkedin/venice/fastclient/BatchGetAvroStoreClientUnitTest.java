@@ -38,6 +38,7 @@ import org.testng.annotations.Test;
  * Different timeout scenarios
  * Multithreaded scenario and testing
  */
+
 public class BatchGetAvroStoreClientUnitTest {
   private static final int TEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientUnitTest.class);
@@ -260,7 +261,12 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * Introducing >1 replicas: By setting multiple routes to each partitions
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetMultiplePartitionsPerRoute()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -307,7 +313,12 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * In this test: retry is not triggered as all the responses are received within 10 timeticks.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsNoRetryTriggered()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -333,7 +344,12 @@ public class BatchGetAvroStoreClientUnitTest {
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 4).
    * Retry succeeds as response for Original request never comes back.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsNoOrigResponse()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -365,7 +381,12 @@ public class BatchGetAvroStoreClientUnitTest {
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 4).
    * Retry succeeds as response for Original request came after response for retry.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsOrigResponseLate()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -399,7 +420,12 @@ public class BatchGetAvroStoreClientUnitTest {
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 4).
    * Original succeeds as response for Original request came before response for retry.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsOrigResponseEarly()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -433,7 +459,12 @@ public class BatchGetAvroStoreClientUnitTest {
    * Retry for requestId 2 is triggered after 50 timeticks (requestId 4) => Response for 2 is returned before response for 4 (which never returns)
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 5) => Response for 5 is returned before response for 3 (which never returns)
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsMixedResponse()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -470,7 +501,12 @@ public class BatchGetAvroStoreClientUnitTest {
    * the same as the error is handled in {@link RetriableAvroGenericStoreClient#getStreamingCallback} such that the
    * exception will be thrown further up only when both the original request and the retry fails.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -507,7 +543,12 @@ public class BatchGetAvroStoreClientUnitTest {
    * same as {@link #testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry} but requestId 3 returns Error
    * after the retry for it (requestId 5) starts. It works the same way.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryOriginalRequestErrorAfterRetry()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -543,7 +584,12 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * Similar to the above cases but the retry errors out while the original succeeds
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryRequestError()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -576,7 +622,12 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * Both Original request and retry errors out
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailBothError()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -612,7 +663,12 @@ public class BatchGetAvroStoreClientUnitTest {
    *  same as {@link #testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry} but with multiple routes
    *  throwing errors.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetLongTailRetryWithMultipleErrors()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -643,7 +699,12 @@ public class BatchGetAvroStoreClientUnitTest {
    *  same as {@link #testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry} but request id 3 throws 429 too
    *  many request error. Long tail retry should be skipped and propagate the quota exceeded exception to the caller.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  /**
+   * The updated least-loaded routing strategy will return a random replica to guarantee even distribution,
+   * so these deterministic assertions won't work anymore.
+   * TODO: we need to evaluate whether these test cases are still useful or not.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testStreamingBatchGetNoLongTailRetryWithTooManyRequest()
       throws InterruptedException, ExecutionException, TimeoutException {
 

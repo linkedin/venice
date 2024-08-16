@@ -74,6 +74,12 @@ public class RetryManager {
     }
   }
 
+  public void recordRequests(int requests) {
+    if (retryBudgetEnabled.get()) {
+      requestCount.getAndAdd(requests);
+    }
+  }
+
   public boolean isRetryAllowed() {
     return this.isRetryAllowed(1);
   }

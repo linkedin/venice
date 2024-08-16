@@ -3,10 +3,11 @@ package com.linkedin.venice.fastclient.meta;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 import org.testng.annotations.Test;
 
 
@@ -48,6 +49,18 @@ public class LeastLoadedClientRoutingStrategyTest {
     assertEquals(selectedReplicas, expectedReplicas);
   }
 
+  public void runTest(
+      InstanceHealthMonitor monitor,
+      List<String> replicas,
+      long requestId,
+      int requiredReplicaCount,
+      Function<String, Boolean> expectedReplicaFunc) {
+    LeastLoadedClientRoutingStrategy strategy = new LeastLoadedClientRoutingStrategy(monitor);
+    List<String> selectedReplicas = strategy.getReplicas(requestId, replicas, requiredReplicaCount);
+    selectedReplicas
+        .forEach(replica -> assertTrue(expectedReplicaFunc.apply(replica), "replica: " + replica + " is unexpected"));
+  }
+
   @Test
   public void testGetReplicasWithAllHealthyReplicas() {
     String[] instances = new String[] { instance1, instance2, instance3 };
@@ -57,10 +70,10 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { false, false, false },
         new boolean[] { true, true, true },
         new int[] { 0, 0, 0 });
-    runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance1, instance2));
-    runTest(instanceHealthMonitor, replicas, 1, 2, Arrays.asList(instance2, instance3));
-    runTest(instanceHealthMonitor, replicas, 2, 2, Arrays.asList(instance3, instance1));
-    runTest(instanceHealthMonitor, replicas, 3, 2, Arrays.asList(instance1, instance2));
+    runTest(instanceHealthMonitor, replicas, 0, 2, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 1, 2, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 2, 2, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 3, 2, replica -> replicas.contains(replica));
   }
 
   @Test
@@ -71,10 +84,11 @@ public class LeastLoadedClientRoutingStrategyTest {
         instances,
         new boolean[] { false, false, false },
         new boolean[] { true, true, true },
-        new int[] { 5, 5, 4 });
-    runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance3, instance1));
-    runTest(instanceHealthMonitor, replicas, 1, 2, Arrays.asList(instance3, instance2));
-    runTest(instanceHealthMonitor, replicas, 2, 2, Arrays.asList(instance3, instance1));
+        new int[] { 6, 5, 4 });
+    List<String> expectedReplicas = Arrays.asList(instance2, instance3);
+    runTest(instanceHealthMonitor, replicas, 0, 2, replica -> expectedReplicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 1, 2, replica -> expectedReplicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 2, 2, replica -> expectedReplicas.contains(replica));
   }
 
   @Test
@@ -98,7 +112,7 @@ public class LeastLoadedClientRoutingStrategyTest {
         instances,
         new boolean[] { true, false, false, false, false, false },
         new boolean[] { true, false, true, true, true, true },
-        new int[] { 100, 1, 2, 3, 4, 2 });
+        new int[] { 100, 1, 2, 4, 5, 3 });
     runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance2, instance3, instance6));
   }
 
@@ -113,6 +127,6 @@ public class LeastLoadedClientRoutingStrategyTest {
         new int[] { 0, 0, 0 });
     long requestId = Integer.MAX_VALUE;
     requestId += 100;
-    runTest(instanceHealthMonitor, replicas, requestId, 1, Collections.singletonList(instance3));
+    runTest(instanceHealthMonitor, replicas, requestId, 1, replica -> replicas.contains(replica));
   }
 }

@@ -312,7 +312,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           finalRequestCompletionFuture.completeExceptionally(throwable);
           return;
         }
-        if (throwable != null || multiKeyLongTailRetryManager.isRetryAllowed()) {
+        if (throwable != null || multiKeyLongTailRetryManager.isRetryAllowed(pendingKeysFuture.keySet().size())) {
           Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
           R retryRequestContext =
               requestContextConstructor.construct(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
@@ -360,7 +360,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             savedException,
             pendingKeysFuture,
             scheduledRetryTask));
-    multiKeyLongTailRetryManager.recordRequest();
+    multiKeyLongTailRetryManager.recordRequests(originalRequestContext.numKeysInRequest);
 
     finalRequestCompletionFuture.whenComplete((ignore, finalException) -> {
       if (!scheduledRetryTask.isDone()) {
