@@ -48,6 +48,10 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
+  private AvroGenericDeserializer<K> keyDeserializer;
+  private AvroGenericDeserializer<O> outputValueDeserializer;
+  private AvroSerializer<O> outputValueSerializer;
+
   /**
    * @param storeVersion the version of the store
    * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
@@ -146,9 +150,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
    */
   public final ByteBuffer getValueBytes(O value) {
-    Schema outputValueSchema = getValueOutputSchema();
-    AvroSerializer<O> outputValueSerializer = new AvroSerializer<>(outputValueSchema);
-    ByteBuffer transformedBytes = ByteBuffer.wrap(outputValueSerializer.serialize(value));
+    ByteBuffer transformedBytes = ByteBuffer.wrap(getOutputValueSerializer().serialize(value));
     ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
     newBuffer.putInt(1);
     newBuffer.put(transformedBytes);
@@ -217,19 +219,12 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
       storageEngine.clearPartitionOffset(partition);
     } else {
       // Bootstrap from local storage
-      Schema keySchema = getKeyOutputSchema();
-      AvroGenericDeserializer<K> keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
-
-      Schema outputValueSchema = getValueOutputSchema();
-      AvroGenericDeserializer<O> outputValueDeserializer =
-          new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
-
       RocksIterator iterator = storageEngine.getRocksDBIterator(partition);
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(ByteBuffer.wrap(keyBytes)));
-        Lazy<O> lazyValue = Lazy.of(() -> outputValueDeserializer.deserialize(ByteBuffer.wrap(valueBytes)));
+        Lazy<K> lazyKey = Lazy.of(() -> getKeyDeserializer().deserialize(ByteBuffer.wrap(keyBytes)));
+        Lazy<O> lazyValue = Lazy.of(() -> getOutputValueDeserializer().deserialize(ByteBuffer.wrap(valueBytes)));
         processPut(lazyKey, lazyValue);
       }
     }
@@ -248,5 +243,29 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
       return (Class<O>) ((ParameterizedType) superclass).getActualTypeArguments()[2];
     }
     throw new VeniceException("Invalid DaVinciRecordTransformer class definition");
+  }
+
+  private AvroGenericDeserializer<K> getKeyDeserializer() {
+    if (outputValueDeserializer == null) {
+      Schema keySchema = getKeyOutputSchema();
+      keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
+    }
+    return keyDeserializer;
+  }
+
+  private AvroGenericDeserializer<O> getOutputValueDeserializer() {
+    if (outputValueDeserializer == null) {
+      Schema outputValueSchema = getValueOutputSchema();
+      outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
+    }
+    return outputValueDeserializer;
+  }
+
+  private AvroSerializer<O> getOutputValueSerializer() {
+    if (outputValueSerializer == null) {
+      Schema outputValueSchema = getValueOutputSchema();
+      outputValueSerializer = new AvroSerializer<>(outputValueSchema);
+    }
+    return outputValueSerializer;
   }
 }
