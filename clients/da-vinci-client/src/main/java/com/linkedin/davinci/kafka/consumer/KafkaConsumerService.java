@@ -82,7 +82,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
-  private final RandomAccessDaemonThreadFactory threadFactory;
+  private RandomAccessDaemonThreadFactory threadFactory;
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -537,5 +537,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     ConsumerAssignmentStrategy(KCSConstructor constructor) {
       this.constructor = constructor;
     }
+  }
+
+  // For testing only
+  public void setThreadFactory(RandomAccessDaemonThreadFactory threadFactory) {
+    this.threadFactory = threadFactory;
   }
 }
