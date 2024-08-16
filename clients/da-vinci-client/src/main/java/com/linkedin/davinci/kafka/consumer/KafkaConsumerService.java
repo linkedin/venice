@@ -364,11 +364,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
-            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace: \n{}",
+            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}",
             kafkaUrl,
             slowestTaskId,
             maxElapsedTimeSinceLastPollInConsumerPool,
-            slowestThread.getName(),
+            slowestThread != null ? slowestThread.getName() : null,
             ExceptionUtils.threadToThrowableToString(slowestThread));
       }
     }
