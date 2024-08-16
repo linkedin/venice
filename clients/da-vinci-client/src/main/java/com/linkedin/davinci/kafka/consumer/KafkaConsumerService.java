@@ -17,8 +17,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -81,6 +82,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
+  private RandomAccessDaemonThreadFactory threadFactory;
   protected final ConsumerPoolType poolType;
 
   /**
@@ -111,9 +113,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.poolType = poolType;
 
     // Initialize consumers and consumerExecutor
-    consumerExecutor = Executors.newFixedThreadPool(
-        numOfConsumersPerKafkaCluster,
-        new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
+    threadFactory = new RandomAccessDaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl);
+    consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride
@@ -360,12 +361,20 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     if (maxElapsedTimeSinceLastPollInConsumerPool > Time.MS_PER_MINUTE) {
       String slowestTaskIdString = kafkaUrl + slowestTaskId;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(slowestTaskIdString)) {
+        /**
+         * We assume task id is the same as the number for thread. This is because both of them
+         * are zero-based and ConsumptionTasks are submitted to the executor in order.
+         */
+        Thread slowestThread = threadFactory.getThread(slowestTaskId);
+
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
-            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms!",
+            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}",
             kafkaUrl,
             slowestTaskId,
-            maxElapsedTimeSinceLastPollInConsumerPool);
+            maxElapsedTimeSinceLastPollInConsumerPool,
+            slowestThread != null ? slowestThread.getName() : null,
+            ExceptionUtils.threadToThrowableToString(slowestThread));
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
@@ -536,4 +545,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
+  // For testing only
+  public void setThreadFactory(RandomAccessDaemonThreadFactory threadFactory) {
+    this.threadFactory = threadFactory;
+  }
 }

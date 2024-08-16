@@ -10,6 +10,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,6 +29,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -409,5 +411,77 @@ public class KafkaConsumerServiceTest {
     Assert.assertNotEquals(consumerForT2P0, consumerForT2P1);
     Assert.assertEquals(consumerForT1P0, consumerForT1P2);
     Assert.assertEquals(consumerForT1P3, consumerForT2P1);
+  }
+
+  @Test
+  public void testGetMaxElapsedTimeMSSinceLastPollInConsumerPool() {
+    // Mock the necessary components
+    ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
+    ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+
+    KafkaConsumerService consumerService = new KafkaConsumerService(
+        ConsumerPoolType.REGULAR_POOL,
+        factory,
+        properties,
+        1000L,
+        2,
+        mock(IngestionThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class),
+        mockMetricsRepository,
+        "test_kafka_cluster_alias",
+        TimeUnit.MINUTES.toMillis(1),
+        mock(TopicExistenceChecker.class),
+        false,
+        pubSubDeserializer,
+        SystemTime.INSTANCE,
+        null,
+        false,
+        mock(ReadOnlyStoreRepository.class),
+        false) {
+      @Override
+      protected SharedKafkaConsumer pickConsumerForPartition(
+          PubSubTopic versionTopic,
+          PubSubTopicPartition topicPartition) {
+        return null;
+      }
+    };
+
+    // Create mock ConsumptionTasks
+    ConsumptionTask task1 = mock(ConsumptionTask.class);
+    ConsumptionTask task2 = mock(ConsumptionTask.class);
+    when(task1.getLastSuccessfulPollTimestamp()).thenReturn(System.currentTimeMillis() - 40000); // 40 seconds ago
+    when(task2.getLastSuccessfulPollTimestamp()).thenReturn(System.currentTimeMillis() - 60000); // 60 seconds ago
+    when(task1.getTaskId()).thenReturn(0); // task id = 0
+    when(task2.getTaskId()).thenReturn(1); // task id = 1
+
+    Thread t = mock(Thread.class);
+    when(t.getStackTrace()).thenReturn(new StackTraceElement[0]);
+
+    RandomAccessDaemonThreadFactory consumerThreadFactory = mock(RandomAccessDaemonThreadFactory.class);
+    when(consumerThreadFactory.getThread(0)).thenReturn(mock(Thread.class));
+    when(consumerThreadFactory.getThread(1)).thenReturn(t); // thread id = 1 has longer elapsed time.
+
+    // Set the thread factory
+    consumerService.setThreadFactory(consumerThreadFactory);
+
+    // Add tasks to the consumerToConsumptionTask map
+    consumerService.consumerToConsumptionTask.put(mock(SharedKafkaConsumer.class), task1);
+    consumerService.consumerToConsumptionTask.put(mock(SharedKafkaConsumer.class), task2);
+
+    // Call the method and assert the result
+    long maxElapsedTime = consumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+
+    // Verify that the maxElapsedTime is >= 60 seconds.
+    Assert.assertTrue(maxElapsedTime >= 60000, "The max elapsed time should be greater than 60000 ms");
+    // Verify that the getStackTrace method was called once for t.
+    verify(t, times(1)).getStackTrace();
   }
 }
