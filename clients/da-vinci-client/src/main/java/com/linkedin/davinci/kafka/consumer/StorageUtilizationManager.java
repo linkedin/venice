@@ -203,7 +203,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
           this.storeQuotaInBytes,
           store.getStorageQuotaInByte(),
           store.isHybridStoreDiskQuotaEnabled() ? "enabled" : "not enabled");
-      resumeAllPartitionsIfPossible(PausedConsumptionReason.QUOTA_EXCEEDED);
+      resumeAllPartitionsWherePossible(PausedConsumptionReason.QUOTA_EXCEEDED);
     }
 
     int oldMaxRecordSizeBytes = this.maxRecordSizeBytes.get();
@@ -214,9 +214,11 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
           this.storeName,
           oldMaxRecordSizeBytes,
           store.getMaxRecordSizeBytes(),
-          (isRecordLimitIncreased) ? "Resuming consumption on all partitions paused by RecordTooLarge issue." : "");
+          (isRecordLimitIncreased)
+              ? "Attempting to resume consumption on all partitions paused by RecordTooLarge issue."
+              : "");
       if (isRecordLimitIncreased) {
-        resumeAllPartitionsIfPossible(PausedConsumptionReason.RECORD_TOO_LARGE);
+        resumeAllPartitionsWherePossible(PausedConsumptionReason.RECORD_TOO_LARGE);
       }
     }
 
@@ -375,7 +377,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    * any partitions missing from {@link pausedPartitionsForQuotaExceeded} or {@link pausedPartitionsForRecordTooLarge}.
    * In the unlikely case that partition is paused for both reasons, we can't resume it until both reasons are resolved.
    */
-  private void resumeAllPartitionsIfPossible(PausedConsumptionReason reason) {
+  private void resumeAllPartitionsWherePossible(PausedConsumptionReason reason) {
     partitionConsumptionStateMap.forEach((partition, pcs) -> {
       String consumingTopic = getConsumingTopic(pcs);
       resumePartitionIfPossible(partition, consumingTopic, reason);

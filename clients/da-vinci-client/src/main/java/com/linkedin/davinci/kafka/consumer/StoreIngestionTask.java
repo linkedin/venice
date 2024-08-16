@@ -2445,7 +2445,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
       ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
-      int recordSize = keyLen + valueManifest.getSize();
+      long recordSize = keyLen + valueManifest.getSize();
       hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
       recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
 

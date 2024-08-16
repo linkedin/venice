@@ -4546,7 +4546,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @DataProvider
-  public static Object[][] testAssembledValueSizeProvider() {
+  public static Object[][] testAssembledRecordSizeProvider() {
     Object[] testSchemaIds =
         { VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
             AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion() };
@@ -4561,10 +4561,10 @@ public abstract class StoreIngestionTaskTest {
    * Also, verify that metrics are only emitted when the correct schemaId=-20 is on the manifest message,
    * and not emitted on any other invalid schemaId values.
    */
-  @Test(dataProvider = "testAssembledValueSizeProvider")
-  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId, RmdState rmdState) throws Exception {
+  @Test(dataProvider = "testAssembledRecordSizeProvider")
+  public void testAssembledRecordSizeSensor(AAConfig aaConfig, int testSchemaId, RmdState rmdState) throws Exception {
     int numChunks = 10;
-    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH + putKeyFoo.length;
+    int expectedRecordSize = numChunks * ChunkingTestUtils.CHUNK_LENGTH + putKeyFoo.length;
     int rmdSize = 5 * ByteUtils.BYTES_PER_KB; // arbitrary size
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
@@ -4580,6 +4580,10 @@ public abstract class StoreIngestionTaskTest {
           5,
           TimeUnit.SECONDS,
           () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      VeniceWriter writer = mock(VeniceWriter.class);
+      doReturn(10 * expectedRecordSize).when(writer).getMaxRecordSizeBytes(); // arbitrary value
+      doReturn(writer).when(mockWriterFactory).createVeniceWriter(any());
 
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
         try {
@@ -4622,7 +4626,7 @@ public abstract class StoreIngestionTaskTest {
         ArgumentCaptor<Long> sizeCaptor = ArgumentCaptor.forClass(long.class);
         verify(stats, timeout(1000).times(1)).recordAssembledRecordSize(sizeCaptor.capture(), anyLong());
         assertEquals(sizeCaptor.getValue().longValue(), expectedRecordSize);
-        verify(stats, timeout(1000).times(1)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+        verify(stats, times(1)).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
 
         if (rmdState != RmdState.NO_RMD) {
           verify(stats, timeout(1000).times(1)).recordAssembledRmdSize(sizeCaptor.capture(), anyLong());
