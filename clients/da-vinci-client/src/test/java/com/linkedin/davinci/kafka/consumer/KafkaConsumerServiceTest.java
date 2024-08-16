@@ -1,12 +1,16 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
@@ -79,6 +83,7 @@ public class KafkaConsumerServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
+        ConsumerPoolType.REGULAR_POOL,
         factory,
         properties,
         1000l,
@@ -149,8 +154,13 @@ public class KafkaConsumerServiceTest {
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
-    KafkaConsumerService consumerService =
-        getKafkaConsumerServiceWithSingleConsumer(factory, properties, mockMetricsRepository);
+    IngestionThrottler mockIngestionThrottler = mock(IngestionThrottler.class);
+    KafkaConsumerService consumerService = getKafkaConsumerServiceWithSingleConsumer(
+        factory,
+        properties,
+        mockMetricsRepository,
+        ConsumerPoolType.AA_WC_LEADER_POOL,
+        mockIngestionThrottler);
     String storeName3 = Utils.getUniqueString("test_consumer_service");
     PubSubTopic topicForStoreName3 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName3, 1));
     StoreIngestionTask task = mock(StoreIngestionTask.class);
@@ -184,6 +194,7 @@ public class KafkaConsumerServiceTest {
     consumerService.start();
 
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, true, () -> {
+      verify(consumer1, atLeastOnce()).poll(anyLong());
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
           consumerService.getIngestionInfoFromConsumer(versionTopic, topicPartition);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
@@ -194,6 +205,9 @@ public class KafkaConsumerServiceTest {
       Assert.assertEquals(
           topicPartitionIngestionInfoMap.get(topicPartition).getVersionTopicName(),
           topicForStoreName3.getName());
+      verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleBandwidth(anyInt());
+      verify(mockIngestionThrottler, atLeastOnce())
+          .maybeThrottleRecordRate(eq(ConsumerPoolType.AA_WC_LEADER_POOL), anyInt());
     });
     consumerService.stop();
   }
@@ -201,13 +215,16 @@ public class KafkaConsumerServiceTest {
   private KafkaConsumerService getKafkaConsumerServiceWithSingleConsumer(
       PubSubConsumerAdapterFactory factory,
       Properties properties,
-      MetricsRepository mockMetricsRepository) {
+      MetricsRepository mockMetricsRepository,
+      ConsumerPoolType poolType,
+      IngestionThrottler mockIngestionThrottler) {
     KafkaConsumerService consumerService = new KafkaConsumerService(
+        poolType,
         factory,
         properties,
         1000l,
         1,
-        mock(IngestionThrottler.class),
+        mockIngestionThrottler,
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
         "test_kafka_cluster_alias",
@@ -256,6 +273,7 @@ public class KafkaConsumerServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
+        ConsumerPoolType.REGULAR_POOL,
         factory,
         properties,
         1000l,
@@ -355,6 +373,7 @@ public class KafkaConsumerServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
+        ConsumerPoolType.REGULAR_POOL,
         factory,
         properties,
         1000l,

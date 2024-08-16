@@ -81,10 +81,13 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
+  protected final ConsumerPoolType poolType;
+
   /**
    * @param statsOverride injection of stats, for test purposes
    */
   protected KafkaConsumerService(
+      final ConsumerPoolType poolType,
       final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
@@ -105,6 +108,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
+    this.poolType = poolType;
 
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(
@@ -140,8 +144,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
               : () -> pubSubConsumer.poll(readCycleDelayMs);
       final IntConsumer bandwidthThrottlerFunction =
           totalBytes -> ingestionThrottler.maybeThrottleBandwidth(totalBytes);
-      final IntConsumer recordsThrottlerFunction =
-          recordsCount -> ingestionThrottler.maybeThrottleRecordRate(recordsCount);
+      final IntConsumer recordsThrottlerFunction = recordsCount -> {
+        ingestionThrottler.maybeThrottleRecordRate(poolType, recordsCount);
+      };
+
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
           sharedConsumerNonExistingTopicCleanupDelayMS,
           1000,
@@ -397,6 +403,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   interface KCSConstructor {
     KafkaConsumerService construct(
+        ConsumerPoolType poolType,
         PubSubConsumerAdapterFactory consumerFactory,
         Properties consumerProperties,
         long readCycleDelayMs,

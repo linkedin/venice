@@ -48,6 +48,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
@@ -58,6 +59,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRE
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_MEMORY_STATS_ENABLED;
@@ -100,6 +103,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERI
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_WORKER_THREADS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NODE_CAPACITY_RCU;
+import static com.linkedin.venice.ConfigKeys.SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
@@ -497,6 +502,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
   private final int defaultMaxRecordSizeBytes;
+  private final int aaWCLeaderQuotaRecordsPerSecond;
+  private final int currentVersionAAWCLeaderQuotaRecordsPerSecond;
+  private final int currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  private final int nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
+  private final int nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -830,6 +840,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
           DEFAULT_MAX_RECORD_SIZE_BYTES + ": " + defaultMaxRecordSizeBytes + " must be at least "
               + generateHumanReadableByteCountString(BYTES_PER_MB));
     }
+    aaWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionNonAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
   }
 
   long extractIngestionMemoryLimit(
@@ -1482,5 +1501,25 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() {
     return resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
+  }
+
+  public int getAaWCLeaderQuotaRecordsPerSecond() {
+    return aaWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getCurrentVersionAAWCLeaderQuotaRecordsPerSecond() {
+    return currentVersionAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond() {
+    return currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond() {
+    return nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond() {
+    return nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
   }
 }
