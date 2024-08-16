@@ -353,11 +353,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       }
     }
     aggStats.recordTotalConsumerIdleTime(maxElapsedTimeSinceLastPollInConsumerPool);
-    if (maxElapsedTimeSinceLastPollInConsumerPool > 2 * Time.MS_PER_SECOND) {
+    if (maxElapsedTimeSinceLastPollInConsumerPool > Time.MS_PER_MINUTE) {
       String slowestTaskIdString = kafkaUrl + slowestTaskId;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(slowestTaskIdString)) {
         /**
-         * We assume the task id as the index for thread id. This is because both of them
+         * We assume task id is the same as the number for thread. This is because both of them
          * are zero-based and ConsumptionTasks are submitted to the executor in order.
          */
         Thread slowestThread = threadFactory.getThread(slowestTaskId);
