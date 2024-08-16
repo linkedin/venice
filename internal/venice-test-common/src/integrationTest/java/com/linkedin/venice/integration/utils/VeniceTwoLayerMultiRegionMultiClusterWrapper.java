@@ -52,6 +52,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper parentPubSubBrokerWrapper;
   private final Map<String, ZkServerWrapper> zkServerByRegionName;
+  private final List<PubSubBrokerWrapper> allPubSubBrokerWrappers;
 
   VeniceTwoLayerMultiRegionMultiClusterWrapper(
       File dataDirectory,
@@ -61,7 +62,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       List<VeniceControllerWrapper> parentControllers,
       String parentRegionName,
       List<String> childRegionNames,
-      Map<String, ZkServerWrapper> zkServerByRegionName) {
+      Map<String, ZkServerWrapper> zkServerByRegionName,
+      List<PubSubBrokerWrapper> allPubSubBrokerWrappers) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.parentPubSubBrokerWrapper = parentPubSubBrokerWrapper;
@@ -71,6 +73,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     this.childRegionNames = childRegionNames;
     this.clusterNames = childRegions.get(0).getClusterNames();
     this.zkServerByRegionName = zkServerByRegionName;
+    this.allPubSubBrokerWrappers = allPubSubBrokerWrappers;
   }
 
   static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
@@ -298,7 +301,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           parentControllers,
           parentRegionName,
           childRegionName,
-          zkServerByRegionName);
+          zkServerByRegionName,
+          allPubSubBrokerWrappers);
     } catch (Exception e) {
       parentControllers.forEach(IOUtils::closeQuietly);
       multiClusters.forEach(IOUtils::closeQuietly);
@@ -432,6 +436,10 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
   public Map<String, ZkServerWrapper> getZkServerByRegionName() {
     return zkServerByRegionName;
+  }
+
+  public List<PubSubBrokerWrapper> getAllPubSubBrokerWrappers() {
+    return allPubSubBrokerWrappers;
   }
 
   public String getControllerConnectString() {
