@@ -7,11 +7,10 @@ import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import org.apache.avro.Schema;
 import org.rocksdb.RocksIterator;
 import org.testng.annotations.AfterClass;
@@ -32,7 +31,7 @@ public class RecordTransformerTest {
   }
 
   @Test
-  public void testRecordTransformer() throws NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+  public void testRecordTransformer() {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
         new TestStringRecordTransformer(storeVersion, false);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
@@ -60,13 +59,10 @@ public class RecordTransformerTest {
 
     int classHash = recordTransformer.getClassHash();
 
-    // Use reflection to access the hasTransformationLogicChanged method
-    Method hasTransformationLogicChanged =
-        DaVinciRecordTransformer.class.getDeclaredMethod("hasTransformationLogicChanged", int.class);
-    hasTransformationLogicChanged.setAccessible(true);
-
-    assertTrue((boolean) hasTransformationLogicChanged.invoke(recordTransformer, classHash));
-    assertFalse((boolean) hasTransformationLogicChanged.invoke(recordTransformer, classHash));
+    DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
+        recordTransformer.getRecordTransformerUtility();
+    assertTrue(recordTransformerUtility.hasTransformationLogicChanged(classHash));
+    assertFalse(recordTransformerUtility.hasTransformationLogicChanged(classHash));
   }
 
   @Test

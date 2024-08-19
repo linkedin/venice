@@ -3,13 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.ParameterizedType;
@@ -18,7 +12,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.objectweb.asm.ClassReader;
-import org.rocksdb.RocksIterator;
 
 
 /**
@@ -48,9 +41,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
-  private AvroGenericDeserializer<K> keyDeserializer;
-  private AvroGenericDeserializer<O> outputValueDeserializer;
-  private AvroSerializer<O> outputValueSerializer;
+  private final DaVinciRecordTransformerUtility<K, O> recordTransformerUtility;
 
   /**
    * @param storeVersion the version of the store
@@ -60,6 +51,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   public DaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
+    this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
   }
 
   /**
@@ -150,12 +142,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
    */
   public final ByteBuffer getValueBytes(O value) {
-    ByteBuffer transformedBytes = ByteBuffer.wrap(getOutputValueSerializer().serialize(value));
-    ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
-    newBuffer.putInt(1);
-    newBuffer.put(transformedBytes);
-    newBuffer.flip();
-    return newBuffer;
+    return recordTransformerUtility.getValueBytes(value);
   }
 
   /**
@@ -182,52 +169,10 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * @return true if the transformation logic has changed since the last time the class was loaded
-   */
-  private boolean hasTransformationLogicChanged(int classHash) {
-    try {
-      String classHashPath = String.format("./classHash-%d.txt", storeVersion);
-      File f = new File(classHashPath);
-      if (f.exists()) {
-        try (BufferedReader br = new BufferedReader(new FileReader(classHashPath))) {
-          int storedClassHash = Integer.parseInt(br.readLine());
-          if (storedClassHash == classHash) {
-            return false;
-          }
-        }
-      }
-
-      try (FileWriter fw = new FileWriter(classHashPath)) {
-        fw.write(String.valueOf(classHash));
-      }
-      return true;
-    } catch (IOException e) {
-      throw new VeniceException("Failed to check if transformation logic has changed", e);
-    }
-  }
-
-  /**
    * Bootstraps the client after it comes online.
    */
   public final void onRecovery(AbstractStorageEngine storageEngine, Integer partition) {
-    // ToDo: Store class hash in RocksDB to support blob transfer
-    int classHash = getClassHash();
-    boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
-
-    if (!storeRecordsInDaVinci || transformationLogicChanged) {
-      // Bootstrap from VT
-      storageEngine.clearPartitionOffset(partition);
-    } else {
-      // Bootstrap from local storage
-      RocksIterator iterator = storageEngine.getRocksDBIterator(partition);
-      for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
-        byte[] keyBytes = iterator.key();
-        byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> getKeyDeserializer().deserialize(ByteBuffer.wrap(keyBytes)));
-        Lazy<O> lazyValue = Lazy.of(() -> getOutputValueDeserializer().deserialize(ByteBuffer.wrap(valueBytes)));
-        processPut(lazyKey, lazyValue);
-      }
-    }
+    recordTransformerUtility.onRecovery(storageEngine, partition);
   }
 
   /**
@@ -245,27 +190,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
     throw new VeniceException("Invalid DaVinciRecordTransformer class definition");
   }
 
-  private AvroGenericDeserializer<K> getKeyDeserializer() {
-    if (outputValueDeserializer == null) {
-      Schema keySchema = getKeyOutputSchema();
-      keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
-    }
-    return keyDeserializer;
-  }
-
-  private AvroGenericDeserializer<O> getOutputValueDeserializer() {
-    if (outputValueDeserializer == null) {
-      Schema outputValueSchema = getValueOutputSchema();
-      outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
-    }
-    return outputValueDeserializer;
-  }
-
-  private AvroSerializer<O> getOutputValueSerializer() {
-    if (outputValueSerializer == null) {
-      Schema outputValueSchema = getValueOutputSchema();
-      outputValueSerializer = new AvroSerializer<>(outputValueSchema);
-    }
-    return outputValueSerializer;
+  public final DaVinciRecordTransformerUtility<K, O> getRecordTransformerUtility() {
+    return recordTransformerUtility;
   }
 }
