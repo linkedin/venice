@@ -434,6 +434,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
         ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
         : Collections.singletonList(0L);
+
     // get the source offset and the id
     long sourceOffset = consumerRecord.getOffset();
     final MergeConflictResult mergeConflictResult;

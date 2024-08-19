@@ -44,6 +44,7 @@ import org.apache.logging.log4j.Logger;
 class ConsumptionTask implements Runnable {
   private final Logger LOGGER;
   private final int taskId;
+  private final String consumptionTaskIdStr;
   private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
@@ -79,7 +80,7 @@ class ConsumptionTask implements Runnable {
   public final static long DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP = -1L;
 
   public ConsumptionTask(
-      final String kafkaUrl,
+      final String consumerNamePrefix,
       final int taskId,
       final long readCycleDelayMs,
       final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction,
@@ -87,15 +88,15 @@ class ConsumptionTask implements Runnable {
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
       final ConsumerSubscriptionCleaner cleaner) {
-    this.taskId = taskId;
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.aggStats = aggStats;
     this.cleaner = cleaner;
-    String kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
-    this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrlForLogger + " - " + taskId + " ]");
+    this.taskId = taskId;
+    this.consumptionTaskIdStr = Utils.getSanitizedStringForLogger(consumerNamePrefix) + " - " + taskId;
+    this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + consumptionTaskIdStr + " ]");
   }
 
   @Override
@@ -233,6 +234,10 @@ class ConsumptionTask implements Runnable {
 
   int getTaskId() {
     return taskId;
+  }
+
+  String getTaskIdStr() {
+    return consumptionTaskIdStr;
   }
 
   void setDataReceiver(
