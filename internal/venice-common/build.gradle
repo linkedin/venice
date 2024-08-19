@@ -35,7 +35,6 @@ dependencies {
   implementation libraries.conscrypt
   implementation libraries.fastUtil
   implementation libraries.httpAsyncClient
-  implementation libraries.jacksonCore
   implementation libraries.jacksonDatabind
   implementation libraries.jacksonAnnotations
   implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common

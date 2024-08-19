@@ -31,6 +31,7 @@ dependencies {
     // Exclude transitive dependency
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
+    exclude group: 'com.fasterxml.jackson'
   }
 
   implementation (libraries.apacheSparkAvro) {
