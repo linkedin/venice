@@ -34,6 +34,12 @@ import org.apache.hc.core5.util.Timeout;
  * TODO: follow up with the httpclient team to get a proper fix.
  */
 public class HttpClient5Utils {
+  public static final int H2_HEADER_TABLE_SIZE = 4096;
+  public static final int H2_MAX_HEADER_LIST_SIZE = 8092;
+  public static final int H2_MAX_FRAME_SIZE = 8 * 1024 * 1024;
+  public static final int H2_INITIAL_WINDOW_SIZE = 8 * 1024 * 1024;
+  public static final int H2_MAX_CONCURRENT_STREAMS = 100;
+
   public static class HttpClient5Builder {
     private SSLContext sslContext;
     private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
@@ -159,11 +165,11 @@ public class HttpClient5Utils {
                  * for medium/large responses.
                  */
                 H2Config.initial()
-                    .setHeaderTableSize(4096)
-                    .setMaxFrameSize(8 * 1024 * 1024)
-                    .setInitialWindowSize(8 * 1024 * 1024)
-                    .setMaxHeaderListSize(8192)
-                    .setMaxConcurrentStreams(100)
+                    .setHeaderTableSize(H2_HEADER_TABLE_SIZE)
+                    .setMaxFrameSize(H2_MAX_FRAME_SIZE)
+                    .setInitialWindowSize(H2_INITIAL_WINDOW_SIZE)
+                    .setMaxHeaderListSize(H2_MAX_HEADER_LIST_SIZE)
+                    .setMaxConcurrentStreams(H2_MAX_CONCURRENT_STREAMS)
                     .build())
             .build();
       }
