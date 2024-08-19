@@ -12,6 +12,7 @@ import org.apache.hc.core5.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
+import org.apache.hc.core5.http2.config.H2Config;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.util.Timeout;
 
@@ -150,6 +151,20 @@ public class HttpClient5Utils {
             .setIOReactorConfig(ioReactorConfig)
             .setDefaultConnectionConfig(getDefaultConnectionConfig())
             .setDefaultRequestConfig(getDefaultRequestConfig())
+            .setH2Config(
+                /**
+                 * The following settings are important to avoid the slow start issue
+                 * as if we use a small Frame/initial window setting, it will take
+                 * time to ramp them up, which would result in a slow start issue
+                 * for medium/large responses.
+                 */
+                H2Config.initial()
+                    .setHeaderTableSize(4096)
+                    .setMaxFrameSize(8 * 1024 * 1024)
+                    .setInitialWindowSize(8 * 1024 * 1024)
+                    .setMaxHeaderListSize(8192)
+                    .setMaxConcurrentStreams(100)
+                    .build())
             .build();
       }
     }
