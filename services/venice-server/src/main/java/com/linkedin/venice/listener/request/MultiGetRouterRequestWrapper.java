@@ -13,6 +13,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
 import java.util.List;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
+import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -40,12 +41,12 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
   public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest) {
     URI fullUri = URI.create(httpRequest.uri());
     String path = fullUri.getRawPath();
-    String[] requestParts = path.split("/");
-    if (requestParts.length != 3) {
+    int count = StringUtils.countMatches(path, "/");
+    if (count != 2) {
       // [0]""/[1]"storage"/[2]{$resourceName}
       throw new VeniceException("Invalid request: " + path);
     }
-    String resourceName = requestParts[2];
+    String resourceName = path.substring(path.lastIndexOf('/') + 1);
 
     // Validate API version
     String apiVersion = httpRequest.headers().get(HttpConstants.VENICE_API_VERSION);
