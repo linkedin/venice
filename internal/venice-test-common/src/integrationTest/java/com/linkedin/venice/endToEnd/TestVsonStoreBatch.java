@@ -6,7 +6,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJPropsWithoutD2Routing;
@@ -323,7 +322,6 @@ public class TestVsonStoreBatch {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = defaultVPJPropsWithoutD2Routing(veniceCluster, inputDirPath, storeName);
       props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
-      props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
       extraProps.accept(props);
 
       if (!storeNameOptional.isPresent()) {
