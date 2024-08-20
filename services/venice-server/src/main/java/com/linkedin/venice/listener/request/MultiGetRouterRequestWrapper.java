@@ -38,8 +38,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     super(resourceName, keys, isRetryRequest, isStreamingRequest);
   }
 
-  public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest) {
-    URI fullUri = URI.create(httpRequest.uri());
+  public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest, URI fullUri) {
     String path = fullUri.getRawPath();
     int count = StringUtils.countMatches(path, "/");
     if (count != 2) {

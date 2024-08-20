@@ -25,6 +25,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Collections;
@@ -145,7 +146,7 @@ public class RouterRequestHttpHandlerTest {
 
   public void doActionTest(String urlString, HttpMethod method, QueryAction expectedAction) {
     HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, urlString);
-    QueryAction parsedAction = RouterRequestHttpHandler.getQueryActionFromRequest(request);
+    QueryAction parsedAction = RouterRequestHttpHandler.getQueryActionFromRequest(request, URI.create(request.uri()));
     Assert.assertEquals(parsedAction, expectedAction, "parsed wrong query action from string: " + urlString);
   }
 

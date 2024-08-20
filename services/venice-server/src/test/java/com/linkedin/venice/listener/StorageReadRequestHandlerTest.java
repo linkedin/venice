@@ -100,6 +100,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -294,7 +295,8 @@ public class StorageReadRequestHandlerTest {
         .set(
             HttpConstants.VENICE_API_VERSION,
             ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
-    MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(httpRequest);
+    MultiGetRouterRequestWrapper request =
+        MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(httpRequest, URI.create(httpRequest.uri()));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(isParallel, 10);
     requestHandler.channelRead(context, request);
@@ -370,7 +372,7 @@ public class StorageReadRequestHandlerTest {
     String uri =
         "/" + QueryAction.ADMIN.toString().toLowerCase() + "/" + topic + "/" + ServerAdminAction.DUMP_INGESTION_STATE;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    AdminRequest request = AdminRequest.parseAdminHttpRequest(httpRequest);
+    AdminRequest request = AdminRequest.parseAdminHttpRequest(httpRequest, URI.create(httpRequest.uri()));
 
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();

@@ -73,7 +73,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
     try {
-      QueryAction action = getQueryActionFromRequest(req);
+      URI uri = URI.create(req.uri());
+      QueryAction action = getQueryActionFromRequest(req, uri);
       statsHandler.setRequestSize(req.content().readableBytes());
       switch (action) {
         case STORAGE: // GET /storage/store/partition/key
@@ -86,7 +87,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
             ctx.fireChannelRead(getRouterRequest);
           } else if (requestMethod.equals(HttpMethod.POST)) {
             // Multi-get
-            MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
+            MultiGetRouterRequestWrapper multiGetRouterReq =
+                MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req, uri);
             setupRequestTimeout(multiGetRouterReq);
             statsHandler.setRequestInfo(multiGetRouterReq);
             ctx.fireChannelRead(multiGetRouterReq);
@@ -96,7 +98,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
-            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req);
+            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req, uri);
             setupRequestTimeout(computeRouterReq);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);
@@ -115,7 +117,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           ctx.fireChannelRead(dictionaryFetchRequest);
           break;
         case ADMIN:
-          AdminRequest adminRequest = AdminRequest.parseAdminHttpRequest(req);
+          AdminRequest adminRequest = AdminRequest.parseAdminHttpRequest(req, uri);
           statsHandler.setStoreName(adminRequest.getStoreName());
           ctx.fireChannelRead(adminRequest);
           break;
@@ -167,10 +169,10 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     super.userEventTriggered(ctx, evt);
   }
 
-  static QueryAction getQueryActionFromRequest(HttpRequest req) {
+  static QueryAction getQueryActionFromRequest(HttpRequest req, URI uri) {
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
-    String[] requestParts = URI.create(req.uri()).getPath().split("/");
+    String[] requestParts = uri.getPath().split("/");
     HttpMethod reqMethod = req.method();
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
       String actions =

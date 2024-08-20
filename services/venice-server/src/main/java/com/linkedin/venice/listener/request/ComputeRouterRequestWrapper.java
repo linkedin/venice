@@ -41,8 +41,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     }
   }
 
-  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest) {
-    URI fullUri = URI.create(httpRequest.uri());
+  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest, URI fullUri) {
     String path = fullUri.getRawPath();
     String[] requestParts = path.split("/");
     if (requestParts.length != 3) {

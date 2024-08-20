@@ -23,8 +23,7 @@ public class AdminRequest {
     this.partition = partition;
   }
 
-  public static AdminRequest parseAdminHttpRequest(HttpRequest request) {
-    URI fullUri = URI.create(request.uri());
+  public static AdminRequest parseAdminHttpRequest(HttpRequest request, URI fullUri) {
     String[] requestParts = fullUri.getRawPath().split("/");
     // [0]""/[1]"action"/[2]"store_version"/[3]"admin_action"/[4](optional)"partition_id"
     if (requestParts.length >= 4 && requestParts.length <= 5) {
