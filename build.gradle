@@ -85,7 +85,6 @@ ext.libraries = [
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
-    hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.3',
