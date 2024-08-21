@@ -29,5 +29,6 @@ public class SeparatedStoreBufferServiceTest {
     Assert.assertNotNull(
         metricsRepo.getSensor(".StoreBufferServiceUnsorted--max_memory_usage_per_writer"),
         "Missing metric from unsorted drainers");
+    separatedStoreBufferService.close();
   }
 }
