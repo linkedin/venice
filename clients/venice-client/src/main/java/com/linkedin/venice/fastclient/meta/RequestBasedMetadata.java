@@ -470,7 +470,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       // TODO: need a better way to handle store migration
       if (!onDemandRefresh) {
         LOGGER.warn("Metadata fetch operation for store: {} failed with exception {}", storeName, e.getMessage());
-        LOGGER.info("[DEBUG] refreshing the d2 service");
         isServiceDiscovered = false;
         discoverD2Service();
         updateCache(true);
