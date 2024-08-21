@@ -133,15 +133,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case CURRENT_VERSION:
           statsHandler.setMetadataRequest(true);
-          CurrentVersionRequest currentVersionRequest =
-              CurrentVersionRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(uri));
+          CurrentVersionRequest currentVersionRequest = CurrentVersionRequest.parseGetHttpRequest(uri, requestParts);
           statsHandler.setStoreName(currentVersionRequest.getStoreName());
           ctx.fireChannelRead(currentVersionRequest);
           break;
         case TOPIC_PARTITION_INGESTION_CONTEXT:
           TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest =
-              TopicPartitionIngestionContextRequest
-                  .parseGetHttpRequest(uri.getPath(), RequestHelper.getRequestParts(uri));
+              TopicPartitionIngestionContextRequest.parseGetHttpRequest(uri.getPath(), requestParts);
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);
