@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.request.RequestHelper;
+import java.net.URI;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -12,7 +13,7 @@ public class RequestHelperTest {
     String action = "test_query";
     String uri = "/" + action + "/" + storeName;
 
-    String[] requestParts = RequestHelper.getRequestParts(uri);
+    String[] requestParts = RequestHelper.getRequestParts(URI.create(uri));
 
     Assert.assertEquals(requestParts[1], action);
     Assert.assertEquals(requestParts[2], storeName);
@@ -25,7 +26,7 @@ public class RequestHelperTest {
     String query = "key=value";
     String uri = "/" + action + "/" + storeName + "?" + query;
 
-    String[] requestParts = RequestHelper.getRequestParts(uri);
+    String[] requestParts = RequestHelper.getRequestParts(URI.create(uri));
 
     Assert.assertEquals(requestParts[1], action);
     Assert.assertEquals(requestParts[2], storeName + "?" + query);

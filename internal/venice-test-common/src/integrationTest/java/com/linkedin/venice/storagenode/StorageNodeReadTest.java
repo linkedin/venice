@@ -340,8 +340,7 @@ public class StorageNodeReadTest {
     StringBuilder sb = new StringBuilder().append("http://")
         .append(serverAddress)
         .append("/")
-        .append(QueryAction.HEALTH.toString().toLowerCase())
-        .append("?f=b64");
+        .append(QueryAction.HEALTH.toString().toLowerCase());
     HttpGet getReq = new HttpGet(sb.toString());
     Future<HttpResponse> future = client.execute(getReq, null);
     return future.get();

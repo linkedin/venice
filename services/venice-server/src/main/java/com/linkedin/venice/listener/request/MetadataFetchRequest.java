@@ -1,8 +1,6 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.request.RequestHelper;
-import io.netty.handler.codec.http.HttpRequest;
 
 
 /**
@@ -16,10 +14,7 @@ public class MetadataFetchRequest {
     this.storeName = storeName;
   }
 
-  public static MetadataFetchRequest parseGetHttpRequest(HttpRequest request) {
-    String uri = request.uri();
-    String[] requestParts = RequestHelper.getRequestParts(uri);
-
+  public static MetadataFetchRequest parseGetHttpRequest(String uri, String[] requestParts) {
     if (requestParts.length == 3) {
       // [0]""/[1]"action"/[2]"store"
       String storeName = requestParts[2];
