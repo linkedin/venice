@@ -107,6 +107,7 @@ public class TestSystemStore {
     assertFalse(systemStore.isDaVinciPushStatusStoreEnabled());
     assertFalse(systemStore.isBlobTransferEnabled());
     assertEquals(systemStore.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
+    assertEquals(systemStore.getMaxNearlineRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
 
     // All the shared store-level property update should throw exception
     assertThrows(() -> systemStore.setOwner("test"));
@@ -140,6 +141,7 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setNativeReplicationSourceFabric(""));
     assertThrows(() -> systemStore.setDaVinciPushStatusStoreEnabled(true));
     assertThrows(() -> systemStore.setMaxRecordSizeBytes(1));
+    assertThrows(() -> systemStore.setMaxNearlineRecordSizeBytes(1));
 
     // SystemStores property for SystemStore is not supported.
     assertThrows(() -> systemStore.getSystemStores());

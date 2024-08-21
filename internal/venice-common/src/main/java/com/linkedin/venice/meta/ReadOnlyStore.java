@@ -1353,6 +1353,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public int getMaxNearlineRecordSizeBytes() {
+    return this.delegate.getMaxNearlineRecordSizeBytes();
+  }
+
+  @Override
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     throw new UnsupportedOperationException();
   }

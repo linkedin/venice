@@ -541,6 +541,7 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);
+    params.setMaxNearlineRecordSizeBytes(message.maxNearlineRecordSizeBytes);
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
