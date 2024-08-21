@@ -16,7 +16,7 @@ public class MetadataFetchRequestTest {
     String storeName = "test_store";
     String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest();
 
     Assert.assertEquals(testRequest.getStoreName(), storeName);
   }
@@ -27,7 +27,7 @@ public class MetadataFetchRequestTest {
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
 
     try {
-      MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+      MetadataFetchRequest.parseGetHttpRequest();
       Assert.fail("Venice Exception was not thrown");
     } catch (VeniceException e) {
       Assert.assertEquals(e.getMessage(), "not a valid request for a METADATA action: " + uri);

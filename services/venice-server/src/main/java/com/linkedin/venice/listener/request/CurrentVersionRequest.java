@@ -2,7 +2,7 @@ package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.request.RequestHelper;
-import io.netty.handler.codec.http.HttpRequest;
+import java.net.URI;
 
 
 public class CurrentVersionRequest {
@@ -12,8 +12,7 @@ public class CurrentVersionRequest {
     this.storeName = storeName;
   }
 
-  public static CurrentVersionRequest parseGetHttpRequest(HttpRequest request) {
-    String uri = request.uri();
+  public static CurrentVersionRequest parseGetHttpRequest(URI uri) {
     String[] requestParts = RequestHelper.getRequestParts(uri);
 
     if (requestParts.length == 3) {

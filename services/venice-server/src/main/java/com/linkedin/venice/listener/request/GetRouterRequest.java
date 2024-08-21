@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.EncodingUtils;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 
@@ -52,8 +53,7 @@ public class GetRouterRequest extends RouterRequest {
     return 1;
   }
 
-  public static GetRouterRequest parseGetHttpRequest(HttpRequest request) {
-    String uri = request.uri();
+  public static GetRouterRequest parseGetHttpRequest(HttpRequest request, URI uri) {
     String[] requestParts = RequestHelper.getRequestParts(uri);
     if (requestParts.length == 5) {
       // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"

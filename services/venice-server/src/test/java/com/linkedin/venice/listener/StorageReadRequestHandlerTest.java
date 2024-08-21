@@ -229,7 +229,7 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
     String uri = "/" + TYPE_STORAGE + "/test-topic_v1/" + partition + "/" + keyString;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest);
+    GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest, URI.create(httpRequest.uri()));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
@@ -329,7 +329,7 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
     String uri = "/" + TYPE_STORAGE + "/" + topic + "/" + partition + "/" + keyString;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest);
+    GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest, URI.create(httpRequest.uri()));
 
     byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
     doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
@@ -405,7 +405,7 @@ public class StorageReadRequestHandlerTest {
         + topic + "/" + expectedPartitionId;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
     TopicPartitionIngestionContextRequest request =
-        TopicPartitionIngestionContextRequest.parseGetHttpRequest(httpRequest);
+        TopicPartitionIngestionContextRequest.parseGetHttpRequest(URI.create(httpRequest.uri()));
 
     // Mock the TopicPartitionIngestionContextResponse from ingestion task
     TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
@@ -442,7 +442,7 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"
     String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(URI.create(httpRequest.uri()));
 
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();

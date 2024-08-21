@@ -81,7 +81,7 @@ public class RouterRequestHttpHandlerTest {
     Assert.assertEquals(requestObject.getKeyBytes(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
 
     // Test parse method
-    GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(msg);
+    GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(msg, URI.create(msg.uri()));
     Assert.assertEquals(
         getRouterRequest.getResourceName(),
         expectedStore,

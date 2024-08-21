@@ -18,7 +18,6 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpChunkedInput;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
@@ -30,6 +29,7 @@ import io.netty.handler.timeout.IdleStateEvent;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.net.URI;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -83,7 +83,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     final BlobTransferPayload blobTransferRequest;
     final File snapshotDir;
     try {
-      blobTransferRequest = parseBlobTransferPayload(httpRequest);
+      blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
       snapshotDir = new File(blobTransferRequest.getSnapshotDir());
       if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
         byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
@@ -192,9 +192,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
    * @param request
    * @return
    */
-  private BlobTransferPayload parseBlobTransferPayload(HttpRequest request) throws IllegalArgumentException {
+  private BlobTransferPayload parseBlobTransferPayload(URI uri) throws IllegalArgumentException {
     // Parse the request uri to obtain the storeName and partition
-    String uri = request.uri();
     String[] requestParts = RequestHelper.getRequestParts(uri);
     if (requestParts.length == 4) {
       // [0]""/[1]"store"/[2]"version"/[3]"partition"
@@ -204,7 +203,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           Integer.parseInt(requestParts[2]),
           Integer.parseInt(requestParts[3]));
     } else {
-      throw new IllegalArgumentException("Invalid request for fetching blob at " + uri);
+      throw new IllegalArgumentException("Invalid request for fetching blob at " + uri.getPath());
     }
   }
 }

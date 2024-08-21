@@ -81,7 +81,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           HttpMethod requestMethod = req.method();
           if (requestMethod.equals(HttpMethod.GET)) {
             // TODO: evaluate whether we can replace single-get by multi-get
-            GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
+            GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req, uri);
             setupRequestTimeout(getRouterRequest);
             statsHandler.setRequestInfo(getRouterRequest);
             ctx.fireChannelRead(getRouterRequest);
@@ -112,7 +112,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           ctx.fireChannelRead(healthCheckRequest);
           break;
         case DICTIONARY:
-          DictionaryFetchRequest dictionaryFetchRequest = DictionaryFetchRequest.parseGetHttpRequest(req);
+          DictionaryFetchRequest dictionaryFetchRequest = DictionaryFetchRequest.parseGetHttpRequest(uri);
           statsHandler.setStoreName(dictionaryFetchRequest.getStoreName());
           ctx.fireChannelRead(dictionaryFetchRequest);
           break;
@@ -123,19 +123,19 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case METADATA:
           statsHandler.setMetadataRequest(true);
-          MetadataFetchRequest metadataFetchRequest = MetadataFetchRequest.parseGetHttpRequest(req);
+          MetadataFetchRequest metadataFetchRequest = MetadataFetchRequest.parseGetHttpRequest(uri);
           statsHandler.setStoreName(metadataFetchRequest.getStoreName());
           ctx.fireChannelRead(metadataFetchRequest);
           break;
         case CURRENT_VERSION:
           statsHandler.setMetadataRequest(true);
-          CurrentVersionRequest currentVersionRequest = CurrentVersionRequest.parseGetHttpRequest(req);
+          CurrentVersionRequest currentVersionRequest = CurrentVersionRequest.parseGetHttpRequest(uri);
           statsHandler.setStoreName(currentVersionRequest.getStoreName());
           ctx.fireChannelRead(currentVersionRequest);
           break;
         case TOPIC_PARTITION_INGESTION_CONTEXT:
           TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest =
-              TopicPartitionIngestionContextRequest.parseGetHttpRequest(req);
+              TopicPartitionIngestionContextRequest.parseGetHttpRequest(uri);
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);

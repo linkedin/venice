@@ -3,7 +3,7 @@ package com.linkedin.venice.listener.request;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.request.RequestHelper;
-import io.netty.handler.codec.http.HttpRequest;
+import java.net.URI;
 
 
 /**
@@ -19,8 +19,7 @@ public class DictionaryFetchRequest {
     this.resourceName = resourceName;
   }
 
-  public static DictionaryFetchRequest parseGetHttpRequest(HttpRequest request) {
-    String uri = request.uri();
+  public static DictionaryFetchRequest parseGetHttpRequest(URI uri) {
     String[] requestParts = RequestHelper.getRequestParts(uri);
 
     if (requestParts.length == 4) {
@@ -30,7 +29,7 @@ public class DictionaryFetchRequest {
       String topicName = Version.composeKafkaTopic(storeName, storeVersion);
       return new DictionaryFetchRequest(storeName, topicName);
     } else {
-      throw new VeniceException("Not a valid request for a DICTIONARY action: " + uri);
+      throw new VeniceException("Not a valid request for a DICTIONARY action: " + uri.getPath());
     }
   }
 
