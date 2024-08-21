@@ -9,8 +9,10 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -20,6 +22,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
@@ -61,6 +64,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -98,6 +102,7 @@ public class DispatchingAvroGenericStoreClientTest {
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient = null;
   private Map<String, ? extends Metric> metrics;
   private StoreMetadata storeMetadata = null;
+  private TransportClient mockedTransportClient;
 
   @BeforeClass
   public void setUp() {
@@ -180,7 +185,7 @@ public class DispatchingAvroGenericStoreClientTest {
         STORE_VALUE_SCHEMA);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
 
-    TransportClient mockedTransportClient = null;
+    mockedTransportClient = null;
     if (mockTransportClient) {
       mockedTransportClient = mock(TransportClient.class);
       dispatchingAvroGenericStoreClient =
@@ -799,6 +804,26 @@ public class DispatchingAvroGenericStoreClientTest {
             });
         validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET, true, 2, 1);
       }
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetHeaderFlag() throws IOException, InterruptedException, ExecutionException {
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
+    try {
+      setUpClient(false, false, true, true, routingLeakedRequestCleanupThresholdMS);
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
+          statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
+      VeniceResponseMap<String, GenericRecord> response = future.get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
+      ArgumentCaptor<Map<String, String>> headerCaptor = ArgumentCaptor.forClass(Map.class);
+      verify(mockedTransportClient, atLeastOnce()).post(any(), headerCaptor.capture(), any());
+      assertTrue(headerCaptor.getValue().containsKey(HttpConstants.VENICE_STREAMING));
     } finally {
       tearDown();
     }

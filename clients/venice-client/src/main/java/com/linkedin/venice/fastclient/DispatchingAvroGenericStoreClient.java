@@ -98,9 +98,24 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
 
-  private static final Map<String, String> HEADERS_FOR_MULTIGET_REQUEST = Collections.singletonMap(
-      HttpConstants.VENICE_API_VERSION,
-      Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
+  private static final Map<String, String> HEADERS_FOR_STREAMING_MULTI_GET_REQUEST = new HashMap<>(2);
+  private static final Map<String, String> HEADERS_FOR_COMPUTE_REQUEST = new HashMap<>(2);
+
+  static {
+    HEADERS_FOR_STREAMING_MULTI_GET_REQUEST.put(
+        HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
+    HEADERS_FOR_STREAMING_MULTI_GET_REQUEST.put(
+        HttpConstants.VENICE_STREAMING,
+        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
+
+    HEADERS_FOR_COMPUTE_REQUEST.put(
+        HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
+    HEADERS_FOR_COMPUTE_REQUEST.put(
+        HttpConstants.VENICE_STREAMING,
+        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+  }
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
     /**
@@ -372,7 +387,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         keys,
         callback,
         composeRouteForBatchGetRequest(requestContext),
-        HEADERS_FOR_MULTIGET_REQUEST,
+        HEADERS_FOR_STREAMING_MULTI_GET_REQUEST,
         this::serializeMultiGetRequest,
         (MultiKeyStreamingRouteResponseHandler<K>) (
             keysForRoutes,
@@ -621,10 +636,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     verifyMetadataInitialized();
-    Map<String, String> headers = new HashMap<>(2);
-    headers.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
+    Map<String, String> headers = new HashMap<>(3);
+    headers.putAll(HEADERS_FOR_COMPUTE_REQUEST);
     headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(computeRequest.getValueSchemaID()));
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
