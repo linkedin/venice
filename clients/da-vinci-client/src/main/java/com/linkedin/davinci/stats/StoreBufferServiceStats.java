@@ -20,11 +20,12 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
 
   public StoreBufferServiceStats(
       MetricsRepository metricsRepository,
+      String metricName,
       LongSupplier totalMemoryUsageSupplier,
       LongSupplier totalRemainingMemorySupplier,
       LongSupplier maxMemoryUsagePerDrainerSupplier,
       LongSupplier minMemoryUsagePerDrainerSupplier) {
-    super(metricsRepository, "StoreBufferService");
+    super(metricsRepository, metricName);
     totalMemoryUsageSensor = registerSensor(
         new AsyncGauge((ignored, ignored2) -> totalMemoryUsageSupplier.getAsLong(), "total_memory_usage"));
     totalRemainingMemorySensor = registerSensor(
