@@ -2,7 +2,6 @@ package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.request.RequestHelper;
 import java.net.URI;
 
 
@@ -19,9 +18,7 @@ public class DictionaryFetchRequest {
     this.resourceName = resourceName;
   }
 
-  public static DictionaryFetchRequest parseGetHttpRequest(URI uri) {
-    String[] requestParts = RequestHelper.getRequestParts(uri);
-
+  public static DictionaryFetchRequest parseGetHttpRequest(URI uri, String[] requestParts) {
     if (requestParts.length == 4) {
       // [0]""/[1]"action"/[2]"store"/[3]"version"
       String storeName = requestParts[2];

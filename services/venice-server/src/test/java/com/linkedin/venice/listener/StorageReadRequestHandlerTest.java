@@ -407,8 +407,8 @@ public class StorageReadRequestHandlerTest {
     String uri = "/" + QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase() + "/" + topic + "/"
         + topic + "/" + expectedPartitionId;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    TopicPartitionIngestionContextRequest request =
-        TopicPartitionIngestionContextRequest.parseGetHttpRequest(URI.create(httpRequest.uri()));
+    TopicPartitionIngestionContextRequest request = TopicPartitionIngestionContextRequest
+        .parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     // Mock the TopicPartitionIngestionContextResponse from ingestion task
     TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
@@ -445,7 +445,8 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"
     String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(URI.create(httpRequest.uri()));
+    MetadataFetchRequest testRequest =
+        MetadataFetchRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();

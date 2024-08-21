@@ -100,7 +100,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
-            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req, uri);
+            ComputeRouterRequestWrapper computeRouterReq =
+                ComputeRouterRequestWrapper.parseComputeRequest(req, requestParts);
             setupRequestTimeout(computeRouterReq);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);
@@ -114,7 +115,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           ctx.fireChannelRead(healthCheckRequest);
           break;
         case DICTIONARY:
-          DictionaryFetchRequest dictionaryFetchRequest = DictionaryFetchRequest.parseGetHttpRequest(uri);
+          DictionaryFetchRequest dictionaryFetchRequest = DictionaryFetchRequest.parseGetHttpRequest(uri, requestParts);
           statsHandler.setStoreName(dictionaryFetchRequest.getStoreName());
           ctx.fireChannelRead(dictionaryFetchRequest);
           break;
@@ -125,7 +126,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case METADATA:
           statsHandler.setMetadataRequest(true);
-          MetadataFetchRequest metadataFetchRequest = MetadataFetchRequest.parseGetHttpRequest(uri);
+          MetadataFetchRequest metadataFetchRequest =
+              MetadataFetchRequest.parseGetHttpRequest(uri.getPath(), requestParts);
           statsHandler.setStoreName(metadataFetchRequest.getStoreName());
           ctx.fireChannelRead(metadataFetchRequest);
           break;
@@ -137,7 +139,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case TOPIC_PARTITION_INGESTION_CONTEXT:
           TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest =
-              TopicPartitionIngestionContextRequest.parseGetHttpRequest(uri);
+              TopicPartitionIngestionContextRequest
+                  .parseGetHttpRequest(uri.getPath(), RequestHelper.getRequestParts(uri));
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);
