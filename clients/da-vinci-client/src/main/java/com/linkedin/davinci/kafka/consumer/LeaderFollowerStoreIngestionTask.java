@@ -188,7 +188,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
-  protected final int maxRecordSizeBytes; // TODO: move into VeniceWriter when nearline jobs enforce max record size
+  // TODO: move into VeniceWriter when nearline jobs enforce max record size
+  protected final int maxNearlineRecordSizeBytes;
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -286,9 +287,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setPartitionCount(storeVersionPartitionCount)
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
-    this.maxRecordSizeBytes = (store.getMaxRecordSizeBytes() < 0) // TODO: move to VeniceWriter when nearline supported
+    // TODO: move to VeniceWriter when nearline supported
+    this.maxNearlineRecordSizeBytes = (store.getMaxNearlineRecordSizeBytes() < 0)
         ? serverConfig.getDefaultMaxRecordSizeBytes()
-        : store.getMaxRecordSizeBytes();
+        : store.getMaxNearlineRecordSizeBytes();
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
@@ -1902,12 +1904,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected final double calculateAssembledRecordSizeRatio(long recordSize) {
-    return (double) recordSize / maxRecordSizeBytes;
+    return (double) recordSize / maxNearlineRecordSizeBytes;
   }
 
   @Override
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
-    if (maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+    if (maxNearlineRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
       hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
     }
   }
