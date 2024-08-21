@@ -14,6 +14,7 @@ import com.linkedin.venice.listener.request.TopicPartitionIngestionContextReques
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.request.RequestHelper;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -74,21 +75,22 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
     try {
       URI uri = URI.create(req.uri());
-      QueryAction action = getQueryActionFromRequest(req, uri);
+      String[] requestParts = RequestHelper.getRequestParts(uri);
+      QueryAction action = getQueryActionFromRequest(req, requestParts);
       statsHandler.setRequestSize(req.content().readableBytes());
       switch (action) {
         case STORAGE: // GET /storage/store/partition/key
           HttpMethod requestMethod = req.method();
           if (requestMethod.equals(HttpMethod.GET)) {
             // TODO: evaluate whether we can replace single-get by multi-get
-            GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req, uri);
+            GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req, requestParts);
             setupRequestTimeout(getRouterRequest);
             statsHandler.setRequestInfo(getRouterRequest);
             ctx.fireChannelRead(getRouterRequest);
           } else if (requestMethod.equals(HttpMethod.POST)) {
             // Multi-get
             MultiGetRouterRequestWrapper multiGetRouterReq =
-                MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req, uri);
+                MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req, requestParts);
             setupRequestTimeout(multiGetRouterReq);
             statsHandler.setRequestInfo(multiGetRouterReq);
             ctx.fireChannelRead(multiGetRouterReq);
@@ -169,10 +171,9 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     super.userEventTriggered(ctx, evt);
   }
 
-  static QueryAction getQueryActionFromRequest(HttpRequest req, URI uri) {
+  static QueryAction getQueryActionFromRequest(HttpRequest req, String[] requestParts) {
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
-    String[] requestParts = uri.getPath().split("/");
     HttpMethod reqMethod = req.method();
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
       String actions =
