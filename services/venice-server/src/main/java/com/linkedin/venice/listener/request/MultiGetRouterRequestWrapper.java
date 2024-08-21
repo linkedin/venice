@@ -38,8 +38,8 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
 
   public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(
       FullHttpRequest httpRequest,
-      String[] resourceNames) {
-    if (resourceNames.length != 3) {
+      String[] requestParts) {
+    if (requestParts.length != 3) {
       // [0]""/[1]"storage"/[2]{$resourceName}
       throw new VeniceException("Invalid request: " + httpRequest.uri());
     }
@@ -58,7 +58,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     httpRequest.content().readBytes(content);
     keys = parseKeys(content);
 
-    return new MultiGetRouterRequestWrapper(resourceNames[2], keys, httpRequest);
+    return new MultiGetRouterRequestWrapper(requestParts[2], keys, httpRequest);
   }
 
   public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientRequest grpcRequest) {

@@ -133,7 +133,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case CURRENT_VERSION:
           statsHandler.setMetadataRequest(true);
-          CurrentVersionRequest currentVersionRequest = CurrentVersionRequest.parseGetHttpRequest(uri);
+          CurrentVersionRequest currentVersionRequest =
+              CurrentVersionRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(uri));
           statsHandler.setStoreName(currentVersionRequest.getStoreName());
           ctx.fireChannelRead(currentVersionRequest);
           break;
