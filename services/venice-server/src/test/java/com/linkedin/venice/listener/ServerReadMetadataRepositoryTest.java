@@ -38,6 +38,8 @@ public class ServerReadMetadataRepositoryTest {
   private ReadOnlySchemaRepository mockSchemaRepo;
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
+  private final MetricsRepository metricsRepository = new MetricsRepository();
+  private final static String TEST_STORE = "test_store";
 
   @BeforeMethod
   public void setUp() {
@@ -49,7 +51,6 @@ public class ServerReadMetadataRepositoryTest {
 
   @Test
   public void testGetMetadata() {
-    MetricsRepository metricsRepository = new MetricsRepository();
     ServerReadMetadataRepository serverReadMetadataRepository = new ServerReadMetadataRepository(
         metricsRepository,
         mockMetadataRepo,
@@ -113,5 +114,23 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setBatchGetLimit(300);
     metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     Assert.assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
+  }
+
+  @Test
+  public void storeMigrationShouldThrownException() {
+    ServerReadMetadataRepository serverReadMetadataRepository = new ServerReadMetadataRepository(
+        metricsRepository,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
+        Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)));
+
+    Store store = mock(Store.class);
+    doReturn(Boolean.TRUE).when(store).isMigrating();
+    doReturn(Boolean.TRUE).when(store).isStorageNodeReadQuotaEnabled();
+    doReturn(store).when(mockMetadataRepo).getStoreOrThrow(TEST_STORE);
+    MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getMessage().contains(TEST_STORE + " is migrating"));
   }
 }

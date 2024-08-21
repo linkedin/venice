@@ -72,6 +72,11 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
                 "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
                 storeName));
       }
+      if (store.isMigrating()) {
+        throw new VeniceException(
+            "Store: " + storeName + " is migrating. Failing the request to allow fast "
+                + "client refresh service discovery.");
+      }
       // Version metadata
       int currentVersionNumber = store.getCurrentVersion();
       if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
