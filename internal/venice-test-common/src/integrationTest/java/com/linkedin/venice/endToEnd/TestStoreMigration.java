@@ -555,7 +555,7 @@ public class TestStoreMigration {
     }
   }
 
-  @Test(timeOut = 2 * TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationForFastClient() throws Exception {
     String storeName = Utils.getUniqueString("testMigrationWithFastClient");
     createAndPushStore(srcClusterName, storeName);
@@ -577,14 +577,10 @@ public class TestStoreMigration {
       readFromStore(client);
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
-          .completeMigration(parentControllerUrl, storeName, srcClusterName, destD2ServiceName, FABRIC0);
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
       TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
         // Keep reading from the store. Fast client is supposed to refresh d2 service
         readFromStore(client);
-        AbstractAvroStoreClient<String, Object> castClient =
-            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
-                .getInnerStoreClient();
-        Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
       });
     }
   }

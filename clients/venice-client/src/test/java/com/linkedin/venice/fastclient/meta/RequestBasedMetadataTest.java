@@ -377,7 +377,7 @@ public class RequestBasedMetadataTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testRequestBasedMetadataStartRefreshDuringStoreMigration() throws IOException, InterruptedException {
+  public void testRequestBasedMetadataOnDemandRefresh() throws IOException, InterruptedException {
     String storeName = "testStore";
     ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
     D2TransportClient d2TransportClient = mock(D2TransportClient.class);
@@ -395,10 +395,10 @@ public class RequestBasedMetadataTest {
       CompletableFuture.runAsync(spy::start);
 
       // refresh would happen multiple times
-      // the first one w/o onDemond refresh but triggered would fail
+      // the first one w/o onDemond refresh and would fail due to d2 client exception
       verify(spy, timeout(3000).atLeast(1)).updateCache(false);
 
-      // the failed refresh triggers a a new refresh with onDemand refresh
+      // the first failed refresh triggers a onDemand refresh
       verify(spy, timeout(3000).atLeast(1)).updateCache(true);
     }
   }
