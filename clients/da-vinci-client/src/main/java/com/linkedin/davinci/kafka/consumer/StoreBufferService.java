@@ -80,10 +80,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
     this.isSorted = sorted;
     this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
-    String metricName = sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted";
+    String metricNamePrefix = sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted";
     this.storeBufferServiceStats = new StoreBufferServiceStats(
         metricsRepository,
-        metricName,
+        metricNamePrefix,
         this::getTotalMemoryUsage,
         this::getTotalRemainingMemory,
         this::getMaxMemoryUsagePerDrainer,
