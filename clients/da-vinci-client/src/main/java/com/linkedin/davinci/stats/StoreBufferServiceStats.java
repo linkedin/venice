@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -15,8 +16,8 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
   private final Sensor totalRemainingMemorySensor;
   private final Sensor maxMemoryUsagePerWriterSensor;
   private final Sensor minMemoryUsagePerWriterSensor;
-  private final Sensor internalProcessingLatencySensor;
-  private final Sensor internalProcessingErrorSensor;
+  private final Lazy<Sensor> internalProcessingLatencySensor;
+  private final Lazy<Sensor> internalProcessingErrorSensor;
 
   public StoreBufferServiceStats(
       MetricsRepository metricsRepository,
@@ -39,15 +40,15 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
             (ignored, ignored2) -> minMemoryUsagePerDrainerSupplier.getAsLong(),
             "min_memory_usage_per_writer"));
 
-    internalProcessingLatencySensor = registerSensor("internal_processing_latency", new Avg(), new Max());
-    internalProcessingErrorSensor = registerSensor("internal_processing_error", new OccurrenceRate());
+    internalProcessingLatencySensor = registerLazySensor("internal_processing_latency", new Avg(), new Max());
+    internalProcessingErrorSensor = registerLazySensor("internal_processing_error", new OccurrenceRate());
   }
 
   public void recordInternalProcessingError() {
-    internalProcessingErrorSensor.record();
+    internalProcessingErrorSensor.get().record();
   }
 
   public void recordInternalProcessingLatency(long latency) {
-    internalProcessingLatencySensor.record(latency);
+    internalProcessingLatencySensor.get().record(latency);
   }
 }
