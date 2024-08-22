@@ -559,7 +559,6 @@ public class TestStoreMigration {
   public void testStoreMigrationForFastClient() throws Exception {
     String storeName = Utils.getUniqueString("testMigrationWithFastClient");
     createAndPushStore(srcClusterName, storeName);
-    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
     D2Client d2Client =
         D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
 
