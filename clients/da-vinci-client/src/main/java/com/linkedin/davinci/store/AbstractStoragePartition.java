@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
-import org.rocksdb.RocksIterator;
 
 
 /**
@@ -177,7 +176,7 @@ public abstract class AbstractStoragePartition {
     throw new VeniceUnsupportedOperationException("getRmdByteUsage");
   }
 
-  public RocksIterator getRocksDBIterator() {
+  public AbstractStorageIterator getIterator() {
     throw new UnsupportedOperationException("Method not supported for storage engine");
   }
 }

@@ -5,6 +5,7 @@ import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITIO
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -993,7 +994,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public RocksIterator getRocksDBIterator() {
-    return rocksDB.newIterator();
+  public AbstractStorageIterator getIterator() {
+    return new RocksDBStorageIterator(rocksDB.newIterator());
   }
 }

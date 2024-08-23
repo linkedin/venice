@@ -9,10 +9,10 @@ import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
 import org.apache.avro.Schema;
-import org.rocksdb.RocksIterator;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -70,7 +70,7 @@ public class RecordTransformerTest {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
         new TestStringRecordTransformer(storeVersion, true);
 
-    RocksIterator iterator = mock(RocksIterator.class);
+    AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
     when(iterator.key()).thenReturn("mockKey".getBytes());
     when(iterator.value()).thenReturn("mockValue".getBytes());
@@ -85,10 +85,10 @@ public class RecordTransformerTest {
     reset(storageEngine);
 
     // Execute the onRecovery method again to test the case where the classHash file exists
-    when(storageEngine.getRocksDBIterator(partitionNumber)).thenReturn(iterator);
+    when(storageEngine.getIterator(partitionNumber)).thenReturn(iterator);
     recordTransformer.onRecovery(storageEngine, partitionNumber);
     verify(storageEngine, never()).clearPartitionOffset(partitionNumber);
-    verify(storageEngine, times(1)).getRocksDBIterator(partitionNumber);
+    verify(storageEngine, times(1)).getIterator(partitionNumber);
   }
 
   @Test

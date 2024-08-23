@@ -96,6 +96,7 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -250,7 +251,6 @@ import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
-import org.rocksdb.RocksIterator;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -958,22 +958,22 @@ public abstract class StoreIngestionTaskTest {
     if (recordTransformerFunction != null) {
       doReturn(mockAbstractStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
-      RocksIterator iterator = mock(RocksIterator.class);
+      AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
       when(iterator.isValid()).thenReturn(true).thenReturn(false);
       when(iterator.key()).thenReturn("mockKey".getBytes());
       when(iterator.value()).thenReturn("mockValue".getBytes());
-      when(mockAbstractStorageEngine.getRocksDBIterator(anyInt())).thenReturn(iterator);
+      when(mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
 
     } else {
       doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
           .getLocalStorageEngine(topic);
     }
 
-    RocksIterator iterator = mock(RocksIterator.class);
+    AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
     when(iterator.key()).thenReturn("mockKey".getBytes());
     when(iterator.value()).thenReturn("mockValue".getBytes());
-    when(mockAbstractStorageEngine.getRocksDBIterator(anyInt())).thenReturn(iterator);
+    when(mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
 
     inMemoryLocalKafkaConsumer =
         new MockInMemoryConsumer(inMemoryLocalKafkaBroker, pollStrategy, mockLocalKafkaConsumer);

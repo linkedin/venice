@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -12,7 +13,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
-import org.rocksdb.RocksIterator;
 
 
 /**
@@ -84,7 +84,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
       storageEngine.clearPartitionOffset(partition);
     } else {
       // Bootstrap from local storage
-      RocksIterator iterator = storageEngine.getRocksDBIterator(partition);
+      AbstractStorageIterator iterator = storageEngine.getIterator(partition);
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();

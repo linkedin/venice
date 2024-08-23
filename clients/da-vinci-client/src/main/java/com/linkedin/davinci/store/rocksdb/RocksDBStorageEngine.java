@@ -6,6 +6,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -24,7 +25,6 @@ import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.RocksIterator;
 import org.rocksdb.SstFileManager;
 
 
@@ -295,8 +295,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   }
 
   @Override
-  public RocksIterator getRocksDBIterator(int partitionId) {
+  public AbstractStorageIterator getIterator(int partitionId) {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.getRocksDBIterator();
+    return partition.getIterator();
   }
 }

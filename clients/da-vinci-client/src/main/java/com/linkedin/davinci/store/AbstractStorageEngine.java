@@ -32,7 +32,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.RocksIterator;
 
 
 /**
@@ -744,7 +743,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return true;
   }
 
-  public RocksIterator getRocksDBIterator(int partitionId) {
+  public AbstractStorageIterator getIterator(int partitionId) {
     throw new UnsupportedOperationException("Method not supported for storage engine");
   }
 }
