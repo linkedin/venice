@@ -7,7 +7,7 @@ import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
-import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -35,24 +35,27 @@ import org.apache.logging.log4j.Logger;
  */
 public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private static final Logger LOGGER = LogManager.getLogger(ServerReadMetadataRepository.class);
+  private final String serverCluster;
   private final ServerMetadataServiceStats serverMetadataServiceStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
-  private ZkStoreConfigAccessor zkStoreConfigAccessor;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
 
   public ServerReadMetadataRepository(
+      String serverCluster,
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository storeRepository,
       ReadOnlySchemaRepository schemaRepository,
-      ZkStoreConfigAccessor zkStoreConfigAccessor,
+      HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture) {
+    this.serverCluster = serverCluster;
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
-    this.zkStoreConfigAccessor = zkStoreConfigAccessor;
+    this.storeConfigRepository = storeConfigRepository;
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
@@ -79,14 +82,17 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       }
 
       if (store.isMigrating()) {
-        // only obtain store Config when store is migrating and only throw exceptions when dest cluster is ready
-        StoreConfig storeConfig = zkStoreConfigAccessor.getStoreConfig(storeName);
-        String destCluster = storeConfig.getMigrationDestCluster();
-        if (destCluster == null) {
+        // only obtain store Config when store is migrating and only throw exceptions when dest cluster is ready or
+        // store
+        // config is not available
+        StoreConfig storeConfig = storeConfigRepository.getStoreConfigOrThrow(storeName);
+        String storeCluster = storeConfig.getCluster();
+        if (storeCluster == null) {
           // defensive check
-          throw new VeniceException("Store: " + storeName + " is migrating but dest cluster is not set.");
+          throw new VeniceException("Store: " + storeName + " is migrating but store cluster is not set.");
         }
-        if (storeConfig.getCluster().equals(storeConfig.getMigrationDestCluster())) {
+        // store cluster has changed so throw exception to enforce client to do a new service discovery
+        if (!storeCluster.equals(serverCluster)) {
           throw new VeniceException(
               "Store: " + storeName + " is migrating. Failing the request to allow fast "
                   + "client refresh service discovery.");

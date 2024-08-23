@@ -99,7 +99,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         clusterNames[i] = clusterName;
         String routerD2ServiceName = "venice-" + i;
         clusterToD2.put(clusterName, routerD2ServiceName);
-        String serverD2ServiceName = Utils.getUniqueString(clusterName + "_server_d2");
+        String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
         clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
       List<String> childRegionName = new ArrayList<>(options.getNumberOfRegions());

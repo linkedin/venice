@@ -2,15 +2,17 @@ package com.linkedin.venice.listener;
 
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
-import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
@@ -45,7 +47,7 @@ public class ServerReadMetadataRepositoryTest {
   private ReadOnlySchemaRepository mockSchemaRepo;
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
-  private ZkStoreConfigAccessor zkStoreConfigAccessor;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private MetricsRepository metricsRepository;
   private final static String TEST_STORE = "test_store";
@@ -58,13 +60,14 @@ public class ServerReadMetadataRepositoryTest {
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
-    zkStoreConfigAccessor = mock(ZkStoreConfigAccessor.class);
+    storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
     metricsRepository = new MetricsRepository();
     serverReadMetadataRepository = new ServerReadMetadataRepository(
+        SRC_CLUSTER,
         metricsRepository,
         mockMetadataRepo,
         mockSchemaRepo,
-        zkStoreConfigAccessor,
+        storeConfigRepository,
         Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
         Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)));
   }
@@ -141,7 +144,7 @@ public class ServerReadMetadataRepositoryTest {
     storeConfig.setMigrationDestCluster(DEST_CLUSTER);
     storeConfig.setMigrationSrcCluster(SRC_CLUSTER);
     storeConfig.setCluster(SRC_CLUSTER);
-    doReturn(storeConfig).when(zkStoreConfigAccessor).getStoreConfig(TEST_STORE);
+    doReturn(storeConfig).when(storeConfigRepository).getStoreConfigOrThrow(TEST_STORE);
     doReturn(1).when(store).getCurrentVersion();
     Version version = mock(Version.class);
     PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
@@ -175,15 +178,25 @@ public class ServerReadMetadataRepositoryTest {
     doReturn(Boolean.TRUE).when(store).isStorageNodeReadQuotaEnabled();
     doReturn(store).when(mockMetadataRepo).getStoreOrThrow(TEST_STORE);
     StoreConfig storeConfig = new StoreConfig(TEST_STORE);
-    storeConfig.setMigrationDestCluster(DEST_CLUSTER);
-    storeConfig.setMigrationSrcCluster(SRC_CLUSTER);
-    // when current cluster is the same as destination cluster
-    // exception should be thrown so clients can act on it and refresh d2
     storeConfig.setCluster(DEST_CLUSTER);
-    doReturn(storeConfig).when(zkStoreConfigAccessor).getStoreConfig(TEST_STORE);
+    doReturn(storeConfig).when(storeConfigRepository).getStoreConfigOrThrow(TEST_STORE);
 
     MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
     Assert.assertTrue(response.isError());
     Assert.assertTrue(response.getMessage().contains(TEST_STORE + " is migrating"));
+  }
+
+  @Test
+  public void storeMigrationShouldThrownExceptionWhenStoreConfigMisfunction() {
+    Store store = mock(Store.class);
+    doReturn(Boolean.TRUE).when(store).isMigrating();
+    doReturn(Boolean.TRUE).when(store).isStorageNodeReadQuotaEnabled();
+    doReturn(store).when(mockMetadataRepo).getStoreOrThrow(TEST_STORE);
+    doThrow(new VeniceNoStoreException(TEST_STORE)).when(storeConfigRepository).getStoreConfigOrThrow(TEST_STORE);
+
+    // store config is not available
+    MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getMessage().contains(TEST_STORE + " does not exist"));
   }
 }

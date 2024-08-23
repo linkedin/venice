@@ -32,10 +32,10 @@ import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
-import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
@@ -416,14 +416,19 @@ public class VeniceServer {
         new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
     services.add(storeValueSchemasCacheService);
 
-    ZkStoreConfigAccessor storeConfigAccessor =
-        new ZkStoreConfigAccessor(zkClient, new HelixAdapterSerializer(), Optional.empty());
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = new HelixReadOnlyStoreConfigRepository(
+        zkClient,
+        new HelixAdapterSerializer(),
+        serverConfig.getRefreshAttemptsForZkReconnect(),
+        serverConfig.getRefreshIntervalForZkReconnectInMs());
 
+    storeConfigRepository.refresh();
     serverReadMetadataRepository = new ServerReadMetadataRepository(
+        clusterConfig.getClusterName(),
         metricsRepository,
         metadataRepo,
         schemaRepo,
-        storeConfigAccessor,
+        storeConfigRepository,
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture));
 
