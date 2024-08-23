@@ -7,11 +7,13 @@ import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -38,16 +40,19 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private final ReadOnlySchemaRepository schemaRepository;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
+  private ZkStoreConfigAccessor zkStoreConfigAccessor;
 
   public ServerReadMetadataRepository(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository storeRepository,
       ReadOnlySchemaRepository schemaRepository,
+      ZkStoreConfigAccessor zkStoreConfigAccessor,
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture) {
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
+    this.zkStoreConfigAccessor = zkStoreConfigAccessor;
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
@@ -72,10 +77,20 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
                 "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
                 storeName));
       }
+
       if (store.isMigrating()) {
-        throw new VeniceException(
-            "Store: " + storeName + " is migrating. Failing the request to allow fast "
-                + "client refresh service discovery.");
+        // only obtain store Config when store is migrating and only throw exceptions when dest cluster is ready
+        StoreConfig storeConfig = zkStoreConfigAccessor.getStoreConfig(storeName);
+        String destCluster = storeConfig.getMigrationDestCluster();
+        if (destCluster == null) {
+          // defensive check
+          throw new VeniceException("Store: " + storeName + " is migrating but dest cluster is not set.");
+        }
+        if (storeConfig.getCluster().equals(storeConfig.getMigrationDestCluster())) {
+          throw new VeniceException(
+              "Store: " + storeName + " is migrating. Failing the request to allow fast "
+                  + "client refresh service discovery.");
+        }
       }
       // Version metadata
       int currentVersionNumber = store.getCurrentVersion();
