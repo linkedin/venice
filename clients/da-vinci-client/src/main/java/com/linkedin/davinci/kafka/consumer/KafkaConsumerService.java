@@ -68,22 +68,20 @@ import org.apache.logging.log4j.Logger;
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
 public abstract class KafkaConsumerService extends AbstractKafkaConsumerService {
-  private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
-  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
-
-  private final ExecutorService consumerExecutor;
   protected final String kafkaUrl;
   protected final String kafkaUrlForLogger;
-  private final Logger LOGGER;
-
-  protected AggKafkaConsumerServiceStats aggStats;
+  protected final ConsumerPoolType poolType;
+  protected final AggKafkaConsumerServiceStats aggStats;
   protected final IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask;
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
   private RandomAccessDaemonThreadFactory threadFactory;
-  protected final ConsumerPoolType poolType;
+  private final Logger LOGGER;
+  private final ExecutorService consumerExecutor;
+  private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -433,6 +431,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         boolean unregisterMetricForDeletedStoreEnabled);
   }
 
+  /**
+   * This metric function will be called when any {@link SharedKafkaConsumer} inside this class attempt to subscribe or
+   * un-subscribe.
+   */
   final void recordPartitionsPerConsumerSensor() {
     int totalPartitions = 0;
     int minPartitionsPerConsumer = Integer.MAX_VALUE;
@@ -450,6 +452,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     aggStats.recordTotalAvgPartitionsPerConsumer(avgPartitionsPerConsumer);
     aggStats.recordTotalMaxPartitionsPerConsumer(maxPartitionsPerConsumer);
     aggStats.recordTotalMinPartitionsPerConsumer(minPartitionsPerConsumer);
+    aggStats.recordTotalSubscribedPartitionsNum(totalPartitions);
   }
 
   public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
