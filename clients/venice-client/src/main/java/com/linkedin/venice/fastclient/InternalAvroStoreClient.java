@@ -34,7 +34,7 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   @Override
   public CompletableFuture<V> get(K key) throws VeniceClientException {
-    return get(new GetRequestContext(false), key);
+    return get(new GetRequestContext(), key);
   }
 
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
@@ -51,14 +51,44 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
     CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(requestContext, keys);
 
     streamingResultFuture.whenComplete((response, throwable) -> {
-      if (throwable != null) {
+      /*      if (throwable != null) {
         resultFuture.completeExceptionally(throwable);
       } else if (!requestContext.isPartialSuccessAllowed && requestContext.getPartialResponseException().isPresent()) {
         resultFuture.completeExceptionally(
             new VeniceClientException("Response was not complete", requestContext.getPartialResponseException().get()));
       } else {
         resultFuture.complete(response);
+      }*/
+
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else {
+        Optional<Throwable> partialResponseException = Optional.empty();
+        if (!requestContext.isPartialSuccessAllowed) {
+          // check retry context first
+          if (requestContext.retryContext != null && requestContext.retryContext.retryRequestContext != null) {
+            // retry triggered
+            if (requestContext.retryContext.retryRequestContext.getPartialResponseException().isPresent()) {
+              // if there is no exception in the retry request, everything passed, but if there is an exception in the
+              // retry request, that failure might have passed in the original request after the retry started. Not
+              // dealing with that for now.
+              partialResponseException = requestContext.retryContext.retryRequestContext.getPartialResponseException();
+            }
+          } else {
+            // retry not enabled or not triggered
+            if (requestContext.getPartialResponseException().isPresent()) {
+              partialResponseException = requestContext.getPartialResponseException();
+            }
+          }
+        }
+        if (partialResponseException.isPresent()) {
+          resultFuture.completeExceptionally(
+              new VeniceClientException("Response was not complete", partialResponseException.get()));
+        } else {
+          resultFuture.complete(response);
+        }
       }
+
     });
     return resultFuture;
   }
