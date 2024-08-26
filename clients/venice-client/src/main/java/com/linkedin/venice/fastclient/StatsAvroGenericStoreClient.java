@@ -128,39 +128,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       } else {
         // check for partial failures for multi-key requests
         if (requestContext instanceof MultiKeyRequestContext) {
-          MultiKeyRequestContext multiKeyRequestContext = (MultiKeyRequestContext) requestContext;
-          boolean checkOriginalRequestContext = false;
-          if (multiKeyRequestContext.retryContext != null
-              && multiKeyRequestContext.retryContext.retryRequestContext != null) {
-            // retry is triggered
-            if (multiKeyRequestContext.retryContext.retryRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
-              exceptionReceived = true;
-              throwable =
-                  (Throwable) multiKeyRequestContext.retryContext.retryRequestContext.getPartialResponseException()
-                      .get();
-            }
-            if (exceptionReceived) {
-              // if there is no exception in the retry request, everything passed, but if there is an exception in the
-              // retry request, that failure might have passed in the original request after the retry started. checking
-              // the numKeysCompleted for now.
-              int totalKeyCount = multiKeyRequestContext.numKeysInRequest;
-              int successKeyCount = multiKeyRequestContext.numKeysCompleted.get()
-                  + multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get();
-              if (successKeyCount >= totalKeyCount) {
-                exceptionReceived = false;
-              } else {
-                checkOriginalRequestContext = true;
-              }
-            }
-          } else {
-            // retry not enabled or not triggered: check the original request context
-            checkOriginalRequestContext = true;
-          }
-          if (checkOriginalRequestContext) {
-            if (multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
-              exceptionReceived = true;
-              throwable = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
-            }
+          throwable = checkBatchGetPartialFailure((MultiKeyRequestContext) requestContext);
+          if (throwable != null) {
+            exceptionReceived = true;
           }
         }
       }

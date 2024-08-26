@@ -45,18 +45,27 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
     return batchGet(new BatchGetRequestContext<>(keys.size(), false), keys);
   }
 
+  /**
+   * Check for partial failures in the multi-key request context and return the exception if any.
+   * @param multiKeyRequestContext
+   * @return
+   */
   Throwable checkBatchGetPartialFailure(MultiKeyRequestContext<K, V> multiKeyRequestContext) {
-    Throwable throwable = null;
+    Throwable partialResponseException = null;
     // check for partial failures for multi-key requests
-    boolean checkOriginalRequestContext = false;
     if (multiKeyRequestContext.retryContext != null
         && multiKeyRequestContext.retryContext.retryRequestContext != null) {
       // retry is triggered
-      if (multiKeyRequestContext.retryContext.retryRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
-        throwable =
+      if (multiKeyRequestContext.isPartialSuccessAllowed) {
+        if (multiKeyRequestContext.retryContext.retryRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
+          partialResponseException =
+              (Throwable) multiKeyRequestContext.retryContext.retryRequestContext.getPartialResponseException().get();
+        }
+      } else if (multiKeyRequestContext.retryContext.retryRequestContext.getPartialResponseException().isPresent()) {
+        partialResponseException =
             (Throwable) multiKeyRequestContext.retryContext.retryRequestContext.getPartialResponseException().get();
       }
-      if (throwable != null) {
+      if (partialResponseException != null) {
         // if there is no exception in the retry request, everything passed, but if there is an exception in the
         // retry request, that failure might have passed in the original request after the retry started. checking
         // the numKeysCompleted for now.
@@ -64,19 +73,20 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
         int successKeyCount = multiKeyRequestContext.numKeysCompleted.get()
             + multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get();
         if (successKeyCount >= totalKeyCount) {
-          throwable = null;
+          partialResponseException = null;
         }
       }
     } else {
       // retry not enabled or not triggered: check the original request context
-      checkOriginalRequestContext = true;
-    }
-    if (checkOriginalRequestContext) {
-      if (multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
-        throwable = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
+      if (multiKeyRequestContext.isPartialSuccessAllowed) {
+        if (multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
+          partialResponseException = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
+        }
+      } else if (multiKeyRequestContext.getPartialResponseException().isPresent()) {
+        partialResponseException = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
       }
     }
-    return throwable;
+    return partialResponseException;
   }
 
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
@@ -88,32 +98,10 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
       if (throwable != null) {
         resultFuture.completeExceptionally(throwable);
       } else {
-        Optional<Throwable> partialResponseException = Optional.empty();
-        if (!requestContext.isPartialSuccessAllowed) {
-          if (requestContext.retryContext != null && requestContext.retryContext.retryRequestContext != null) {
-            // retry triggered
-            if (requestContext.retryContext.retryRequestContext.getPartialResponseException().isPresent()) {
-              // if there is no exception in the retry request, everything passed, but if there is an exception in the
-              // retry request, that failure might have passed in the original request after the retry started. checking
-              // the numKeysCompleted for now.
-              int totalKeyCount = requestContext.numKeysInRequest;
-              int successKeyCount = requestContext.numKeysCompleted.get()
-                  + requestContext.retryContext.retryRequestContext.numKeysCompleted.get();
-              if (successKeyCount < totalKeyCount) {
-                partialResponseException =
-                    requestContext.retryContext.retryRequestContext.getPartialResponseException();
-              }
-            }
-          } else {
-            // retry not enabled or not triggered
-            if (requestContext.getPartialResponseException().isPresent()) {
-              partialResponseException = requestContext.getPartialResponseException();
-            }
-          }
-        }
-        if (partialResponseException.isPresent()) {
-          resultFuture.completeExceptionally(
-              new VeniceClientException("Response was not complete", partialResponseException.get()));
+        Throwable partialResponseException = checkBatchGetPartialFailure(requestContext);
+        if (partialResponseException != null) {
+          resultFuture
+              .completeExceptionally(new VeniceClientException("Response was not complete", partialResponseException));
         } else {
           resultFuture.complete(response);
         }
