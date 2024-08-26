@@ -13,4 +13,6 @@ public interface SchemaSource {
   Map<RmdVersionId, Schema> fetchRmdSchemas() throws IOException;
 
   Map<Integer, Schema> fetchValueSchemas() throws IOException;
+
+  Schema fetchKeySchema() throws IOException;
 }
