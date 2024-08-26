@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_COMPUTE;
 import static org.apache.hc.core5.http.HttpStatus.SC_BAD_GATEWAY;
 import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
@@ -26,13 +25,13 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
+import com.linkedin.venice.read.RequestHeadersProvider;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -97,25 +96,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private static final RecordDeserializer<StreamingFooterRecordV1> STREAMING_FOOTER_RECORD_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
-
-  private static final Map<String, String> HEADERS_FOR_STREAMING_MULTI_GET_REQUEST = new HashMap<>(2);
-  private static final Map<String, String> HEADERS_FOR_COMPUTE_REQUEST = new HashMap<>(2);
-
-  static {
-    HEADERS_FOR_STREAMING_MULTI_GET_REQUEST.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
-    HEADERS_FOR_STREAMING_MULTI_GET_REQUEST.put(
-        HttpConstants.VENICE_STREAMING,
-        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
-
-    HEADERS_FOR_COMPUTE_REQUEST.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
-    HEADERS_FOR_COMPUTE_REQUEST.put(
-        HttpConstants.VENICE_STREAMING,
-        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
-  }
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
     /**
@@ -387,7 +367,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         keys,
         callback,
         composeRouteForBatchGetRequest(requestContext),
-        HEADERS_FOR_STREAMING_MULTI_GET_REQUEST,
+        RequestHeadersProvider.getStreamingBatchGetHeaders(keys.size()),
         this::serializeMultiGetRequest,
         (MultiKeyStreamingRouteResponseHandler<K>) (
             keysForRoutes,
@@ -636,19 +616,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     verifyMetadataInitialized();
-    Map<String, String> headers = new HashMap<>(3);
-    headers.putAll(HEADERS_FOR_COMPUTE_REQUEST);
-    headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(computeRequest.getValueSchemaID()));
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
         getComputeResultRecordDeserializer(resultSchema);
+    // TODO: client side compute is not supported for fast-client yet, hence hard coding isRemoteComputationOnly to true
     multiKeyStreamingRequest(
         requestContext,
         RequestType.COMPUTE_STREAMING,
         keys,
         callback,
         composeRouteForComputeRequest(requestContext),
-        headers,
+        RequestHeadersProvider.getStreamingComputeHeaderMap(keys.size(), computeRequest.getValueSchemaID(), true),
         (keysForRoutes) -> serializeComputeRequest(computeRequest, keysForRoutes),
         (MultiKeyStreamingRouteResponseHandler<K>) (keysForRoutes, response, throwable) -> {
           ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(
