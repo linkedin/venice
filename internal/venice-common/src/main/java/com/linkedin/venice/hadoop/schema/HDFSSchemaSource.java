@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.schema;
 
+import com.google.common.base.Preconditions;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.venice.annotation.NotThreadsafe;
@@ -45,6 +46,9 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   private final Path rmdSchemaDir;
   private final Path valueSchemaDir;
 
+  // For non ETL flows (historical), the key schema is part of the push configuration and doesn't require caching
+  private final boolean includeKeySchema;
+
   private final Path keySchemaDir;
 
   public HDFSSchemaSource(
@@ -54,20 +58,29 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
       final String storeName) throws IOException {
     Configuration conf = new Configuration();
     this.rmdSchemaDir = rmdSchemaDir;
+    // TODO: Consider either using global filesystem or remove per instance fs and infer filesystem from the path during
+    // usage
     this.fs = this.rmdSchemaDir.getFileSystem(conf);
+    this.valueSchemaDir = valueSchemaDir;
+    this.keySchemaDir = keySchemaDir;
+    this.includeKeySchema = keySchemaDir != null;
+    this.storeName = storeName;
+
+    initialize();
+  }
+
+  private void initialize() throws IOException {
     if (!fs.exists(this.rmdSchemaDir)) {
       fs.mkdirs(this.rmdSchemaDir);
     }
-    this.valueSchemaDir = valueSchemaDir;
+
     if (!fs.exists(this.valueSchemaDir)) {
       fs.mkdirs(this.valueSchemaDir);
     }
-    this.keySchemaDir = keySchemaDir;
-    if (!fs.exists(this.keySchemaDir)) {
+
+    if (includeKeySchema && !fs.exists(this.keySchemaDir)) {
       fs.mkdirs(this.keySchemaDir);
     }
-
-    this.storeName = storeName;
   }
 
   public HDFSSchemaSource(final Path valueSchemaDir, final Path rmdSchemaDir, final String storeName)
@@ -104,7 +117,10 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   public void saveSchemasOnDisk(ControllerClient controllerClient) throws IOException, IllegalStateException {
     saveSchemaResponseToDisk(controllerClient.getAllReplicationMetadataSchemas(storeName).getSchemas(), true);
     saveSchemaResponseToDisk(controllerClient.getAllValueSchema(storeName).getSchemas(), false);
-    saveKeySchemaToDisk(controllerClient.getKeySchema(storeName));
+
+    if (includeKeySchema) {
+      saveKeySchemaToDisk(controllerClient.getKeySchema(storeName));
+    }
   }
 
   void saveSchemaResponseToDisk(MultiSchemaResponse.Schema[] schemas, boolean isRmdSchema)
@@ -140,6 +156,7 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   }
 
   void saveKeySchemaToDisk(SchemaResponse schema) throws IOException, IllegalStateException {
+    Preconditions.checkState(includeKeySchema, "Cannot be invoked with invalid key schema directory");
     LOGGER.info("Caching key schema for store: {} in {}", storeName, keySchemaDir.getName());
 
     Path schemaPath = new Path(keySchemaDir, String.valueOf(schema.getId()));
