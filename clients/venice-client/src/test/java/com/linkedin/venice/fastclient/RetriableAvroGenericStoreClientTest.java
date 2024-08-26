@@ -84,7 +84,7 @@ public class RetriableAvroGenericStoreClientTest {
   private StatsAvroGenericStoreClient<String, GenericRecord> statsAvroGenericStoreClient;
   private Map<String, ? extends Metric> metrics;
 
-  public static final Object[] FASTCLIENT_REQUEST_TYPES = { RequestType.SINGLE_GET, RequestType.MULTI_GET,
+  private static final Object[] FASTCLIENT_REQUEST_TYPES = { RequestType.SINGLE_GET, RequestType.MULTI_GET,
       RequestType.MULTI_GET_STREAMING, RequestType.COMPUTE, RequestType.COMPUTE_STREAMING };
 
   @DataProvider(name = "FastClient-RequestTypes")

@@ -122,9 +122,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
       // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
       // requests from metrics point of view.
-      /*boolean exceptionReceived = throwable != null || (requestContext instanceof MultiKeyRequestContext
-          && ((MultiKeyRequestContext) requestContext).isCompletedSuccessfullyWithPartialResponse());*/
-
       boolean exceptionReceived = false;
       if (throwable != null) {
         exceptionReceived = true;
@@ -132,7 +129,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         // check for partial failures for multi-key requests
         if (requestContext instanceof MultiKeyRequestContext) {
           MultiKeyRequestContext multiKeyRequestContext = (MultiKeyRequestContext) requestContext;
-          // if retry request is completed,
           boolean checkOriginalRequestContext = false;
           if (multiKeyRequestContext.retryContext != null
               && multiKeyRequestContext.retryContext.retryRequestContext != null) {
@@ -145,9 +141,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
             }
             if (exceptionReceived) {
               // if there is no exception in the retry request, everything passed, but if there is an exception in the
-              // retry request, that might have passed in the original request after the retry started. Rather than
-              // trying to
-              // check the exact key's status, validate using the count of keys completed.
+              // retry request, that failure might have passed in the original request after the retry started. checking
+              // the numKeysCompleted for now.
               int totalKeyCount = multiKeyRequestContext.numKeysInRequest;
               int successKeyCount = multiKeyRequestContext.numKeysCompleted.get()
                   + multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get();
@@ -167,11 +162,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
               throwable = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
             }
           }
-          /*if (multiKeyRequestContext.retryContext != null && multiKeyRequestContext.retryContext.retryRequestContext != null) {
-            exceptionReceived = multiKeyRequestContext.retryContext.retryRequestContext.isCompletedSuccessfullyWithPartialResponse();
-          } else {
-            exceptionReceived = multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse();
-          }*/
         }
       }
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
