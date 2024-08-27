@@ -2096,14 +2096,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           versionNumber,
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp);
+          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          partitionConsumptionState.isWaitingForReplicationLag());
     } else {
       heartbeatMonitoringService.recordFollowerHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp);
+          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          partitionConsumptionState.isWaitingForReplicationLag());
     }
   }
 

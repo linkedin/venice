@@ -7,30 +7,52 @@ import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.tuple.Pair;
 
 
 public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<HeartbeatStat, HeartbeatStatReporter> {
-  private final Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> leaderMonitors;
-  private final Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> followerMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> leaderMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> followerMonitors;
 
   public HeartbeatVersionedStats(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Supplier<HeartbeatStat> statsInitiator,
       StatsSupplier<HeartbeatStatReporter> reporterSupplier,
-      Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> leaderMonitors,
-      Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> followerMonitors) {
+      Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> leaderMonitors,
+      Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> followerMonitors) {
     super(metricsRepository, metadataRepository, statsInitiator, reporterSupplier, true);
     this.leaderMonitors = leaderMonitors;
     this.followerMonitors = followerMonitors;
   }
 
-  public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
-    getStats(storeName, version).recordLeaderLag(region, heartbeatTs);
+  public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs, boolean isReadyToServe) {
+    // If the partition is ready to serve, report it's lage to the main lag metric. Otherwise, report it
+    // to the catch up metric.
+    // The metric which isn't updated is squelched by reporting the currentTime (so as to appear caught up and mute
+    // alerts)
+    if (isReadyToServe) {
+      getStats(storeName, version).recordReadyToServeLeaderLag(region, heartbeatTs);
+      getStats(storeName, version).recordCatchingUpLeaderLag(region, System.currentTimeMillis());
+    } else {
+      getStats(storeName, version).recordReadyToServeLeaderLag(region, System.currentTimeMillis());
+      getStats(storeName, version).recordCatchingUpLeaderLag(region, heartbeatTs);
+    }
   }
 
-  public void recordFollowerLag(String storeName, int version, String region, long heartbeatTs) {
-    getStats(storeName, version).recordFollowerLag(region, heartbeatTs);
+  public void recordFollowerLag(
+      String storeName,
+      int version,
+      String region,
+      long heartbeatTs,
+      boolean isReadyToServe) {
+    if (isReadyToServe) {
+      getStats(storeName, version).recordReadyToServeFollowerLag(region, heartbeatTs);
+      getStats(storeName, version).recordCatchingUpFollowerLag(region, System.currentTimeMillis());
+    } else {
+      getStats(storeName, version).recordReadyToServeFollowerLag(region, System.currentTimeMillis());
+      getStats(storeName, version).recordCatchingUpFollowerLag(region, heartbeatTs);
+    }
   }
 
   @Override
