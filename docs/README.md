@@ -151,5 +151,5 @@ Feel free to engage with the community using our:
 Follow us to hear more about the progress of the Venice project and community:
 - [Official blog](https://blog.venicedb.org)
 - [LinkedIn page](https://www.linkedin.com/company/venicedb)
-- [Twitter handle](https://twitter.com/VeniceDataBase)
+- [Find us on X](https://x.com/VeniceDataBase)
 - [YouTube channel](https://youtube.com/@venicedb)
