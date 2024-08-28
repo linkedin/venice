@@ -50,6 +50,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCH
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
@@ -512,6 +513,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
   private final int nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
   private final int nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  private final int channelOptionWriteBufferHighBytes;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -854,6 +856,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
     nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond =
         serverProperties.getInt(SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    channelOptionWriteBufferHighBytes =
+        (int) serverProperties.getSizeInBytes(SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES, 1024l * 1024);
+    if (channelOptionWriteBufferHighBytes <= 0) {
+      throw new VeniceException("Invalid channel option write buffer high bytes: " + channelOptionWriteBufferHighBytes);
+    }
   }
 
   long extractIngestionMemoryLimit(
@@ -1526,5 +1533,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond() {
     return nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getChannelOptionWriteBufferHighBytes() {
+    return channelOptionWriteBufferHighBytes;
   }
 }

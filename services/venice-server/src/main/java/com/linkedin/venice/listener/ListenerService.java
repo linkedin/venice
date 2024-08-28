@@ -26,6 +26,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -162,7 +163,14 @@ public class ListenerService extends AbstractVeniceService {
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
-        .childOption(ChannelOption.TCP_NODELAY, true);
+        .childOption(ChannelOption.TCP_NODELAY, true)
+        // A higher buffer watermark will allow more data write for a given channel and it would be useful for H2,
+        // as H2 works with a smaller number of connections.
+        .childOption(
+            ChannelOption.WRITE_BUFFER_WATER_MARK,
+            new WriteBufferWaterMark(
+                WriteBufferWaterMark.DEFAULT.low(),
+                serverConfig.getChannelOptionWriteBufferHighBytes()));
 
     if (isGrpcEnabled && grpcServer == null) {
       List<ServerInterceptor> interceptors = channelInitializer.initGrpcInterceptors();

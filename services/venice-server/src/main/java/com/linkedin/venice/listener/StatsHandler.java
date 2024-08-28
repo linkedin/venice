@@ -180,6 +180,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
     ChannelFuture future = ctx.writeAndFlush(msg);
+    long beforeFlushTimestampNs = System.nanoTime();
     future.addListener((result) -> {
       // reset the StatsHandler for the new request. This is necessary since instances are channel-based
       // and channels are ready for the future requests as soon as the current has been handled.
@@ -199,6 +200,7 @@ public class StatsHandler extends ChannelDuplexHandler {
        * multiple times for a single request
        */
       if (!serverStatsContext.isStatCallBackExecuted()) {
+        serverStatsContext.setFlushLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeFlushTimestampNs));
         ServerHttpRequestStats serverHttpRequestStats = serverStatsContext.getStoreName() == null
             ? null
             : serverStatsContext.getCurrentStats().getStoreStats(serverStatsContext.getStoreName());
