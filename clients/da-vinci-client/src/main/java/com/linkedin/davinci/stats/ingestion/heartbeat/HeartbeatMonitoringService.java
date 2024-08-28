@@ -244,7 +244,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     recordLags(
         leaderHeartbeatTimeStamps,
         ((storeName, version, region, heartbeatTs, isReadyToServe) -> versionStatsReporter
-            .recordLeaderLag(storeName, version, region, heartbeatTs, isReadyToServe)));
+            .recordLeaderLag(storeName, version, region, heartbeatTs)));
     recordLags(
         followerHeartbeatTimeStamps,
         ((storeName, version, region, heartbeatTs, isReadyToServe) -> versionStatsReporter

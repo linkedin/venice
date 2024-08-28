@@ -11,8 +11,6 @@ import java.util.Set;
 public class HeartbeatStat {
   Map<String, WritePathLatencySensor> readyToServeLeaderSensors = new VeniceConcurrentHashMap<>();
   Map<String, WritePathLatencySensor> readyToServeFollowerSensors = new VeniceConcurrentHashMap<>();
-
-  Map<String, WritePathLatencySensor> catchingUpLeaderSensors = new VeniceConcurrentHashMap<>();
   Map<String, WritePathLatencySensor> catchingUpFollowerSensors = new VeniceConcurrentHashMap<>();
   WritePathLatencySensor defaultSensor;
 
@@ -27,8 +25,6 @@ public class HeartbeatStat {
           .put(region, new WritePathLatencySensor(localRepository, metricConfig, "leader-" + region));
       readyToServeFollowerSensors
           .put(region, new WritePathLatencySensor(localRepository, metricConfig, "follower-" + region));
-      catchingUpLeaderSensors
-          .put(region, new WritePathLatencySensor(localRepository, metricConfig, "catching-up-leader-" + region));
       catchingUpFollowerSensors
           .put(region, new WritePathLatencySensor(localRepository, metricConfig, "catching-up-follower-" + region));
     }
@@ -48,11 +44,6 @@ public class HeartbeatStat {
     readyToServeFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
   }
 
-  public void recordCatchingUpLeaderLag(String region, long startTime) {
-    long endTime = System.currentTimeMillis();
-    catchingUpLeaderSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
-  }
-
   public void recordCatchingUpFollowerLag(String region, long startTime) {
     long endTime = System.currentTimeMillis();
     catchingUpFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
@@ -64,10 +55,6 @@ public class HeartbeatStat {
 
   public WritePathLatencySensor getReadyToServeFollowerLag(String region) {
     return readyToServeFollowerSensors.computeIfAbsent(region, k -> defaultSensor);
-  }
-
-  public WritePathLatencySensor getCatchingUpLeaderLag(String region) {
-    return catchingUpLeaderSensors.computeIfAbsent(region, k -> defaultSensor);
   }
 
   public WritePathLatencySensor getCatchingUpFollowerLag(String region) {

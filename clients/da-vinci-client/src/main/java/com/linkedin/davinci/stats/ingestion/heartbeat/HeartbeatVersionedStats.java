@@ -26,18 +26,8 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     this.followerMonitors = followerMonitors;
   }
 
-  public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs, boolean isReadyToServe) {
-    // If the partition is ready to serve, report it's lage to the main lag metric. Otherwise, report it
-    // to the catch up metric.
-    // The metric which isn't updated is squelched by reporting the currentTime (so as to appear caught up and mute
-    // alerts)
-    if (isReadyToServe) {
-      getStats(storeName, version).recordReadyToServeLeaderLag(region, heartbeatTs);
-      getStats(storeName, version).recordCatchingUpLeaderLag(region, System.currentTimeMillis());
-    } else {
-      getStats(storeName, version).recordReadyToServeLeaderLag(region, System.currentTimeMillis());
-      getStats(storeName, version).recordCatchingUpLeaderLag(region, heartbeatTs);
-    }
+  public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
+    getStats(storeName, version).recordReadyToServeLeaderLag(region, heartbeatTs);
   }
 
   public void recordFollowerLag(
@@ -46,6 +36,10 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       String region,
       long heartbeatTs,
       boolean isReadyToServe) {
+    // If the partition is ready to serve, report it's lage to the main lag metric. Otherwise, report it
+    // to the catch up metric.
+    // The metric which isn't updated is squelched by reporting the currentTime (so as to appear caught up and mute
+    // alerts)
     if (isReadyToServe) {
       getStats(storeName, version).recordReadyToServeFollowerLag(region, heartbeatTs);
       getStats(storeName, version).recordCatchingUpFollowerLag(region, System.currentTimeMillis());
