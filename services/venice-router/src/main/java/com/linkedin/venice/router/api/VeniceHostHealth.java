@@ -72,8 +72,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
    */
   public void setHostAsHealthy(Instance hostname) {
     String identifier = hostname.getNodeId();
-    if (unhealthyHosts.contains(identifier)) {
-      unhealthyHosts.remove(identifier);
+    if (unhealthyHosts.remove(identifier)) {
       LOGGER.info("Marking {} back to healthy host", identifier);
     }
     cleanupUnhealthyHostsBasedOnLiveInstanceMonitor();
