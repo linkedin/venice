@@ -62,9 +62,11 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         if (obj.isFound()) {
           body = obj.getResponseBody();
           schemaIdHeader = obj.getResponseSchemaIdHeader();
+          statsContext.setResponseSize(body.readableBytes());
         } else {
           body = Unpooled.EMPTY_BUFFER;
           responseStatus = NOT_FOUND;
+          statsContext.setResponseSize(0);
         }
         isStreamingResponse = obj.isStreamingResponse();
         responseRcu = obj.getRCU();

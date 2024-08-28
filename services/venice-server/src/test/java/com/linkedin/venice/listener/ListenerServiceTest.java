@@ -68,6 +68,7 @@ public class ListenerServiceTest {
     doReturn(false).when(serverConfig).isRestServiceEpollEnabled();
     doReturn(10).when(serverConfig).getNettyWorkerThreadCount();
     doReturn(DefaultIdentityParser.class.getName()).when(serverConfig).getIdentityParserClassName();
+    doReturn(1024 * 1024).when(serverConfig).getChannelOptionWriteBufferHighBytes();
   }
 
   @Test

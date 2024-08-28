@@ -2207,4 +2207,7 @@ public class ConfigKeys {
       "server.non.current.version.aa.wc.leader.quota.records.per.second";
   public static final String SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.non.current.version.non.aa.wc.leader.quota.records.per.second";
+
+  public static final String SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES =
+      "server.channel.option.write.buffer.watermark.high.bytes";
 }
