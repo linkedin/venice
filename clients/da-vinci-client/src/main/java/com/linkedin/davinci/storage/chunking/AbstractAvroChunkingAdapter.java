@@ -1,6 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
-import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -32,7 +32,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       int bytesLength,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponse response,
+      ReadResponseStats response,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
@@ -80,7 +80,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       ChunkedValueInputStream chunkedValueInputStream,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponse response,
+      ReadResponseStats response,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
@@ -102,7 +102,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean isChunked,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponse response,
+      ReadResponseStats response,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor,
@@ -159,7 +159,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       T reusedValue,
       BinaryDecoder reusedDecoder,
       boolean isChunked,
-      ReadResponse response,
+      ReadResponseStats response,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
@@ -188,7 +188,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       BinaryDecoder reusedDecoder,
       RecordDeserializer<GenericRecord> keyRecordDeserializer,
       boolean isChunked,
-      ReadResponse response,
+      ReadResponseStats response,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor,
@@ -274,7 +274,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   private DecoderWrapper<byte[], T> getByteArrayDecoder(
       CompressionStrategy compressionStrategy,
-      ReadResponse response) {
+      ReadResponseStats response) {
     if (compressionStrategy == CompressionStrategy.NO_OP) {
       return (response == null) ? byteArrayDecoder : instrumentedByteArrayDecoder;
     } else {
@@ -282,7 +282,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     }
   }
 
-  private DecoderWrapper<InputStream, T> getInputStreamDecoder(ReadResponse response) {
+  private DecoderWrapper<InputStream, T> getInputStreamDecoder(ReadResponseStats response) {
     return (response == null) ? decompressingInputStreamDecoder : instrumentedDecompressingInputStreamDecoder;
   }
 
@@ -293,7 +293,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         int inputBytesLength,
         OUTPUT reusedValue,
         RecordDeserializer<OUTPUT> deserializer,
-        ReadResponse response,
+        ReadResponseStats response,
         VeniceCompressor compressor);
   }
 
@@ -306,7 +306,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         OUTPUT reusedValue,
         VeniceCompressor compressor,
         RecordDeserializer<OUTPUT> deserializer,
-        ReadResponse response) throws IOException;
+        ReadResponseStats response) throws IOException;
   }
 
   private static class InstrumentedDecoderWrapper<INPUT, OUTPUT> implements DecoderWrapper<INPUT, OUTPUT> {
@@ -322,7 +322,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         int inputBytesLength,
         OUTPUT reusedValue,
         RecordDeserializer<OUTPUT> deserializer,
-        ReadResponse response,
+        ReadResponseStats response,
         VeniceCompressor compressor) {
       long deserializeStartTimeInNS = System.nanoTime();
       OUTPUT output =

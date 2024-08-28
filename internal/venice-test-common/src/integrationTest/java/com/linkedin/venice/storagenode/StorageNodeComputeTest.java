@@ -107,9 +107,11 @@ public class StorageNodeComputeTest {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
-    // Add one more server with fast-avro enabled
+    // Add one more server with all the bells and whistles: fast-avro, parallel batch get
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
+    serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true);
+    serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 100);
     veniceCluster.addVeniceServer(new Properties(), serverProperties);
 
     // To trigger long-tail retry

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
-import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -44,7 +44,7 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
       int partition,
       byte[] key,
       boolean isChunked,
-      ReadResponse response) {
+      ReadResponseStats response) {
     ByteBuffer keyBuffer = isChunked
         ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKeyAsByteBuffer(key)
         : ByteBuffer.wrap(key);
@@ -56,7 +56,7 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
       int partition,
       byte[] key,
       boolean isChunked,
-      ReadResponse response,
+      ReadResponseStats response,
       ChunkedValueManifestContainer manifestContainer) {
     ByteBuffer keyBuffer = isChunked
         ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKeyAsByteBuffer(key)

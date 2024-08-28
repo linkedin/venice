@@ -6,7 +6,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -15,7 +14,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import it.unimi.dsi.fastutil.ints.IntList;
 
 
 public class StatsHandler extends ChannelDuplexHandler {
@@ -55,88 +53,12 @@ public class StatsHandler extends ChannelDuplexHandler {
     serverStatsContext.setRequestTerminatedEarly();
   }
 
-  public void setRequestType(RequestType requestType) {
-    serverStatsContext.setRequestType(requestType);
-  }
-
-  public void setRequestKeyCount(int keyCount) {
-    serverStatsContext.setRequestKeyCount(keyCount);
-  }
-
   public void setRequestInfo(RouterRequest request) {
     serverStatsContext.setRequestInfo(request);
   }
 
   public void setRequestSize(int requestSizeInBytes) {
     serverStatsContext.setRequestSize(requestSizeInBytes);
-  }
-
-  public void setSuccessRequestKeyCount(int successKeyCount) {
-    serverStatsContext.setSuccessRequestKeyCount(successKeyCount);
-  }
-
-  public void setDatabaseLookupLatency(double latency) {
-    serverStatsContext.setDatabaseLookupLatency(latency);
-  }
-
-  public void setReadComputeLatency(double latency) {
-    serverStatsContext.setReadComputeLatency(latency);
-  }
-
-  public void setReadComputeDeserializationLatency(double latency) {
-    serverStatsContext.setReadComputeDeserializationLatency(latency);
-  }
-
-  public void setReadComputeSerializationLatency(double latency) {
-    serverStatsContext.setReadComputeSerializationLatency(latency);
-  }
-
-  public void setDotProductCount(int count) {
-    serverStatsContext.setDotProductCount(count);
-  }
-
-  public void setCosineSimilarityCount(int count) {
-    serverStatsContext.setCosineSimilarityCount(count);
-  }
-
-  public void setHadamardProductCount(int count) {
-    serverStatsContext.setHadamardProductCount(count);
-  }
-
-  public void setCountOperatorCount(int count) {
-    serverStatsContext.setCountOperatorCount(count);
-  }
-
-  public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
-    serverStatsContext.setStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
-  }
-
-  public void setStorageExecutionQueueLen(int storageExecutionQueueLen) {
-    serverStatsContext.setStorageExecutionQueueLen(storageExecutionQueueLen);
-  }
-
-  public boolean isAssembledMultiChunkLargeValue() {
-    return serverStatsContext.isAssembledMultiChunkLargeValue();
-  }
-
-  public void setMultiChunkLargeValueCount(int multiChunkLargeValueCount) {
-    serverStatsContext.setMultiChunkLargeValueCount(multiChunkLargeValueCount);
-  }
-
-  public void setKeySizeList(IntList keySizeList) {
-    serverStatsContext.setKeySizeList(keySizeList);
-  }
-
-  public void setValueSizeList(IntList valueSizeList) {
-    serverStatsContext.setValueSizeList(valueSizeList);
-  }
-
-  public void setValueSize(int valueSize) {
-    serverStatsContext.setValueSize(valueSize);
-  }
-
-  public void setReadComputeOutputSize(int readComputeOutputSize) {
-    serverStatsContext.setReadComputeOutputSize(readComputeOutputSize);
   }
 
   public long getRequestStartTimeInNS() {

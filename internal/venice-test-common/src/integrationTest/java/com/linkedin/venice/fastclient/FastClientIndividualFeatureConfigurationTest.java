@@ -245,9 +245,11 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
           .project(VALUE_FIELD_NAME)
           .execute(Collections.singleton(key))
           .get(TIME_OUT, TimeUnit.MILLISECONDS);
-      fail();
+      fail("The compute request should have thrown an exception.");
     } catch (Exception clientException) {
-      assertTrue(ExceptionUtils.recursiveMessageContains(clientException, "Read compute is not enabled for the store"));
+      if (!ExceptionUtils.recursiveMessageContains(clientException, "Read compute is not enabled for the store")) {
+        fail("The exception message did not contain the expected string.", clientException);
+      }
     }
 
     VeniceResponseMap<String, ComputeGenericRecord> responseMapWhenComputeDisabled = genericFastClient.compute()

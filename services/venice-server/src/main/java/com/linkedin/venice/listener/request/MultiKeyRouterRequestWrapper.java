@@ -24,7 +24,7 @@ public abstract class MultiKeyRouterRequestWrapper<K> extends RouterRequest {
     this.keys = keys;
   }
 
-  public Iterable<K> getKeys() {
+  public List<K> getKeys() {
     return this.keys;
   }
 

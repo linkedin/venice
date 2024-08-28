@@ -10,9 +10,19 @@ import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
-import com.linkedin.venice.utils.LatencyUtils;
+import io.netty.channel.ChannelHandlerContext;
 
 
+/**
+ * This class is an incomplete copypasta of the logic in {@link StorageReadRequestHandler#channelRead(ChannelHandlerContext, Object)}.
+ *
+ * Besides the maintenance issue of the repeated code, and the incomplete functionality support, another potentially big
+ * issue is that the threading model seems to be significantly different. This class does all the work in-line, in a
+ * blocking fashion. All of these disparities are likely to cause significant issues in terms of trying to ramp the gRPC
+ * path.
+ *
+ * TODO: Refactor with better abstractions so that gRPC and legacy endpoints have better code reuse and behavior parity.
+ */
 public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
   private final StorageReadRequestHandler storage;
 
@@ -23,22 +33,21 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
   @Override
   public void processRequest(GrpcRequestContext ctx) {
     RouterRequest request = ctx.getRouterRequest();
-    final long preSubmissionTimeNs = System.nanoTime();
     ReadResponse response = null;
-    double submissionWaitTime = -1;
 
     try {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
 
-      submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
       switch (request.getRequestType()) {
         case SINGLE_GET:
-          response = storage.handleSingleGetRequest((GetRouterRequest) request);
+          // TODO: get rid of blocking here
+          response = storage.handleSingleGetRequest((GetRouterRequest) request).get();
           break;
         case MULTI_GET:
-          response = storage.handleMultiGetRequest((MultiGetRouterRequestWrapper) request);
+          // TODO: get rid of blocking here
+          response = storage.handleMultiGetRequest((MultiGetRouterRequestWrapper) request).get();
           break;
         default:
           ctx.setError();
@@ -59,7 +68,6 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
     }
 
     if (!ctx.hasError() && response != null) {
-      response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
       response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
       if (request.isStreamingRequest()) {
         response.setStreamingResponse();

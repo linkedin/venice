@@ -2,207 +2,40 @@ package com.linkedin.davinci.listener.response;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
-import it.unimi.dsi.fastutil.ints.IntList;
 
 
 /**
- * This class is used to store common fields shared by various read responses.
+ * This is used to store common fields shared by various read responses. It is intended to store state required to
+ * fulfill the service's goals from the perspective of external callers (e.g. the Router or Fast Client).
+ *
+ * See also {@link #getStats()} which returns the container used to store state exclusively used by metrics.
  */
-public abstract class ReadResponse {
-  private double databaseLookupLatency = -1;
-  private double readComputeLatency = -1;
-  private double readComputeDeserializationLatency = -1;
-  private double readComputeSerializationLatency = -1;
-  private double storageExecutionSubmissionWaitTime;
-  private int storageExecutionQueueLen = -1;
-  private int multiChunkLargeValueCount = 0;
-  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-  private boolean isStreamingResponse = false;
-  private IntList keySizeList;
-  private IntList valueSizeList;
-  private int valueSize = 0;
-  private int readComputeOutputSize = 0;
-  private int dotProductCount = 0;
-  private int cosineSimilarityCount = 0;
-  private int hadamardProductCount = 0;
-  private int countOperatorCount = 0;
-  private int rcu = 0;
+public interface ReadResponse {
+  ReadResponseStats getStats();
 
-  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
-    this.compressionStrategy = compressionStrategy;
-  }
+  void setCompressionStrategy(CompressionStrategy compressionStrategy);
 
-  public void setStreamingResponse() {
-    this.isStreamingResponse = true;
-  }
+  void setStreamingResponse();
 
-  public boolean isStreamingResponse() {
-    return this.isStreamingResponse;
-  }
+  boolean isStreamingResponse();
 
-  public CompressionStrategy getCompressionStrategy() {
-    return compressionStrategy;
-  }
-
-  public void setDatabaseLookupLatency(double latency) {
-    this.databaseLookupLatency = latency;
-  }
-
-  public void addDatabaseLookupLatency(double latency) {
-    this.databaseLookupLatency += latency;
-  }
-
-  public double getDatabaseLookupLatency() {
-    return this.databaseLookupLatency;
-  }
-
-  public void setReadComputeLatency(double latency) {
-    this.readComputeLatency = latency;
-  }
-
-  public void addReadComputeLatency(double latency) {
-    this.readComputeLatency += latency;
-  }
-
-  public double getReadComputeLatency() {
-    return this.readComputeLatency;
-  }
-
-  public void setReadComputeDeserializationLatency(double latency) {
-    this.readComputeDeserializationLatency = latency;
-  }
-
-  public void addReadComputeDeserializationLatency(double latency) {
-    this.readComputeDeserializationLatency += latency;
-  }
-
-  public void setKeySizeList(IntList keySizeList) {
-    this.keySizeList = keySizeList;
-  }
-
-  public void setValueSizeList(IntList valueSizeList) {
-    this.valueSizeList = valueSizeList;
-  }
-
-  public double getReadComputeDeserializationLatency() {
-    return this.readComputeDeserializationLatency;
-  }
-
-  public void setReadComputeSerializationLatency(double latency) {
-    this.readComputeSerializationLatency = latency;
-  }
-
-  public void addReadComputeSerializationLatency(double latency) {
-    this.readComputeSerializationLatency += latency;
-  }
-
-  public void addValueSize(int size) {
-    this.valueSize += size;
-  }
-
-  public int getValueSize() {
-    return valueSize;
-  }
-
-  public void addReadComputeOutputSize(int size) {
-    this.readComputeOutputSize += size;
-  }
-
-  public int getReadComputeOutputSize() {
-    return readComputeOutputSize;
-  }
-
-  public void incrementDotProductCount(int count) {
-    dotProductCount += count;
-  }
-
-  public void incrementCountOperatorCount(int count) {
-    countOperatorCount += count;
-  }
-
-  public void incrementCosineSimilarityCount(int count) {
-    cosineSimilarityCount += count;
-  }
-
-  public void incrementHadamardProductCount(int count) {
-    hadamardProductCount += count;
-  }
-
-  public double getReadComputeSerializationLatency() {
-    return this.readComputeSerializationLatency;
-  }
-
-  public double getStorageExecutionHandlerSubmissionWaitTime() {
-    return storageExecutionSubmissionWaitTime;
-  }
-
-  public void setStorageExecutionSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
-    this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
-  }
+  CompressionStrategy getCompressionStrategy();
 
   /**
    * Set the read compute unit (RCU) cost for this response's request
    * @param rcu
    */
-  public void setRCU(int rcu) {
-    this.rcu = rcu;
-  }
+  void setRCU(int rcu);
 
   /**
    * Get the read compute unit (RCU) for this response's request
    * @return
    */
-  public int getRCU() {
-    return this.rcu;
-  }
+  int getRCU();
 
-  public int getStorageExecutionQueueLen() {
-    return storageExecutionQueueLen;
-  }
+  boolean isFound();
 
-  public void setStorageExecutionQueueLen(int storageExecutionQueueLen) {
-    this.storageExecutionQueueLen = storageExecutionQueueLen;
-  }
+  ByteBuf getResponseBody();
 
-  public void incrementMultiChunkLargeValueCount() {
-    multiChunkLargeValueCount++;
-  }
-
-  public int getMultiChunkLargeValueCount() {
-    return multiChunkLargeValueCount;
-  }
-
-  public boolean isFound() {
-    return true;
-  }
-
-  public IntList getKeySizeList() {
-    return keySizeList;
-  }
-
-  public IntList getValueSizeList() {
-    return valueSizeList;
-  }
-
-  public int getDotProductCount() {
-    return dotProductCount;
-  }
-
-  public int getCosineSimilarityCount() {
-    return cosineSimilarityCount;
-  }
-
-  public int getHadamardProductCount() {
-    return hadamardProductCount;
-  }
-
-  public int getCountOperatorCount() {
-    return countOperatorCount;
-  }
-
-  public abstract int getRecordCount();
-
-  public abstract ByteBuf getResponseBody();
-
-  public abstract int getResponseSchemaIdHeader();
+  int getResponseSchemaIdHeader();
 }

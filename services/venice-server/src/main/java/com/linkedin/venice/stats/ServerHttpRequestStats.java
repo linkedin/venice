@@ -295,7 +295,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         () -> totalStats.earlyTerminatedEarlyRequestCountSensor,
         new OccurrenceRate());
 
-    if (isKeyValueProfilingEnabled) {
+    if (isKeyValueProfilingEnabled || requestType == RequestType.SINGLE_GET) {
+      // size profiling is only expensive for requests with lots of keys, but we keep it always on for single gets...
       String requestValueSizeSensorName = "request_value_size";
       requestValueSizeSensor = registerPerStoreAndTotal(
           requestValueSizeSensorName,
@@ -443,11 +444,11 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     earlyTerminatedEarlyRequestCountSensor.record();
   }
 
-  public void recordKeySizeInByte(long keySize) {
+  public void recordKeySizeInByte(int keySize) {
     requestKeySizeSensor.record(keySize);
   }
 
-  public void recordValueSizeInByte(long valueSize) {
+  public void recordValueSizeInByte(int valueSize) {
     requestValueSizeSensor.record(valueSize);
   }
 

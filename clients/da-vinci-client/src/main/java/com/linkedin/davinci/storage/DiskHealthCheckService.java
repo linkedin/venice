@@ -220,7 +220,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             }
           }
         } catch (InterruptedException e) {
-          LOGGER.info("Disk check service thread shutting down", e);
+          LOGGER.info("Disk check service thread shutting down (interrupted).");
         } catch (Exception ee) {
           LOGGER.error("Error while checking the disk health in server: ", ee);
           errorMessage = ee.getMessage();

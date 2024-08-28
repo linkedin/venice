@@ -7,6 +7,7 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.listener.ServerStatsContext;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.response.stats.ComputeResponseStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
@@ -114,28 +115,32 @@ public class ServerStatsContextTest {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
+    context.setRequestType(RequestType.COMPUTE);
 
-    context.setRequestType(RequestType.MULTI_GET);
-    context.setDatabaseLookupLatency(10.5);
-    context.setStorageExecutionHandlerSubmissionWaitTime(20.5);
-    context.setMultiChunkLargeValueCount(10);
     context.setRequestKeyCount(105);
-    context.setSuccessRequestKeyCount(100);
     context.setRequestSize(1000);
-    context.setRequestPartCount(11);
-    context.setReadComputeLatency(1000);
-    context.setReadComputeDeserializationLatency(100);
-    context.setReadComputeSerializationLatency(200);
-    context.setDotProductCount(300);
-    context.setCosineSimilarityCount(13);
-    context.setHadamardProductCount(132);
-    context.setCountOperatorCount(432);
+    context.incrementRequestPartCount();
+    context.incrementRequestPartCount();
+
+    ComputeResponseStats responseStats = new ComputeResponseStats();
+    responseStats.setRecordCount(100);
+    responseStats.addDatabaseLookupLatency(10.5);
+    responseStats.setStorageExecutionSubmissionWaitTime(20.5);
+    responseStats.incrementMultiChunkLargeValueCount();
+    responseStats.addReadComputeLatency(1000);
+    responseStats.addReadComputeDeserializationLatency(100);
+    responseStats.addReadComputeSerializationLatency(200);
+    responseStats.incrementDotProductCount(300);
+    responseStats.incrementCosineSimilarityCount(13);
+    responseStats.incrementHadamardProductCount(132);
+    responseStats.incrementCountOperatorCount(432);
+    context.setReadResponseStats(responseStats);
 
     context.recordBasicMetrics(stats);
 
-    // verify that 13 interactions are recorded with the stats object, only 13 record metrics to the stats object
+    // verify that 14 interactions are recorded with the stats object, only 14 record metrics to the stats object
     MockingDetails details = org.mockito.Mockito.mockingDetails(stats);
     int invocations = details.getInvocations().size();
-    assertEquals(invocations, 13);
+    assertEquals(invocations, 14);
   }
 }
