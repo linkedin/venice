@@ -165,7 +165,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
-  private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
+  static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
@@ -1626,7 +1626,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Consumes the kafka actions messages in the queue.
    */
-  private void processConsumerActions(Store store) throws InterruptedException {
+  void processConsumerActions(Store store) throws InterruptedException {
     Instant startTime = Instant.now();
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
@@ -1674,7 +1674,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (consumerActionsQueue.remove(action)) {
           partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
         }
-        if (state != null && !state.isCompletionReported()) {
+        /**
+         * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in
+         * {@link #processCommonConsumerAction}, so the {@link PartitionConsumptionState} was never created
+         */
+        if (state == null || !state.isCompletionReported()) {
           reportError(
               "Error when processing consumer action: " + action,
               action.getPartition(),
