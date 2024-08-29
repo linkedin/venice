@@ -8,6 +8,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
@@ -17,6 +18,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -103,4 +105,30 @@ public class TestClusterLevelConfigForNativeReplication {
           "dc-hybrid");
     });
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testConvertHybridDuringPushjob() {
+    String storeName = Utils.getUniqueString("test-store");
+    parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
+    parentControllerClient.requestTopicForWrites(
+        storeName,
+        1000,
+        Version.PushType.BATCH,
+        Version.numberBasedDummyPushId(1),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of("dc-1"),
+        false,
+        -1);
+
+    ControllerResponse response = parentControllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L));
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains("Cannot convert to hybrid as there is already a pushjob running"));
+  }
+
 }
