@@ -576,10 +576,6 @@ public class DaVinciBackend implements Closeable {
     return ingestionBackend;
   }
 
-  public boolean compareCacheConfig(Optional<ObjectCacheConfig> config) {
-    return cacheBackend.map(ObjectCacheBackend::getStoreCacheConfig).equals(config);
-  }
-
   public void verifyCacheConfigEquality(@Nullable ObjectCacheConfig newObjectCacheConfig, String storeName) {
     ObjectCacheConfig existingObjectCacheConfig =
         cacheBackend.isPresent() ? cacheBackend.get().getStoreCacheConfig() : null;
