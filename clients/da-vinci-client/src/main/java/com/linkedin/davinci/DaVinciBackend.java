@@ -32,6 +32,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.blobtransfer.BlobTransferUtil;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -75,6 +76,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -82,6 +84,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -573,8 +576,14 @@ public class DaVinciBackend implements Closeable {
     return ingestionBackend;
   }
 
-  public boolean compareCacheConfig(Optional<ObjectCacheConfig> config) {
-    return cacheBackend.map(ObjectCacheBackend::getStoreCacheConfig).equals(config);
+  public void verifyCacheConfigEquality(@Nullable ObjectCacheConfig newObjectCacheConfig, String storeName) {
+    ObjectCacheConfig existingObjectCacheConfig =
+        cacheBackend.isPresent() ? cacheBackend.get().getStoreCacheConfig() : null;
+    if (!Objects.equals(existingObjectCacheConfig, newObjectCacheConfig)) {
+      throw new VeniceClientException(
+          "Cache config conflicts with existing backend, storeName=" + storeName + "; existing cache config: "
+              + existingObjectCacheConfig + "; new cache config: " + newObjectCacheConfig);
+    }
   }
 
   final Map<String, VersionBackend> getVersionByTopicMap() {
