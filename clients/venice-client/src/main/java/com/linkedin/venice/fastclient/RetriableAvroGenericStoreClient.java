@@ -183,7 +183,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           timeoutFuture.cancel();
         }
         if (finalFuture.complete(value)) {
-          // original request is faster: Resetting it even though the default is false is to be accurate as
+          // original request is faster: Resetting it even though the default is false to be accurate as
           // retryWin is set to true in the above block before completing the future, so there can be a race.
           requestContext.retryContext.retryWin = false;
         }
@@ -366,13 +366,20 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         scheduledRetryTask.cancel();
       }
       requestContext.complete();
+
+      // check and update the partial response exception before completing the callback
+      // for the metrics to be updated accordingly
       if (finalException == null) {
+        requestContext.setPartialResponseException(null);
         callback.onCompletion(Optional.empty());
       } else {
-        requestContext.setPartialResponseException(finalException);
-        if (requestContext.isCompletedAcceptably()) {
+        R retryRequestContext = (R) requestContext.retryContext.retryRequestContext;
+        if (requestContext.isCompletedAcceptably()
+            && (retryRequestContext == null || retryRequestContext.isCompletedAcceptably())) {
+          requestContext.setPartialResponseExceptionIfNull(finalException);
           callback.onCompletion(Optional.empty());
         } else {
+          requestContext.setPartialResponseExceptionIfNull(finalException);
           callback
               .onCompletion(Optional.of(new VeniceClientException("Request failed with exception", finalException)));
         }
@@ -409,7 +416,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         If there is no exception then we are surely done because this request was for all original keys.
          */
         if (!finalRequestCompletionFuture.isDone()) {
-          exception.ifPresent(requestContext::setPartialResponseException);
+          exception.ifPresent(requestContext::setPartialResponseExceptionIfNull);
           Optional<Throwable> exceptionToSave = requestContext.getPartialResponseException();
           if (!exceptionToSave.isPresent()) {
             finalRequestCompletionFuture.complete(null);

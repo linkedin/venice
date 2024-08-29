@@ -506,7 +506,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         LOGGER.error(errorMessage);
       }
       VeniceClientHttpException clientException = new VeniceClientHttpException(errorMessage, SC_BAD_GATEWAY);
-      requestContext.setPartialResponseException(clientException);
+      requestContext.setPartialResponseExceptionIfNull(clientException);
       CompletableFuture<Integer> placeholderFailedFuture = new CompletableFuture<>();
       placeholderFailedFuture.completeExceptionally(clientException);
       requestCompletionFutures[routeIndex] = placeholderFailedFuture;

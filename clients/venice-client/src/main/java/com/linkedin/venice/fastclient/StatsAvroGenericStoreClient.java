@@ -128,12 +128,14 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       } else {
         // check for partial failures for multi-key requests
         if (requestContext instanceof MultiKeyRequestContext) {
-          throwable = checkBatchGetPartialFailure((MultiKeyRequestContext) requestContext);
-          if (throwable != null) {
+          MultiKeyRequestContext multiKeyRequestContext = (MultiKeyRequestContext) requestContext;
+          if (multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
             exceptionReceived = true;
+            throwable = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
           }
         }
       }
+
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);

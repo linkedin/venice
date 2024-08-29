@@ -222,6 +222,7 @@ public class RetriableAvroGenericStoreClientTest {
         if (requestCnt == 1) {
           // Mock the original request
           scheduledExecutor.schedule(() -> {
+            requestContext.complete();
             if (originalRequestThrowException) {
               callback.onCompletion(Optional.of(new VeniceClientException("Original request exception")));
             } else if (noReplicaFound) {
@@ -241,6 +242,7 @@ public class RetriableAvroGenericStoreClientTest {
         } else if (requestCnt == 2) {
           // Mock the retry request
           scheduledExecutor.schedule(() -> {
+            requestContext.complete();
             if (retryRequestThrowException) {
               callback.onCompletion(Optional.of(new VeniceClientException("Retry request exception")));
             } else if (noReplicaFound) {
@@ -278,6 +280,7 @@ public class RetriableAvroGenericStoreClientTest {
         if (requestCnt == 1) {
           // Mock the original request
           scheduledExecutor.schedule(() -> {
+            requestContext.complete();
             if (originalRequestThrowException) {
               callback.onCompletion(Optional.of(new VeniceClientException("Original request exception")));
             } else if (noReplicaFound) {
@@ -297,6 +300,7 @@ public class RetriableAvroGenericStoreClientTest {
         } else if (requestCnt == 2) {
           // Mock the retry request
           scheduledExecutor.schedule(() -> {
+            requestContext.complete();
             if (retryRequestThrowException) {
               callback.onCompletion(Optional.of(new VeniceClientException("Retry request exception")));
             } else if (noReplicaFound) {
@@ -495,7 +499,7 @@ public class RetriableAvroGenericStoreClientTest {
     double expectedKeyCount = (batchGet || computeRequest) ? 2.0 : 1.0;
 
     String finalMetricsPrefix = metricsPrefix;
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       assertTrue(metrics.get(finalMetricsPrefix + "request.OccurrenceRate").value() > 0);
     });
     assertEquals(metrics.get(metricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
@@ -639,7 +643,7 @@ public class RetriableAvroGenericStoreClientTest {
    * Original request latency is higher than retry threshold and slower than the retry request
    */
   @Test(dataProvider = "FastClient-RequestTypes-And-Two-Boolean", timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndRetryWins1(
+  public void testGetWithTriggeringLongTailRetryAndRetryWins(
       RequestType requestType,
       boolean keyNotFound,
       boolean noReplicaFound) throws ExecutionException, InterruptedException {
