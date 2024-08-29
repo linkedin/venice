@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
@@ -102,8 +101,7 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
-    long daVinciPushStatusCheckIntervalInMs =
-        this.config.getClusterProperties().getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
+    long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
     if (daVinciPushStatusCheckIntervalInMs >= 0) {
       this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
           version,

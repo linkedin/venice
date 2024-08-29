@@ -124,7 +124,7 @@ public class DaVinciBackend implements Closeable {
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
-      writeBatchingPushStatus = backendConfig.daVinciWriteBatchingPushStatus();
+      writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
       this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())

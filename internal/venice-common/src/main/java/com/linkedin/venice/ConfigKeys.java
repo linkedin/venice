@@ -1724,13 +1724,9 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
-   * Config to control whether to batch push statues among all partitions into one single update events.
-   */
-  public static final String DAVINCI_WRITE_BATCHING_PUSH_STATUS = "davinci.write.batching.push.status";
-
-  /**
-   * DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci node, and
-   * decide whether to send a status update event. This config controls the interval between each check.
+   * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
+   * update events; DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci
+   * node, and decide whether to send a status update event. This config controls the interval between each check.
    */
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
