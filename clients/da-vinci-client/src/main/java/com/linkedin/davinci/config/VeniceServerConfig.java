@@ -835,8 +835,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     daVinciWriteBatchingPushStatus = serverProperties.getBoolean(DAVINCI_WRITE_BATCHING_PUSH_STATUS, false);
-    daVinciWriteCompleteEventDelayInMs =
-        serverProperties.getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, TimeUnit.SECONDS.toMillis(30));
+    daVinciWriteCompleteEventDelayInMs = serverProperties.getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());

@@ -102,13 +102,17 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
-    long daVinciPushStatusCheckIntervalInMs = this.config.getClusterProperties()
-        .getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, TimeUnit.SECONDS.toMillis(30));
-    this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
-        version,
-        daVinciPushStatusCheckIntervalInMs,
-        backend.getPushStatusStoreWriter());
-    this.daVinciPushStatusUpdateTask.start();
+    long daVinciPushStatusCheckIntervalInMs =
+        this.config.getClusterProperties().getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
+    if (daVinciPushStatusCheckIntervalInMs >= 0) {
+      this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
+          version,
+          daVinciPushStatusCheckIntervalInMs,
+          backend.getPushStatusStoreWriter());
+      this.daVinciPushStatusUpdateTask.start();
+    } else {
+      this.daVinciPushStatusUpdateTask = null;
+    }
   }
 
   synchronized void close() {
@@ -127,7 +131,9 @@ public class VersionBackend {
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when killing consumption task: {}", version.kafkaTopicName(), e);
     }
-    daVinciPushStatusUpdateTask.shutdown();
+    if (daVinciPushStatusUpdateTask != null) {
+      daVinciPushStatusUpdateTask.shutdown();
+    }
   }
 
   synchronized void delete() {
@@ -383,6 +389,8 @@ public class VersionBackend {
   }
 
   public void updatePartitionStatus(int partition, ExecutionStatus status) {
-    daVinciPushStatusUpdateTask.updatePartitionStatus(partition, status);
+    if (daVinciPushStatusUpdateTask != null) {
+      daVinciPushStatusUpdateTask.updatePartitionStatus(partition, status);
+    }
   }
 }
