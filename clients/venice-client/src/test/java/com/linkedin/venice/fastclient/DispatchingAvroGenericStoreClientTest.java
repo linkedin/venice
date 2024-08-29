@@ -430,6 +430,11 @@ public class DispatchingAvroGenericStoreClientTest {
       assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
       assertEquals(metrics.get(metricPrefix + "success_request_key_count.Max").value(), successKeyCount);
       if (batchGet) {
+        assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt50pr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt90pr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt95pr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt99pr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
       } else if (computeRequest) {
         // Do nothing since we don't have the ComputeRequestContext to test
@@ -444,6 +449,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // as partial healthy request is still considered unhealthy, not incrementing the below metric
       assertFalse(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
       if (batchGet) {
+        assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
       } else if (computeRequest) {
         // Do nothing since we don't have the ComputeRequestContext to test
@@ -810,7 +816,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingBatchGetHeaderFlag() throws IOException, InterruptedException, ExecutionException {
+  public void testStreamingBatchGetHeaders() throws IOException, InterruptedException, ExecutionException {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(false, false, true, true, routingLeakedRequestCleanupThresholdMS);
@@ -823,7 +829,10 @@ public class DispatchingAvroGenericStoreClientTest {
       assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
       ArgumentCaptor<Map<String, String>> headerCaptor = ArgumentCaptor.forClass(Map.class);
       verify(mockedTransportClient, atLeastOnce()).post(any(), headerCaptor.capture(), any());
-      assertTrue(headerCaptor.getValue().containsKey(HttpConstants.VENICE_STREAMING));
+      assertTrue(headerCaptor.getValue().containsKey(HttpConstants.VENICE_KEY_COUNT));
+      assertEquals(
+          headerCaptor.getValue().get(HttpConstants.VENICE_KEY_COUNT),
+          Integer.toString(BATCH_GET_KEYS.size()));
     } finally {
       tearDown();
     }
