@@ -84,6 +84,15 @@ public class DaVinciPushStatusUpdateTask {
       batchPushEndSignalSent();
       // Shutdown the scheduler after sending the final status
       shutdown();
+    } else if (!isBatchPushEndSignalSent() && isAnyPartitionOnErrorStatus()) {
+      pushStatusStoreWriter.writeVersionLevelPushStatus(
+          version.getStoreName(),
+          version.getNumber(),
+          ExecutionStatus.ERROR,
+          getTrackedPartitions());
+      batchPushEndSignalSent();
+      // Shutdown the scheduler after sending the final status
+      shutdown();
     }
   }
 
@@ -99,6 +108,13 @@ public class DaVinciPushStatusUpdateTask {
       return false;
     }
     return partitionStatus.values().stream().allMatch(status::equals);
+  }
+
+  public boolean isAnyPartitionOnErrorStatus() {
+    if (partitionStatus.isEmpty()) {
+      return false;
+    }
+    return partitionStatus.values().stream().anyMatch(ExecutionStatus.ERROR::equals);
   }
 
   public void start() {

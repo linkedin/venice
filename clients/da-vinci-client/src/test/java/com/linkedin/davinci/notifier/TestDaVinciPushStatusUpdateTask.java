@@ -42,6 +42,12 @@ public class TestDaVinciPushStatusUpdateTask {
     // Verify that the status is consistent across all partitions
     assertTrue(task.areAllPartitionsOnSameTerminalStatus(ExecutionStatus.COMPLETED));
 
+    // Set partition 4 to ERROR
+    task.updatePartitionStatus(4, ExecutionStatus.ERROR);
+    assertFalse(task.areAllPartitionsOnSameTerminalStatus(ExecutionStatus.COMPLETED));
+    assertTrue(task.isAnyPartitionOnErrorStatus());
+
+    // Set the status of partition 4 back to STARTED
     task.updatePartitionStatus(4, ExecutionStatus.STARTED);
     assertFalse(task.areAllPartitionsOnSameTerminalStatus(ExecutionStatus.COMPLETED));
 
