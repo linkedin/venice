@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * This implementation aims to be very high performance with the goal of supporting a very large number of
  * TokenBuckets in an application; thus avoiding an auxilliary thread to refill the bucket.
  */
-public class TokenBucket {
+public class TokenBucket implements VeniceRateLimiter {
   private final long capacity;
   private final long refillAmount;
   private final long refillIntervalMs;
@@ -141,5 +141,10 @@ public class TokenBucket {
     } else {
       return 0d;
     }
+  }
+
+  @Override
+  public boolean tryAcquirePermit(long units) {
+    return tryConsume(units);
   }
 }
