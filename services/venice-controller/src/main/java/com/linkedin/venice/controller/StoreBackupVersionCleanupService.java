@@ -281,8 +281,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // retention period.
     if (readyToBeRemovedVersions.isEmpty()) {
       for (Version version: versions) {
-        if (version.getNumber() < currentVersion && store.getLatestVersionPromoteToCurrentTimestamp()
-            + defaultBackupVersionRetentionMs < time.getMilliseconds()) {
+        if (version.getNumber() < currentVersion
+            && version.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds()) {
           readyToBeRemovedVersions.add(version);
         }
       }
