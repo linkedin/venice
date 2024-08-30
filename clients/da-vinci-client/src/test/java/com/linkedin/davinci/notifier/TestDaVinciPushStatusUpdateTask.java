@@ -16,6 +16,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.testng.annotations.Test;
 
 
@@ -28,7 +29,13 @@ public class TestDaVinciPushStatusUpdateTask {
     doReturn(storeName).when(version).getStoreName();
     doReturn(versionNumber).when(version).getNumber();
     PushStatusStoreWriter pushStatusStoreWriter = mock(PushStatusStoreWriter.class);
-    DaVinciPushStatusUpdateTask task = new DaVinciPushStatusUpdateTask(version, 100, pushStatusStoreWriter);
+    // Always return true for this supplier since there is no VersionBackend
+    Supplier<Boolean> areAllPartitionFuturesCompletedSuccessfully = () -> true;
+    DaVinciPushStatusUpdateTask task = new DaVinciPushStatusUpdateTask(
+        version,
+        100,
+        pushStatusStoreWriter,
+        areAllPartitionFuturesCompletedSuccessfully);
     task.updatePartitionStatus(1, ExecutionStatus.COMPLETED);
     task.updatePartitionStatus(2, ExecutionStatus.COMPLETED);
     task.updatePartitionStatus(3, ExecutionStatus.COMPLETED);

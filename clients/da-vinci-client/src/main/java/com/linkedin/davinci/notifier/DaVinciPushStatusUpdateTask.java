@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 
 /**
@@ -21,6 +22,7 @@ public class DaVinciPushStatusUpdateTask {
   private boolean batchPushStartSignalSent;
   private boolean batchPushEndSignalSent;
   private final long daVinciPushStatusCheckIntervalInMs;
+  private final Supplier<Boolean> areAllPartitionFuturesCompletedSuccessfully;
   private final Map<Integer, ExecutionStatus> partitionStatus = new VeniceConcurrentHashMap<>();
   // Executor for scheduling tasks
   private final ScheduledExecutorService scheduler =
@@ -29,12 +31,14 @@ public class DaVinciPushStatusUpdateTask {
   public DaVinciPushStatusUpdateTask(
       Version version,
       long daVinciPushStatusCheckIntervalInMs,
-      PushStatusStoreWriter pushStatusStoreWriter) {
+      PushStatusStoreWriter pushStatusStoreWriter,
+      Supplier<Boolean> areAllPartitionFuturesCompletedSuccessfully) {
     this.version = version;
     this.batchPushStartSignalSent = false;
     this.batchPushEndSignalSent = false;
     this.daVinciPushStatusCheckIntervalInMs = daVinciPushStatusCheckIntervalInMs;
     this.pushStatusStoreWriter = pushStatusStoreWriter;
+    this.areAllPartitionFuturesCompletedSuccessfully = areAllPartitionFuturesCompletedSuccessfully;
   }
 
   public boolean isBatchPushStartSignalSent() {
@@ -70,7 +74,8 @@ public class DaVinciPushStatusUpdateTask {
           ExecutionStatus.STARTED,
           getTrackedPartitions());
       batchPushStartSignalSent();
-    } else if (!isBatchPushEndSignalSent() && areAllPartitionsOnSameTerminalStatus(ExecutionStatus.COMPLETED)) {
+    } else if (!isBatchPushEndSignalSent() && areAllPartitionsOnSameTerminalStatus(ExecutionStatus.COMPLETED)
+        && areAllPartitionFuturesCompletedSuccessfully.get()) {
       pushStatusStoreWriter.writeVersionLevelPushStatus(
           version.getStoreName(),
           version.getNumber(),

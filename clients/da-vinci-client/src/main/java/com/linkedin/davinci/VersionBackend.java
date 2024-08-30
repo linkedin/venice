@@ -106,7 +106,8 @@ public class VersionBackend {
       this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
           version,
           daVinciPushStatusCheckIntervalInMs,
-          backend.getPushStatusStoreWriter());
+          backend.getPushStatusStoreWriter(),
+          this::areAllPartitionFuturesCompletedSuccessfully);
       this.daVinciPushStatusUpdateTask.start();
     } else {
       this.daVinciPushStatusUpdateTask = null;
@@ -377,6 +378,13 @@ public class VersionBackend {
   void completePartitionExceptionally(int partition, Throwable failure) {
     LOGGER.warn("Failed to subscribe to partition {} of {}", partition, this, failure);
     partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>()).completeExceptionally(failure);
+  }
+
+  boolean areAllPartitionFuturesCompletedSuccessfully() {
+    if (partitionFutures == null || partitionFutures.isEmpty()) {
+      return false;
+    }
+    return partitionFutures.values().stream().allMatch(f -> (f.isDone() && !f.isCompletedExceptionally()));
   }
 
   private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
