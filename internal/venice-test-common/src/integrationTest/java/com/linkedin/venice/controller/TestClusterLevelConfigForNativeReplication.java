@@ -129,6 +129,7 @@ public class TestClusterLevelConfigForNativeReplication {
         new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L));
     Assert.assertTrue(response.isError());
     Assert.assertTrue(response.getError().contains("Cannot convert to hybrid as there is already a pushjob running"));
+    parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
   }
 
 }
