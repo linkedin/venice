@@ -111,6 +111,7 @@ public class DaVinciBackend implements Closeable {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final ClientConfig clientConfig;
   private BlobTransferManager<Void> blobTransferManager;
+  private final boolean writeBatchingPushStatus;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -123,6 +124,7 @@ public class DaVinciBackend implements Closeable {
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
+      writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
       this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -610,8 +612,14 @@ public class DaVinciBackend implements Closeable {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
-      pushStatusStoreWriter
-          .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
+      if (writeBatchingPushStatus && !incrementalPushVersion.isPresent()) {
+        // Batching the push statuses from all partitions for batch pushes;
+        // VersionBackend will handle the push status update to Venice backend
+        versionBackend.updatePartitionStatus(partition, status);
+      } else {
+        pushStatusStoreWriter
+            .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
+      }
     }
   }
 

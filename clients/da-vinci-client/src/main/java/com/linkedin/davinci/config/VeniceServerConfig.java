@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
@@ -499,6 +500,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final long daVinciPushStatusCheckIntervalInMs;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
@@ -830,6 +832,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
+    daVinciPushStatusCheckIntervalInMs = serverProperties.getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1483,6 +1486,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean useDaVinciSpecificExecutionStatusForError() {
     return useDaVinciSpecificExecutionStatusForError;
+  }
+
+  public long getDaVinciPushStatusCheckIntervalInMs() {
+    return daVinciPushStatusCheckIntervalInMs;
   }
 
   public boolean isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled() {

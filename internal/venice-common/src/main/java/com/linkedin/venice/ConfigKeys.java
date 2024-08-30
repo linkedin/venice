@@ -1724,6 +1724,13 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
+   * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
+   * update events; DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci
+   * node, and decide whether to send a status update event. This config controls the interval between each check.
+   */
+  public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
+
+  /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
