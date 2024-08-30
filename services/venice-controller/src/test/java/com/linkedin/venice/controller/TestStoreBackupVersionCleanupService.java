@@ -239,6 +239,21 @@ public class TestStoreBackupVersionCleanupService {
         1,
         TimeUnit.SECONDS,
         () -> verify(admin, atLeast(1)).deleteOldVersionInStore(clusterName, storeWithRollback.getName(), 2));
+
+    versions.clear();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(3, VersionStatus.ONLINE);
+    Store storeLingeringVersion = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 3);
+    version = storeLingeringVersion.getVersion(2);
+    doReturn(2).when(version).getRepushSourceVersion();
+    doReturn(1L).when(version).getCreatedTime();
+
+    // should delete version 1 as its lingerning and not a repush source version.
+    Assert.assertTrue(service.cleanupBackupVersion(storeLingeringVersion, clusterName));
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(admin, atLeast(1)).deleteOldVersionInStore(clusterName, storeLingeringVersion.getName(), 1));
   }
 
   @Test
