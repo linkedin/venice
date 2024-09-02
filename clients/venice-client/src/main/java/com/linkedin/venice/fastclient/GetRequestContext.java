@@ -6,14 +6,12 @@ public class GetRequestContext extends RequestContext {
    * This field is used to store the request uri to the backend.
    */
   String requestUri;
-  RetryContext retryContext;
-  final boolean isTriggeredByBatchGet;
+  RetryContext retryContext; // initialize if needed for retry
 
-  GetRequestContext(boolean isTriggeredByBatchGet) {
+  GetRequestContext() {
     partitionId = -1;
     requestUri = null;
     retryContext = null;
-    this.isTriggeredByBatchGet = isTriggeredByBatchGet;
   }
 
   static class RetryContext {

@@ -533,7 +533,7 @@ public class DispatchingAvroGenericStoreClientTest {
   public void testGet() throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient();
-      GetRequestContext getRequestContext = new GetRequestContext(false);
+      GetRequestContext getRequestContext = new GetRequestContext();
       GenericRecord value = (GenericRecord) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       validateSingleGetMetrics(getRequestContext, true);
@@ -547,7 +547,7 @@ public class DispatchingAvroGenericStoreClientTest {
     GetRequestContext getRequestContext = null;
     try {
       setUpClient(true, false, false);
-      getRequestContext = new GetRequestContext(false);
+      getRequestContext = new GetRequestContext();
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get().toString();
       fail();
     } catch (Exception e) {
@@ -563,7 +563,7 @@ public class DispatchingAvroGenericStoreClientTest {
     GetRequestContext getRequestContext = null;
     try {
       setUpClient(false, false, false, false, 2 * Time.MS_PER_SECOND);
-      getRequestContext = new GetRequestContext(false);
+      getRequestContext = new GetRequestContext();
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       fail();
     } catch (Exception e) {

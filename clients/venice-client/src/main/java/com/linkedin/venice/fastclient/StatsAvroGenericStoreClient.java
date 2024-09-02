@@ -122,8 +122,20 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
       // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
       // requests from metrics point of view.
-      boolean exceptionReceived = throwable != null || (requestContext instanceof MultiKeyRequestContext
-          && ((MultiKeyRequestContext) requestContext).isCompletedSuccessfullyWithPartialResponse());
+      boolean exceptionReceived = false;
+      if (throwable != null) {
+        exceptionReceived = true;
+      } else {
+        // check for partial failures for multi-key requests
+        if (requestContext instanceof MultiKeyRequestContext) {
+          MultiKeyRequestContext multiKeyRequestContext = (MultiKeyRequestContext) requestContext;
+          if (multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
+            exceptionReceived = true;
+            throwable = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
+          }
+        }
+      }
+
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
@@ -179,14 +191,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         clientStats.recordFanoutSize(multiKeyRequestContext.getFanoutSize());
         if (multiKeyRequestContext.retryContext != null
             && multiKeyRequestContext.retryContext.retryRequestContext != null) {
+          MultiKeyRequestContext retryRequestContext = multiKeyRequestContext.retryContext.retryRequestContext;
           clientStats.recordLongTailRetryRequest();
-          clientStats
-              .recordRetryRequestKeyCount(multiKeyRequestContext.retryContext.retryRequestContext.numKeysInRequest);
-          clientStats.recordRetryFanoutSize(multiKeyRequestContext.retryContext.retryRequestContext.getFanoutSize());
+          clientStats.recordRetryRequestKeyCount(retryRequestContext.numKeysInRequest);
+          clientStats.recordRetryFanoutSize(retryRequestContext.getFanoutSize());
           if (!exceptionReceived) {
-            clientStats.recordRetryRequestSuccessKeyCount(
-                multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get());
-            if (multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() > 0) {
+            clientStats.recordRetryRequestSuccessKeyCount(retryRequestContext.numKeysCompleted.get());
+            if (retryRequestContext.numKeysCompleted.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
