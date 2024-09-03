@@ -660,6 +660,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public int getMaxNearlineRecordSizeBytes() {
+    return zkSharedStore.getMaxNearlineRecordSizeBytes();
+  }
+
+  @Override
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    throwUnsupportedOperationException("setMaxNearlineRecordSizeBytes");
+  }
+
+  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }

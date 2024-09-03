@@ -306,6 +306,10 @@ public interface Store {
 
   void setMaxRecordSizeBytes(int maxRecordSizeBytes);
 
+  int getMaxNearlineRecordSizeBytes();
+
+  void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes);
+
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 
   boolean isUnusedSchemaDeletionEnabled();
