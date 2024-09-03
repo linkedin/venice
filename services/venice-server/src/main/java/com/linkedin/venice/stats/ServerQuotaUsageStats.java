@@ -1,9 +1,7 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
 
@@ -17,9 +15,6 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
   private final Sensor rejectedQPS; // rejected query per second
   private final Sensor rejectedKPS; // rejected key per second
   private final Sensor allowedUnintentionallyKPS; // allowed KPS unintentionally due to error or insufficient info
-  private final Sensor usageRatioSensor; // requested qps divided by amortized refill per second on this node for a
-                                         // store
-  private TokenBucket tokenBucket; // The corresponding store's token bucket that this stats instance is tracking for
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -28,8 +23,6 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
     rejectedQPS = registerSensor("quota_rejected_request", new Rate());
     rejectedKPS = registerSensor("quota_rejected_key_count", new Rate());
     allowedUnintentionallyKPS = registerSensor("quota_unintentionally_allowed_key_count", new Count());
-    usageRatioSensor =
-        registerSensor(new AsyncGauge((ignored, ignored2) -> getReadQuotaUsageRatio(), "quota_requested_usage_ratio"));
   }
 
   /**
@@ -53,21 +46,5 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
 
   public void recordAllowedUnintentionally(long rcu) {
     allowedUnintentionallyKPS.record(rcu);
-  }
-
-  public void setTokenBucket(TokenBucket tokenBucket) {
-    this.tokenBucket = tokenBucket;
-  }
-
-  /**
-   * The usage ratio is calculated within the token bucket based on the number of token requested since last refill
-   * @return usage ratio in decimal or -1 if tokenBucket is not set for this instance
-   */
-  private Double getReadQuotaUsageRatio() {
-    if (tokenBucket == null) {
-      return Double.NaN;
-    } else {
-      return tokenBucket.getStaleUsageRatio();
-    }
   }
 }

@@ -529,6 +529,27 @@ public class ConfigKeys {
   public static final String SERVER_NODE_CAPACITY_RCU = "server.node.capacity.rcu.per.second";
 
   /**
+   * Rate limiter for store version level read quota enforcement.
+   */
+  public static final String SERVER_STORE_VERSION_QPS_RATE_LIMITER = "server.store.version.qps.rate.limiter";
+
+  /**
+   * Rate limiter for storage node level read quota enforcement.
+   */
+  public static final String SERVER_STORAGE_NODE_RATE_LIMITER = "server.storage.node.rate.limiter";
+
+  /**
+   * Server quota enforcement interval in milliseconds.
+   */
+  public static final String SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS =
+      "server.quota.enforcement.interval.in.millis";
+
+  /**
+   * Server quota enforcement capacity multiple.
+   */
+  public static final String SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE = "server.quota.enforcement.capacity.multiple";
+
+  /**
    * This config is used to control the maximum records returned by every poll request.
    * So far, Store Ingestion is throttling per poll, so if the configured value is too big,
    * the throttling could be inaccurate and it may impact GC as well.

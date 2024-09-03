@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
-import static com.linkedin.venice.meta.Store.*;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 
 import com.linkedin.venice.exceptions.VeniceException;

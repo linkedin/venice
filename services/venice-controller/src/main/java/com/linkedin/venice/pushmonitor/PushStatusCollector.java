@@ -1,7 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import static java.lang.Thread.*;
-
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -244,7 +242,7 @@ public class PushStatusCollector {
           offlinePushCheckScheduler.shutdownNow();
         }
       } catch (InterruptedException e) {
-        currentThread().interrupt();
+        Thread.currentThread().interrupt();
       }
 
       pushStatusStoreScanExecutor.shutdown();
@@ -253,7 +251,7 @@ public class PushStatusCollector {
           pushStatusStoreScanExecutor.shutdownNow();
         }
       } catch (InterruptedException e) {
-        currentThread().interrupt();
+        Thread.currentThread().interrupt();
       }
       topicToPushStatusMap.clear();
       topicToNoDaVinciStatusRetryCountMap.clear();

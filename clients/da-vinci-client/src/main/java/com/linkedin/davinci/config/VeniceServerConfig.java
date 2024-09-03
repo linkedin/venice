@@ -118,7 +118,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELA
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
@@ -168,12 +170,14 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -294,6 +298,26 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Max request size for request to Storage Node.
    */
   private final int maxRequestSize;
+
+  /**
+   * Rate limiter type for store version QPS rate limiter.
+   */
+  private VeniceRateLimiter.RateLimiterType storeVersionQpsRateLimiterType;
+
+  /**
+   * Rate limiter type for storage node.
+   */
+  private VeniceRateLimiter.RateLimiterType storageNodeRateLimiterType;
+
+  /**
+   * Server quota enforcement interval in seconds.
+   */
+  private final int quotaEnforcementIntervalInMs;
+
+  /**
+   * Server quota enforcement capacity multiple.
+   */
+  private final int quotaEnforcementCapacityMultiple;
 
   /**
    * Time interval for offset check of topic in Hybrid Store lag measurement.
@@ -570,6 +594,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     serverComputeThreadNum = serverProperties.getInt(SERVER_COMPUTE_THREAD_NUM, 16);
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3));
     maxRequestSize = (int) serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024);
+    storeVersionQpsRateLimiterType = extractRateLimiterType(
+        serverProperties.getString(
+            ConfigKeys.SERVER_STORE_VERSION_QPS_RATE_LIMITER,
+            VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_INCREMENTAL_REFILL.name()));
+    storageNodeRateLimiterType = extractRateLimiterType(
+        serverProperties.getString(
+            ConfigKeys.SERVER_STORAGE_NODE_RATE_LIMITER,
+            VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_INCREMENTAL_REFILL.name()));
+    quotaEnforcementIntervalInMs = serverProperties.getInt(SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS, 10_000);
+    quotaEnforcementCapacityMultiple = serverProperties.getInt(SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE, 5);
     topicOffsetCheckIntervalMs =
         serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     this.topicManagerMetadataFetcherConsumerPoolSize = serverProperties.getInt(
@@ -937,6 +971,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     return extractedMemoryLimit;
+  }
+
+  private VeniceRateLimiter.RateLimiterType extractRateLimiterType(String rateLimiterTypeStr) {
+    try {
+      return VeniceRateLimiter.RateLimiterType.valueOf(rateLimiterTypeStr);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException("Invalid rate limiter type: " + rateLimiterTypeStr);
+    }
   }
 
   public int getListenerPort() {
@@ -1546,5 +1588,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getChannelOptionWriteBufferHighBytes() {
     return channelOptionWriteBufferHighBytes;
+  }
+
+  public VeniceRateLimiter.RateLimiterType getStoreVersionQpsRateLimiterType() {
+    return storeVersionQpsRateLimiterType;
+  }
+
+  public VeniceRateLimiter.RateLimiterType getStorageNodeRateLimiterType() {
+    return storageNodeRateLimiterType;
+  }
+
+  public int getQuotaEnforcementIntervalInMs() {
+    return quotaEnforcementIntervalInMs;
+  }
+
+  public int getQuotaEnforcementCapacityMultiple() {
+    return quotaEnforcementCapacityMultiple;
   }
 }

@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 
 import java.time.Clock;
 import java.util.concurrent.TimeUnit;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -41,5 +42,51 @@ public class TokenBucketTest {
 
     assertTrue(tokenBucket.tryConsume(40), "After refill, bucket must support consumption");
     assertEquals(tokenBucket.getStaleTokenCount(), 10, "After refill and consumption, bucket must have correct tokens");
+  }
+
+  @Test
+  public void testTokenBucketFromRcuPerSecond() {
+    long totalRcuPerSecond = 1000;
+    double bucketProportion = 0.5;
+    long enforcementIntervalMs = 1000;
+    int enforcementCapacityMultiple = 5;
+    Clock testClock = Clock.systemUTC();
+
+    TokenBucket bucket = TokenBucket.tokenBucketFromRcuPerSecond(
+        totalRcuPerSecond,
+        bucketProportion,
+        enforcementIntervalMs,
+        enforcementCapacityMultiple,
+        testClock);
+
+    long expectedRefill = 500; // (long) Math.ceil(1000 / 1000.0 * 1000 * 0.5);
+    long expectedCapacity = 2500; // 500 * 5
+
+    assertEquals(bucket.getCapacity(), expectedCapacity);
+    assertEquals(bucket.getRefillAmount(), expectedRefill);
+    assertEquals(bucket.getEnforcementInterval(), enforcementIntervalMs);
+
+    Exception exception = Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TokenBucket.tokenBucketFromRcuPerSecond(0, 0.5, 1000, 1, testClock));
+    assertTrue(exception.getMessage().contains("TokenBucket capacity 0 is not valid.  Must be greater than 0"));
+
+    // 100% bucket proportion should match the total RCU
+    totalRcuPerSecond = 2000;
+    bucketProportion = 1.0;
+    enforcementIntervalMs = 500;
+    enforcementCapacityMultiple = 3;
+
+    bucket = TokenBucket.tokenBucketFromRcuPerSecond(
+        totalRcuPerSecond,
+        bucketProportion,
+        enforcementIntervalMs,
+        enforcementCapacityMultiple,
+        testClock);
+
+    expectedRefill = 1000; // (long) Math.ceil(2000 / 1000.0 * 500 * 1.0);
+    expectedCapacity = expectedRefill * enforcementCapacityMultiple;
+    assertEquals(bucket.getCapacity(), expectedCapacity);
+    assertEquals(bucket.getRefillAmount(), expectedRefill);
   }
 }
