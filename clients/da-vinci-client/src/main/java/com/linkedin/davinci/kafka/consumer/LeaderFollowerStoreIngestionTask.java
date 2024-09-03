@@ -188,9 +188,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
-  // TODO: move into VeniceWriter when nearline jobs enforce max record size
-  protected final int maxNearlineRecordSizeBytes;
-
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -287,10 +284,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setPartitionCount(storeVersionPartitionCount)
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
-    // TODO: move to VeniceWriter when nearline supported
-    this.maxNearlineRecordSizeBytes = (store.getMaxNearlineRecordSizeBytes() < 0)
-        ? serverConfig.getDefaultMaxRecordSizeBytes()
-        : store.getMaxNearlineRecordSizeBytes();
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
@@ -1902,14 +1895,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  /**
+   * maxRecordSizeBytes (and the nearline variant) is a store-level config that defaults to -1.
+   * The default value will be set fleet-wide using the default.max.record.size.bytes on config the server and controller.
+   */
+  private int backfillRecordSizeLimit(int recordSizeLimit) {
+    return (recordSizeLimit > 0) ? recordSizeLimit : serverConfig.getDefaultMaxRecordSizeBytes();
+  }
+
+  protected int getMaxRecordSizeBytes() {
+    return backfillRecordSizeLimit(storeRepository.getStore(storeName).getMaxRecordSizeBytes());
+  }
+
+  protected int getMaxNearlineRecordSizeBytes() {
+    return backfillRecordSizeLimit(storeRepository.getStore(storeName).getMaxNearlineRecordSizeBytes());
+  }
+
   @Override
   protected final double calculateAssembledRecordSizeRatio(long recordSize) {
-    return (double) recordSize / maxNearlineRecordSizeBytes;
+    return (double) recordSize / getMaxRecordSizeBytes();
   }
 
   @Override
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
-    if (maxNearlineRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+    if (getMaxRecordSizeBytes() != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE && ratio > 0) {
       hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
     }
   }
