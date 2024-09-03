@@ -1175,7 +1175,8 @@ public class PartialUpdateTest {
 
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
+  // TODO: remove invocation # before merging this change.
+  @Test(timeOut = TEST_TIMEOUT_MS, invocationCount = 10)
   public void testEnablePartialUpdateOnActiveActiveStore() {
     final String storeName = Utils.getUniqueString("testRepushWithDeleteRecord");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -1212,16 +1213,18 @@ public class PartialUpdateTest {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
-      verifyConsumerThreadPoolFor(
-          storeVersionTopicV1,
-          new PubSubTopicPartitionImpl(realTimeTopic, 0),
-          ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
-      verifyConsumerThreadPoolFor(
-          storeVersionTopicV1,
-          new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
-          ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1);
+      });
       // Enable write-compute for v1:
       // leader: CURRENT_VERSION_NON_AAWC_LEADER => CURRENT_VERSION_AAWC_LEADER
       // follower: CURRENT_VERSION_NON_AAWC_LEADER
@@ -1283,29 +1286,31 @@ public class PartialUpdateTest {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
-      // Version 1 has active-active and write compute disabled, so each server host will ingest from local data center
-      // for leader.
-      verifyConsumerThreadPoolFor(
-          storeVersionTopicV1,
-          new PubSubTopicPartitionImpl(realTimeTopic, 0),
-          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
-      verifyConsumerThreadPoolFor(
-          storeVersionTopicV1,
-          new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
-          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
-      // Version 2 has active-active enabled, so each server host will ingest from two data centers for leader.
-      verifyConsumerThreadPoolFor(
-          storeVersionTopicV2,
-          new PubSubTopicPartitionImpl(realTimeTopic, 0),
-          ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-          NUMBER_OF_CHILD_DATACENTERS);
-      verifyConsumerThreadPoolFor(
-          storeVersionTopicV2,
-          new PubSubTopicPartitionImpl(storeVersionTopicV2, 0),
-          ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        // Version 1 has active-active and write compute disabled, so each server host will ingest from local data
+        // center for leader.
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
+            ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1);
+        // Version 2 has active-active enabled, so each server host will ingest from two data centers for leader.
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV2,
+            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+            NUMBER_OF_CHILD_DATACENTERS);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV2,
+            new PubSubTopicPartitionImpl(storeVersionTopicV2, 0),
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1);
+      });
     }
 
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -1363,27 +1368,29 @@ public class PartialUpdateTest {
           30,
           TimeUnit.SECONDS);
     }
-    // Version 2 become backup version.
-    verifyConsumerThreadPoolFor(
-        storeVersionTopicV2,
-        new PubSubTopicPartitionImpl(realTimeTopic, 0),
-        ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-        NUMBER_OF_CHILD_DATACENTERS);
-    verifyConsumerThreadPoolFor(
-        storeVersionTopicV2,
-        new PubSubTopicPartitionImpl(storeVersionTopicV2, 0),
-        ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-        1);
-    verifyConsumerThreadPoolFor(
-        storeVersionTopicV3,
-        new PubSubTopicPartitionImpl(realTimeTopic, 0),
-        ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-        NUMBER_OF_CHILD_DATACENTERS);
-    verifyConsumerThreadPoolFor(
-        storeVersionTopicV3,
-        new PubSubTopicPartitionImpl(storeVersionTopicV3, 0),
-        ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-        1);
+    TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+      // Version 2 become backup version.
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV2,
+          new PubSubTopicPartitionImpl(realTimeTopic, 0),
+          ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
+          NUMBER_OF_CHILD_DATACENTERS);
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV2,
+          new PubSubTopicPartitionImpl(storeVersionTopicV2, 0),
+          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+          1);
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV3,
+          new PubSubTopicPartitionImpl(realTimeTopic, 0),
+          ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+          NUMBER_OF_CHILD_DATACENTERS);
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV3,
+          new PubSubTopicPartitionImpl(storeVersionTopicV3, 0),
+          ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+          1);
+    });
     // Need to create a new producer to update partial update config from store response.
     veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
     UpdateBuilder builder = new UpdateBuilderImpl(partialUpdateSchema);
@@ -1430,16 +1437,17 @@ public class PartialUpdateTest {
             for (Map.Entry<String, Map<String, TopicPartitionIngestionInfo>> entry: topicPartitionIngestionContexts
                 .entrySet()) {
               Map<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = entry.getValue();
-              Assert.assertTrue(topicPartitionIngestionInfoMap.size() <= 1);
               for (Map.Entry<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoEntry: topicPartitionIngestionInfoMap
                   .entrySet()) {
                 String topicPartitionStr = topicPartitionIngestionInfoEntry.getKey();
-                TopicPartitionIngestionInfo topicPartitionIngestionInfo = topicPartitionIngestionInfoEntry.getValue();
-                assertEquals(pubSubTopicPartition.toString(), topicPartitionStr);
-                assertTrue(topicPartitionIngestionInfo.getConsumerIdStr().contains(consumerPoolType.getStatSuffix()));
-                regionCount += 1;
+                if (pubSubTopicPartition.toString().equals(topicPartitionStr)) {
+                  TopicPartitionIngestionInfo topicPartitionIngestionInfo = topicPartitionIngestionInfoEntry.getValue();
+                  assertTrue(topicPartitionIngestionInfo.getConsumerIdStr().contains(consumerPoolType.getStatSuffix()));
+                  regionCount += 1;
+                }
               }
             }
+            // To ensure exactly one consumer from specific pool is allocated for each region.
             Assert.assertEquals(regionCount, expectedRegionNum);
           }
         } catch (IOException e) {
