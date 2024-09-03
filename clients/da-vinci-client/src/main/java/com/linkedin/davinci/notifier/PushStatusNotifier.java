@@ -21,6 +21,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.RetryUtils;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import org.apache.helix.HelixException;
 import org.apache.logging.log4j.LogManager;
@@ -34,7 +35,7 @@ public class PushStatusNotifier implements VeniceNotifier {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusNotifier.class);
 
   private final OfflinePushAccessor offLinePushAccessor;
-  private HelixPartitionStatusAccessor helixPartitionStatusAccessor;
+  private final HelixPartitionStatusAccessor helixPartitionStatusAccessor;
 
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ReadOnlyStoreRepository storeRepository;
@@ -118,17 +119,47 @@ public class PushStatusNotifier implements VeniceNotifier {
   public void startOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
     offLinePushAccessor
         .updateReplicaStatus(topic, partitionId, instanceId, START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    updateIncrementalPushStatus(topic, message, partitionId, START_OF_INCREMENTAL_PUSH_RECEIVED);
+    updateIncrementalPushStatusToPushStatusStore(topic, message, partitionId, START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   @Override
   public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
     offLinePushAccessor
         .updateReplicaStatus(topic, partitionId, instanceId, END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    updateIncrementalPushStatus(topic, message, partitionId, END_OF_INCREMENTAL_PUSH_RECEIVED);
+    updateIncrementalPushStatusToPushStatusStore(topic, message, partitionId, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
-  private void updateIncrementalPushStatus(
+  @Override
+  public void batchEndOfIncrementalPushReceived(
+      String topic,
+      int partitionId,
+      long offset,
+      List<String> pendingReportIncPushVersionList) {
+    /**
+     * We will perform filtering on batch inc push to report, as by original design we will only keep latest N inc push
+     * entries.
+     * For system store dual write, this is not perfect but good enough for now to keep a low volume of updates without
+     * refactor the key schema.
+     */
+    List<String> filteredIncPushVersionList = pendingReportIncPushVersionList
+        .subList(pendingReportIncPushVersionList.size() - 50, pendingReportIncPushVersionList.size());
+    offLinePushAccessor
+        .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, filteredIncPushVersionList);
+    for (String incPushVersion: filteredIncPushVersionList) {
+      updateIncrementalPushStatusToPushStatusStore(
+          topic,
+          incPushVersion,
+          partitionId,
+          START_OF_INCREMENTAL_PUSH_RECEIVED);
+      updateIncrementalPushStatusToPushStatusStore(
+          topic,
+          incPushVersion,
+          partitionId,
+          END_OF_INCREMENTAL_PUSH_RECEIVED);
+    }
+  }
+
+  private void updateIncrementalPushStatusToPushStatusStore(
       String kafkaTopic,
       String incPushVersion,
       int partitionId,
@@ -147,6 +178,12 @@ public class PushStatusNotifier implements VeniceNotifier {
           storeName,
           e);
     }
+    LOGGER.info(
+        "Update server inc push status for topic: {}, partition: {}, inc push version: {}, status: {} to push status store",
+        kafkaTopic,
+        partitionId,
+        incPushVersion,
+        status);
     pushStatusStoreWriter.writePushStatus(
         storeName,
         Version.parseVersionFromKafkaTopicName(kafkaTopic),

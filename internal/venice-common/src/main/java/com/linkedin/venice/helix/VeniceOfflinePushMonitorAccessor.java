@@ -258,6 +258,16 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         incrementalPushVersion);
   }
 
+  @Override
+  public void batchUpdateReplicaIncPushStatus(
+      String kafkaTopic,
+      int partitionId,
+      String instanceId,
+      long progress,
+      List<String> pendingReportIncPushVersionList) {
+    compareAndBatchUpdateReplicaStatus(kafkaTopic, partitionId, instanceId, progress, pendingReportIncPushVersionList);
+  }
+
   /**
    * Because one partition status could contain multiple replicas statuses. So during the updating, the conflicts would
    * happen once there are more than one instance updating its status. In order to handle this conflict, we use a
@@ -307,6 +317,50 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         topic,
         partitionId,
         status,
+        clusterName);
+  }
+
+  private void compareAndBatchUpdateReplicaStatus(
+      String topic,
+      int partitionId,
+      String instanceId,
+      long progress,
+      List<String> incPushBatchStatus) {
+    // If a version was created prior to the deployment of this new push monitor, an exception would be thrown while
+    // upgrading venice server.
+    // Because the server would try to update replica status but there is no ZNode for that replica. So we add a check
+    // here to ignore the update
+    // in case of ZNode missing.
+    if (!pushStatusExists(topic)) {
+      return;
+    }
+    LOGGER.info(
+        "Start update replica status for topic: {}, partition: {} in cluster: {}.",
+        topic,
+        partitionId,
+        clusterName);
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
+
+      // currentData can be null if the path read out of zk is blank to start with (as current data is read and passed
+      // in)
+      // So first we do a null check. If it's null, we can return a base object and fill the data we're trying to
+      // persist
+      if (currentData == null) {
+        currentData = new PartitionStatus(partitionId);
+      }
+
+      currentData.batchUpdateReplicaIncPushStatus(
+          instanceId,
+          ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+          incPushBatchStatus,
+          progress);
+      return currentData;
+    });
+    LOGGER.info(
+        "Updated replica status for topic: {} partition: {}, EOIP for incremental push versions: {} in cluster: {}.",
+        topic,
+        partitionId,
+        incPushBatchStatus,
         clusterName);
   }
 

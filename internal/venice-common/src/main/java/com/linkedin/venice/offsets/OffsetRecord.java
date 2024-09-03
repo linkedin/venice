@@ -13,8 +13,11 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
@@ -248,6 +251,19 @@ public class OffsetRecord {
 
   public String getLeaderHostId() {
     return (partitionState.leaderHostId != null) ? partitionState.leaderHostId.toString() : null;
+  }
+
+  public List<String> getPendingReportIncPushVersionList() {
+    if (partitionState.pendingReportIncrementalPushVersions == null) {
+      return new ArrayList<>();
+    }
+    return partitionState.pendingReportIncrementalPushVersions.stream()
+        .map(CharSequence::toString)
+        .collect(Collectors.toList());
+  }
+
+  public void setPendingReportIncPushVersionList(List<String> incPushVersionList) {
+    partitionState.pendingReportIncrementalPushVersions = new ArrayList<>(incPushVersionList);
   }
 
   /**

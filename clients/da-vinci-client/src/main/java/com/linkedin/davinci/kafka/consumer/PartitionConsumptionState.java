@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
@@ -178,7 +179,7 @@ public class PartitionConsumptionState {
    * key: source Kafka url
    * value: Latest ignored upstream RT offset
    */
-  private Map<String, Long> latestIgnoredUpstreamRTOffsetMap;
+  private final Map<String, Long> latestIgnoredUpstreamRTOffsetMap;
 
   /**
    * This keeps track of the latest RT offsets from a specific broker which have been produced to VT. When a message
@@ -192,16 +193,19 @@ public class PartitionConsumptionState {
    * key: source Kafka url
    * Value: Latest upstream RT offset which has been published to VT
    */
-  private Map<String, Long> latestRTOffsetTriedToProduceToVTMap;
+  private final Map<String, Long> latestRTOffsetTriedToProduceToVTMap;
 
   /**
    * Key: source Kafka url
    * Value: Latest upstream RT offsets of a specific source processed by drainer
    */
-  private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
+  private final Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
+
+  private final List<String> pendingReportIncPushVersionList;
+  private long batchReportIncPushTimestamp;
 
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
@@ -241,11 +245,13 @@ public class PartitionConsumptionState {
     // We don't restore ignored offsets from the persisted offset record today. Doing so would only be useful
     // if it was useful to skip ahead through a large number of dropped offsets at the start of consumption.
     this.latestIgnoredUpstreamRTOffsetMap = new HashMap<>();
-    // On start we haven't sent anything
+    // On start, we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.batchReportIncPushTimestamp = 0;
+    this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
   }
 
   public int getPartition() {
@@ -832,5 +838,27 @@ public class PartitionConsumptionState {
 
   public String getReplicaId() {
     return replicaId;
+  }
+
+  public void addIncPushVersionToPendingReportList(String incPushVersion) {
+    pendingReportIncPushVersionList.add(incPushVersion);
+    offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
+  }
+
+  public List<String> getPendingReportIncPushVersionList() {
+    return pendingReportIncPushVersionList;
+  }
+
+  public void clearPendingReportIncPushVersionList() {
+    pendingReportIncPushVersionList.clear();
+    offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
+  }
+
+  public long getBatchIncPushReportTimestamp() {
+    return batchReportIncPushTimestamp;
+  }
+
+  public void setBatchIncPushReportTimestamp(long updateTimestamp) {
+    batchReportIncPushTimestamp = updateTimestamp;
   }
 }
