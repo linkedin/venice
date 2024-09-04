@@ -350,7 +350,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result = SingleGetChunkingAdapter
-        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), null, rmdManifestContainer);
+        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);

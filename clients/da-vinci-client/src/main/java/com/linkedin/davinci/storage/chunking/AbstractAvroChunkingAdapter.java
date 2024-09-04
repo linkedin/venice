@@ -1,5 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
@@ -12,7 +13,6 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.LatencyUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -32,18 +32,18 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       int bytesLength,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
-    return getByteArrayDecoder(compressor.getCompressionStrategy(), response).decode(
+    return getByteArrayDecoder(compressor.getCompressionStrategy()).decode(
         reusedDecoder,
         fullBytes,
         bytesLength,
         reusedValue,
         storeDeserializerCache.getDeserializer(writerSchemaId, readerSchemaId),
-        response,
+        responseStats,
         compressor);
   }
 
@@ -55,8 +55,15 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       RecordDeserializer<T> recordDeserializer,
       VeniceCompressor veniceCompressor) {
     try {
-      return byteArrayDecompressingDecoderValueOnly
-          .decode(null, valueOnlyBytes, offset, bytesLength, null, veniceCompressor, recordDeserializer, null);
+      return byteArrayDecompressingDecoderValueOnly.decode(
+          null,
+          valueOnlyBytes,
+          offset,
+          bytesLength,
+          null,
+          veniceCompressor,
+          recordDeserializer,
+          NoOpReadResponseStats.SINGLETON);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
@@ -80,18 +87,18 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       ChunkedValueInputStream chunkedValueInputStream,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
-    return getInputStreamDecoder(response).decode(
+    return instrumentedDecompressingInputStreamDecoder.decode(
         reusedDecoder,
         chunkedValueInputStream,
         UNUSED_INPUT_BYTES_LENGTH,
         reusedValue,
         storeDeserializerCache.getDeserializer(writerSchemaId, readerSchemaId),
-        response,
+        responseStats,
         compressor);
   }
 
@@ -102,7 +109,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean isChunked,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor,
@@ -116,7 +123,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         store.getStoreVersionName(),
         partition,
         key,
-        response,
+        responseStats,
         reusedValue,
         reusedDecoder,
         readerSchemaId,
@@ -158,7 +165,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       T reusedValue,
       BinaryDecoder reusedDecoder,
       boolean isChunked,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
@@ -173,7 +180,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         reusedRawValue,
         reusedValue,
         reusedDecoder,
-        response,
+        responseStats,
         readerSchemaId,
         storeDeserializerCache,
         compressor);
@@ -187,7 +194,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       BinaryDecoder reusedDecoder,
       RecordDeserializer<GenericRecord> keyRecordDeserializer,
       boolean isChunked,
-      ReadResponseStats response,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor,
@@ -205,7 +211,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         reusedValue,
         keyRecordDeserializer,
         reusedDecoder,
-        response,
         readerSchemaId,
         storeDeserializerCache,
         compressor,
@@ -271,18 +276,12 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   private final DecoderWrapper<InputStream, T> instrumentedDecompressingInputStreamDecoder =
       new InstrumentedDecoderWrapper<>(decompressingInputStreamDecoder);
 
-  private DecoderWrapper<byte[], T> getByteArrayDecoder(
-      CompressionStrategy compressionStrategy,
-      ReadResponseStats response) {
+  private DecoderWrapper<byte[], T> getByteArrayDecoder(CompressionStrategy compressionStrategy) {
     if (compressionStrategy == CompressionStrategy.NO_OP) {
-      return (response == null) ? byteArrayDecoder : instrumentedByteArrayDecoder;
+      return instrumentedByteArrayDecoder;
     } else {
-      return (response == null) ? decompressingByteArrayDecoder : instrumentedDecompressingByteArrayDecoder;
+      return instrumentedDecompressingByteArrayDecoder;
     }
-  }
-
-  private DecoderWrapper<InputStream, T> getInputStreamDecoder(ReadResponseStats response) {
-    return (response == null) ? decompressingInputStreamDecoder : instrumentedDecompressingInputStreamDecoder;
   }
 
   private interface DecoderWrapper<INPUT, OUTPUT> {
@@ -292,7 +291,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         int inputBytesLength,
         OUTPUT reusedValue,
         RecordDeserializer<OUTPUT> deserializer,
-        ReadResponseStats response,
+        ReadResponseStats responseStats,
         VeniceCompressor compressor);
   }
 
@@ -321,12 +320,12 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         int inputBytesLength,
         OUTPUT reusedValue,
         RecordDeserializer<OUTPUT> deserializer,
-        ReadResponseStats response,
+        ReadResponseStats responseStats,
         VeniceCompressor compressor) {
-      long deserializeStartTimeInNS = System.nanoTime();
+      long deserializeStartTimeInNS = responseStats.getCurrentTimeInNanos();
       OUTPUT output =
-          delegate.decode(reusedDecoder, input, inputBytesLength, reusedValue, deserializer, response, compressor);
-      response.addReadComputeDeserializationLatency(LatencyUtils.getElapsedTimeFromNSToMS(deserializeStartTimeInNS));
+          delegate.decode(reusedDecoder, input, inputBytesLength, reusedValue, deserializer, responseStats, compressor);
+      responseStats.addReadComputeDeserializationLatency(deserializeStartTimeInNS);
       return output;
     }
   }

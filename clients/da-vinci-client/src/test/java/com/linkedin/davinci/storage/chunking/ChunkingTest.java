@@ -5,6 +5,7 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
@@ -246,7 +247,7 @@ public class ChunkingTest {
             true,
             null,
             null,
-            null,
+            NoOpReadResponseStats.SINGLETON,
             readerSchemaId,
             storeDeserializerCache,
             compressor,

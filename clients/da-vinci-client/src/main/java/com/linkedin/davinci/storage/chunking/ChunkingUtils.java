@@ -1,6 +1,7 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
@@ -16,7 +17,6 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Objects;
@@ -78,14 +78,14 @@ public class ChunkingUtils {
       AbstractStorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
-      ReadResponseStats response) {
+      ReadResponseStats responseStats) {
     return getFromStorage(
         adapter,
         store::get,
         store.getStoreVersionName(),
         partition,
         keyBuffer,
-        response,
+        responseStats,
         null,
         null,
         -1,
@@ -99,7 +99,6 @@ public class ChunkingUtils {
       AbstractStorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
-      ReadResponseStats response,
       ChunkedValueManifestContainer manifestContainer) {
     return getFromStorage(
         adapter,
@@ -107,7 +106,7 @@ public class ChunkingUtils {
         store.getStoreVersionName(),
         partition,
         keyBuffer,
-        response,
+        NoOpReadResponseStats.SINGLETON,
         null,
         null,
         -1,
@@ -124,11 +123,11 @@ public class ChunkingUtils {
       ByteBuffer reusedRawValue,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor) {
-    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
+    long databaseLookupStartTimeInNS = responseStats.getCurrentTimeInNanos();
     reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
     if (reusedRawValue == null) {
       return null;
@@ -141,7 +140,7 @@ public class ChunkingUtils {
         store::get,
         store.getStoreVersionName(),
         partition,
-        response,
+        responseStats,
         reusedValue,
         reusedDecoder,
         readerSchemaId,
@@ -158,13 +157,10 @@ public class ChunkingUtils {
       VALUE reusedValue,
       RecordDeserializer<GenericRecord> keyRecordDeserializer,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
       StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
-
-    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
 
     BytesStreamingCallback callback = new BytesStreamingCallback() {
       GenericRecord deserializedValueRecord;
@@ -180,10 +176,6 @@ public class ChunkingUtils {
         if (writerSchemaId > 0) {
           // User-defined schema, thus not a chunked value.
 
-          if (response != null) {
-            response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
-          }
-
           GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
 
           deserializedValueRecord = (GenericRecord) adapter.constructValue(
@@ -191,7 +183,7 @@ public class ChunkingUtils {
               value.length,
               reusedValue,
               reusedDecoder,
-              response,
+              NoOpReadResponseStats.SINGLETON,
               writerSchemaId,
               readerSchemaId,
               storeDeserializerCache,
@@ -232,14 +224,14 @@ public class ChunkingUtils {
       String storeVersionName,
       int partition,
       ByteBuffer keyBuffer,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
       int readerSchemaID,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
       ChunkedValueManifestContainer manifestContainer) {
-    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
+    long databaseLookupStartTimeInNS = responseStats.getCurrentTimeInNanos();
     byte[] value = storageGetFunction.apply(partition, keyBuffer);
 
     return getFromStorage(
@@ -250,7 +242,7 @@ public class ChunkingUtils {
         storageGetFunction,
         storeVersionName,
         partition,
-        response,
+        responseStats,
         reusedValue,
         reusedDecoder,
         readerSchemaID,
@@ -279,7 +271,7 @@ public class ChunkingUtils {
         store::get,
         store.getStoreVersionName(),
         partition,
-        null,
+        NoOpReadResponseStats.SINGLETON,
         reusedValue,
         reusedDecoder,
         -1,
@@ -314,7 +306,7 @@ public class ChunkingUtils {
       StorageGetFunction storageGetFunction,
       String storeVersionName,
       int partition,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
       int readerSchemaId,
@@ -330,16 +322,14 @@ public class ChunkingUtils {
     if (writerSchemaId > 0) {
       // User-defined schema, thus not a chunked value. Early termination.
 
-      if (response != null) {
-        response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
-        response.addValueSize(valueLength);
-      }
+      responseStats.addDatabaseLookupLatency(databaseLookupStartTimeInNS);
+      responseStats.addValueSize(valueLength);
       return adapter.constructValue(
           value,
           valueLength,
           reusedValue,
           reusedDecoder,
-          response,
+          responseStats,
           writerSchemaId,
           readerSchemaId,
           storeDeserializerCache,
@@ -388,17 +378,15 @@ public class ChunkingUtils {
               + getExceptionMessageDetails(storeVersionName, partition, null));
     }
 
-    if (response != null) {
-      response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
-      response.addValueSize(actualSize);
-      response.incrementMultiChunkLargeValueCount();
-    }
+    responseStats.addDatabaseLookupLatency(databaseLookupStartTimeInNS);
+    responseStats.addValueSize(actualSize);
+    responseStats.incrementMultiChunkLargeValueCount();
 
     return adapter.constructValue(
         assembledValueContainer,
         reusedValue,
         reusedDecoder,
-        response,
+        responseStats,
         chunkedValueManifest.schemaId,
         readerSchemaId,
         storeDeserializerCache,

@@ -124,7 +124,7 @@ public class ServerStatsContextTest {
 
     ComputeResponseStats responseStats = new ComputeResponseStats();
     responseStats.setRecordCount(100);
-    responseStats.addDatabaseLookupLatency(10.5);
+    responseStats.addDatabaseLookupLatency(10);
     responseStats.setStorageExecutionSubmissionWaitTime(20.5);
     responseStats.incrementMultiChunkLargeValueCount();
     responseStats.addReadComputeLatency(1000);

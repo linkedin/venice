@@ -29,8 +29,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * @param bytesLength
    * @param reusedValue    a previous instance of {@type VALUE} to be re-used in order to minimize GC
    * @param reusedDecoder  a previous instance of {@link BinaryDecoder} to be re-used in order to minimize GC
-   * @param response       the response returned by the query path, which carries certain metrics to be recorded at the
-   *                       end
+   * @param responseStats  the {@link ReadResponseStats} which carries certain metrics to be recorded at the end
    * @param writerSchemaId schema used to serialize the value
    * @param readerSchemaId
    */
@@ -39,7 +38,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       int bytesLength,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
@@ -89,8 +88,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    *                        {@link #constructValue(int, Object)}:
    * @param reusedValue     a previous instance of {@type VALUE} to be re-used in order to minimize GC
    * @param reusedDecoder   a previous instance of {@link BinaryDecoder} to be re-used in order to minimize GC
-   * @param response        the response returned by the query path, which carries certain metrics to be recorded at the
-   *                        end
+   * @param responseStats  the {@link ReadResponseStats} which carries certain metrics to be recorded at the end
    * @param writerSchemaId  of the user's value
    * @param readerSchemaId
    */
@@ -98,7 +96,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       CHUNKS_CONTAINER chunksContainer,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponseStats response,
+      ReadResponseStats responseStats,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,

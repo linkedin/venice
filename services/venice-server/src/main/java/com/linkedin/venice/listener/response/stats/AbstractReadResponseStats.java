@@ -6,6 +6,7 @@ import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.cons
 
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.utils.LatencyUtils;
 
 
 /**
@@ -37,8 +38,13 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
   protected abstract int getRecordCount();
 
   @Override
-  public void addDatabaseLookupLatency(double latency) {
-    this.databaseLookupLatency += latency;
+  public long getCurrentTimeInNanos() {
+    return System.nanoTime();
+  }
+
+  @Override
+  public void addDatabaseLookupLatency(long startTimeInNanos) {
+    this.databaseLookupLatency += LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNanos);
   }
 
   @Override

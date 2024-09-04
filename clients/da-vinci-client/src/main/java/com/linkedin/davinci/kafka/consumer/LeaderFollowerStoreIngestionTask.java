@@ -19,6 +19,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -3207,7 +3208,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             isChunked,
             null,
             null,
-            null,
+            NoOpReadResponseStats.SINGLETON,
             readerValueSchemaID,
             storeDeserializerCache,
             compressor.get(),

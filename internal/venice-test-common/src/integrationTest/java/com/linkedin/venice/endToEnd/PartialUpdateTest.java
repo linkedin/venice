@@ -1592,7 +1592,7 @@ public class PartialUpdateTest {
           serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
       ValueRecord result = SingleGetChunkingAdapter
-          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null, null);
+          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
       // Avoid assertion failure logging massive RMD record.
       boolean nullRmd = (result == null);
       assertFalse(nullRmd);

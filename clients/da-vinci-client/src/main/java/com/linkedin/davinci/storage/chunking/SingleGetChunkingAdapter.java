@@ -56,17 +56,11 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
       int partition,
       byte[] key,
       boolean isChunked,
-      ReadResponseStats response,
       ChunkedValueManifestContainer manifestContainer) {
     ByteBuffer keyBuffer = isChunked
         ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKeyAsByteBuffer(key)
         : ByteBuffer.wrap(key);
-    return ChunkingUtils.getReplicationMetadataFromStorage(
-        SINGLE_GET_CHUNKING_ADAPTER,
-        store,
-        partition,
-        keyBuffer,
-        response,
-        manifestContainer);
+    return ChunkingUtils
+        .getReplicationMetadataFromStorage(SINGLE_GET_CHUNKING_ADAPTER, store, partition, keyBuffer, manifestContainer);
   }
 }

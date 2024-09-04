@@ -11,7 +11,14 @@ package com.linkedin.davinci.listener.response;
  * up the functional state sooner, even while we need to hang on to the metrics state.
  */
 public interface ReadResponseStats {
-  void addDatabaseLookupLatency(double latency);
+  long getCurrentTimeInNanos();
+
+  /**
+   * The implementer is responsible for doing the subtraction between the current time and the start time.
+   *
+   * @param startTimeInNanos the timestamp in nanoseconds of beginning of the period to measure.
+   */
+  void addDatabaseLookupLatency(long startTimeInNanos);
 
   void addReadComputeLatency(double latency);
 
