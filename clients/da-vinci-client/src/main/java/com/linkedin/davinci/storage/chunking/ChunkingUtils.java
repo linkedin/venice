@@ -19,6 +19,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.Objects;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 
@@ -65,6 +66,10 @@ public class ChunkingUtils {
   public static final KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER =
       new KeyWithChunkingSuffixSerializer();
 
+  interface StorageGetFunction {
+    byte[] apply(int partition, ByteBuffer key);
+  }
+
   /**
    * Fills in default values for the unused parameters of the single get and batch get paths.
    */
@@ -74,7 +79,19 @@ public class ChunkingUtils {
       int partition,
       ByteBuffer keyBuffer,
       ReadResponseStats response) {
-    return getFromStorage(adapter, store, partition, keyBuffer, response, null, null, -1, null, null, false, null);
+    return getFromStorage(
+        adapter,
+        store::get,
+        store.getStoreVersionName(),
+        partition,
+        keyBuffer,
+        response,
+        null,
+        null,
+        -1,
+        null,
+        null,
+        null);
   }
 
   static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
@@ -86,7 +103,8 @@ public class ChunkingUtils {
       ChunkedValueManifestContainer manifestContainer) {
     return getFromStorage(
         adapter,
-        store,
+        store::getReplicationMetadata,
+        store.getStoreVersionName(),
         partition,
         keyBuffer,
         response,
@@ -95,7 +113,6 @@ public class ChunkingUtils {
         -1,
         null,
         null,
-        true,
         manifestContainer);
   }
 
@@ -121,7 +138,8 @@ public class ChunkingUtils {
         reusedRawValue.limit(),
         databaseLookupStartTimeInNS,
         adapter,
-        store,
+        store::get,
+        store.getStoreVersionName(),
         partition,
         response,
         reusedValue,
@@ -129,7 +147,6 @@ public class ChunkingUtils {
         readerSchemaId,
         storeDeserializerCache,
         compressor,
-        false,
         null);
   }
 
@@ -211,7 +228,8 @@ public class ChunkingUtils {
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageGetFunction storageGetFunction,
+      String storeVersionName,
       int partition,
       ByteBuffer keyBuffer,
       ReadResponseStats response,
@@ -220,18 +238,17 @@ public class ChunkingUtils {
       int readerSchemaID,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue,
       ChunkedValueManifestContainer manifestContainer) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    byte[] value =
-        isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
+    byte[] value = storageGetFunction.apply(partition, keyBuffer);
 
     return getFromStorage(
         value,
         (value == null ? 0 : value.length),
         databaseLookupStartTimeInNS,
         adapter,
-        store,
+        storageGetFunction,
+        storeVersionName,
         partition,
         response,
         reusedValue,
@@ -239,7 +256,6 @@ public class ChunkingUtils {
         readerSchemaID,
         storeDeserializerCache,
         compressor,
-        isRmdValue,
         manifestContainer);
   }
 
@@ -252,28 +268,30 @@ public class ChunkingUtils {
       BinaryDecoder reusedDecoder,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue,
       ChunkedValueManifestContainer manifestContainer) {
-    byte[] value =
-        isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
+    byte[] value = store.get(partition, keyBuffer);
     int writerSchemaId = value == null ? 0 : ValueRecord.parseSchemaId(value);
-    return new ByteBufferValueRecord<>(
-        getFromStorage(
-            value,
-            (value == null ? 0 : value.length),
-            0,
-            adapter,
-            store,
-            partition,
-            null,
-            reusedValue,
-            reusedDecoder,
-            -1,
-            storeDeserializerCache,
-            compressor,
-            isRmdValue,
-            manifestContainer),
-        writerSchemaId);
+    VALUE object = getFromStorage(
+        value,
+        (value == null ? 0 : value.length),
+        0,
+        adapter,
+        store::get,
+        store.getStoreVersionName(),
+        partition,
+        null,
+        reusedValue,
+        reusedDecoder,
+        -1,
+        storeDeserializerCache,
+        compressor,
+        manifestContainer);
+    if (writerSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+      writerSchemaId = Objects.requireNonNull(manifestContainer, "The ChunkedValueManifestContainer cannot be null.")
+          .getManifest()
+          .getSchemaId();
+    }
+    return new ByteBufferValueRecord<>(object, writerSchemaId);
   }
 
   /**
@@ -293,7 +311,8 @@ public class ChunkingUtils {
       int valueLength,
       long databaseLookupStartTimeInNS,
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageGetFunction storageGetFunction,
+      String storeVersionName,
       int partition,
       ReadResponseStats response,
       VALUE reusedValue,
@@ -301,7 +320,6 @@ public class ChunkingUtils {
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue,
       ChunkedValueManifestContainer manifestContainer) {
 
     if (value == null) {
@@ -339,23 +357,23 @@ public class ChunkingUtils {
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 
+    byte[] valueChunk;
     for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
       // N.B.: This is done sequentially. Originally, each chunk was fetched concurrently in the same executor
       // as the main queries, but this might cause deadlocks, so we are now doing it sequentially. If we want to
       // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
       // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
       // premature optimization, we are not addressing it right now.
-      byte[] chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array();
-      byte[] valueChunk =
-          isRmdValue ? store.getReplicationMetadata(partition, chunkKey) : store.get(partition, chunkKey);
+      valueChunk = storageGetFunction.apply(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex));
 
       if (valueChunk == null) {
-        throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
+        throw new VeniceException(
+            "Chunk not found in " + getExceptionMessageDetails(storeVersionName, partition, chunkIndex));
       } else if (ValueRecord.parseSchemaId(valueChunk) != AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
         throw new VeniceException(
             "Did not get the chunk schema ID while attempting to retrieve a chunk! " + "Instead, got schema ID: "
                 + ValueRecord.parseSchemaId(valueChunk) + " from "
-                + getExceptionMessageDetails(store, partition, chunkIndex));
+                + getExceptionMessageDetails(storeVersionName, partition, chunkIndex));
       }
 
       actualSize += valueChunk.length - ValueRecord.SCHEMA_HEADER_LENGTH;
@@ -367,7 +385,7 @@ public class ChunkingUtils {
       throw new VeniceException(
           "The fully assembled large value does not have the expected size! " + "actualSize: " + actualSize
               + ", chunkedValueManifest.size: " + chunkedValueManifest.size + ", "
-              + getExceptionMessageDetails(store, partition, null));
+              + getExceptionMessageDetails(storeVersionName, partition, null));
     }
 
     if (response != null) {
@@ -387,8 +405,8 @@ public class ChunkingUtils {
         compressor);
   }
 
-  private static String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {
-    String message = "store: " + store.getStoreVersionName() + ", partition: " + partition;
+  private static String getExceptionMessageDetails(String storeVersionName, int partition, Integer chunkIndex) {
+    String message = "store-version: " + storeVersionName + ", partition: " + partition;
     if (chunkIndex != null) {
       message += ", chunk index: " + chunkIndex;
     }

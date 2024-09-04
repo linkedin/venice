@@ -36,6 +36,8 @@ import org.testng.annotations.Test;
 
 
 public class ChunkingTest {
+  private static final int SCHEMA_ID = 1;
+
   @DataProvider(name = "recordProvider")
   public Object[][] recordProvider() {
     List<GenericRecord> params = new ArrayList<>();
@@ -182,22 +184,24 @@ public class ChunkingTest {
         ValueRecord.SCHEMA_HEADER_LENGTH,
         serializedRecord.length - cutOff);
 
-    SchemaEntry schemaEntry = new SchemaEntry(1, schema);
+    SchemaEntry schemaEntry = new SchemaEntry(SCHEMA_ID, schema);
     HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);
-    doReturn(schemaEntry).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(storeName, SCHEMA_ID);
     doReturn(schemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
-    byte[] firstKey = ByteUtils.fromHexString(
-        "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0001");
-    byte[] secondKey = ByteUtils.fromHexString(
-        "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0201");
+    ByteBuffer firstKey = ByteBuffer.wrap(
+        ByteUtils.fromHexString(
+            "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0001"));
+    ByteBuffer secondKey = ByteBuffer.wrap(
+        ByteUtils.fromHexString(
+            "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0201"));
 
     ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(2);
-    chunkedValueManifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(firstKey));
-    chunkedValueManifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(secondKey));
-    chunkedValueManifest.schemaId = 1;
+    chunkedValueManifest.keysWithChunkIdSuffix.add(firstKey);
+    chunkedValueManifest.keysWithChunkIdSuffix.add(secondKey);
+    chunkedValueManifest.schemaId = SCHEMA_ID;
     chunkedValueManifest.size = chunk1Bytes.length + chunk2Bytes.length
         - chunkedValueManifest.keysWithChunkIdSuffix.size() * ValueRecord.SCHEMA_HEADER_LENGTH;
     byte[] serializedCVM = SerializerDeserializerFactory.getAvroGenericSerializer(ChunkedValueManifest.SCHEMA$)
@@ -233,7 +237,7 @@ public class ChunkingTest {
             null,
             storeDeserializerCache,
             compressor,
-            null);
+            new ChunkedValueManifestContainer());
       } else {
         retrievedObject = chunkingAdapter.get(
             storageEngine,
@@ -278,9 +282,12 @@ public class ChunkingTest {
         SerializerDeserializerFactory.getAvroGenericSerializer(record.getSchema()).serialize(record);
     runTest(record, RawBytesChunkingAdapter.INSTANCE, true, (valueFromStorageEngine) -> {
       Assert.assertTrue(valueFromStorageEngine instanceof ByteBufferValueRecord<?>);
-      Object value = ((ByteBufferValueRecord) valueFromStorageEngine).value();
+      ByteBufferValueRecord byteBufferValueRecord = (ByteBufferValueRecord) valueFromStorageEngine;
+      Object value = byteBufferValueRecord.value();
       Assert.assertTrue(value instanceof ByteBuffer);
-      Assert.assertEquals(ByteUtils.extractByteArray((ByteBuffer) value), serializedRecord);
+      ByteBuffer bbValue = (ByteBuffer) value;
+      Assert.assertEquals(ByteUtils.extractByteArray(bbValue), serializedRecord);
+      Assert.assertEquals(byteBufferValueRecord.writerSchemaId(), SCHEMA_ID);
       return null;
     }, true);
   }

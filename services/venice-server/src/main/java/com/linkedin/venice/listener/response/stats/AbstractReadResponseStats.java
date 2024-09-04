@@ -23,6 +23,10 @@ import com.linkedin.venice.stats.ServerHttpRequestStats;
  *     +-- {@link ComputeResponseStatsWithSizeProfiling}
  */
 public abstract class AbstractReadResponseStats implements ReadResponseStats, ReadResponseStatsRecorder {
+  /**
+   * Package-private on purpose. Only intended for use in tests.
+   */
+  static boolean TEST_ONLY_INJECT_SLEEP_DURING_INCREMENT_TO_SIMULATE_RACE_CONDITION = false;
   private static final int UNINITIALIZED = -1;
 
   private double databaseLookupLatency = 0;
@@ -47,9 +51,23 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
     this.storageExecutionQueueLen = storageExecutionQueueLen;
   }
 
-  @Override
   public void incrementMultiChunkLargeValueCount() {
-    this.multiChunkLargeValueCount++;
+    int currentValue = multiChunkLargeValueCount;
+    if (TEST_ONLY_INJECT_SLEEP_DURING_INCREMENT_TO_SIMULATE_RACE_CONDITION) {
+      /**
+       * The code below is to reliably trigger a race condition in parallel batch get metrics. Unfortunately, it is not
+       * easy to cleanly inject this delay, so it is left here as a global variable. The race can still happen without
+       * the sleep (assuming the stats handling code regressed to a buggy state), but it is less likely.
+       *
+       * See: StorageReadRequestHandlerTest.testMultiGetNotUsingKeyBytes
+       */
+      try {
+        Thread.sleep(1);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    multiChunkLargeValueCount = currentValue + 1;
   }
 
   @Override

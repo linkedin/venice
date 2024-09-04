@@ -31,6 +31,7 @@ import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -71,16 +72,6 @@ public class StorageNodeComputeTest {
     final boolean config;
 
     AvroImpl(boolean config) {
-      this.config = config;
-    }
-  }
-
-  enum ValueSize {
-    SMALL_VALUE(false), LARGE_VALUE(true);
-
-    final boolean config;
-
-    ValueSize(boolean config) {
       this.config = config;
     }
   }

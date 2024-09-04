@@ -112,7 +112,8 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     }
     return ChunkingUtils.getFromStorage(
         this,
-        store,
+        store::get,
+        store.getStoreVersionName(),
         partition,
         key,
         response,
@@ -121,7 +122,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         readerSchemaId,
         storeDeserializerCache,
         compressor,
-        false,
         manifestContainer);
   }
 
@@ -147,7 +147,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         reusedDecoder,
         storeDeserializerCache,
         compressor,
-        false,
         manifestContainer);
   }
 

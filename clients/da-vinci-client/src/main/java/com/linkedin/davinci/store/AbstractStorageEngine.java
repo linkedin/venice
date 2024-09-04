@@ -538,7 +538,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  public byte[] getReplicationMetadata(int partitionId, byte[] key) {
+  public byte[] getReplicationMetadata(int partitionId, ByteBuffer key) {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       return partition.getReplicationMetadata(key);
