@@ -9,8 +9,9 @@ import java.util.Set;
 
 
 public class HeartbeatStat {
-  Map<String, WritePathLatencySensor> leaderSensors = new VeniceConcurrentHashMap<>();
-  Map<String, WritePathLatencySensor> followerSensors = new VeniceConcurrentHashMap<>();
+  Map<String, WritePathLatencySensor> readyToServeLeaderSensors = new VeniceConcurrentHashMap<>();
+  Map<String, WritePathLatencySensor> readyToServeFollowerSensors = new VeniceConcurrentHashMap<>();
+  Map<String, WritePathLatencySensor> catchingUpFollowerSensors = new VeniceConcurrentHashMap<>();
   WritePathLatencySensor defaultSensor;
 
   public HeartbeatStat(MetricConfig metricConfig, Set<String> regions) {
@@ -20,8 +21,12 @@ public class HeartbeatStat {
      */
     MetricsRepository localRepository = new MetricsRepository(metricConfig);
     for (String region: regions) {
-      leaderSensors.put(region, new WritePathLatencySensor(localRepository, metricConfig, "leader-" + region));
-      followerSensors.put(region, new WritePathLatencySensor(localRepository, metricConfig, "follower-" + region));
+      readyToServeLeaderSensors
+          .put(region, new WritePathLatencySensor(localRepository, metricConfig, "leader-" + region));
+      readyToServeFollowerSensors
+          .put(region, new WritePathLatencySensor(localRepository, metricConfig, "follower-" + region));
+      catchingUpFollowerSensors
+          .put(region, new WritePathLatencySensor(localRepository, metricConfig, "catching-up-follower-" + region));
     }
     // This is an edge case return that should not happen, but it 'can' happen if a venice server is configured with no
     // local fabric in it's config. This currently isn't illegal, and probably wasn't made to be illegal so as to
@@ -29,21 +34,30 @@ public class HeartbeatStat {
     defaultSensor = new WritePathLatencySensor(localRepository, metricConfig, "default-");
   }
 
-  public void recordLeaderLag(String region, long startTime) {
+  public void recordReadyToServeLeaderLag(String region, long startTime) {
     long endTime = System.currentTimeMillis();
-    leaderSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
+    readyToServeLeaderSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
   }
 
-  public void recordFollowerLag(String region, long startTime) {
+  public void recordReadyToServeFollowerLag(String region, long startTime) {
     long endTime = System.currentTimeMillis();
-    followerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
+    readyToServeFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
   }
 
-  public WritePathLatencySensor getLeaderLag(String region) {
-    return leaderSensors.computeIfAbsent(region, k -> defaultSensor);
+  public void recordCatchingUpFollowerLag(String region, long startTime) {
+    long endTime = System.currentTimeMillis();
+    catchingUpFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
   }
 
-  public WritePathLatencySensor getFollowerLag(String region) {
-    return followerSensors.computeIfAbsent(region, k -> defaultSensor);
+  public WritePathLatencySensor getReadyToServeLeaderLag(String region) {
+    return readyToServeLeaderSensors.computeIfAbsent(region, k -> defaultSensor);
+  }
+
+  public WritePathLatencySensor getReadyToServeFollowerLag(String region) {
+    return readyToServeFollowerSensors.computeIfAbsent(region, k -> defaultSensor);
+  }
+
+  public WritePathLatencySensor getCatchingUpFollowerLag(String region) {
+    return catchingUpFollowerSensors.computeIfAbsent(region, k -> defaultSensor);
   }
 }
