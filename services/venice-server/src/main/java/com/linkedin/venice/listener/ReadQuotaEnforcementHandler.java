@@ -47,7 +47,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   public static final String INVALID_REQUEST_RESOURCE_MSG = "Invalid request resource: ";
 
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
-  private final TokenBucket storageNodeBucket;
   private final ServerQuotaTokenBucketStats storageNodeTokenBucketStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final String thisNodeId;
@@ -60,6 +59,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
+  private TokenBucket storageNodeBucket;
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -471,8 +471,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   }
 
   /**
-   * For tests
-   * @return
+   * Helper methods for unit testing
    */
   protected Set<String> listTopics() {
     return storeVersionBuckets.keySet();
@@ -497,15 +496,27 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return storeRepository;
   }
 
-  public ConcurrentMap<String, TokenBucket> getStoreVersionBuckets() {
-    return storeVersionBuckets;
-  }
-
-  public boolean storageConsumeRcu(int rcu) {
-    return !storageNodeBucket.tryConsume(rcu);
-  }
-
   public AggServerQuotaUsageStats getStats() {
     return stats;
+  }
+
+  void setInitialized(boolean initialized) {
+    this.initialized = initialized;
+  }
+
+  void setInitializedVolatile(boolean initializedVolatile) {
+    this.initializedVolatile = initializedVolatile;
+  }
+
+  TokenBucket getStoreVersionBucket(String storeVersion) {
+    return storeVersionBuckets.get(storeVersion);
+  }
+
+  void setStoreVersionBucket(String storeVersion, TokenBucket bucket) {
+    storeVersionBuckets.put(storeVersion, bucket);
+  }
+
+  void setStorageNodeBucket(TokenBucket bucket) {
+    storageNodeBucket = bucket;
   }
 }
