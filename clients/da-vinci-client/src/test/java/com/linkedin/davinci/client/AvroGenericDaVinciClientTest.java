@@ -10,6 +10,7 @@ import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -33,24 +34,10 @@ import org.testng.annotations.Test;
 
 
 public class AvroGenericDaVinciClientTest {
-  @Test
-  public void testPropertyBuilderWithRecordTransformer() {
-    String schema = "{\n" + "  \"type\": \"string\"\n" + "}\n";
-    VeniceProperties config =
-        new PropertyBuilder().put("kafka.admin.class", "name").put("record.transformer.value.schema", schema).build();
-    RocksDBServerConfig dbconfig = new RocksDBServerConfig(config);
-    Assert.assertEquals(schema, dbconfig.getTransformerValueSchema());
-
-  }
-
-  @Test
-  public void testRecordTransformerClient() throws NoSuchFieldException, IllegalAccessException {
+  public AvroGenericDaVinciClient setUpClientWithRecordTransformer(ClientConfig clientConfig)
+      throws IllegalAccessException, NoSuchFieldException {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
-
-    ClientConfig clientConfig = mock(ClientConfig.class);
-    when(clientConfig.getStoreName()).thenReturn("test_store");
-    when(clientConfig.isSpecificClient()).thenReturn(true);
 
     VeniceProperties backendConfig = mock(VeniceProperties.class);
     when(backendConfig.toProperties()).thenReturn(new java.util.Properties());
@@ -82,6 +69,37 @@ public class AvroGenericDaVinciClientTest {
     backendField.setAccessible(true);
     backendField.set(null, new ReferenceCounted<>(mockBackend, ignored -> {}));
 
+    return dvcClient;
+  }
+
+  @Test
+  public void testPropertyBuilderWithRecordTransformer() {
+    String schema = "{\n" + "  \"type\": \"string\"\n" + "}\n";
+    VeniceProperties config =
+        new PropertyBuilder().put("kafka.admin.class", "name").put("record.transformer.value.schema", schema).build();
+    RocksDBServerConfig dbconfig = new RocksDBServerConfig(config);
+    Assert.assertEquals(schema, dbconfig.getTransformerValueSchema());
+  }
+
+  @Test
+  public void testRecordTransformerClient() throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    when(clientConfig.getStoreName()).thenReturn("test_store");
+    when(clientConfig.getSpecificValueClass()).thenReturn(String.class);
+    when(clientConfig.isSpecificClient()).thenReturn(true);
+
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig);
+    dvcClient.start();
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testRecordTransformerClientValueClassMismatch() throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    when(clientConfig.getStoreName()).thenReturn("test_store");
+    when(clientConfig.getSpecificValueClass()).thenReturn(Integer.class);
+    when(clientConfig.isSpecificClient()).thenReturn(true);
+
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig);
     dvcClient.start();
   }
 

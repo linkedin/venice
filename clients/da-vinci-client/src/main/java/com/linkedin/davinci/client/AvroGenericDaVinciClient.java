@@ -179,10 +179,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
     this.recordTransformer = daVinciConfig.isRecordTransformerEnabled() ? daVinciConfig.getRecordTransformer(0) : null;
 
-    if (this.recordTransformer != null) {
-      this.clientConfig.setSpecificValueClass(recordTransformer.getOutputValueClass());
-    }
-
     preValidation.run();
   }
 
@@ -794,6 +790,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       if (clientConfig.isSpecificClient()) {
         if (recordTransformer != null) {
+          if (recordTransformer.getOutputValueClass() != clientConfig.getSpecificValueClass()) {
+            throw new VeniceClientException(
+                "Specific value class mismatch between ClientConfig and DaVinciRecordTransformer, expected="
+                    + clientConfig.getSpecificValueClass() + ", actual=" + recordTransformer.getOutputValueClass());
+          }
+
           this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
               recordTransformer.getValueOutputSchema(),
               clientConfig.getSpecificValueClass());
