@@ -65,7 +65,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
    */
   private Double getReadQuotaUsageRatio() {
     if (tokenBucket == null) {
-      return -1d;
+      return Double.NaN;
     } else {
       return tokenBucket.getStaleUsageRatio();
     }
