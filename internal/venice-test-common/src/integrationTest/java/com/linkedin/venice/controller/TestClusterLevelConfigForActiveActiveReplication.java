@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -12,6 +13,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -71,6 +73,12 @@ public class TestClusterLevelConfigForActiveActiveReplication {
 
     // Check store level Active/Active is enabled or not
     assertFalse(store.isActiveActiveReplicationEnabled());
+
+    waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        parentControllerClient,
+        30,
+        TimeUnit.SECONDS);
 
     // Convert to hybrid store
     assertCommand(
