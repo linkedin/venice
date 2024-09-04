@@ -944,8 +944,8 @@ public class PartialUpdateTest {
     MetricsUtils.validateMetricRange(assembledRmdSizes, 290000, 740000);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
+  public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
@@ -967,7 +967,7 @@ public class PartialUpdateTest {
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setCompressionStrategy(compressionStrategy)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)

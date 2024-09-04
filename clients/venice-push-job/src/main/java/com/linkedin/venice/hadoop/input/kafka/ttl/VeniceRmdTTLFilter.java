@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.RMD_SCHEMA_DIR;
@@ -10,7 +13,12 @@ import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.schema.merge.UpdateResultStatus;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -26,6 +34,8 @@ import java.util.Map;
 import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -34,6 +44,7 @@ import org.apache.avro.generic.GenericRecord;
  * @param <INPUT_VALUE>, the value contains schemaID, rmdId and rmdPayload that are required to retrieve RMD timestamp.
  */
 public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilter<INPUT_VALUE> {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceRmdTTLFilter.class);
   private final TTLResolutionPolicy ttlPolicy;
   private final long filterTimestamp;
   private final HDFSSchemaSource schemaSource;
@@ -48,6 +59,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
   private final Map<RmdVersionId, RecordSerializer<GenericRecord>> rmdSerializerCache;
   private final Map<Integer, RecordSerializer<GenericRecord>> valueSerializerCache;
   private final MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
+  private final VeniceCompressor sourceVersionCompressor;
 
   public VeniceRmdTTLFilter(final VeniceProperties props) throws IOException {
     super();
@@ -62,6 +74,17 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     this.valueDeserializerCache = new VeniceConcurrentHashMap<>();
     this.rmdSerializerCache = new VeniceConcurrentHashMap<>();
     this.valueSerializerCache = new VeniceConcurrentHashMap<>();
+    String sourceVersion = props.getString(KAFKA_INPUT_TOPIC);
+    String kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+    CompressionStrategy compressionStrategy =
+        CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY));
+    this.sourceVersionCompressor = KafkaInputUtils
+        .getCompressor(new CompressorFactory(), compressionStrategy, kafkaInputBrokerUrl, sourceVersion, props);
+    LOGGER.info(
+        "Created RMD based TTL filter with source version: {}, broker url: {}, compression strategy: {}",
+        sourceVersion,
+        kafkaInputBrokerUrl,
+        compressionStrategy);
   }
 
   @Override
@@ -108,7 +131,11 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     } else {
       RecordDeserializer<GenericRecord> valueDeserializer =
           valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
-      valueRecord = valueDeserializer.deserialize(getValuePayload(value));
+      try {
+        valueRecord = valueDeserializer.deserialize(sourceVersionCompressor.decompress(getValuePayload(value)));
+      } catch (Exception e) {
+        throw new VeniceException("Unable to deserialize value payload", e);
+      }
     }
     UpdateResultStatus updateResultStatus =
         mergeRecordHelper.deleteRecord(valueRecord, (GenericRecord) rmdTimestampObject, filterTimestamp, 0);
@@ -125,7 +152,11 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
         valueSerializerCache.computeIfAbsent(valueSchemaId, this::generateValueSerializer);
     RecordSerializer<GenericRecord> rmdSerializer =
         rmdSerializerCache.computeIfAbsent(rmdVersionId, this::generateRmdSerializer);
-    updateValuePayload(value, valueSerializer.serialize(valueRecord));
+    try {
+      updateValuePayload(value, sourceVersionCompressor.compress(valueSerializer.serialize(valueRecord)));
+    } catch (Exception e) {
+      throw new VeniceException("Unable to update value payload", e);
+    }
     updateRmdPayload(value, ByteBuffer.wrap(rmdSerializer.serialize(rmdRecord)));
     return false;
   }
