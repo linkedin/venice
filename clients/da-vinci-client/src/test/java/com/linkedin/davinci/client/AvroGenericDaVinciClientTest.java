@@ -20,6 +20,8 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -65,7 +67,10 @@ public class AvroGenericDaVinciClientTest {
 
     // Use reflection to set the private static daVinciBackend field
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
-    backendField.setAccessible(true);
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      backendField.setAccessible(true);
+      return null;
+    });
     backendField.set(null, new ReferenceCounted<>(mockBackend, ignored -> {}));
 
     return dvcClient;
