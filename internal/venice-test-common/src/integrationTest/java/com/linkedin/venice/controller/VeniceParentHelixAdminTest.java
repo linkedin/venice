@@ -959,6 +959,12 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setMaxRecordSizeBytes(expectedMaxRecordSizeBytes),
         response -> Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), expectedMaxRecordSizeBytes));
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setMaxNearlineRecordSizeBytes(expectedMaxRecordSizeBytes),
+        response -> Assert
+            .assertEquals(response.getStore().getMaxNearlineRecordSizeBytes(), expectedMaxRecordSizeBytes));
   }
 
   private void testUpdateBlobTransfer(ControllerClient parentClient, ControllerClient childClient) {

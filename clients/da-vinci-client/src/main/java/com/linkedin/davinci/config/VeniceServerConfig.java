@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
@@ -48,7 +49,9 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
@@ -58,6 +61,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRE
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_MEMORY_STATS_ENABLED;
@@ -100,6 +105,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERI
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_WORKER_THREADS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NODE_CAPACITY_RCU;
+import static com.linkedin.venice.ConfigKeys.SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
@@ -146,6 +153,11 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_STA
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
+import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_HEADER_TABLE_SIZE;
+import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_INITIAL_WINDOW_SIZE;
+import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_CONCURRENT_STREAMS;
+import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_FRAME_SIZE;
+import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_HEADER_LIST_SIZE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -166,6 +178,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
+import io.netty.channel.WriteBufferWaterMark;
 import java.io.File;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -487,6 +500,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final long daVinciPushStatusCheckIntervalInMs;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
@@ -497,6 +511,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
   private final int defaultMaxRecordSizeBytes;
+  private final int aaWCLeaderQuotaRecordsPerSecond;
+  private final int currentVersionAAWCLeaderQuotaRecordsPerSecond;
+  private final int currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  private final int nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
+  private final int nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  private final int channelOptionWriteBufferHighBytes;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -700,11 +720,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH, false);
 
     http2InboundEnabled = serverProperties.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
-    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
-    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
-    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
-    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
-    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
+    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, H2_MAX_CONCURRENT_STREAMS);
+    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE);
+    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, H2_INITIAL_WINDOW_SIZE);
+    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, H2_HEADER_TABLE_SIZE);
+    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, H2_MAX_HEADER_LIST_SIZE);
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart =
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
@@ -812,6 +832,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
+    daVinciPushStatusCheckIntervalInMs = serverProperties.getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -829,6 +850,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throw new VeniceException(
           DEFAULT_MAX_RECORD_SIZE_BYTES + ": " + defaultMaxRecordSizeBytes + " must be at least "
               + generateHumanReadableByteCountString(BYTES_PER_MB));
+    }
+    aaWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionNonAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    channelOptionWriteBufferHighBytes = (int) serverProperties
+        .getSizeInBytes(SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES, WriteBufferWaterMark.DEFAULT.high()); // default
+                                                                                                                       // 64KB
+    if (channelOptionWriteBufferHighBytes <= 0) {
+      throw new VeniceException("Invalid channel option write buffer high bytes: " + channelOptionWriteBufferHighBytes);
     }
   }
 
@@ -1452,6 +1488,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return useDaVinciSpecificExecutionStatusForError;
   }
 
+  public long getDaVinciPushStatusCheckIntervalInMs() {
+    return daVinciPushStatusCheckIntervalInMs;
+  }
+
   public boolean isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled() {
     return recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   }
@@ -1482,5 +1522,29 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() {
     return resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
+  }
+
+  public int getAaWCLeaderQuotaRecordsPerSecond() {
+    return aaWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getCurrentVersionAAWCLeaderQuotaRecordsPerSecond() {
+    return currentVersionAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond() {
+    return currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond() {
+    return nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond() {
+    return nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getChannelOptionWriteBufferHighBytes() {
+    return channelOptionWriteBufferHighBytes;
   }
 }

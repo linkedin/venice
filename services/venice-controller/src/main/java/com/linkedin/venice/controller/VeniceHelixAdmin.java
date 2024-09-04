@@ -4643,6 +4643,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
+    Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
 
@@ -4903,6 +4904,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       maxRecordSizeBytes.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setMaxRecordSizeBytes(aInt);
+        return store;
+      }));
+
+      maxNearlineRecordSizeBytes.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setMaxNearlineRecordSizeBytes(aInt);
         return store;
       }));
 

@@ -37,6 +37,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor maxPartitionsPerConsumer;
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
+  private final Sensor subscribedPartitionsNum;
   private final Sensor getOffsetLagIsAbsentSensor;
   private final Sensor getOffsetLagIsPresentSensor;
   private final Sensor getLatestOffsetIsAbsentSensor;
@@ -106,6 +107,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
     maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
     avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
+    subscribedPartitionsNum = registerSensor("subscribed_partitions_num", new Gauge());
 
     Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
     Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
@@ -191,5 +193,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordConsumerIdleTime(double time) {
     idleTimeSensor.record(time);
+  }
+
+  public void recordSubscribedPartitionsNum(int count) {
+    subscribedPartitionsNum.record(count);
   }
 }

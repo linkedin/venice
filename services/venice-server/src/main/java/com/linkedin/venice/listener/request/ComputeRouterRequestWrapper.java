@@ -12,7 +12,6 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
-import java.net.URI;
 import java.util.List;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
@@ -41,13 +40,10 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     }
   }
 
-  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest) {
-    URI fullUri = URI.create(httpRequest.uri());
-    String path = fullUri.getRawPath();
-    String[] requestParts = path.split("/");
+  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest, String[] requestParts) {
     if (requestParts.length != 3) {
       // [0]""/[1]"compute"/[2]{$resourceName}
-      throw new VeniceException("Invalid request: " + path);
+      throw new VeniceException("Invalid request: " + httpRequest.uri());
     }
     String resourceName = requestParts[2];
 

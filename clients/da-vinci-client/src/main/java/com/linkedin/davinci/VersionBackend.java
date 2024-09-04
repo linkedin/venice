@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVA
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -16,6 +17,7 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -68,6 +70,7 @@ public class VersionBackend {
    */
   private Future heartbeat;
   private final int heartbeatInterval;
+  private final DaVinciPushStatusUpdateTask daVinciPushStatusUpdateTask;
 
   VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
@@ -98,6 +101,17 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
+    long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
+    if (daVinciPushStatusCheckIntervalInMs >= 0) {
+      this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
+          version,
+          daVinciPushStatusCheckIntervalInMs,
+          backend.getPushStatusStoreWriter(),
+          this::areAllPartitionFuturesCompletedSuccessfully);
+      this.daVinciPushStatusUpdateTask.start();
+    } else {
+      this.daVinciPushStatusUpdateTask = null;
+    }
   }
 
   synchronized void close() {
@@ -115,6 +129,9 @@ public class VersionBackend {
       backend.getIngestionBackend().shutdownIngestionTask(version.kafkaTopicName());
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when killing consumption task: {}", version.kafkaTopicName(), e);
+    }
+    if (daVinciPushStatusUpdateTask != null) {
+      daVinciPushStatusUpdateTask.shutdown();
     }
   }
 
@@ -363,10 +380,23 @@ public class VersionBackend {
     partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>()).completeExceptionally(failure);
   }
 
+  boolean areAllPartitionFuturesCompletedSuccessfully() {
+    if (partitionFutures == null || partitionFutures.isEmpty()) {
+      return false;
+    }
+    return partitionFutures.values().stream().allMatch(f -> (f.isDone() && !f.isCompletedExceptionally()));
+  }
+
   private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
     return IntStream.range(0, version.getPartitionCount())
         .filter(partitions::contains)
         .boxed()
         .collect(Collectors.toList());
+  }
+
+  public void updatePartitionStatus(int partition, ExecutionStatus status) {
+    if (daVinciPushStatusUpdateTask != null) {
+      daVinciPushStatusUpdateTask.updatePartitionStatus(partition, status);
+    }
   }
 }

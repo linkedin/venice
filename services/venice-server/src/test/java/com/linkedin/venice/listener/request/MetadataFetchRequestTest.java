@@ -2,10 +2,8 @@ package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.QueryAction;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
-import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpVersion;
+import com.linkedin.venice.request.RequestHelper;
+import java.net.URI;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -15,8 +13,8 @@ public class MetadataFetchRequestTest {
   public void testParseGetValidHttpRequest() {
     String storeName = "test_store";
     String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
-    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+    MetadataFetchRequest testRequest =
+        MetadataFetchRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(uri)));
 
     Assert.assertEquals(testRequest.getStoreName(), storeName);
   }
@@ -24,10 +22,9 @@ public class MetadataFetchRequestTest {
   @Test
   public void testParseGetInvalidHttpRequest() {
     String uri = "/" + QueryAction.METADATA.toString().toLowerCase();
-    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
 
     try {
-      MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+      MetadataFetchRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(uri)));
       Assert.fail("Venice Exception was not thrown");
     } catch (VeniceException e) {
       Assert.assertEquals(e.getMessage(), "not a valid request for a METADATA action: " + uri);

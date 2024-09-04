@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * that embed the threadpool can't shut themselves down).
  */
 public class DaemonThreadFactory implements ThreadFactory {
-  private final AtomicInteger threadNumber;
+  protected final AtomicInteger threadNumber;
   private final String namePrefix;
 
   public DaemonThreadFactory(String threadNamePrefix) {

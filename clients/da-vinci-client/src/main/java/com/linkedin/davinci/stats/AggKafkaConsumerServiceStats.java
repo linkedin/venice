@@ -79,6 +79,10 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     totalStats.recordAvgPartitionsPerConsumer(count);
   }
 
+  public void recordTotalSubscribedPartitionsNum(int count) {
+    totalStats.recordSubscribedPartitionsNum(count);
+  }
+
   public void recordTotalOffsetLagIsAbsent() {
     totalStats.recordOffsetLagIsAbsent();
   }

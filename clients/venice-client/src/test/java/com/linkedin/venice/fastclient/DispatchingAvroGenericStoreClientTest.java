@@ -9,8 +9,10 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -20,6 +22,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
@@ -61,6 +64,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -98,6 +102,7 @@ public class DispatchingAvroGenericStoreClientTest {
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient = null;
   private Map<String, ? extends Metric> metrics;
   private StoreMetadata storeMetadata = null;
+  private TransportClient mockedTransportClient;
 
   @BeforeClass
   public void setUp() {
@@ -180,7 +185,7 @@ public class DispatchingAvroGenericStoreClientTest {
         STORE_VALUE_SCHEMA);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
 
-    TransportClient mockedTransportClient = null;
+    mockedTransportClient = null;
     if (mockTransportClient) {
       mockedTransportClient = mock(TransportClient.class);
       dispatchingAvroGenericStoreClient =
@@ -425,6 +430,11 @@ public class DispatchingAvroGenericStoreClientTest {
       assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
       assertEquals(metrics.get(metricPrefix + "success_request_key_count.Max").value(), successKeyCount);
       if (batchGet) {
+        assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt50pr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt90pr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt95pr.Avg").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "response_tt99pr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
       } else if (computeRequest) {
         // Do nothing since we don't have the ComputeRequestContext to test
@@ -439,6 +449,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // as partial healthy request is still considered unhealthy, not incrementing the below metric
       assertFalse(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
       if (batchGet) {
+        assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
       } else if (computeRequest) {
         // Do nothing since we don't have the ComputeRequestContext to test
@@ -533,7 +544,7 @@ public class DispatchingAvroGenericStoreClientTest {
   public void testGet() throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient();
-      GetRequestContext getRequestContext = new GetRequestContext(false);
+      GetRequestContext getRequestContext = new GetRequestContext();
       GenericRecord value = (GenericRecord) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       validateSingleGetMetrics(getRequestContext, true);
@@ -547,7 +558,7 @@ public class DispatchingAvroGenericStoreClientTest {
     GetRequestContext getRequestContext = null;
     try {
       setUpClient(true, false, false);
-      getRequestContext = new GetRequestContext(false);
+      getRequestContext = new GetRequestContext();
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get().toString();
       fail();
     } catch (Exception e) {
@@ -563,7 +574,7 @@ public class DispatchingAvroGenericStoreClientTest {
     GetRequestContext getRequestContext = null;
     try {
       setUpClient(false, false, false, false, 2 * Time.MS_PER_SECOND);
-      getRequestContext = new GetRequestContext(false);
+      getRequestContext = new GetRequestContext();
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       fail();
     } catch (Exception e) {
@@ -799,6 +810,29 @@ public class DispatchingAvroGenericStoreClientTest {
             });
         validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET, true, 2, 1);
       }
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetHeaders() throws IOException, InterruptedException, ExecutionException {
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
+    try {
+      setUpClient(false, false, true, true, routingLeakedRequestCleanupThresholdMS);
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
+          statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
+      VeniceResponseMap<String, GenericRecord> response = future.get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
+      ArgumentCaptor<Map<String, String>> headerCaptor = ArgumentCaptor.forClass(Map.class);
+      verify(mockedTransportClient, atLeastOnce()).post(any(), headerCaptor.capture(), any());
+      assertTrue(headerCaptor.getValue().containsKey(HttpConstants.VENICE_KEY_COUNT));
+      assertEquals(
+          headerCaptor.getValue().get(HttpConstants.VENICE_KEY_COUNT),
+          Integer.toString(BATCH_GET_KEYS.size()));
     } finally {
       tearDown();
     }

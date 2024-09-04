@@ -71,6 +71,7 @@ public class StoreInfo {
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
+    storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     return storeInfo;
@@ -314,6 +315,8 @@ public class StoreInfo {
   private long maxCompactionLagSeconds;
 
   private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+
+  private int maxNearlineRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   private boolean unusedSchemaDeletionEnabled;
 
@@ -782,6 +785,14 @@ public class StoreInfo {
 
   public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
     this.maxRecordSizeBytes = maxRecordSizeBytes;
+  }
+
+  public int getMaxNearlineRecordSizeBytes() {
+    return this.maxNearlineRecordSizeBytes;
+  }
+
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    this.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

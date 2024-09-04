@@ -302,6 +302,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(dualRead)
             // this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
+    // Test HAR algorithm in this test.
+    Set<String> harClusters = new HashSet<>();
+    harClusters.add(veniceCluster.getServerD2ServiceName());
+    clientConfigBuilder.setHARClusters(harClusters);
 
     if (enableGrpc) {
       setUpGrpcFastClient(clientConfigBuilder);

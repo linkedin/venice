@@ -58,6 +58,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
   private final Sensor misroutedStoreVersionSensor;
+  private final Sensor flushLatencySensor;
+  private final Sensor responseSizeSensor;
 
   private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
 
@@ -314,6 +316,16 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         totalStats,
         () -> totalStats.misroutedStoreVersionSensor,
         new OccurrenceRate());
+    flushLatencySensor = registerPerStoreAndTotal(
+        "flush_latency",
+        totalStats,
+        () -> totalStats.flushLatencySensor,
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("flush_latency")));
+    responseSizeSensor = registerPerStoreAndTotal(
+        "response_size",
+        totalStats,
+        () -> totalStats.responseSizeSensor,
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_size")));
   }
 
   private Sensor registerPerStoreAndTotal(
@@ -441,5 +453,13 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordMisroutedStoreVersionRequest() {
     misroutedStoreVersionSensor.record();
+  }
+
+  public void recordFlushLatency(double latency) {
+    flushLatencySensor.record(latency);
+  }
+
+  public void recordResponseSize(int size) {
+    responseSizeSensor.record(size);
   }
 }

@@ -1789,7 +1789,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setBootstrapToOnlineTimeoutInHours(48)
         .setReplicationFactor(2)
         .setBlobTransferEnabled(false)
-        .setMaxRecordSizeBytes(7777);
+        .setMaxRecordSizeBytes(7777)
+        .setMaxNearlineRecordSizeBytes(6666);
 
     parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
@@ -1822,6 +1823,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.replicationFactor, 2);
     Assert.assertFalse(updateStore.blobTransferEnabled);
     Assert.assertEquals(updateStore.maxRecordSizeBytes, 7777);
+    Assert.assertEquals(updateStore.maxNearlineRecordSizeBytes, 6666);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));

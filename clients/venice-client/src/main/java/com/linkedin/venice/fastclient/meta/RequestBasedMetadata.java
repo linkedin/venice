@@ -113,6 +113,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private volatile boolean isReady;
   private CountDownLatch isReadyLatch = new CountDownLatch(1);
 
+  private Set<String> harClusters;
+
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
     super(clientConfig);
     this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
@@ -136,6 +138,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.metadataResponseSchemaReader =
         new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
     this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
+    this.harClusters = clientConfig.getHarClusters();
   }
 
   // For unit tests only
@@ -218,6 +221,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       String serverD2ServiceName = d2ServiceDiscovery.find(d2TransportClient, storeName, true).getServerD2Service();
       d2TransportClient.setServiceName(serverD2ServiceName);
       isServiceDiscovered = true;
+      if (harClusters.contains(serverD2ServiceName)) {
+        LOGGER.info(
+            "Server cluster: {} has HAR enabled, so client will switch to the following routing strategy: {}",
+            serverD2ServiceName,
+            ClientRoutingStrategyType.HELIX_ASSISTED);
+        setRoutingStrategy(ClientRoutingStrategyType.HELIX_ASSISTED);
+      }
     }
   }
 

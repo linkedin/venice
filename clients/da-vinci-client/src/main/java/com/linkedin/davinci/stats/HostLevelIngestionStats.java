@@ -58,6 +58,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
 
+  private final Sensor resubscriptionFailureSensor;
+
   private final Sensor viewProducerLatencySensor;
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
@@ -325,6 +327,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.ingestionFailureSensor,
         new Count());
 
+    this.resubscriptionFailureSensor = registerPerStoreAndTotalSensor(
+        "resubscription_failure",
+        totalStats,
+        () -> totalStats.resubscriptionFailureSensor,
+        new Count());
+
     this.leaderProducerSynchronizeLatencySensor = registerPerStoreAndTotalSensor(
         "leader_producer_synchronize_latency",
         totalStats,
@@ -485,6 +493,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordIngestionFailure() {
     ingestionFailureSensor.record();
+  }
+
+  public void recordResubscriptionFailure() {
+    resubscriptionFailureSensor.record();
   }
 
   public void recordLeaderProducerSynchronizeLatency(double latency) {
