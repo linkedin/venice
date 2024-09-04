@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.response.VeniceReadResponseStatus.BAD_REQUEST;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -19,7 +20,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcReadQuotaEnforcementHandler;
@@ -245,7 +245,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(builder).when(ctx).getVeniceServerResponseBuilder();
 
     grpcQuotaEnforcer.processRequest(ctx);
-    assertEquals(builder.getErrorCode(), GrpcErrorCodes.BAD_REQUEST);
+    assertEquals(builder.getErrorCode(), BAD_REQUEST);
     assertNotNull(builder.getErrorMessage());
   }
 

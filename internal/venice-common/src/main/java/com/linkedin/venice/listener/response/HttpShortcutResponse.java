@@ -17,6 +17,10 @@ public class HttpShortcutResponse {
     this.status = status;
   }
 
+  public HttpShortcutResponse(HttpResponseStatus status) {
+    this("", status);
+  }
+
   public String getMessage() {
     return message;
   }
