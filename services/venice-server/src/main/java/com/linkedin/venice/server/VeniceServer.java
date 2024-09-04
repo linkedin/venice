@@ -29,10 +29,8 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
@@ -416,19 +414,12 @@ public class VeniceServer {
         new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
     services.add(storeValueSchemasCacheService);
 
-    HelixReadOnlyStoreConfigRepository storeConfigRepository = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        new HelixAdapterSerializer(),
-        serverConfig.getRefreshAttemptsForZkReconnect(),
-        serverConfig.getRefreshIntervalForZkReconnectInMs());
-
-    storeConfigRepository.refresh();
     serverReadMetadataRepository = new ServerReadMetadataRepository(
         clusterConfig.getClusterName(),
         metricsRepository,
         metadataRepo,
         schemaRepo,
-        storeConfigRepository,
+        veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture));
 
