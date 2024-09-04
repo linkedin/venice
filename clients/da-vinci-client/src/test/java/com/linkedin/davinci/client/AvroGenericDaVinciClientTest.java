@@ -54,7 +54,6 @@ public class AvroGenericDaVinciClientTest {
     doReturn(mockDiscoveryResponse).when(dvcClient).discoverService();
 
     DaVinciBackend mockBackend = mock(DaVinciBackend.class);
-    when(mockBackend.compareCacheConfig(any())).thenReturn(true);
     when(mockBackend.getSchemaRepository()).thenReturn(mock(ReadOnlySchemaRepository.class));
     when(mockBackend.getStoreOrThrow(anyString())).thenReturn(mock(StoreBackend.class));
     when(mockBackend.getObjectCache()).thenReturn(null);
