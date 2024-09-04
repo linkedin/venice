@@ -52,6 +52,8 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
   private EventLoopGroup eventLoopGroup;
   private Sensor channelNotWritable;
 
+  private Sensor requestPacingSensor;
+
   PriorityBasedResponseScheduler priorityBasedResponseScheduler;
   // private final Sensor getTimeSpentTillHandoffToReadHandler;
 
@@ -171,6 +173,15 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
         new Min(),
         new Avg(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + writeAndFlushTimeSensorName));
+
+    String requestPacingSensorName = "request_pacing";
+    requestPacingSensor = registerSensorIfAbsent(
+        requestPacingSensorName,
+        new OccurrenceRate(),
+        new Max(),
+        new Min(),
+        new Avg(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + requestPacingSensorName));
   }
 
   private static final double NANO_TO_MILLIS = 1_000_000;
@@ -282,5 +293,9 @@ public class VeniceServerNettyStats extends AbstractVeniceStats {
 
   public void recordChannelNotWritable() {
     channelNotWritable.record();
+  }
+
+  public void recordRequestPacing(long elapsedTime) {
+    requestPacingSensor.record(elapsedTime);
   }
 }

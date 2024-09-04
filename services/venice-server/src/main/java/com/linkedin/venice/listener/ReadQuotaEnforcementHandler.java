@@ -34,6 +34,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -49,6 +50,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
   private static final String SERVER_BUCKET_STATS_NAME = "venice-storage-node-token-bucket";
   private final ConcurrentMap<String, VeniceRateLimiter> storeVersionBuckets = new VeniceConcurrentHashMap<>();
+  private final ConcurrentMap<String, Long> requestPacingMap = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ServerQuotaTokenBucketStats storageNodeTokenBucketStats;
   private final ReadOnlyStoreRepository storeRepository;
@@ -256,6 +258,24 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       if (handleServerOverCapacity(ctx, null, storeName, rcu, false))
         return;
     }
+
+    // report request pacing as metrics
+    requestPacingMap.compute(storeName, (k, v) -> {
+      if (v == null) {
+        return System.nanoTime();
+      }
+
+      long delta = System.nanoTime() - v;
+      nettyStats.recordRequestPacing(delta);
+
+      if (delta > 0) {
+        // only update pacing if it's positive
+        return System.nanoTime();
+      } else {
+        return v;
+      }
+    });
+
     handleEpilogue(ctx, request, storeName, rcu, false);
   }
 
@@ -443,7 +463,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
       VeniceRateLimiter veniceRateLimiter = new EventThrottler(
           (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility),
-          enforcementIntervalSeconds,
+          Duration.ofSeconds(enforcementIntervalSeconds).toMillis(),
           topic,
           true,
           SILENT_REJECTION_POLICY);
