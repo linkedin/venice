@@ -1,12 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE;
-import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
-import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
-import com.linkedin.avroutil1.compatibility.AvroVersion;
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
@@ -28,6 +21,7 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.read.RequestHeadersProvider;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -68,48 +62,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";
-
-  private static final Map<String, String> GET_HEADER_MAP = new HashMap<>();
-  private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
-  private static final Map<String, String> MULTI_GET_HEADER_MAP_FOR_STREAMING;
-  private static final Map<String, String> COMPUTE_HEADER_MAP_V3 = new HashMap<>();
-  static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
-
-  static {
-    /**
-     * Hard-code API version of single-get and multi-get to be '1'.
-     * If the header varies request by request, Venice client needs to create a map per request.
-     */
-    GET_HEADER_MAP.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
-    GET_HEADER_MAP.put(
-        HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY,
-        Integer.toString(CompressionStrategy.GZIP.getValue()));
-
-    MULTI_GET_HEADER_MAP.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
-    MULTI_GET_HEADER_MAP.put(
-        HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY,
-        Integer.toString(CompressionStrategy.GZIP.getValue()));
-
-    /**
-     * COMPUTE_REQUEST_V1 and V2 are deprecated.
-     */
-    COMPUTE_HEADER_MAP_V3.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
-
-    MULTI_GET_HEADER_MAP_FOR_STREAMING = new HashMap<>(MULTI_GET_HEADER_MAP);
-    MULTI_GET_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
-
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V3 = new HashMap<>(COMPUTE_HEADER_MAP_V3);
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
-
-    AvroVersion version = AvroCompatibilityHelperCommon.getRuntimeAvroVersion();
-    LOGGER.info("Detected: {} on the classpath.", version);
-  }
 
   private final ClientConfig clientConfig;
   protected final boolean needSchemaReader;
@@ -411,7 +363,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         stats,
         preRequestTimeInNS,
         true,
-        () -> transportClient.get(requestPath, GET_HEADER_MAP),
+        () -> transportClient.get(requestPath, RequestHeadersProvider.getThinClientGetHeaderMap()),
         (response, throwable, responseCompleteReporter) -> {
           try {
             if (throwable != null) {
@@ -670,16 +622,16 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       List<K> keyList,
       TransportClientStreamingCallback callback,
       Optional<ClientStats> stats) throws VeniceClientException {
-    Map<String, String> headers = new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
-    int schemaId = computeRequest.getValueSchemaID();
-    headers.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
-    headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
-    if (!clientConfig.isRemoteComputationOnly()) {
-      headers.put(VENICE_CLIENT_COMPUTE, "1");
-    }
-
     byte[] serializedRequest = serializeComputeRequest(computeRequest, keyList, stats);
-    transportClient.streamPost(getComputeRequestPath(), headers, serializedRequest, callback, keyList.size());
+    transportClient.streamPost(
+        getComputeRequestPath(),
+        RequestHeadersProvider.getStreamingComputeHeaderMap(
+            keyList.size(),
+            computeRequest.getValueSchemaID(),
+            clientConfig.isRemoteComputationOnly()),
+        serializedRequest,
+        callback,
+        keyList.size());
   }
 
   private byte[] serializeComputeRequest(
@@ -822,10 +774,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       List<K> keyList,
       TransportClientStreamingCallback callback,
       Optional<ClientStats> stats) throws VeniceClientException {
-    Map<String, String> headers = new HashMap<>(MULTI_GET_HEADER_MAP_FOR_STREAMING);
-    headers.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     byte[] serializedRequest = serializeMultiGetRequest(keyList, stats);
-    transportClient.streamPost(getStorageRequestPath(), headers, serializedRequest, callback, keyList.size());
+    transportClient.streamPost(
+        getStorageRequestPath(),
+        RequestHeadersProvider.getThinClientStreamingBatchGetHeaders(keyList.size()),
+        serializedRequest,
+        callback,
+        keyList.size());
   }
 
   private byte[] serializeMultiGetRequest(List<K> keyList, Optional<ClientStats> stats) {
