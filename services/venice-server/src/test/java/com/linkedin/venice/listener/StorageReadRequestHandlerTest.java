@@ -77,6 +77,7 @@ import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -100,6 +101,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -228,7 +230,8 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
     String uri = "/" + TYPE_STORAGE + "/test-topic_v1/" + partition + "/" + keyString;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest);
+    GetRouterRequest request =
+        GetRouterRequest.parseGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
@@ -294,7 +297,8 @@ public class StorageReadRequestHandlerTest {
         .set(
             HttpConstants.VENICE_API_VERSION,
             ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
-    MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(httpRequest);
+    MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper
+        .parseMultiGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(isParallel, 10);
     requestHandler.channelRead(context, request);
@@ -327,7 +331,8 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
     String uri = "/" + TYPE_STORAGE + "/" + topic + "/" + partition + "/" + keyString;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest);
+    GetRouterRequest request =
+        GetRouterRequest.parseGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
     doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
@@ -370,7 +375,7 @@ public class StorageReadRequestHandlerTest {
     String uri =
         "/" + QueryAction.ADMIN.toString().toLowerCase() + "/" + topic + "/" + ServerAdminAction.DUMP_INGESTION_STATE;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    AdminRequest request = AdminRequest.parseAdminHttpRequest(httpRequest);
+    AdminRequest request = AdminRequest.parseAdminHttpRequest(httpRequest, URI.create(httpRequest.uri()));
 
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
@@ -402,8 +407,8 @@ public class StorageReadRequestHandlerTest {
     String uri = "/" + QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase() + "/" + topic + "/"
         + topic + "/" + expectedPartitionId;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    TopicPartitionIngestionContextRequest request =
-        TopicPartitionIngestionContextRequest.parseGetHttpRequest(httpRequest);
+    TopicPartitionIngestionContextRequest request = TopicPartitionIngestionContextRequest
+        .parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     // Mock the TopicPartitionIngestionContextResponse from ingestion task
     TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
@@ -440,7 +445,8 @@ public class StorageReadRequestHandlerTest {
     // [0]""/[1]"action"/[2]"store"
     String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
-    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+    MetadataFetchRequest testRequest =
+        MetadataFetchRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();

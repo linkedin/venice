@@ -14,7 +14,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -53,14 +52,17 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
    */
   private final VeniceConcurrentHashMap<String, Boolean> storeVersionAAWCFlagMap = new VeniceConcurrentHashMap<>();
   private final ConsumerPoolStrategy consumerPoolStrategy;
-  private final BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor;
+  private final KafkaConsumerServiceBuilder consumerServiceConstructor;
   private final VeniceServerConfig serverConfig;
+
+  interface KafkaConsumerServiceBuilder {
+    KafkaConsumerService apply(int poolSize, ConsumerPoolType poolType);
+  }
 
   public KafkaConsumerServiceDelegator(
       VeniceServerConfig serverConfig,
-      BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor,
+      KafkaConsumerServiceBuilder consumerServiceConstructor,
       Function<String, Boolean> isAAWCStoreFunc) {
-
     this.serverConfig = serverConfig;
     this.consumerServiceConstructor = consumerServiceConstructor;
     this.isAAWCStoreFunc = vt -> storeVersionAAWCFlagMap.computeIfAbsent(vt, ignored -> isAAWCStoreFunc.apply(vt));
@@ -268,7 +270,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     protected final KafkaConsumerService defaultConsumerService;
 
     public DefaultConsumerPoolStrategy() {
-      defaultConsumerService = consumerServiceConstructor.apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), "");
+      defaultConsumerService = consumerServiceConstructor
+          .apply(serverConfig.getConsumerPoolSizePerKafkaCluster(), ConsumerPoolType.REGULAR_POOL);
       consumerServices.add(defaultConsumerService);
     }
 
@@ -290,7 +293,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     public AAOrWCLeaderConsumerPoolStrategy() {
       super();
       dedicatedConsumerService = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), "_for_aa_wc_leader");
+          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), ConsumerPoolType.AA_WC_LEADER_POOL);
       consumerServices.add(dedicatedConsumerService);
     }
 
@@ -311,27 +314,23 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     private final KafkaConsumerService consumerServiceForCurrentVersionNonAAWCLeader;
     private final KafkaConsumerService consumerServiceForNonCurrentVersionAAWCLeader;
     private final KafkaConsumerService consumerServiceNonCurrentNonAAWCLeader;
-    public final static String CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX = "_for_current_aa_wc_leader";
-    public final static String CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX = "_for_current_non_aa_wc_leader";
-    public final static String NON_CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX = "_for_non_current_aa_wc_leader";
-    public final static String NON_CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX = "_for_non_current_non_aa_wc_leader";
 
     public CurrentVersionConsumerPoolStrategy() {
       this.consumerServiceForCurrentVersionAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader(),
-          CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX);
+          ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForCurrentVersionAAWCLeader);
       this.consumerServiceForCurrentVersionNonAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader(),
-          CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX);
+          ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForCurrentVersionNonAAWCLeader);
       this.consumerServiceForNonCurrentVersionAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader(),
-          NON_CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX);
+          ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForNonCurrentVersionAAWCLeader);
       this.consumerServiceNonCurrentNonAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader(),
-          NON_CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX);
+          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceNonCurrentNonAAWCLeader);
     }
 

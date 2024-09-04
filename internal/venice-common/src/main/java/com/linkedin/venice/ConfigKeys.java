@@ -1724,6 +1724,13 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
+   * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
+   * update events; DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci
+   * node, and decide whether to send a status update event. This config controls the interval between each check.
+   */
+  public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
+
+  /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
@@ -2187,4 +2194,27 @@ public class ConfigKeys {
    */
   public static final String SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED =
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
+
+  /**
+   * Quota for AA/WC leader replica as we know AA/WC messages are expensive, so we would like to use the following throttler
+   * to limit the resource usage.
+   */
+  public static final String SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.aa.wc.leader.quota.records.per.second";
+
+  /**
+   * The following finer quota enforcement will be used when {@literal ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION}
+   * is enabled.
+   */
+  public static final String SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.current.version.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.current.version.non.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.non.current.version.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.non.current.version.non.aa.wc.leader.quota.records.per.second";
+
+  public static final String SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES =
+      "server.channel.option.write.buffer.watermark.high.bytes";
 }

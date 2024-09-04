@@ -9,6 +9,7 @@ import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.HostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -59,6 +60,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     String identifier = instance.getNodeId();
     unhealthyHosts.add(identifier);
     LOGGER.warn("Marking {} as unhealthy until it passes the next health check.", identifier);
+    cleanupUnhealthyHostsBasedOnLiveInstanceMonitor();
     aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
   }
 
@@ -70,11 +72,25 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
    */
   public void setHostAsHealthy(Instance hostname) {
     String identifier = hostname.getNodeId();
-    if (unhealthyHosts.contains(identifier)) {
-      unhealthyHosts.remove(identifier);
+    if (unhealthyHosts.remove(identifier)) {
       LOGGER.info("Marking {} back to healthy host", identifier);
     }
+    cleanupUnhealthyHostsBasedOnLiveInstanceMonitor();
     aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
+  }
+
+  private void cleanupUnhealthyHostsBasedOnLiveInstanceMonitor() {
+    if (unhealthyHosts.isEmpty()) {
+      return;
+    }
+    Iterator<String> itr = unhealthyHosts.iterator();
+    while (itr.hasNext()) {
+      String instanceId = itr.next();
+      if (!liveInstanceMonitor.isInstanceAlive(Instance.fromNodeId(instanceId))) {
+        itr.remove();
+        LOGGER.info("Removed inactive instance from the unhealthy host tracking: {}", instanceId);
+      }
+    }
   }
 
   @Override

@@ -88,6 +88,8 @@ public class ServerStatsContext {
   private boolean isComplete;
 
   private boolean isMisroutedStoreVersion = false;
+  private double flushLatency = -1;
+  private int responseSize = -1;
 
   public boolean isNewRequest() {
     return newRequest;
@@ -157,6 +159,8 @@ public class ServerStatsContext {
     isRequestTerminatedEarly = false;
     isComplete = false;
     isMisroutedStoreVersion = false;
+    flushLatency = -1;
+    responseSize = -1;
 
     newRequest = false;
   }
@@ -302,6 +306,14 @@ public class ServerStatsContext {
     return this.startTimeInNS;
   }
 
+  public void setFlushLatency(double latency) {
+    this.flushLatency = latency;
+  }
+
+  public void setResponseSize(int size) {
+    this.responseSize = size;
+  }
+
   public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
     if (serverHttpRequestStats != null) {
       if (databaseLookupLatency >= 0) {
@@ -379,6 +391,12 @@ public class ServerStatsContext {
       }
       if (readComputeOutputSize > 0) {
         serverHttpRequestStats.recordReadComputeEfficiency((double) valueSize / readComputeOutputSize);
+      }
+      if (flushLatency >= 0) {
+        serverHttpRequestStats.recordFlushLatency(flushLatency);
+      }
+      if (responseSize >= 0) {
+        serverHttpRequestStats.recordResponseSize(responseSize);
       }
     }
   }

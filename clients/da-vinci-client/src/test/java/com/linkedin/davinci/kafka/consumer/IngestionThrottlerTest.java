@@ -2,12 +2,15 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
@@ -77,5 +80,55 @@ public class IngestionThrottlerTest {
     });
 
     throttlerForNonDaVinciClient.close();
+  }
+
+  @Test
+  public void testDifferentThrottler() {
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(100l).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(60l).when(serverConfig).getKafkaFetchQuotaTimeWindow();
+    doReturn(1024l).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
+    IngestionThrottler ingestionThrottler =
+        new IngestionThrottler(true, serverConfig, () -> Collections.emptyMap(), 10, TimeUnit.MILLISECONDS);
+    EventThrottler throttlerForAAWCLeader = mock(EventThrottler.class);
+    EventThrottler throttlerForCurrentVersionAAWCLeader = mock(EventThrottler.class);
+    EventThrottler throttlerForCurrentVersionNonAAWCLeader = mock(EventThrottler.class);
+    EventThrottler throttlerForNonCurrentVersionAAWCLeader = mock(EventThrottler.class);
+    EventThrottler throttlerForNonCurrentVersionNonAAWCLeader = mock(EventThrottler.class);
+    EventThrottler globalRecordThrottler = mock(EventThrottler.class);
+    ingestionThrottler.setupGlobalRecordThrottler(globalRecordThrottler);
+    ingestionThrottler.setupRecordThrottlerForPoolType(ConsumerPoolType.AA_WC_LEADER_POOL, throttlerForAAWCLeader);
+    ingestionThrottler.setupRecordThrottlerForPoolType(
+        ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+        throttlerForCurrentVersionAAWCLeader);
+    ingestionThrottler.setupRecordThrottlerForPoolType(
+        ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+        throttlerForCurrentVersionNonAAWCLeader);
+    ingestionThrottler.setupRecordThrottlerForPoolType(
+        ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
+        throttlerForNonCurrentVersionAAWCLeader);
+    ingestionThrottler.setupRecordThrottlerForPoolType(
+        ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+        throttlerForNonCurrentVersionNonAAWCLeader);
+
+    ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.AA_WC_LEADER_POOL, 10);
+    verify(throttlerForAAWCLeader).maybeThrottle(10);
+    verify(globalRecordThrottler).maybeThrottle(10);
+
+    ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL, 20);
+    verify(throttlerForCurrentVersionAAWCLeader).maybeThrottle(20);
+    verify(globalRecordThrottler).maybeThrottle(20);
+
+    ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL, 30);
+    verify(throttlerForCurrentVersionNonAAWCLeader).maybeThrottle(30);
+    verify(globalRecordThrottler).maybeThrottle(30);
+
+    ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL, 40);
+    verify(throttlerForNonCurrentVersionAAWCLeader).maybeThrottle(40);
+    verify(globalRecordThrottler).maybeThrottle(40);
+
+    ingestionThrottler.maybeThrottleRecordRate(ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL, 50);
+    verify(throttlerForNonCurrentVersionNonAAWCLeader).maybeThrottle(50);
+    verify(globalRecordThrottler).maybeThrottle(50);
   }
 }

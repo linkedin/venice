@@ -1,8 +1,6 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.request.RequestHelper;
-import io.netty.handler.codec.http.HttpRequest;
 
 
 public class TopicPartitionIngestionContextRequest {
@@ -16,10 +14,7 @@ public class TopicPartitionIngestionContextRequest {
     this.partition = partition;
   }
 
-  public static TopicPartitionIngestionContextRequest parseGetHttpRequest(HttpRequest request) {
-    String uri = request.uri();
-    String[] requestParts = RequestHelper.getRequestParts(uri);
-
+  public static TopicPartitionIngestionContextRequest parseGetHttpRequest(String uri, String[] requestParts) {
     if (requestParts.length == 5) {
       // [0]""/[1]"action"/[2]"version topic"/[3]"topic name"/[4]"partition number"
       String versionTopic = requestParts[2];

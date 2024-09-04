@@ -10,7 +10,6 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
-import java.net.URI;
 import java.util.List;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
@@ -37,16 +36,13 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     super(resourceName, keys, isRetryRequest, isStreamingRequest);
   }
 
-  public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest) {
-    URI fullUri = URI.create(httpRequest.uri());
-    String path = fullUri.getRawPath();
-    String[] requestParts = path.split("/");
+  public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(
+      FullHttpRequest httpRequest,
+      String[] requestParts) {
     if (requestParts.length != 3) {
       // [0]""/[1]"storage"/[2]{$resourceName}
-      throw new VeniceException("Invalid request: " + path);
+      throw new VeniceException("Invalid request: " + httpRequest.uri());
     }
-    String resourceName = requestParts[2];
-
     // Validate API version
     String apiVersion = httpRequest.headers().get(HttpConstants.VENICE_API_VERSION);
     if (apiVersion == null) {
@@ -62,7 +58,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     httpRequest.content().readBytes(content);
     keys = parseKeys(content);
 
-    return new MultiGetRouterRequestWrapper(resourceName, keys, httpRequest);
+    return new MultiGetRouterRequestWrapper(requestParts[2], keys, httpRequest);
   }
 
   public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientRequest grpcRequest) {

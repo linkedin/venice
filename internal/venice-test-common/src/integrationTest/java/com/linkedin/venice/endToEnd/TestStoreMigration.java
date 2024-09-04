@@ -240,6 +240,13 @@ public class TestStoreMigration {
     String storeName = Utils.getUniqueString("testWithMetaSystemStore");
     createAndPushStore(srcClusterName, storeName);
 
+    // Write streaming records
+    SystemProducer veniceProducer =
+        getSamzaProducer(multiClusterWrapper.getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
+    for (int i = 11; i <= 20; i++) {
+      sendStreamingRecord(veniceProducer, storeName, i);
+    }
+
     // Meta system store is enabled by default. Check if it has online version.
     try (ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, childControllerUrl0)) {
       String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
@@ -297,6 +304,11 @@ public class TestStoreMigration {
       });
       // Test end migration
       endMigration(parentControllerUrl, childControllerUrl0, storeName);
+
+      // Write streaming records after migration with the same producer
+      for (int i = 21; i <= 30; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
     }
   }
 
@@ -485,6 +497,7 @@ public class TestStoreMigration {
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setHybridRewindSeconds(TEST_TIMEOUT)
             .setHybridOffsetLagThreshold(2L)
+            .setHybridStoreDiskQuotaEnabled(true)
             .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
         .close();

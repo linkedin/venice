@@ -40,6 +40,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private int shareConsumerIndex = 0;
 
   PartitionWiseKafkaConsumerService(
+      final ConsumerPoolType poolType,
       final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
@@ -58,6 +59,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled) {
     super(
+        poolType,
         consumerFactory,
         consumerProperties,
         readCycleDelayMs,

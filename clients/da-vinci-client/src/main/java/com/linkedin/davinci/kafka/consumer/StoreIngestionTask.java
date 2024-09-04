@@ -1320,7 +1320,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newWorkloadType);
         versionRole = newVersionRole;
         workloadType = newWorkloadType;
-        resubscribeForAllPartitions();
+        try {
+          resubscribeForAllPartitions();
+        } catch (Exception e) {
+          LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
+          hostLevelIngestionStats.recordResubscriptionFailure();
+          throw e;
+        }
       }
     }
   }

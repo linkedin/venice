@@ -130,6 +130,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(10).when(mockVeniceServerConfig).getKafkaMaxPollRecords();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherConsumerPoolSize();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherThreadPoolSize();
+    doReturn(30l).when(mockVeniceServerConfig).getKafkaFetchQuotaTimeWindow();
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     Properties properties = new Properties();

@@ -140,12 +140,8 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     /**
      * If a user calls {@link batchGet}, the {@link batchGet} would trigger a dual read on the thin-client and
-     * fast-client. If internally, batch get gets executed through a series of single gets, we shouldn't trigger dual
-     * reads on the internal {@link get} calls.
+     * fast-client.
      */
-    if (requestContext.isTriggeredByBatchGet) {
-      return super.get(requestContext, key);
-    }
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
   }
 

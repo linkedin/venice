@@ -151,6 +151,8 @@ public class StoreBackendTest {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
+    // Verify that all partition future for version 1 are completed successfully.
+    assertTrue(versionMap.get(version1.kafkaTopicName()).areAllPartitionFuturesCompletedSuccessfully());
 
     assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
     assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());

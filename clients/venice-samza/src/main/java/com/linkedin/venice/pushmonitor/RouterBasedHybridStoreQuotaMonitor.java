@@ -124,6 +124,10 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
       // Get hybrid store quota status
       CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
       TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      if (response == null) {
+        LOGGER.error("Router was not able to get hybrid quota status! Received null response!");
+        return;
+      }
       HybridStoreQuotaStatusResponse quotaStatusResponse =
           mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
       if (quotaStatusResponse.isError()) {

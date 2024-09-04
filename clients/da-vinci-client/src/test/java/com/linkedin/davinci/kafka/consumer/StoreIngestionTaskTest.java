@@ -931,6 +931,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(1).when(mockStore).getPartitionCount();
 
     doReturn(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE).when(mockStore).getMaxRecordSizeBytes();
+    doReturn(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE).when(mockStore).getMaxNearlineRecordSizeBytes();
 
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
@@ -1021,6 +1022,7 @@ public abstract class StoreIngestionTaskTest {
     Properties localKafkaProps = new Properties();
     localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
+        ConsumerPoolType.REGULAR_POOL,
         mockFactory,
         localKafkaProps,
         10,
@@ -1043,6 +1045,7 @@ public abstract class StoreIngestionTaskTest {
     Properties remoteKafkaProps = new Properties();
     remoteKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     remoteKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
+        ConsumerPoolType.REGULAR_POOL,
         mockFactory,
         remoteKafkaProps,
         10,
@@ -1740,7 +1743,8 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(new RandomPollStrategy(1), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
-      verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottleRecordRate(1);
+      verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4))
+          .maybeThrottleRecordRate(ConsumerPoolType.REGULAR_POOL, 1);
       verify(mockIngestionThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottleBandwidth(anyInt());
     }, aaConfig, null);
   }

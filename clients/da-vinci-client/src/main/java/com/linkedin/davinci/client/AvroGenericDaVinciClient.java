@@ -728,8 +728,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
+                logger.info("Start of " + this.getClass().getSimpleName() + "'s ref counted deleter closure.");
                 daVinciBackend = null;
                 backend.close();
+                logger.info("End of " + this.getClass().getSimpleName() + "'s ref counted deleter closure.");
               }
             });
       } else if (VeniceSystemStoreType
@@ -769,9 +771,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         daVinciConfig.getRecordTransformerFunction());
 
     try {
-      if (!getBackend().compareCacheConfig(cacheConfig)) {
-        throw new VeniceClientException("Cache config conflicts with existing backend, storeName=" + getStoreName());
-      }
+      getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
       if (daVinciConfig.isCacheEnabled()) {
         cacheBackend = getBackend().getObjectCache();

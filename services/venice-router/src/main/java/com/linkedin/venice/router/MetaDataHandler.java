@@ -670,13 +670,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_STREAM_HYBRID_STORE_QUOTA + "/${storeName}");
-    if (!storeConfigRepo.getStoreConfig(storeName).isPresent()) {
+    Store store = storeRepository.getStore(storeName);
+    if (!storeConfigRepo.getStoreConfig(storeName).isPresent() || store == null) {
       byte[] errBody = ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: "
           + storeName + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
-    String topicName = Version.composeKafkaTopic(storeName, storeRepository.getStore(storeName).getCurrentVersion());
+    String topicName = Version.composeKafkaTopic(storeName, store.getCurrentVersion());
     prepareHybridStoreQuotaStatusResponse(topicName, ctx);
   }
 

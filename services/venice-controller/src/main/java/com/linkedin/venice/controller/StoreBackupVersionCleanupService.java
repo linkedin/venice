@@ -265,28 +265,19 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
-    // If the current version is from repush, do not delete the version before previous current version,
-    // instead delete the repush source version from which it was repushed as they hold identical data.
-    // During later iteration of this thread, it will delete the older backup after threshold retention time.
+    // This will delete backup versions which satisfy any of the following conditions
+    // 1. If the current version is from repush, delete the repush source backup version
+    // 2. Current version is from a repush, but still a lingering version older than retention period.
+    // 3. Current version is not repush and is older than retention, delete any versions < current version.
     int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
     List<Version> readyToBeRemovedVersions = versions.stream()
         .filter(
             v -> repushSourceVersion > NON_EXISTING_VERSION
-                ? v.getNumber() == repushSourceVersion
+                ? (v.getNumber() == repushSourceVersion || v.getNumber() < currentVersion
+                    && v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds())
                 : v.getNumber() < currentVersion)
         .collect(Collectors.toList());
 
-    // If there are still leaking versions due to consecutive repushes with some version failing in other fabric,
-    // there could be versions with repushSourceVersion does not match current version, delete them after backup
-    // retention period.
-    if (readyToBeRemovedVersions.isEmpty()) {
-      for (Version version: versions) {
-        if (version.getNumber() < currentVersion && store.getLatestVersionPromoteToCurrentTimestamp()
-            + defaultBackupVersionRetentionMs < time.getMilliseconds()) {
-          readyToBeRemovedVersions.add(version);
-        }
-      }
-    }
     if (readyToBeRemovedVersions.isEmpty()) {
       return false;
     }

@@ -22,7 +22,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -51,11 +50,13 @@ public class KafkaConsumerServiceDelegatorTest {
         .getConsumerPoolStrategyType();
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor =
-        (ignored, statSuffix) -> statSuffix.isEmpty() ? mockDefaultConsumerService : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
+            ? mockDefaultConsumerService
+            : mockDedicatedConsumerService;
 
     KafkaConsumerServiceDelegator delegator =
-        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
 
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
@@ -95,7 +96,7 @@ public class KafkaConsumerServiceDelegatorTest {
     reset(mockDedicatedConsumerService);
 
     isAAWCStoreFunc = vt -> false;
-    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, 0, dataReceiver);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, 0, dataReceiver);
 
@@ -119,11 +120,13 @@ public class KafkaConsumerServiceDelegatorTest {
         .getConsumerPoolStrategyType();
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor =
-        (ignored, statSuffix) -> statSuffix.isEmpty() ? mockDefaultConsumerService : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
+            ? mockDefaultConsumerService
+            : mockDedicatedConsumerService;
 
     KafkaConsumerServiceDelegator delegator =
-        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     delegator.unsubscribeAll(versionTopic);
     verify(mockDefaultConsumerService).unsubscribeAll(versionTopic);
@@ -141,11 +144,13 @@ public class KafkaConsumerServiceDelegatorTest {
         .getConsumerPoolStrategyType();
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor =
-        (ignored, statSuffix) -> statSuffix.isEmpty() ? mockDefaultConsumerService : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
+            ? mockDefaultConsumerService
+            : mockDedicatedConsumerService;
 
     KafkaConsumerServiceDelegator delegator =
-        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
     PubSubTopicPartition topicPartitionForVT = new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID);
@@ -221,7 +226,7 @@ public class KafkaConsumerServiceDelegatorTest {
     doReturn(false).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(mockConfig)
         .getConsumerPoolStrategyType();
-    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, 0, dataReceiver);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, 0, dataReceiver);
 
@@ -261,11 +266,13 @@ public class KafkaConsumerServiceDelegatorTest {
 
     AtomicBoolean retValueForIsAAWCStoreFunc = new AtomicBoolean(false);
     Function<String, Boolean> isAAWCStoreFunc = vt -> retValueForIsAAWCStoreFunc.get();
-    BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor =
-        (ignored, statSuffix) -> statSuffix.isEmpty() ? mockDefaultConsumerService : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
+            ? mockDefaultConsumerService
+            : mockDedicatedConsumerService;
 
     KafkaConsumerServiceDelegator delegator =
-        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
 
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
@@ -302,11 +309,13 @@ public class KafkaConsumerServiceDelegatorTest {
         .getConsumerPoolStrategyType();
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor =
-        (ignored, statSuffix) -> statSuffix.isEmpty() ? mockDefaultConsumerService : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
+        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
+            ? mockDefaultConsumerService
+            : mockDedicatedConsumerService;
 
     KafkaConsumerServiceDelegator delegator =
-        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
     PartitionReplicaIngestionContext topicPartitionForVT = new PartitionReplicaIngestionContext(
@@ -336,7 +345,7 @@ public class KafkaConsumerServiceDelegatorTest {
 
     // Test non-AA/WC cases
     isAAWCStoreFunc = vt -> false;
-    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
 
     reset(mockDefaultConsumerService);
     reset(mockDedicatedConsumerService);
@@ -392,24 +401,20 @@ public class KafkaConsumerServiceDelegatorTest {
     consumerServiceMap.put(tpForNonCurrentAAWCLeader, consumerServiceForNonCurrentVersionAAWCLeader);
     consumerServiceMap.put(tpForNonCurrentAAWCFollower, consumerServiceForNonCurrentVersionNonAAWCLeader);
 
-    consumerServiceConstructor = (ignored, statSuffix) -> {
-      if (statSuffix.equals(
-          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX)) {
+    consumerServiceBuilder = (ignored, poolType) -> {
+      if (poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL)) {
         return consumerServiceForCurrentVersionAAWCLeader;
-      } else if (statSuffix.equals(
-          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX)) {
+      } else if (poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
         return consumerServiceForCurrentVersionNonAAWCLeader;
-      } else if (statSuffix.equals(
-          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.NON_CURRENT_VERSION_AAWC_LEADER_STATS_SUFFIX)) {
+      } else if (poolType.equals(ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL)) {
         return consumerServiceForNonCurrentVersionAAWCLeader;
-      } else if (statSuffix.equals(
-          KafkaConsumerServiceDelegator.CurrentVersionConsumerPoolStrategy.NON_CURRENT_VERSION_NON_AAWC_LEADER_STATS_SUFFIX)) {
+      } else if (poolType.equals(ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL)) {
         return consumerServiceForNonCurrentVersionNonAAWCLeader;
       }
       return null;
     };
 
-    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     verifyConsumerServiceStartConsumptionIntoDataReceiver(
         delegator,
         consumerServiceMap,

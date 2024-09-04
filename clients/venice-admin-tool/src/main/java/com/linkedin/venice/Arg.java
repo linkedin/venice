@@ -251,7 +251,11 @@ public enum Arg {
   ),
   MAX_RECORD_SIZE_BYTES(
       "max-record-size-bytes", "mrsb", true,
-      "Store-level max record size in bytes. Used by VeniceWriter to fail batch push jobs and pause consumption on nearline jobs with partial update."
+      "Store-level max record size for VeniceWriter to determine whether to fail batch push jobs. This setting can potentially converge with the nearline setting in the future."
+  ),
+  MAX_NEARLINE_RECORD_SIZE_BYTES(
+      "max-nearline-record-size-bytes", "mnrsb", true,
+      "Store-level max record size for VeniceWriter to determine whether to pause consumption on nearline jobs with partial updates."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
