@@ -1,56 +1,48 @@
 package com.linkedin.venice.listener.grpc.handlers;
 
+import static com.linkedin.venice.listener.ReadQuotaEnforcementHandler.INVALID_REQUEST_RESOURCE_MSG;
+import static com.linkedin.venice.listener.ReadQuotaEnforcementHandler.SERVER_OVER_CAPACITY_MSG;
+
 import com.linkedin.venice.listener.ReadQuotaEnforcementHandler;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.request.RouterRequest;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.stats.AggServerQuotaUsageStats;
-import com.linkedin.venice.throttle.TokenBucket;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
+import java.util.Objects;
 
 
 public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
-  private final ReadQuotaEnforcementHandler readQuota;
+  private final ReadQuotaEnforcementHandler readQuotaHandler;
 
   public GrpcReadQuotaEnforcementHandler(ReadQuotaEnforcementHandler readQuotaEnforcementHandler) {
-    readQuota = readQuotaEnforcementHandler;
+    readQuotaHandler =
+        Objects.requireNonNull(readQuotaEnforcementHandler, "ReadQuotaEnforcementHandler cannot be null");
   }
 
-  public void processRequest(GrpcRequestContext ctx) {
-    RouterRequest request = ctx.getRouterRequest();
-    String storeName = request.getStoreName();
-    Store store = readQuota.getStoreRepository().getStore(storeName);
-
-    if (readQuota.checkStoreNull(null, request, ctx, true, store)) {
-      invokeNextHandler(ctx);
+  @Override
+  public void processRequest(GrpcRequestContext context) {
+    RouterRequest request = context.getRouterRequest();
+    ReadQuotaEnforcementHandler.QuotaEnforcementResult result = readQuotaHandler.enforceQuota(request);
+    if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.ALLOWED) {
+      invokeNextHandler(context);
       return;
     }
 
-    if (readQuota.checkInitAndQuotaEnabledToSkipQuotaEnforcement(null, request, store, true)) {
-      invokeNextHandler(ctx);
-      return;
+    context.setError();
+    if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.BAD_REQUEST) {
+      context.getVeniceServerResponseBuilder()
+          .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
+          .setErrorMessage(INVALID_REQUEST_RESOURCE_MSG + request.getResourceName());
+    } else if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.REJECTED) {
+      context.getVeniceServerResponseBuilder()
+          .setErrorCode(VeniceReadResponseStatus.TOO_MANY_REQUESTS)
+          .setErrorMessage("");
+    } else if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.OVER_CAPACITY) {
+      context.getVeniceServerResponseBuilder()
+          .setErrorCode(VeniceReadResponseStatus.SERVICE_UNAVAILABLE)
+          .setErrorMessage(SERVER_OVER_CAPACITY_MSG);
     }
 
-    int rcu = ReadQuotaEnforcementHandler.getRcu(request);
-
-    TokenBucket tokenBucket = readQuota.getStoreVersionBuckets().get(request.getResourceName());
-    if (tokenBucket != null) {
-      if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
-          && readQuota.handleTooManyRequests(null, request, ctx, store, rcu, true)) {
-        invokeNextHandler(ctx);
-        return;
-      }
-    } else {
-      readQuota.getStats().recordAllowedUnintentionally(storeName, rcu);
-    }
-
-    if (readQuota.storageConsumeRcu(rcu) && readQuota.handleServerOverCapacity(null, ctx, storeName, rcu, true)) {
-      invokeNextHandler(ctx);
-      return;
-    }
-
-    AggServerQuotaUsageStats stats = readQuota.getStats();
-    stats.recordAllowed(storeName, rcu);
-
-    invokeNextHandler(ctx);
+    // If we reach here, the request is allowed; retain the request and pass it to the next handler
+    invokeNextHandler(context);
   }
 }

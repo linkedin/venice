@@ -1,10 +1,10 @@
 package com.linkedin.venice.listener.grpc;
 
-import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,7 +30,8 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   }
 
   private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
-    VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder().setErrorCode(GrpcErrorCodes.OK);
+    VeniceServerResponse.Builder responseBuilder =
+        VeniceServerResponse.newBuilder().setErrorCode(VeniceReadResponseStatus.OK);
     GrpcRequestContext ctx = new GrpcRequestContext(request, responseBuilder, responseObserver);
     requestProcessor.process(ctx);
   }

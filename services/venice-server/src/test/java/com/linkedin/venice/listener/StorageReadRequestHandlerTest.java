@@ -45,7 +45,6 @@ import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestK
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
@@ -78,6 +77,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.request.RequestHelper;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -645,7 +645,7 @@ public class StorageReadRequestHandlerTest {
     doNothing().when(mockNextHandler).processRequest(any());
     grpcReadRequestHandler.processRequest(ctx); // will cause np exception
 
-    assertEquals(builder.getErrorCode(), GrpcErrorCodes.INTERNAL_ERROR);
+    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
     assertTrue(builder.getErrorMessage().contains("Internal Error"));
   }
 

@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.response.VeniceReadResponseStatus.BAD_REQUEST;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -14,13 +15,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
-import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.ReadQuotaEnforcementHandler.QuotaEnforcementResult;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcReadQuotaEnforcementHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
@@ -34,6 +32,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
@@ -60,17 +59,19 @@ import org.testng.annotations.Test;
  * This test ensures that the ReadQuotaEnforcementHandler will throttle over-quota requests
  */
 public class ReadQuotaEnforcementHandlerTest {
-  long nodeCapacity;
-  String thisNodeId;
-  Clock clock;
-  long currentTime;
-  ReadOnlyStoreRepository storeRepository;
-  HelixCustomizedViewOfflinePushRepository customizedViewRepository;
-  ReadQuotaEnforcementHandler quotaEnforcer;
-  GrpcReadQuotaEnforcementHandler grpcQuotaEnforcer;
-  AggServerQuotaUsageStats stats;
+  private long nodeCapacity;
+  private String thisNodeId;
+  private Clock clock;
+  private long currentTime;
+  private ReadOnlyStoreRepository storeRepository;
+  private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
+  private ReadQuotaEnforcementHandler quotaEnforcementHandler;
+  private GrpcReadQuotaEnforcementHandler grpcQuotaEnforcementHandler;
+  private AggServerQuotaUsageStats stats;
 
-  MetricsRepository metricsRepository;
+  private MetricsRepository metricsRepository;
+  private RouterRequest routerRequest;
+  private VeniceServerGrpcHandler mockNextHandler;
 
   @BeforeMethod
   public void setUp() {
@@ -83,7 +84,7 @@ public class ReadQuotaEnforcementHandlerTest {
     customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
     metricsRepository = new MetricsRepository();
-    quotaEnforcer = new ReadQuotaEnforcementHandler(
+    quotaEnforcementHandler = new ReadQuotaEnforcementHandler(
         nodeCapacity,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
@@ -91,15 +92,239 @@ public class ReadQuotaEnforcementHandlerTest {
         stats,
         metricsRepository,
         clock);
-    grpcQuotaEnforcer = new GrpcReadQuotaEnforcementHandler(quotaEnforcer);
-    VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);
-    grpcQuotaEnforcer.addNextHandler(mockNextHandler);
+    grpcQuotaEnforcementHandler = new GrpcReadQuotaEnforcementHandler(quotaEnforcementHandler);
+    mockNextHandler = mock(VeniceServerGrpcHandler.class);
+    grpcQuotaEnforcementHandler.addNextHandler(mockNextHandler);
     doNothing().when(mockNextHandler).processRequest(any());
+    routerRequest = mock(RouterRequest.class);
   }
 
   @DataProvider(name = "Test-Quota-EnforcementHandler-Enable-Grpc")
   public Object[][] testQuotaEnforcementHandlerEnableGrpc() {
     return new Object[][] { { true }, { false } };
+  }
+
+  @Test
+  public void testEnforceQuotaWhenResourceIsNotFound() {
+    String storeName = "test_store";
+    when(routerRequest.getStoreName()).thenReturn(storeName);
+    when(storeRepository.getStore(storeName)).thenReturn(null);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.BAD_REQUEST);
+
+    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+
+    // for Netty handler
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcementHandler.channelRead0(ctx, routerRequest);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).writeAndFlush(responseCaptor.capture());
+    Object response = responseCaptor.getValue();
+    assertTrue(response instanceof HttpShortcutResponse);
+    HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) response;
+    assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.BAD_REQUEST);
+    assertNotNull(shortcutResponse.getMessage());
+
+    // for gRPC handler
+    GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
+    when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
+    grpcQuotaEnforcementHandler.processRequest(grpcCtx);
+    assertEquals(builder.getErrorCode(), BAD_REQUEST);
+    assertNotNull(builder.getErrorMessage());
+  }
+
+  @Test
+  public void testEnforceQuotaDuringInitialization() {
+    quotaEnforcementHandler.setInitialized(false);
+    quotaEnforcementHandler.setInitializedVolatile(false);
+    assertFalse(quotaEnforcementHandler.isInitialized());
+    String storeName = "test_store";
+    Store store = mock(Store.class);
+    when(routerRequest.getStoreName()).thenReturn(storeName);
+    when(storeRepository.getStore(storeName)).thenReturn(store);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
+
+    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+
+    // for Netty handler
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcementHandler.channelRead0(ctx, routerRequest);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).fireChannelRead(responseCaptor.capture());
+    Object receivedRequest = responseCaptor.getValue();
+    assertTrue(receivedRequest instanceof RouterRequest);
+    assertEquals(receivedRequest, routerRequest);
+
+    // for gRPC handler
+    GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
+    when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
+    grpcQuotaEnforcementHandler.processRequest(grpcCtx);
+    assertEquals(builder.getErrorCode(), 0);
+    verify(mockNextHandler).processRequest(grpcCtx);
+  }
+
+  @Test
+  public void testEnforceQuotaWhenStorageNodeReadQuotaIsDisabled() {
+    String storeName = "test_store";
+    Store store = mock(Store.class);
+    when(store.isStorageNodeReadQuotaEnabled()).thenReturn(false);
+    when(routerRequest.getStoreName()).thenReturn(storeName);
+    when(storeRepository.getStore(storeName)).thenReturn(store);
+    when(store.isStorageNodeReadQuotaEnabled()).thenReturn(false);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
+
+    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+
+    // for Netty handler
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcementHandler.channelRead0(ctx, routerRequest);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).fireChannelRead(responseCaptor.capture());
+    Object receivedRequest = responseCaptor.getValue();
+    assertTrue(receivedRequest instanceof RouterRequest);
+    assertEquals(receivedRequest, routerRequest);
+
+    // for gRPC handler
+    GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
+    when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
+    grpcQuotaEnforcementHandler.processRequest(grpcCtx);
+    assertEquals(builder.getErrorCode(), 0);
+    verify(mockNextHandler).processRequest(grpcCtx);
+  }
+
+  @Test
+  public void testQuotaEnforcementWhenStoreVersionQuotaIsExceeded() {
+    // Case 1: If request is not a retry request, it should be rejected
+    String resourceName = "test_store_v1";
+    String storeName = "test_store";
+    Store store = mock(Store.class);
+    when(routerRequest.getStoreName()).thenReturn(storeName);
+    when(routerRequest.getResourceName()).thenReturn(resourceName);
+    when(routerRequest.getRequestType()).thenReturn(RequestType.SINGLE_GET);
+    when(routerRequest.isRetryRequest()).thenReturn(false);
+    when(storeRepository.getStore(storeName)).thenReturn(store);
+    when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
+    assertTrue(quotaEnforcementHandler.isInitialized());
+    TokenBucket veniceRateLimiter = mock(TokenBucket.class);
+    quotaEnforcementHandler.setStoreVersionBucket(resourceName, veniceRateLimiter);
+    when(veniceRateLimiter.tryConsume(1)).thenReturn(false);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.REJECTED);
+
+    verify(stats).recordRejected(eq(storeName), eq(1L));
+    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
+
+    // for Netty handler
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcementHandler.channelRead0(ctx, routerRequest);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).writeAndFlush(responseCaptor.capture());
+    Object response = responseCaptor.getValue();
+    assertTrue(response instanceof HttpShortcutResponse);
+    assertEquals(((HttpShortcutResponse) response).getStatus(), HttpResponseStatus.TOO_MANY_REQUESTS);
+
+    // for gRPC handler
+    GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
+    when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
+    grpcQuotaEnforcementHandler.processRequest(grpcCtx);
+    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.TOO_MANY_REQUESTS);
+    assertNotNull(builder.getErrorMessage());
+
+    // Case 2: If request is a retry request, it should be allowed
+    when(routerRequest.isRetryRequest()).thenReturn(true);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
+    verify(stats).recordAllowed(eq(storeName), eq(1L));
+  }
+
+  @Test
+  public void testQuotaEnforcementWhenServerIsOverCapacity() {
+    String resourceName = "test_store_v1";
+    String storeName = "test_store";
+    Store store = mock(Store.class);
+    when(routerRequest.getStoreName()).thenReturn(storeName);
+    when(routerRequest.getResourceName()).thenReturn(resourceName);
+    when(routerRequest.getRequestType()).thenReturn(RequestType.SINGLE_GET);
+    when(routerRequest.isRetryRequest()).thenReturn(false);
+    when(storeRepository.getStore(storeName)).thenReturn(store);
+    when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
+    assertTrue(quotaEnforcementHandler.isInitialized());
+    assertNull(quotaEnforcementHandler.getStoreVersionBucket(resourceName));
+    TokenBucket storageNodeRateLimiter = mock(TokenBucket.class);
+    quotaEnforcementHandler.setStorageNodeBucket(storageNodeRateLimiter);
+    when(storageNodeRateLimiter.tryConsume(1)).thenReturn(false);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.OVER_CAPACITY);
+
+    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+
+    // for Netty handler
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcementHandler.channelRead0(ctx, routerRequest);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).writeAndFlush(responseCaptor.capture());
+    Object response = responseCaptor.getValue();
+    assertTrue(response instanceof HttpShortcutResponse);
+    assertSame(((HttpShortcutResponse) response).getStatus(), HttpResponseStatus.SERVICE_UNAVAILABLE);
+
+    // for gRPC handler
+    GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
+    when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
+    grpcQuotaEnforcementHandler.processRequest(grpcCtx);
+    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.SERVICE_UNAVAILABLE);
+    assertNotNull(builder.getErrorMessage());
+  }
+
+  // both storeVersion quota and server capacity are sufficient to allow the request
+  @Test
+  public void testQuotaEnforcement() {
+    String resourceName = "test_store_v1";
+    String storeName = "test_store";
+    Store store = mock(Store.class);
+    when(routerRequest.getStoreName()).thenReturn(storeName);
+    when(routerRequest.getResourceName()).thenReturn(resourceName);
+    when(routerRequest.getRequestType()).thenReturn(RequestType.SINGLE_GET);
+    when(routerRequest.isRetryRequest()).thenReturn(false);
+    when(storeRepository.getStore(storeName)).thenReturn(store);
+    when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
+    assertTrue(quotaEnforcementHandler.isInitialized());
+    TokenBucket veniceRateLimiter = mock(TokenBucket.class);
+    when(veniceRateLimiter.tryConsume(1)).thenReturn(true);
+    quotaEnforcementHandler.setStoreVersionBucket(resourceName, veniceRateLimiter);
+    TokenBucket storageNodeRateLimiter = mock(TokenBucket.class);
+    when(storageNodeRateLimiter.tryConsume(1)).thenReturn(true);
+    quotaEnforcementHandler.setStorageNodeBucket(storageNodeRateLimiter);
+    assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
+
+    verify(stats).recordAllowed(eq(storeName), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+
+    // for Netty handler
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcementHandler.channelRead0(ctx, routerRequest);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).fireChannelRead(responseCaptor.capture());
+    Object receivedRequest = responseCaptor.getValue();
+    assertTrue(receivedRequest instanceof RouterRequest);
+
+    // for gRPC handler
+    GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
+    when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
+    grpcQuotaEnforcementHandler.processRequest(grpcCtx);
+    assertEquals(builder.getErrorCode(), 0);
+    verify(mockNextHandler).processRequest(grpcCtx);
   }
 
   @Test
@@ -129,7 +354,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(store).when(storeRepository).getStore(storeName);
     doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
 
-    quotaEnforcer.init();
+    quotaEnforcementHandler.init();
 
     verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(any());
     verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(eq(topic), any());
@@ -173,7 +398,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onCustomizedViewChange(pa);
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota * 5 * 10, storeReadQuota * 10, 10000);
   }
@@ -211,7 +436,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onCustomizedViewChange(pa);
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota / 2 * 5 * 10, storeReadQuota / 2 * 10, 10000);
   }
@@ -225,28 +450,12 @@ public class ReadQuotaEnforcementHandlerTest {
     RouterRequest request = mock(RouterRequest.class);
     doReturn(invalidStoreName).when(request).getStoreName();
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-    quotaEnforcer.channelRead0(ctx, request);
+    quotaEnforcementHandler.channelRead0(ctx, request);
     ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
     verify(ctx).writeAndFlush(responseCaptor.capture());
     Object response = responseCaptor.getValue();
     assertTrue(response instanceof HttpShortcutResponse);
     assertEquals(((HttpShortcutResponse) response).getStatus(), HttpResponseStatus.BAD_REQUEST);
-  }
-
-  @Test
-  public void testInvalidResourceNameGrpcEnabled() {
-    String invalidStoreName = "store_dne";
-    GrpcRequestContext ctx = mock(GrpcRequestContext.class);
-    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
-
-    RouterRequest request = mock(RouterRequest.class);
-    doReturn(invalidStoreName).when(request).getStoreName();
-    doReturn(request).when(ctx).getRouterRequest();
-    doReturn(builder).when(ctx).getVeniceServerResponseBuilder();
-
-    grpcQuotaEnforcer.processRequest(ctx);
-    assertEquals(builder.getErrorCode(), GrpcErrorCodes.BAD_REQUEST);
-    assertNotNull(builder.getErrorMessage());
   }
 
   @Test
@@ -282,13 +491,13 @@ public class ReadQuotaEnforcementHandlerTest {
     when(storeRepository.getStore(eq(storeName)))
         .thenReturn(store, store, store, storeAfterVersionBump, storeAfterVersionBump, storeAfterQuotaBump);
 
-    quotaEnforcer.handleStoreChanged(store);
-    Assert.assertTrue(quotaEnforcer.listTopics().contains(topic));
-    Assert.assertTrue(quotaEnforcer.listTopics().contains(nextTopic));
+    quotaEnforcementHandler.handleStoreChanged(store);
+    Assert.assertTrue(quotaEnforcementHandler.listTopics().contains(topic));
+    Assert.assertTrue(quotaEnforcementHandler.listTopics().contains(nextTopic));
 
-    quotaEnforcer.handleStoreChanged(storeAfterVersionBump);
-    Assert.assertFalse(quotaEnforcer.listTopics().contains(topic));
-    Assert.assertTrue(quotaEnforcer.listTopics().contains(nextTopic));
+    quotaEnforcementHandler.handleStoreChanged(storeAfterVersionBump);
+    Assert.assertFalse(quotaEnforcementHandler.listTopics().contains(topic));
+    Assert.assertTrue(quotaEnforcementHandler.listTopics().contains(nextTopic));
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -299,7 +508,7 @@ public class ReadQuotaEnforcementHandlerTest {
     setUpRequestMocks(ctx, oldVersionRequest, allowed, blocked, topic);
     long capacity = storeReadQuota * 5 * 10;
     for (int i = 0; i < capacity; i++) {
-      quotaEnforcer.channelRead0(ctx, request);
+      quotaEnforcementHandler.channelRead0(ctx, request);
     }
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 0);
@@ -307,24 +516,24 @@ public class ReadQuotaEnforcementHandlerTest {
     verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
     verify(stats, never()).recordRejected(eq(storeName), anyLong());
 
-    quotaEnforcer.channelRead0(ctx, request);
+    quotaEnforcementHandler.channelRead0(ctx, request);
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 1);
     verify(stats, times((int) capacity)).recordAllowed(eq(storeName), anyLong());
     verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
     verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
 
-    quotaEnforcer.channelRead0(ctx, oldVersionRequest);
+    quotaEnforcementHandler.channelRead0(ctx, oldVersionRequest);
     assertEquals(allowed.get(), capacity + 1);
     assertEquals(blocked.get(), 1);
     verify(stats, times((int) capacity + 1)).recordAllowed(eq(storeName), anyLong());
     verify(stats, times(1)).recordAllowedUnintentionally(eq(storeName), anyLong());
     verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
 
-    quotaEnforcer.handleStoreChanged(storeAfterQuotaBump);
+    quotaEnforcementHandler.handleStoreChanged(storeAfterQuotaBump);
     long newCapacity = newStoreReadQuota * 5 * 10;
     for (int i = 0; i < newCapacity; i++) {
-      quotaEnforcer.channelRead0(ctx, request);
+      quotaEnforcementHandler.channelRead0(ctx, request);
     }
     int expectedAllowedCount = (int) capacity + 1 + (int) newCapacity;
     assertEquals(allowed.get(), expectedAllowedCount);
@@ -364,7 +573,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
 
-    quotaEnforcer.onCustomizedViewChange(pa);
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -376,12 +585,12 @@ public class ReadQuotaEnforcementHandlerTest {
 
     long capacity = storeReadQuota * 5 * 10;
     for (int i = 0; i < capacity; i++) {
-      quotaEnforcer.channelRead0(ctx, request);
+      quotaEnforcementHandler.channelRead0(ctx, request);
     }
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 0);
 
-    quotaEnforcer.channelRead0(ctx, request);
+    quotaEnforcementHandler.channelRead0(ctx, request);
 
     assertEquals(blocked.get(), 1);
 
@@ -392,7 +601,7 @@ public class ReadQuotaEnforcementHandlerTest {
     setUpRequestMocks(quotaDisabledCtx, quotaDisabledRequest, allowed, blocked, quotaDisabledTopic);
 
     for (int i = 0; i < capacity * 2; i++) {
-      quotaEnforcer.channelRead0(quotaDisabledCtx, quotaDisabledRequest);
+      quotaEnforcementHandler.channelRead0(quotaDisabledCtx, quotaDisabledRequest);
     }
     // Store that have storage node read quota disabled should not be blocked
     assertEquals(allowed.get(), capacity * 2);
@@ -421,7 +630,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
 
-    quotaEnforcer.onCustomizedViewChange(pa);
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -432,7 +641,7 @@ public class ReadQuotaEnforcementHandlerTest {
     GrpcRequestContext grpcCtx = mock(GrpcRequestContext.class);
     VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
     setUpRequestMocks(ctx, request, allowed, blocked, quotaEnabledTopic);
-    GrpcReadQuotaEnforcementHandler mockGrpcEnforcer = new GrpcReadQuotaEnforcementHandler(quotaEnforcer);
+    GrpcReadQuotaEnforcementHandler mockGrpcEnforcer = new GrpcReadQuotaEnforcementHandler(quotaEnforcementHandler);
     VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);
     mockGrpcEnforcer.addNextHandler(mockNextHandler);
 
@@ -483,17 +692,18 @@ public class ReadQuotaEnforcementHandlerTest {
 
     PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
 
-    quotaEnforcer.onCustomizedViewChange(pa);
-    TokenBucket bucketForStore = quotaEnforcer.getBucketForStore(storeName);
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
+    TokenBucket bucketForStore = quotaEnforcementHandler.getBucketForStore(storeName);
     // Actual stale buckets = quota (100) * enforcementCapacityMultiple (5) * enforcementInterval (10)
     assertEquals(bucketForStore.getStaleTokenCount(), 100 * 5 * 10);
 
     // Total buckets = node capacity (10) * enforcementCapacityMultiple (5) * enforcementInterval (10)
-    TokenBucket totalBuckets = quotaEnforcer.getBucketForStore(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT);
+    TokenBucket totalBuckets =
+        quotaEnforcementHandler.getBucketForStore(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT);
     assertEquals(totalBuckets.getStaleTokenCount(), nodeCapacity * 5 * 10);
 
     // Non-existent store should return "null" TokenBucket object
-    TokenBucket bucketForInvalidStore = quotaEnforcer.getBucketForStore("incorrect_store");
+    TokenBucket bucketForInvalidStore = quotaEnforcementHandler.getBucketForStore("incorrect_store");
     assertNull(bucketForInvalidStore);
   }
 
@@ -515,11 +725,11 @@ public class ReadQuotaEnforcementHandlerTest {
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     setUpRequestMocks(ctx, request, allowed, blocked, resourceName);
     for (int i = 0; i < capacity; i++) {
-      quotaEnforcer.channelRead0(ctx, request);
+      quotaEnforcementHandler.channelRead0(ctx, request);
     }
     assertEquals(allowed.get(), capacity, "Made " + capacity + " reads, and all should have been allowed");
     assertEquals(blocked.get(), 0, "Didn't exceed " + capacity + " reads, but " + blocked.get() + " were throttled");
-    quotaEnforcer.channelRead0(ctx, request);
+    quotaEnforcementHandler.channelRead0(ctx, request);
     assertEquals(blocked.get(), 1, "After reading capacity of " + capacity + " next read should have been blocked");
 
     allowed.set(0);
@@ -530,14 +740,14 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(currentTime).when(clock).millis();
 
     for (int i = 0; i < refillAmount; i++) {
-      quotaEnforcer.channelRead0(ctx, request);
+      quotaEnforcementHandler.channelRead0(ctx, request);
     }
     assertEquals(
         allowed.get(),
         refillAmount,
         "Made " + refillAmount + " reads after refill, and all should have been allowed");
     assertEquals(blocked.get(), 0, "After refill, reads should not be throttled");
-    quotaEnforcer.channelRead0(ctx, request);
+    quotaEnforcementHandler.channelRead0(ctx, request);
     assertEquals(
         blocked.get(),
         1,
