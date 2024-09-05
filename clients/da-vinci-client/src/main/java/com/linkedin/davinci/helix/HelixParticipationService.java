@@ -13,6 +13,7 @@ import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -91,6 +92,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private ThreadPoolExecutor leaderFollowerHelixStateTransitionThreadPool;
   private VeniceOfflinePushMonitorAccessor veniceOfflinePushMonitorAccessor;
+  private BlobTransferManager<Void> blobTransferManager;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   // This is ONLY for testing purpose.
@@ -111,7 +113,8 @@ public class HelixParticipationService extends AbstractVeniceService
       int port,
       String hostname,
       CompletableFuture<SafeHelixManager> managerFuture,
-      HeartbeatMonitoringService heartbeatMonitoringService) {
+      HeartbeatMonitoringService heartbeatMonitoringService,
+      BlobTransferManager blobTransferManager) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
@@ -125,6 +128,7 @@ public class HelixParticipationService extends AbstractVeniceService
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, hostname, port);
     this.managerFuture = managerFuture;
+    this.blobTransferManager = blobTransferManager;
     this.partitionPushStatusAccessorFuture = new CompletableFuture<>();
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
@@ -134,8 +138,8 @@ public class HelixParticipationService extends AbstractVeniceService
         storageMetadataService,
         (KafkaStoreIngestionService) storeIngestionService,
         storageService,
-        null,
-        null);
+        blobTransferManager,
+        veniceConfigLoader.getVeniceServerConfig());
   }
 
   // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
@@ -252,6 +256,13 @@ public class HelixParticipationService extends AbstractVeniceService
       LOGGER.info("Helix Manager is null.");
     }
     ingestionBackend.close();
+    if (blobTransferManager != null) {
+      try {
+        blobTransferManager.close();
+      } catch (Exception e) {
+        LOGGER.error("Swallowed an exception while trying to close the blobTransferManager.", e);
+      }
+    }
     LOGGER.info("Closed VeniceIngestionBackend.");
     leaderFollowerParticipantModelFactory.shutDownExecutor();
 

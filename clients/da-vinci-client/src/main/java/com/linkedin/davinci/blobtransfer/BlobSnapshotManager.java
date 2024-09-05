@@ -161,4 +161,28 @@ public class BlobSnapshotManager {
     return Checkpoint.create(rocksDB);
   }
 
+  /**
+   * util method to create a snapshot for batch only
+   */
+  public static void createSnapshotForBatch(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
+    LOGGER.info("Creating snapshot for batch in directory: {}", fullPathForPartitionDBSnapshot);
+
+    if (fullPathForPartitionDBSnapshot == null || fullPathForPartitionDBSnapshot.isEmpty()) {
+      LOGGER.error("Snapshot directory {} is null or empty", fullPathForPartitionDBSnapshot);
+      return;
+    }
+
+    try {
+      LOGGER.info("Start creating snapshots for batch in directory: {}", fullPathForPartitionDBSnapshot);
+
+      Checkpoint checkpoint = Checkpoint.create(rocksDB);
+      checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
+
+      LOGGER.info("Finished creating snapshots for batch in directory: {}", fullPathForPartitionDBSnapshot);
+    } catch (RocksDBException e) {
+      throw new VeniceException(
+          "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
+          e);
+    }
+  }
 }

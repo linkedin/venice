@@ -2,6 +2,7 @@ package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -484,16 +485,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
-
-    if (blobTransferEnabled) {
-      createSnapshot();
-    }
   }
 
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      rocksDBSstFileWriter.createSnapshot(rocksDB);
+      BlobSnapshotManager.createSnapshotForBatch(rocksDB, fullPathForTempSnapshotFileDir);
     }
   }
 

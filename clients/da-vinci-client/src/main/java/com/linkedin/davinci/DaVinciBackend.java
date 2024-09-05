@@ -292,7 +292,7 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
-        blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
+        blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
             configLoader.getVeniceServerConfig().getRocksDBPath(),

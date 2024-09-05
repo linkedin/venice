@@ -238,7 +238,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
   private final ExecutorService missingSOPCheckExecutor = Executors.newSingleThreadExecutor();
-
+  private final VeniceStoreVersionConfig storeConfig;
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
 
@@ -347,6 +347,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<ObjectCacheBackend> cacheBackend,
       Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
       Queue<VeniceNotifier> notifiers) {
+    this.storeConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -2672,6 +2673,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get().getStorageEngine(kafkaVersionTopic).endBatchWrite(storagePartitionConfig);
       }
+    }
+
+    /**
+     * Generate snapshot after batch write is done.
+     */
+    if (storeConfig.isBlobTransferEnabled()) {
+      storageEngine.createSnapshot(storagePartitionConfig);
     }
 
     /**
