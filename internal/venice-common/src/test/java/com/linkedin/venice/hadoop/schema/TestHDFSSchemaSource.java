@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop.schema;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -89,6 +90,14 @@ public class TestHDFSSchemaSource {
   public void testLoadKeySchemaThenFetch() throws IOException {
     Schema actualKeySchema = source.fetchKeySchema();
     Assert.assertEquals(actualKeySchema.toString(), KEY_SCHEMA.toString());
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class)
+  public void testSaveKeySchemaThrowsExceptionWithInvalidResponse() throws IOException {
+    SchemaResponse mockResponse = mock(SchemaResponse.class);
+    when(mockResponse.isError()).thenReturn(true);
+    source.saveKeySchemaToDisk(mockResponse);
+
   }
 
   private MultiSchemaResponse.Schema[] generateRmdSchemas(int n) {

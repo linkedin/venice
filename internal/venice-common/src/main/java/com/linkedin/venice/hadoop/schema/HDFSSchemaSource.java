@@ -157,6 +157,7 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
 
   void saveKeySchemaToDisk(SchemaResponse schema) throws IOException, IllegalStateException {
     Preconditions.checkState(includeKeySchema, "Cannot be invoked with invalid key schema directory");
+    Preconditions.checkState(!schema.isError(), "Cannot persist schema. Encountered error in schema response");
     LOGGER.info("Caching key schema for store: {} in {}", storeName, keySchemaDir.getName());
 
     Path schemaPath = new Path(keySchemaDir, String.valueOf(schema.getId()));
@@ -225,6 +226,7 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
 
   @Override
   public Schema fetchKeySchema() throws IOException {
+    Preconditions.checkState(includeKeySchema, "Cannot be invoked with invalid key schema directory");
     FileStatus[] fileStatus = fs.listStatus(keySchemaDir);
     LOGGER.info("Fetching key schemas from :{}", keySchemaDir);
 
