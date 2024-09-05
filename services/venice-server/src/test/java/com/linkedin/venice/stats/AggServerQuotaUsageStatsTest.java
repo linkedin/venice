@@ -70,10 +70,10 @@ public class AggServerQuotaUsageStatsTest {
     double expectedUsageRatio = 0.5;
     doReturn(expectedUsageRatio).when(mockTokenBucket).getStaleUsageRatio();
 
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), -1d);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), Double.NaN);
     aggServerQuotaUsageStats.setStoreTokenBucket(storeName, mockTokenBucket);
     Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), expectedUsageRatio);
     aggServerQuotaUsageStats.setStoreTokenBucket(storeName, null);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), -1d);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), Double.NaN);
   }
 }
