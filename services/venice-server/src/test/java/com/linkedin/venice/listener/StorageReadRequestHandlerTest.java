@@ -232,12 +232,16 @@ public class StorageReadRequestHandlerTest {
 
   @DataProvider(name = "storageReadRequestHandlerParams")
   public Object[][] storageReadRequestHandlerParams() {
-    return new Object[][] { { ParallelQueryProcessing.SEQUENTIAL, 10, ValueSize.SMALL_VALUE },
-        { ParallelQueryProcessing.SEQUENTIAL, 10, ValueSize.LARGE_VALUE },
-        { ParallelQueryProcessing.PARALLEL, 10, ValueSize.SMALL_VALUE },
-        { ParallelQueryProcessing.PARALLEL, 10, ValueSize.LARGE_VALUE },
-        { ParallelQueryProcessing.PARALLEL, 100, ValueSize.SMALL_VALUE },
-        { ParallelQueryProcessing.PARALLEL, 100, ValueSize.LARGE_VALUE } };
+    int smallRecordCount = numberOfExecutionThreads * 10;
+    int largeRecordCount = numberOfExecutionThreads * 100;
+    return new Object[][] { { ParallelQueryProcessing.SEQUENTIAL, smallRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.SEQUENTIAL, smallRecordCount, ValueSize.LARGE_VALUE },
+        { ParallelQueryProcessing.SEQUENTIAL, largeRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.SEQUENTIAL, largeRecordCount, ValueSize.LARGE_VALUE },
+        { ParallelQueryProcessing.PARALLEL, smallRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.PARALLEL, smallRecordCount, ValueSize.LARGE_VALUE },
+        { ParallelQueryProcessing.PARALLEL, largeRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.PARALLEL, largeRecordCount, ValueSize.LARGE_VALUE } };
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler() {
@@ -304,7 +308,7 @@ public class StorageReadRequestHandlerTest {
   }
 
   @Test(dataProvider = "storageReadRequestHandlerParams")
-  public void testMultiGetNotUsingKeyBytes(ParallelQueryProcessing parallel, int chunkSize, ValueSize largeValue)
+  public void testMultiGetNotUsingKeyBytes(ParallelQueryProcessing parallel, int recordCount, ValueSize largeValue)
       throws Exception {
 
     ReadResponseLatencyInjector.injectExtraLatency();
@@ -325,8 +329,7 @@ public class StorageReadRequestHandlerTest {
     String valuePrefix = "value_";
 
     Map<Integer, String> allValueStrings = new HashMap<>();
-    int recordCount = chunkSize * numberOfExecutionThreads;
-    int expectedValueSize = 0;
+    int chunkSize = recordCount / numberOfExecutionThreads;
     GUID guid = new JavaUtilGuidV4Generator().getGuid();
     int sequenceNumber = 0;
 
@@ -370,9 +373,6 @@ public class StorageReadRequestHandlerTest {
           valueBytes).serialize();
       if (largeValue.config) {
         keyBytes = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(keyBytes);
-        expectedValueSize += valueString.getBytes().length;
-      } else {
-        expectedValueSize += valueRecordContainerBytes.length;
       }
       doReturn(valueRecordContainerBytes).when(storageEngine).get(0, ByteBuffer.wrap(keyBytes));
       allValueStrings.put(i, valueString);
@@ -415,17 +415,18 @@ public class StorageReadRequestHandlerTest {
       assertEquals(results.get(i), allValueStrings.get(i));
     }
 
-    /**
-     * The assertions below can catch an issue where metrics are inaccurate during parallel batch gets. This was due to
-     * a race condition which is now fixed. Unfortunately, the race is hard to hit, even on the buggy code, so the test
-     * succeeding is not a guarantee of the absence of a regression (but the test failing certainly indicates that).
-     *
-     * We are making the test fail reliably (in the presence of buggy stats handling) via a backdoor available through
-     * {@link ReadResponseLatencyInjector}.
-     */
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
+    verify(stats).recordSuccessRequestKeyCount(recordCount);
     if (largeValue.config) {
+      /**
+       * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due to
+       * a race condition which is now fixed. Unfortunately, the race is hard to hit, even on the buggy code, so the test
+       * succeeding is not a guarantee of the absence of a regression (but the test failing certainly indicates that).
+       *
+       * We are making the test fail reliably (in the presence of buggy stats handling) via a backdoor available through
+       * {@link ReadResponseLatencyInjector}.
+       */
       verify(stats).recordMultiChunkLargeValueCount(recordCount);
     } else {
       verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());

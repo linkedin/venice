@@ -128,6 +128,7 @@ public class ParallelMultiKeyResponseWrapper<T extends MultiKeyResponseWrapper> 
 
     @Override
     public void merge(ReadResponseStatsRecorder other) {
+      throw new UnsupportedOperationException("merge should never be called on " + this.getClass().getSimpleName());
     }
   }
 }
