@@ -14,6 +14,7 @@ import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
@@ -153,6 +154,74 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     Assert.assertTrue(
         ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
+  }
+
+  @Test
+  public void testUpdateAppliedFieldUpdateWithNewSchema() {
+    final int incomingValueSchemaId = 3;
+    final int oldValueSchemaId = 2;
+    // Set up
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV3);
+    GenericRecord updateFieldWriteComputeRecord = new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("age", 66)
+        .setNewFieldValue("name", "Venice")
+        .setNewFieldValue("nullableListField", null)
+        .build();
+    ByteBuffer writeComputeBytes = ByteBuffer.wrap(
+        MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
+    final long valueLevelTimestamp = 10L;
+    Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
+    fieldNameToTimestampMap.put("age", 10L);
+    fieldNameToTimestampMap.put("favoritePet", 10L);
+    fieldNameToTimestampMap.put("name", 10L);
+    fieldNameToTimestampMap.put("intArray", 10L);
+    fieldNameToTimestampMap.put("stringArray", 10L);
+
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(personRmdSchemaV2, fieldNameToTimestampMap);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
+
+    doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
+        .getDerivedSchema(storeName, incomingValueSchemaId, 1);
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
+        .getValueSchema(storeName, oldValueSchemaId);
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
+        .getValueSchema(storeName, incomingValueSchemaId);
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
+        .getSupersetSchema(storeName);
+    doReturn(new RmdSchemaEntry(oldValueSchemaId, 1, personRmdSchemaV2)).when(readOnlySchemaRepository)
+        .getReplicationMetadataSchema(storeName, oldValueSchemaId, 1);
+    doReturn(new RmdSchemaEntry(incomingValueSchemaId, 1, personRmdSchemaV3)).when(readOnlySchemaRepository)
+        .getReplicationMetadataSchema(storeName, incomingValueSchemaId, 1);
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
+        .getValueSchema(storeName, incomingValueSchemaId);
+
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    // Update happens below
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            storeName);
+    MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
+        Lazy.of(() -> null),
+        rmdWithValueSchemaId,
+        writeComputeBytes,
+        incomingValueSchemaId,
+        1,
+        valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update should be applied.
+        1,
+        1,
+        1,
+        null);
+    Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
+
+    ByteBuffer newValueOptional = mergeConflictResult.getNewValue();
+    Assert.assertNotNull(newValueOptional);
+    GenericRecord newValueRecord = getDeserializer(personSchemaV3, personSchemaV3).deserialize(newValueOptional);
+    Assert.assertEquals(newValueRecord.get("age").toString(), "66");
+    Assert.assertEquals(newValueRecord.get("name").toString(), "Venice");
+    Assert.assertNull(newValueRecord.get("nullableListField"));
   }
 
   @Test
