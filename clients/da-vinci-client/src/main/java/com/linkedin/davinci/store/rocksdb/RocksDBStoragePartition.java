@@ -218,8 +218,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           options,
           fullPathForTempSSTFileDir,
           false,
-          rocksDBServerConfig,
-          blobTransferEnabled);
+          rocksDBServerConfig);
     }
 
     /**
