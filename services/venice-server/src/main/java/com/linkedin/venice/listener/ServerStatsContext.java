@@ -1,13 +1,16 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleIfAbove;
+import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import it.unimi.dsi.fastutil.ints.IntList;
 
 
 /**
@@ -19,30 +22,14 @@ import it.unimi.dsi.fastutil.ints.IntList;
  * direct copy of StatsHandler, without Netty Channel Read/Write logic.
  */
 public class ServerStatsContext {
+  private ReadResponseStatsRecorder responseStatsRecorder;
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName = null;
   private boolean isMetadataRequest;
-  private double databaseLookupLatency = -1;
-  private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
-  private int successRequestKeyCount = -1;
   private int requestSizeInBytes = -1;
-  private double readComputeLatency = -1;
-  private double readComputeDeserializationLatency = -1;
-  private double readComputeSerializationLatency = -1;
-  private int dotProductCount = 0;
-  private int cosineSimilarityCount = 0;
-  private int hadamardProductCount = 0;
-  private int countOperatorCount = 0;
   private boolean isRequestTerminatedEarly = false;
-
-  private IntList keySizeList;
-  private IntList valueSizeList;
-
-  private int valueSize = 0;
-  private int readComputeOutputSize = 0;
-
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
@@ -56,8 +43,6 @@ public class ServerStatsContext {
    * This is mostly to bypass the issue that stat callback could be triggered multiple times for one single request.
    */
   private boolean statCallbackExecuted = false;
-  private double storageExecutionSubmissionWaitTime;
-  private int storageExecutionQueueLen;
 
   /**
    * Normally, one multi-get request will be split into two parts, and it means
@@ -65,16 +50,16 @@ public class ServerStatsContext {
    *
    * 'firstPartLatency' will measure the time took by:
    * {@link StatsHandler}
-   * {@link HttpServerCodec}
-   * {@link HttpObjectAggregator}
+   * {@link io.netty.handler.codec.http.HttpServerCodec}
+   * {@link io.netty.handler.codec.http.HttpObjectAggregator}
    *
    * 'partsInvokeDelayLatency' will measure the delay between the invocation of part1
    * and the invocation of part2;
    *
    * 'secondPartLatency' will measure the time took by:
    * {@link StatsHandler}
-   * {@link HttpServerCodec}
-   * {@link HttpObjectAggregator}
+   * {@link io.netty.handler.codec.http.HttpServerCodec}
+   * {@link io.netty.handler.codec.http.HttpObjectAggregator}
    * {@link VerifySslHandler}
    * {@link ServerAclHandler}
    * {@link RouterRequestHttpHandler}
@@ -85,8 +70,6 @@ public class ServerStatsContext {
   private double secondPartLatency = -1;
   private double partsInvokeDelayLatency = -1;
   private int requestPartCount = -1;
-  private boolean isComplete;
-
   private boolean isMisroutedStoreVersion = false;
   private double flushLatency = -1;
   private int responseSize = -1;
@@ -95,28 +78,12 @@ public class ServerStatsContext {
     return newRequest;
   }
 
-  public double getSecondPartLatency() {
-    return secondPartLatency;
-  }
-
   public void setSecondPartLatency(double secondPartLatency) {
     this.secondPartLatency = secondPartLatency;
   }
 
-  public double getPartsInvokeDelayLatency() {
-    return partsInvokeDelayLatency;
-  }
-
   public void setPartsInvokeDelayLatency(double partsInvokeDelayLatency) {
     this.partsInvokeDelayLatency = partsInvokeDelayLatency;
-  }
-
-  public int getRequestPartCount() {
-    return requestPartCount;
-  }
-
-  public void setRequestPartCount(int requestPartCount) {
-    this.requestPartCount = requestPartCount;
   }
 
   public void incrementRequestPartCount() {
@@ -135,6 +102,7 @@ public class ServerStatsContext {
   }
 
   public void resetContext() {
+    this.responseStatsRecorder = null;
     storeName = null;
     startTimeInNS = System.nanoTime();
     partsInvokeDelayLatency = -1;
@@ -143,26 +111,18 @@ public class ServerStatsContext {
     isMetadataRequest = false;
     responseStatus = null;
     statCallbackExecuted = false;
-    databaseLookupLatency = -1;
-    storageExecutionSubmissionWaitTime = -1;
-    storageExecutionQueueLen = -1;
     requestKeyCount = -1;
-    successRequestKeyCount = -1;
     requestSizeInBytes = -1;
-    multiChunkLargeValueCount = -1;
-    readComputeLatency = -1;
-    readComputeDeserializationLatency = -1;
-    readComputeSerializationLatency = -1;
-    dotProductCount = 0;
-    cosineSimilarityCount = 0;
-    hadamardProductCount = 0;
     isRequestTerminatedEarly = false;
-    isComplete = false;
     isMisroutedStoreVersion = false;
     flushLatency = -1;
     responseSize = -1;
 
     newRequest = false;
+  }
+
+  public void setReadResponseStats(ReadResponseStatsRecorder responseStatsRecorder) {
+    this.responseStatsRecorder = responseStatsRecorder;
   }
 
   public void setFirstPartLatency(double firstPartLatency) {
@@ -242,66 +202,6 @@ public class ServerStatsContext {
     this.requestSizeInBytes = requestSizeInBytes;
   }
 
-  public void setSuccessRequestKeyCount(int successKeyCount) {
-    this.successRequestKeyCount = successKeyCount;
-  }
-
-  public void setDatabaseLookupLatency(double latency) {
-    this.databaseLookupLatency = latency;
-  }
-
-  public void setReadComputeLatency(double latency) {
-    this.readComputeLatency = latency;
-  }
-
-  public void setReadComputeDeserializationLatency(double latency) {
-    this.readComputeDeserializationLatency = latency;
-  }
-
-  public void setReadComputeSerializationLatency(double latency) {
-    this.readComputeSerializationLatency = latency;
-  }
-
-  public void setDotProductCount(int count) {
-    this.dotProductCount = count;
-  }
-
-  public void setCosineSimilarityCount(int count) {
-    this.cosineSimilarityCount = count;
-  }
-
-  public void setHadamardProductCount(int count) {
-    this.hadamardProductCount = count;
-  }
-
-  public void setCountOperatorCount(int count) {
-    this.countOperatorCount = count;
-  }
-
-  public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
-    this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
-  }
-
-  public void setStorageExecutionQueueLen(int storageExecutionQueueLen) {
-    this.storageExecutionQueueLen = storageExecutionQueueLen;
-  }
-
-  public boolean isAssembledMultiChunkLargeValue() {
-    return multiChunkLargeValueCount > 0;
-  }
-
-  public void setMultiChunkLargeValueCount(int multiChunkLargeValueCount) {
-    this.multiChunkLargeValueCount = multiChunkLargeValueCount;
-  }
-
-  public void setKeySizeList(IntList keySizeList) {
-    this.keySizeList = keySizeList;
-  }
-
-  public void setValueSizeList(IntList valueSizeList) {
-    this.valueSizeList = valueSizeList;
-  }
-
   public long getRequestStartTimeInNS() {
     return this.startTimeInNS;
   }
@@ -316,81 +216,22 @@ public class ServerStatsContext {
 
   public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
     if (serverHttpRequestStats != null) {
-      if (databaseLookupLatency >= 0) {
-        serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
+      if (this.responseStatsRecorder != null) {
+        this.responseStatsRecorder.recordMetrics(serverHttpRequestStats);
       }
-      if (storageExecutionSubmissionWaitTime >= 0) {
-        currentStats.recordStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
-      }
-      if (storageExecutionQueueLen >= 0) {
-        currentStats.recordStorageExecutionQueueLen(storageExecutionQueueLen);
-      }
-      if (multiChunkLargeValueCount > 0) {
-        // We only record this metric for requests where large values occurred
-        serverHttpRequestStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
-      }
-      if (requestKeyCount > 0) {
-        serverHttpRequestStats.recordRequestKeyCount(requestKeyCount);
-      }
-      if (successRequestKeyCount > 0) {
-        serverHttpRequestStats.recordSuccessRequestKeyCount(successRequestKeyCount);
-      }
-      if (requestSizeInBytes > 0) {
-        serverHttpRequestStats.recordRequestSizeInBytes(requestSizeInBytes);
-      }
-      if (firstPartLatency > 0) {
-        serverHttpRequestStats.recordRequestFirstPartLatency(firstPartLatency);
-      }
-      if (partsInvokeDelayLatency > 0) {
-        serverHttpRequestStats.recordRequestPartsInvokeDelayLatency(partsInvokeDelayLatency);
-      }
-      if (secondPartLatency > 0) {
-        serverHttpRequestStats.recordRequestSecondPartLatency(secondPartLatency);
-      }
-      if (requestPartCount > 0) {
-        serverHttpRequestStats.recordRequestPartCount(requestPartCount);
-      }
-      if (readComputeLatency >= 0) {
-        serverHttpRequestStats.recordReadComputeLatency(readComputeLatency, isAssembledMultiChunkLargeValue());
-      }
-      if (readComputeDeserializationLatency >= 0) {
-        serverHttpRequestStats.recordReadComputeDeserializationLatency(
-            readComputeDeserializationLatency,
-            isAssembledMultiChunkLargeValue());
-      }
-      if (readComputeSerializationLatency >= 0) {
-        serverHttpRequestStats
-            .recordReadComputeSerializationLatency(readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
-      }
-      if (dotProductCount > 0) {
-        serverHttpRequestStats.recordDotProductCount(dotProductCount);
-      }
-      if (cosineSimilarityCount > 0) {
-        serverHttpRequestStats.recordCosineSimilarityCount(cosineSimilarityCount);
-      }
-      if (hadamardProductCount > 0) {
-        serverHttpRequestStats.recordHadamardProduct(hadamardProductCount);
-      }
-      if (countOperatorCount > 0) {
-        serverHttpRequestStats.recordCountOperator(countOperatorCount);
-      }
-      if (isRequestTerminatedEarly) {
+
+      consumeIntIfAbove(serverHttpRequestStats::recordRequestKeyCount, this.requestKeyCount, 0);
+      consumeIntIfAbove(serverHttpRequestStats::recordRequestSizeInBytes, this.requestSizeInBytes, 0);
+      consumeDoubleIfAbove(serverHttpRequestStats::recordRequestFirstPartLatency, this.firstPartLatency, 0);
+      consumeDoubleIfAbove(
+          serverHttpRequestStats::recordRequestPartsInvokeDelayLatency,
+          this.partsInvokeDelayLatency,
+          0);
+      consumeDoubleIfAbove(serverHttpRequestStats::recordRequestSecondPartLatency, this.secondPartLatency, 0);
+      consumeIntIfAbove(serverHttpRequestStats::recordRequestPartCount, this.requestPartCount, 0);
+
+      if (this.isRequestTerminatedEarly) {
         serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();
-      }
-      if (keySizeList != null) {
-        for (int i = 0; i < keySizeList.size(); i++) {
-          serverHttpRequestStats.recordKeySizeInByte(keySizeList.getInt(i));
-        }
-      }
-      if (valueSizeList != null) {
-        for (int i = 0; i < valueSizeList.size(); i++) {
-          if (valueSizeList.getInt(i) != -1) {
-            serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
-          }
-        }
-      }
-      if (readComputeOutputSize > 0) {
-        serverHttpRequestStats.recordReadComputeEfficiency((double) valueSize / readComputeOutputSize);
       }
       if (flushLatency >= 0) {
         serverHttpRequestStats.recordFlushLatency(flushLatency);
@@ -404,7 +245,6 @@ public class ServerStatsContext {
   // This method does not have to be synchronized since operations in Tehuti are already synchronized.
   // Please re-consider the race condition if new logic is added.
   public void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
-    isComplete = true;
     if (stats != null) {
       stats.recordSuccessRequest();
       stats.recordSuccessRequestLatency(elapsedTime);
@@ -414,7 +254,6 @@ public class ServerStatsContext {
   }
 
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
-    isComplete = true;
     if (stats == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);
@@ -430,27 +269,11 @@ public class ServerStatsContext {
     }
   }
 
-  public void setValueSize(int size) {
-    this.valueSize = size;
-  }
-
-  public void setReadComputeOutputSize(int size) {
-    this.readComputeOutputSize = size;
-  }
-
   public int getRequestKeyCount() {
     return requestKeyCount;
   }
 
-  public boolean isComplete() {
-    return isComplete;
-  }
-
   public void setMisroutedStoreVersion(boolean misroutedStoreVersion) {
     isMisroutedStoreVersion = misroutedStoreVersion;
-  }
-
-  public boolean isMisroutedStoreVersion() {
-    return isMisroutedStoreVersion;
   }
 }

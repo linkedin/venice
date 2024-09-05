@@ -1592,7 +1592,7 @@ public class PartialUpdateTest {
           serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
       ValueRecord result = SingleGetChunkingAdapter
-          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null, null);
+          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
       // Avoid assertion failure logging massive RMD record.
       boolean nullRmd = (result == null);
       assertFalse(nullRmd);
@@ -2158,7 +2158,7 @@ public class PartialUpdateTest {
     byte[] serializedKeyBytes =
         ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key));
     byte[] manifestValueBytes = isRmd
-        ? storageEngine.getReplicationMetadata(partition, serializedKeyBytes)
+        ? storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(serializedKeyBytes))
         : storageEngine.get(partition, serializedKeyBytes);
     if (manifestValueBytes == null) {
       return null;
@@ -2180,7 +2180,8 @@ public class PartialUpdateTest {
     for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
       byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
       byte[] valueBytes = storageEngine.get(partition, chunkKeyBytes);
-      byte[] rmdBytes = isAAEnabled ? storageEngine.getReplicationMetadata(partition, chunkKeyBytes) : null;
+      byte[] rmdBytes =
+          isAAEnabled ? storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(chunkKeyBytes)) : null;
       validationFlow.accept(valueBytes, rmdBytes);
     }
   }

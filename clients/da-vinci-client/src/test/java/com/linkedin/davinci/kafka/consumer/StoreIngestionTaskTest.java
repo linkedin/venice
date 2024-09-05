@@ -3766,9 +3766,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(new ReentrantReadWriteLock()).when(mockAbstractStorageEngine).getRWLockForPartitionOrThrow(anyInt());
 
     doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytesDefault).when(mockStoragePartition)
-        .getReplicationMetadata(putKeyFoo);
+        .getReplicationMetadata(ByteBuffer.wrap(putKeyFoo));
     doReturn(deleteKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition)
-        .getReplicationMetadata(deleteKeyFoo);
+        .getReplicationMetadata(ByteBuffer.wrap(deleteKeyFoo));
 
     VeniceWriter vtWriter = getVeniceWriter(topic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
     VeniceWriter localRtWriter = getVeniceWriter(

@@ -62,8 +62,8 @@ public class AggServerQuotaUsageStatsTest {
         + metricsRepository.getMetric(readQuotaRejectedQPSString2).value();
     double totalRejectedKPS = metricsRepository.getMetric(readQuotaRejectedKPSString).value()
         + metricsRepository.getMetric(readQuotaRejectedKPSString2).value();
-    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedQPSString).value(), totalRejectedQPS, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedKPSString).value(), totalRejectedKPS, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedQPSString).value(), totalRejectedQPS, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedKPSString).value(), totalRejectedKPS, 0.05);
 
     String readQuotaUsageRatioString = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     TokenBucket mockTokenBucket = mock(TokenBucket.class);

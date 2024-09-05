@@ -12,8 +12,10 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,6 +47,8 @@ import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestK
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.JavaUtilGuidV4Generator;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
@@ -56,10 +60,11 @@ import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
+import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
-import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
-import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
+import com.linkedin.venice.listener.response.stats.ReadResponseLatencyInjector;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.QueryAction;
@@ -82,17 +87,27 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.storage.protocol.ChunkId;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.ValueSize;
+import com.linkedin.venice.utils.concurrent.BlockingQueueType;
+import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -129,6 +144,7 @@ import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -147,6 +163,12 @@ public class StorageReadRequestHandlerTest {
   private final ChannelHandlerContext context = mock(ChannelHandlerContext.class);
   private final ArgumentCaptor<Object> argumentCaptor = ArgumentCaptor.forClass(Object.class);
   private final ThreadPoolExecutor executor = new InlineExecutor();
+  private final int numberOfExecutionThreads = Runtime.getRuntime().availableProcessors();
+  private final ThreadPoolExecutor parallelExecutor = ThreadPoolFactory.createThreadPool(
+      numberOfExecutionThreads,
+      this.getClass().getSimpleName(),
+      4096,
+      BlockingQueueType.LINKED_BLOCKING_QUEUE);
   private final Store store = mock(Store.class);
   private final Version version = mock(Version.class);
   private final AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
@@ -160,6 +182,9 @@ public class StorageReadRequestHandlerTest {
   private final ReadMetadataRetriever readMetadataRetriever = mock(ReadMetadataRetriever.class);
   private final VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
   private final VenicePartitioner partitioner = new SimplePartitioner();
+  private final ChunkedValueManifestSerializer chunkedValueManifestSerializer =
+      new ChunkedValueManifestSerializer(true);
+  private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
 
   @BeforeMethod
   public void setUp() {
@@ -192,6 +217,31 @@ public class StorageReadRequestHandlerTest {
         readMetadataRetriever,
         serverConfig,
         context);
+    ReadResponseLatencyInjector.removeExtraLatency();
+  }
+
+  private enum ParallelQueryProcessing {
+    PARALLEL(true), SEQUENTIAL(false);
+
+    final boolean configValue;
+
+    ParallelQueryProcessing(boolean configValue) {
+      this.configValue = configValue;
+    }
+  }
+
+  @DataProvider(name = "storageReadRequestHandlerParams")
+  public Object[][] storageReadRequestHandlerParams() {
+    int smallRecordCount = numberOfExecutionThreads * 10;
+    int largeRecordCount = numberOfExecutionThreads * 100;
+    return new Object[][] { { ParallelQueryProcessing.SEQUENTIAL, smallRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.SEQUENTIAL, smallRecordCount, ValueSize.LARGE_VALUE },
+        { ParallelQueryProcessing.SEQUENTIAL, largeRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.SEQUENTIAL, largeRecordCount, ValueSize.LARGE_VALUE },
+        { ParallelQueryProcessing.PARALLEL, smallRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.PARALLEL, smallRecordCount, ValueSize.LARGE_VALUE },
+        { ParallelQueryProcessing.PARALLEL, largeRecordCount, ValueSize.SMALL_VALUE },
+        { ParallelQueryProcessing.PARALLEL, largeRecordCount, ValueSize.LARGE_VALUE } };
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler() {
@@ -202,8 +252,8 @@ public class StorageReadRequestHandlerTest {
       boolean parallelBatchGetEnabled,
       int parallelBatchGetChunkSize) {
     return new StorageReadRequestHandler(
-        executor,
-        executor,
+        parallelBatchGetEnabled ? parallelExecutor : executor,
+        parallelBatchGetEnabled ? parallelExecutor : executor,
         storageEngineRepository,
         storeRepository,
         schemaRepository,
@@ -236,8 +286,11 @@ public class StorageReadRequestHandlerTest {
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
 
-    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
-    StorageResponseObject responseObject = (StorageResponseObject) argumentCaptor.getValue();
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(context, times(1)).writeAndFlush(argumentCaptor.capture()));
+    SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
     assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
   }
@@ -254,8 +307,14 @@ public class StorageReadRequestHandlerTest {
     assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testMultiGetNotUsingKeyBytes(Boolean isParallel) throws Exception {
+  @Test(dataProvider = "storageReadRequestHandlerParams")
+  public void testMultiGetNotUsingKeyBytes(ParallelQueryProcessing parallel, int recordCount, ValueSize largeValue)
+      throws Exception {
+
+    ReadResponseLatencyInjector.injectExtraLatency();
+    doReturn(largeValue.config).when(version).isChunkingEnabled();
+    doReturn(largeValue.config).when(storageEngine).isChunked();
+
     int schemaId = 1;
 
     // [0]""/[1]"storage"/[2]{$resourceName}
@@ -270,7 +329,9 @@ public class StorageReadRequestHandlerTest {
     String valuePrefix = "value_";
 
     Map<Integer, String> allValueStrings = new HashMap<>();
-    int recordCount = 10;
+    int chunkSize = recordCount / numberOfExecutionThreads;
+    GUID guid = new JavaUtilGuidV4Generator().getGuid();
+    int sequenceNumber = 0;
 
     // Prepare multiGet records belong to specific sub-partitions, if the router does not have the right logic to figure
     // out
@@ -278,13 +339,42 @@ public class StorageReadRequestHandlerTest {
     // considers the first byte of the key.
     for (int i = 0; i < recordCount; ++i) {
       MultiGetRouterRequestKeyV1 requestKey = new MultiGetRouterRequestKeyV1();
-      byte[] keyBytes = keySerializer.serialize(null, keyPrefix + i);
+      String keyString = keyPrefix + i;
+      byte[] keyBytes = keySerializer.serialize(null, keyString);
       requestKey.keyBytes = ByteBuffer.wrap(keyBytes);
       requestKey.keyIndex = i;
       requestKey.partitionId = 0;
       String valueString = valuePrefix + i;
-      byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
-      doReturn(valueBytes).when(storageEngine).get(0, ByteBuffer.wrap(keyBytes));
+      byte[] valueBytes;
+      if (largeValue.config) {
+        byte[] chunk1 = ValueRecord
+            .create(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), valueString.substring(0, 3).getBytes())
+            .serialize();
+        byte[] chunk2 = ValueRecord
+            .create(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), valueString.substring(3).getBytes())
+            .serialize();
+        List<ByteBuffer> keysWithChunkingSuffix = new ArrayList<>(2);
+        ByteBuffer chunk1KeyBytes = keyWithChunkingSuffixSerializer
+            .serializeChunkedKey(keyBytes, new ChunkedKeySuffix(new ChunkId(guid, 0, sequenceNumber++, 0), true));
+        ByteBuffer chunk2KeyBytes = keyWithChunkingSuffixSerializer
+            .serializeChunkedKey(keyBytes, new ChunkedKeySuffix(new ChunkId(guid, 0, sequenceNumber++, 1), true));
+        keysWithChunkingSuffix.add(chunk1KeyBytes);
+        keysWithChunkingSuffix.add(chunk2KeyBytes);
+        doReturn(chunk1).when(storageEngine).get(0, chunk1KeyBytes);
+        doReturn(chunk2).when(storageEngine).get(0, chunk2KeyBytes);
+        ChunkedValueManifest chunkedValueManifest =
+            new ChunkedValueManifest(keysWithChunkingSuffix, schemaId, valueString.length());
+        valueBytes = chunkedValueManifestSerializer.serialize("", chunkedValueManifest);
+      } else {
+        valueBytes = valueString.getBytes();
+      }
+      byte[] valueRecordContainerBytes = ValueRecord.create(
+          largeValue.config ? AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion() : schemaId,
+          valueBytes).serialize();
+      if (largeValue.config) {
+        keyBytes = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(keyBytes);
+      }
+      doReturn(valueRecordContainerBytes).when(storageEngine).get(0, ByteBuffer.wrap(keyBytes));
       allValueStrings.put(i, valueString);
       keys.add(requestKey);
     }
@@ -300,15 +390,21 @@ public class StorageReadRequestHandlerTest {
     MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper
         .parseMultiGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
-    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(isParallel, 10);
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(parallel.configValue, chunkSize);
+    long startTime = System.currentTimeMillis();
     requestHandler.channelRead(context, request);
+    verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());
+    long timeSpent = System.currentTimeMillis() - startTime;
+    System.out.println("Time spent: " + timeSpent + " ms for " + recordCount + " records.");
 
-    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
-    MultiGetResponseWrapper multiGetResponseWrapper = (MultiGetResponseWrapper) argumentCaptor.getValue();
+    Object response = argumentCaptor.getValue();
+    assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
+    AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
     RecordDeserializer<MultiGetResponseRecordV1> deserializer =
         SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
-    Iterable<MultiGetResponseRecordV1> values =
-        deserializer.deserializeObjects(multiGetResponseWrapper.getResponseBody().array());
+    byte[] responseBytes = new byte[multiGetResponseWrapper.getResponseBody().readableBytes()];
+    multiGetResponseWrapper.getResponseBody().getBytes(0, responseBytes);
+    Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(responseBytes);
     Map<Integer, String> results = new HashMap<>();
     values.forEach(K -> {
       String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
@@ -317,6 +413,23 @@ public class StorageReadRequestHandlerTest {
     assertEquals(results.size(), recordCount);
     for (int i = 0; i < recordCount; i++) {
       assertEquals(results.get(i), allValueStrings.get(i));
+    }
+
+    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+    multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
+    verify(stats).recordSuccessRequestKeyCount(recordCount);
+    if (largeValue.config) {
+      /**
+       * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due to
+       * a race condition which is now fixed. Unfortunately, the race is hard to hit, even on the buggy code, so the test
+       * succeeding is not a guarantee of the absence of a regression (but the test failing certainly indicates that).
+       *
+       * We are making the test fail reliably (in the presence of buggy stats handling) via a backdoor available through
+       * {@link ReadResponseLatencyInjector}.
+       */
+      verify(stats).recordMultiChunkLargeValueCount(recordCount);
+    } else {
+      verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
     }
   }
 
@@ -357,10 +470,14 @@ public class StorageReadRequestHandlerTest {
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
 
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(context, times(1)).writeAndFlush(argumentCaptor.capture()));
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) argumentCaptor.getValue();
     assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    assertEquals(shortcutResponse.getMessage(), exceptionMessage);
+    assertTrue(shortcutResponse.getMessage().contains(exceptionMessage));
 
     // Asserting that the exception got logged
     Assert.assertTrue(errorLogCount.get() > 0);
@@ -537,6 +654,7 @@ public class StorageReadRequestHandlerTest {
     ComputeRouterRequestKeyV1 missingKey =
         new ComputeRouterRequestKeyV1(1, ByteBuffer.wrap(missingKeyString.getBytes()), partition);
     doReturn(Arrays.asList(key, missingKey)).when(request).getKeys();
+    doReturn(2).when(request).getKeyCount();
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
@@ -548,16 +666,7 @@ public class StorageReadRequestHandlerTest {
     } else {
       ComputeResponseWrapper computeResponse = (ComputeResponseWrapper) argumentCaptor.getValue();
       assertEquals(computeResponse.isStreamingResponse(), request.isStreamingRequest());
-      assertEquals(computeResponse.getRecordCount(), keySet.size());
-      assertEquals(computeResponse.getMultiChunkLargeValueCount(), 0);
       assertEquals(computeResponse.getCompressionStrategy(), CompressionStrategy.NO_OP);
-
-      assertEquals(computeResponse.getDotProductCount(), 1);
-      assertEquals(computeResponse.getHadamardProductCount(), 1);
-      assertEquals(computeResponse.getCountOperatorCount(), 0);
-      assertEquals(computeResponse.getCosineSimilarityCount(), 0);
-
-      assertEquals(computeResponse.getValueSize(), valueBytes.length);
 
       int expectedReadComputeOutputSize = 0;
       RecordDeserializer<ComputeResponseRecordV1> responseDeserializer =
@@ -569,10 +678,21 @@ public class StorageReadRequestHandlerTest {
         } else {
           assertEquals(record.getKeyIndex(), 0);
           Assert.assertNotEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
-          expectedReadComputeOutputSize += record.getValue().limit();
+          expectedReadComputeOutputSize += record.getValue().remaining();
         }
       }
-      assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
+
+      double expectedReadComputeEfficiency = (double) valueBytes.length / (double) expectedReadComputeOutputSize;
+
+      ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+      computeResponse.getStatsRecorder().recordMetrics(stats);
+      verify(stats).recordSuccessRequestKeyCount(keySet.size());
+      verify(stats).recordDotProductCount(1);
+      verify(stats).recordHadamardProduct(1);
+      verify(stats).recordReadComputeEfficiency(expectedReadComputeEfficiency);
+      verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
+      verify(stats, never()).recordCountOperator(anyInt());
+      verify(stats, never()).recordCosineSimilarityCount(anyInt());
     }
   }
 
@@ -609,9 +729,12 @@ public class StorageReadRequestHandlerTest {
 
     /** This first request will prime the "perStoreVersionStateMap" inside {@link StorageReadRequestHandler} */
     requestHandler.channelRead(context, request);
-    verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class));
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)));
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
-    StorageResponseObject responseObject = (StorageResponseObject) argumentCaptor.getValue();
+    SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertTrue(responseObject.isFound());
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
 
@@ -625,9 +748,12 @@ public class StorageReadRequestHandlerTest {
     // Second request should not use the stale storage engine
     requestHandler.channelRead(context, request);
     verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)); // No extra invocation
-    verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class)); // Good one
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class))); // Good one
     verify(context, times(2)).writeAndFlush(argumentCaptor.capture());
-    responseObject = (StorageResponseObject) argumentCaptor.getValue();
+    responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertTrue(responseObject.isFound());
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
   }
@@ -665,7 +791,10 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
-    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
     Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
   }
 
@@ -689,13 +818,19 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
-    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), SERVICE_UNAVAILABLE);
 
     // when current version different from resource, return 400
     doReturn(10).when(store).getCurrentVersion();
     requestHandler.channelRead(context, request);
-    verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
 
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
   }

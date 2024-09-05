@@ -1,5 +1,6 @@
 package com.linkedin.davinci.utils;
 
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -16,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /*
- * This class serves as a utility to deserialize and assemble chunks consumed from a Kafka topic 
+ * This class serves as a utility to deserialize and assemble chunks consumed from a Kafka topic
  */
 public class ChunkAssembler {
   private static final Logger LOGGER = LogManager.getLogger(ChunkAssembler.class);
@@ -81,7 +82,7 @@ public class ChunkAssembler {
                 false,
                 null,
                 null,
-                null,
+                NoOpReadResponseStats.SINGLETON,
                 readerSchemaId,
                 RawBytesStoreDeserializerCache.getInstance(),
                 compressor,

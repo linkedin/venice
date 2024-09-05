@@ -159,7 +159,7 @@ public abstract class AbstractStoragePartition {
    * Only {@link ReplicationMetadataRocksDBStoragePartition} will execute this method,
    * other storage partition implementation will VeniceUnsupportedOperationException.
    */
-  public byte[] getReplicationMetadata(byte[] key) {
+  public byte[] getReplicationMetadata(ByteBuffer key) {
     throw new VeniceUnsupportedOperationException("getReplicationMetadata");
   }
 

@@ -533,13 +533,8 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  public synchronized StoreBackend getStoreOrThrow(String storeName) {
-    StoreBackend storeBackend = storeByNameMap.get(storeName);
-    if (storeBackend == null) {
-      storeBackend = new StoreBackend(this, storeName);
-      storeByNameMap.put(storeName, storeBackend);
-    }
-    return storeBackend;
+  public StoreBackend getStoreOrThrow(String storeName) {
+    return storeByNameMap.computeIfAbsent(storeName, s -> new StoreBackend(this, s));
   }
 
   ScheduledExecutorService getExecutor() {
