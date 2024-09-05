@@ -143,6 +143,8 @@ public class PartialUpdateTest {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final int TEST_TIMEOUT_MS = 180_000;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
+
+  private static final int REPLICATION_FACTOR = 2;
   private static final String CLUSTER_NAME = "venice-cluster0";
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
@@ -174,7 +176,7 @@ public class PartialUpdateTest {
         1,
         2,
         1,
-        2,
+        REPLICATION_FACTOR,
         Optional.of(controllerProps),
         Optional.of(controllerProps),
         Optional.of(serverProperties),
@@ -1175,8 +1177,7 @@ public class PartialUpdateTest {
 
   }
 
-  // TODO: remove invocation # before merging this change.
-  @Test(timeOut = TEST_TIMEOUT_MS, invocationCount = 10)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testEnablePartialUpdateOnActiveActiveStore() {
     final String storeName = Utils.getUniqueString("testRepushWithDeleteRecord");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -1186,6 +1187,9 @@ public class PartialUpdateTest {
     PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
     PubSubTopic storeVersionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic storeVersionTopicV2 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopicPartition realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
+    PubSubTopicPartition storeVersionTopicPartitionV1 = new PubSubTopicPartitionImpl(storeVersionTopicV1, 0);
+    PubSubTopicPartition storeVersionTopicPartitionV2 = new PubSubTopicPartitionImpl(storeVersionTopicV2, 0);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
           parentControllerClient
@@ -1216,14 +1220,16 @@ public class PartialUpdateTest {
       TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            realTimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
             1);
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
+            storeVersionTopicPartitionV1,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-            1);
+            1,
+            REPLICATION_FACTOR - 1);
       });
       // Enable write-compute for v1:
       // leader: CURRENT_VERSION_NON_AAWC_LEADER => CURRENT_VERSION_AAWC_LEADER
@@ -1236,14 +1242,16 @@ public class PartialUpdateTest {
       TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            realTimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+            1,
             1);
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
+            storeVersionTopicPartitionV1,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-            1);
+            1,
+            REPLICATION_FACTOR - 1);
       });
       // Disable write-compute for v1:
       // leader: CURRENT_VERSION_AAWC_LEADER => CURRENT_VERSION_NON_AAWC_LEADER
@@ -1256,14 +1264,16 @@ public class PartialUpdateTest {
       TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            realTimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
             1);
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
+            storeVersionTopicPartitionV1,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-            1);
+            1,
+            REPLICATION_FACTOR - 1);
       });
       // Enable AA and push a new version to get v2, to verify pool change
       // For v1 without AA:
@@ -1291,25 +1301,29 @@ public class PartialUpdateTest {
         // center for leader.
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            realTimeTopicPartition,
             ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
             1);
         verifyConsumerThreadPoolFor(
             storeVersionTopicV1,
-            new PubSubTopicPartitionImpl(storeVersionTopicV1, 0),
+            storeVersionTopicPartitionV1,
             ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-            1);
+            1,
+            REPLICATION_FACTOR - 1);
         // Version 2 has active-active enabled, so each server host will ingest from two data centers for leader.
         verifyConsumerThreadPoolFor(
             storeVersionTopicV2,
-            new PubSubTopicPartitionImpl(realTimeTopic, 0),
+            realTimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS);
+            NUMBER_OF_CHILD_DATACENTERS,
+            1);
         verifyConsumerThreadPoolFor(
             storeVersionTopicV2,
-            new PubSubTopicPartitionImpl(storeVersionTopicV2, 0),
+            storeVersionTopicPartitionV2,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-            1);
+            1,
+            REPLICATION_FACTOR - 1);
       });
     }
 
@@ -1368,28 +1382,33 @@ public class PartialUpdateTest {
           30,
           TimeUnit.SECONDS);
     }
+    PubSubTopicPartition storeVersionTopicPartitionV3 = new PubSubTopicPartitionImpl(storeVersionTopicV3, 0);
     TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
       // Version 2 become backup version.
       verifyConsumerThreadPoolFor(
           storeVersionTopicV2,
-          new PubSubTopicPartitionImpl(realTimeTopic, 0),
+          realTimeTopicPartition,
           ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-          NUMBER_OF_CHILD_DATACENTERS);
+          NUMBER_OF_CHILD_DATACENTERS,
+          1);
       verifyConsumerThreadPoolFor(
           storeVersionTopicV2,
-          new PubSubTopicPartitionImpl(storeVersionTopicV2, 0),
+          storeVersionTopicPartitionV2,
           ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
+          1,
+          REPLICATION_FACTOR - 1);
       verifyConsumerThreadPoolFor(
           storeVersionTopicV3,
-          new PubSubTopicPartitionImpl(realTimeTopic, 0),
+          realTimeTopicPartition,
           ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-          NUMBER_OF_CHILD_DATACENTERS);
+          NUMBER_OF_CHILD_DATACENTERS,
+          1);
       verifyConsumerThreadPoolFor(
           storeVersionTopicV3,
-          new PubSubTopicPartitionImpl(storeVersionTopicV3, 0),
+          storeVersionTopicPartitionV3,
           ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          1);
+          1,
+          REPLICATION_FACTOR - 1);
     });
     // Need to create a new producer to update partial update config from store response.
     veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
@@ -1417,8 +1436,10 @@ public class PartialUpdateTest {
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition,
       ConsumerPoolType consumerPoolType,
-      int expectedRegionNum) {
+      int expectedSourceRegionNumOnServer,
+      int expectedReplicaNumPerRegion) {
     for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+      int replicaPerRegionCount = 0;
       for (VeniceServerWrapper serverWrapper: veniceMultiClusterWrapper.getClusters()
           .get(CLUSTER_NAME)
           .getVeniceServers()) {
@@ -1448,12 +1469,14 @@ public class PartialUpdateTest {
               }
             }
             // To ensure exactly one consumer from specific pool is allocated for each region.
-            Assert.assertEquals(regionCount, expectedRegionNum);
+            Assert.assertEquals(regionCount, expectedSourceRegionNumOnServer);
+            replicaPerRegionCount += 1;
           }
         } catch (IOException e) {
           throw new VeniceException("Got IO Exception during consumer pool check.", e);
         }
       }
+      Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
   }
 
