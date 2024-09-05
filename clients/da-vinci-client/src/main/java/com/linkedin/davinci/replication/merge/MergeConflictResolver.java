@@ -766,7 +766,7 @@ public class MergeConflictResolver {
       case PER_FIELD_TIMESTAMP:
         GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
         for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
-          if (timestampRecord.get(field.name()) == null) {
+          if (!timestampRecord.hasField(field.name())) {
             if (getFieldOperationType(writeComputeRecord.get(field.pos())) == NO_OP_ON_FIELD) {
               continue; // New field does not perform actual update.
             }

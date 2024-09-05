@@ -98,6 +98,64 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
   }
 
   @Test
+  public void testUpdateIgnoredFieldUpdateWithNewSchema() {
+    final int incomingValueSchemaId = 3;
+    final int incomingWriteComputeSchemaId = 1;
+    final int oldValueSchemaId = 2;
+    // Set up
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV3);
+    GenericRecord updateFieldWriteComputeRecord = new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("age", 66)
+        .setNewFieldValue("name", "Venice")
+        .build();
+    ByteBuffer writeComputeBytes = ByteBuffer.wrap(
+        MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
+    final long valueLevelTimestamp = 10L;
+    Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
+    fieldNameToTimestampMap.put("age", 10L);
+    fieldNameToTimestampMap.put("favoritePet", 10L);
+    fieldNameToTimestampMap.put("name", 10L);
+    fieldNameToTimestampMap.put("intArray", 10L);
+    fieldNameToTimestampMap.put("stringArray", 10L);
+
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(personRmdSchemaV2, fieldNameToTimestampMap);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
+    ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
+
+    doReturn(new DerivedSchemaEntry(incomingValueSchemaId, incomingWriteComputeSchemaId, writeComputeSchema))
+        .when(readOnlySchemaRepository)
+        .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
+        .getValueSchema(storeName, oldValueSchemaId);
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
+        .getValueSchema(storeName, incomingValueSchemaId);
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
+        .getSupersetSchema(storeName);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    // Update happens below
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            storeName);
+    MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
+        Lazy.of(() -> null),
+        rmdWithValueSchemaId,
+        writeComputeBytes,
+        incomingValueSchemaId,
+        incomingWriteComputeSchemaId,
+        valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
+        1,
+        1,
+        1,
+        null);
+    Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
+    Assert.assertTrue(
+        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
+        "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
+  }
+
+  @Test
   public void testWholeFieldUpdate() {
     final int incomingValueSchemaId = 3;
     final int incomingWriteComputeSchemaId = 3;
