@@ -63,8 +63,9 @@ import com.linkedin.venice.listener.request.TopicPartitionIngestionContextReques
 import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
-import com.linkedin.venice.listener.response.stats.ReadResponseLatencyInjector;
+import com.linkedin.venice.listener.response.stats.MultiKeyResponseStats;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.QueryAction;
@@ -132,6 +133,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
@@ -217,7 +219,6 @@ public class StorageReadRequestHandlerTest {
         readMetadataRetriever,
         serverConfig,
         context);
-    ReadResponseLatencyInjector.removeExtraLatency();
   }
 
   private enum ParallelQueryProcessing {
@@ -245,13 +246,14 @@ public class StorageReadRequestHandlerTest {
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler() {
-    return createStorageReadRequestHandler(false, 0);
+    return createStorageReadRequestHandler(false, MultiGetResponseWrapper::new);
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler(
       boolean parallelBatchGetEnabled,
-      int parallelBatchGetChunkSize) {
+      IntFunction<MultiGetResponseWrapper> multiGetResponseProvider) {
     return new StorageReadRequestHandler(
+        serverConfig,
         parallelBatchGetEnabled ? parallelExecutor : executor,
         parallelBatchGetEnabled ? parallelExecutor : executor,
         storageEngineRepository,
@@ -260,12 +262,10 @@ public class StorageReadRequestHandlerTest {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         healthCheckService,
-        false,
-        parallelBatchGetEnabled,
-        parallelBatchGetChunkSize,
-        serverConfig,
         compressorFactory,
-        Optional.empty());
+        Optional.empty(),
+        multiGetResponseProvider,
+        ComputeResponseWrapper::new);
   }
 
   @Test
@@ -308,10 +308,9 @@ public class StorageReadRequestHandlerTest {
   }
 
   @Test(dataProvider = "storageReadRequestHandlerParams")
-  public void testMultiGetNotUsingKeyBytes(ParallelQueryProcessing parallel, int recordCount, ValueSize largeValue)
+  public void testParallelMultiGet(ParallelQueryProcessing parallel, int recordCount, ValueSize largeValue)
       throws Exception {
 
-    ReadResponseLatencyInjector.injectExtraLatency();
     doReturn(largeValue.config).when(version).isChunkingEnabled();
     doReturn(largeValue.config).when(storageEngine).isChunked();
 
@@ -390,7 +389,29 @@ public class StorageReadRequestHandlerTest {
     MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper
         .parseMultiGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
-    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(parallel.configValue, chunkSize);
+    /**
+     * Special {@link com.linkedin.davinci.listener.response.ReadResponseStats} implementation to reliably trigger a
+     * race condition. The race can still happen without the sleep (assuming the stats handling code regressed to a
+     * buggy state), but it is less likely.
+     */
+    class MultiKeyResponseStatsWithSlowIncrement extends MultiKeyResponseStats {
+      @Override
+      public void incrementMultiChunkLargeValueCount() {
+        int currentValue = multiChunkLargeValueCount;
+        try {
+          Thread.sleep(1);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
+        multiChunkLargeValueCount = currentValue + 1;
+      }
+    }
+
+    doReturn(parallel.configValue).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(chunkSize).when(serverConfig).getParallelBatchGetChunkSize();
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(
+        parallel.configValue,
+        s -> new MultiGetResponseWrapper(s, new MultiKeyResponseStatsWithSlowIncrement()));
     long startTime = System.currentTimeMillis();
     requestHandler.channelRead(context, request);
     verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());

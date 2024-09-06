@@ -25,6 +25,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.update.UpdateBuilderImplTest;
 import java.nio.charset.StandardCharsets;
@@ -157,8 +158,8 @@ public class HelixReadOnlySchemaRepositoryTest {
     Assert.assertNull(schemaRepository.getSupersetSchema(storeName));
   }
 
-  @Test
-  public void getDerivedSchemaIdTest() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void getDerivedSchemaIdTest(boolean wcEnabled, boolean aaEnabled) {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     ZkClient zkClient = mock(ZkClient.class);
     HelixSchemaAccessor accessor = mock(HelixSchemaAccessor.class);
@@ -167,8 +168,8 @@ public class HelixReadOnlySchemaRepositoryTest {
     String storeName = "store";
     String schemaStr = "int";
     Store store = mock(Store.class);
-    when(store.isWriteComputationEnabled()).thenReturn(false);
-    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store.isWriteComputationEnabled()).thenReturn(wcEnabled);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
     when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
     GeneratedSchemaID generatedSchemaID = schemaRepository.getDerivedSchemaId(storeName, schemaStr);
     assertNotNull(generatedSchemaID);
@@ -178,8 +179,8 @@ public class HelixReadOnlySchemaRepositoryTest {
     assertThrows(VeniceNoStoreException.class, () -> schemaRepository.getDerivedSchemaId(storeName, schemaStr));
   }
 
-  @Test
-  public void getSupersetOrLatestValueSchemaTest() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void getSupersetOrLatestValueSchemaTest(boolean wcEnabled, boolean aaEnabled) {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     ZkClient zkClient = mock(ZkClient.class);
     HelixSchemaAccessor accessor = mock(HelixSchemaAccessor.class);
@@ -187,8 +188,8 @@ public class HelixReadOnlySchemaRepositoryTest {
         new HelixReadOnlySchemaRepository(storeRepository, zkClient, accessor, 10, 100);
     String storeName = "store";
     Store store = mock(Store.class);
-    when(store.isWriteComputationEnabled()).thenReturn(false);
-    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store.isWriteComputationEnabled()).thenReturn(wcEnabled);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
 

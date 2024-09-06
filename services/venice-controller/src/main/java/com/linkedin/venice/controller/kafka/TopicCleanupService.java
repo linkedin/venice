@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -169,14 +170,10 @@ public class TopicCleanupService extends AbstractVeniceService {
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
-        } catch (InterruptedException e) {
-          LOGGER.error("Received InterruptedException during sleep in TopicCleanup thread");
-          break;
-        }
-        if (stop.get()) {
-          break;
-        }
-        try {
+
+          if (stop.get()) {
+            break;
+          }
           if (admin.isLeaderControllerOfControllerCluster()) {
             if (!isLeaderControllerOfControllerCluster) {
               /**
@@ -193,6 +190,10 @@ public class TopicCleanupService extends AbstractVeniceService {
             isLeaderControllerOfControllerCluster = false;
           }
         } catch (Exception e) {
+          if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            LOGGER.info("Received InterruptedException in TopicCleanupTask. Will stop.");
+            break;
+          }
           LOGGER.error("Received exception when cleaning up topics", e);
         }
       }

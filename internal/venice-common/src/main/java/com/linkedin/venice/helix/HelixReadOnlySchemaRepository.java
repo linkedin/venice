@@ -159,20 +159,30 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     return operation.apply(schemaData);
   }
 
-  void maybeRegisterAndPopulateRmdSchema(Store store, SchemaData schemaData) {
+  /**
+   * @return true if the subscription was established (only if AA is enabled)
+   */
+  boolean maybeRegisterAndPopulateRmdSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
       getAccessor().subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
       getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+      return true;
     }
+    return false;
   }
 
-  void maybeRegisterAndPopulateUpdateSchema(Store store, SchemaData schemaData) {
+  /**
+   * @return true if the subscription was established (only if WC is enabled)
+   */
+  boolean maybeRegisterAndPopulateUpdateSchema(Store store, SchemaData schemaData) {
     if (store.isWriteComputationEnabled()) {
       String storeName = store.getName();
       getAccessor().subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
       getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+      return true;
     }
+    return false;
   }
 
   SchemaEntry forceRefreshSupersetSchemaWithRetry(String storeName) {
@@ -418,10 +428,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   public void refresh() {
     // Should guard the following with write-lock as other-thread could be reading the schema from the map
     // and might throw VeniceNoStoreException.
-    logger.info("Starting to refresh schema map.");
     schemaLock.writeLock().lock();
     try {
       Set<String> storeNameSet = schemaMap.keySet();
+      logger.info("Starting to refresh schema map. Initial store count: {}", storeNameSet.size());
       storeNameSet.forEach(this::removeStoreSchemaFromLocal);
       schemaMap.clear();
       zkClient.subscribeStateChanges(zkStateListener);
@@ -429,10 +439,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       for (Store store: stores) {
         populateSchemaMap(store.getName(), store);
       }
+      logger.info("Finished refreshing schema map. Final store count: {}", stores.size());
     } finally {
       schemaLock.writeLock().unlock();
     }
-    logger.info("Finished refreshing schema map.");
   }
 
   /**
@@ -443,7 +453,6 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private SchemaData populateSchemaMap(String storeName, Store store) {
     return getSchemaMap().computeIfAbsent(storeName, k -> {
       // Gradually warm up
-      logger.info("Try to fetch schema data for store: {}.", storeName);
       // If the local cache doesn't have the schema entry for this store,
       // it could be added recently, and we need to add/monitor it locally
 
@@ -457,8 +466,14 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
 
       // Fetch derived schemas if they are existing
-      maybeRegisterAndPopulateUpdateSchema(store, schemaData);
-      maybeRegisterAndPopulateRmdSchema(store, schemaData);
+      boolean updateSchemaListener = maybeRegisterAndPopulateUpdateSchema(store, schemaData);
+      boolean rmdSchemaListener = maybeRegisterAndPopulateRmdSchema(store, schemaData);
+
+      logger.info(
+          "Fetched and subscribed listeners for key/value{}{} schema data of store: {}.",
+          updateSchemaListener ? "/update" : "",
+          rmdSchemaListener ? "/RMD" : "",
+          storeName);
 
       return schemaData;
     });
@@ -493,11 +508,13 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (previous == null) {
         return;
       }
-      logger.info("Remove schema for store locally: {}.", storeName);
       accessor.unsubscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
       accessor.unsubscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
       accessor.unsubscribeDerivedSchemaCreationChanges(storeName, derivedSchemaChildListener);
       accessor.unsubscribeReplicationMetadataSchemaCreationChanges(storeName, replicationMetadataSchemaChildListener);
+      logger.info(
+          "Removed from local cache and unsubscribed listeners for key/value/update/RMD schemas of store: {}.",
+          storeName);
     } finally {
       schemaLock.writeLock().unlock();
     }
