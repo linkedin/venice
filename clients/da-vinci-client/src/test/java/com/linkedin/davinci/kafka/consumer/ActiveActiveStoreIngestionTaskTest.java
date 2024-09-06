@@ -88,6 +88,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -139,7 +140,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     kafkaValue.payloadUnion = deletePayload;
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    ingestionTask.processMessageAndMaybeProduceToKafka(consumerRecord, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    ingestionTask.processMessageAndMaybeProduceToKafka(
+        new PubSubMessageProcessedResultWrapper<>(consumerRecord),
+        pcs,
+        0,
+        "dummyUrl",
+        0,
+        0L,
+        0L);
     verify(ingestionTask, times(1)).produceToLocalKafka(
         any(),
         any(),
@@ -696,5 +704,33 @@ public class ActiveActiveStoreIngestionTaskTest {
       return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
     }
     return new CompressorFactory().getCompressor(strategy);
+  }
+
+  @Test
+  public void getKeyLevelLockMaxPoolSizeBasedOnServerConfigTest() {
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    Int2ObjectMap<String> clusterIdToUrlMap = new Int2ObjectOpenHashMap<>();
+    clusterIdToUrlMap.put(1, "region_1_url");
+    clusterIdToUrlMap.put(2, "region_2_url");
+    clusterIdToUrlMap.put(3, "region_3_url");
+    when(serverConfig.getConsumerPoolStrategyType())
+        .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT);
+    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(100);
+    when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(clusterIdToUrlMap);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
+
+    // Test when current version prioritization strategy is enabled.
+    when(serverConfig.getConsumerPoolStrategyType())
+        .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
+    when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);
+    when(serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader()).thenReturn(20);
+    when(serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader()).thenReturn(30);
+    when(serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader()).thenReturn(40);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 91);
+
+    // Test with parallel compute is enabled
+    when(serverConfig.getAaWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
+    when(serverConfig.isAaWCWorkloadParallelProcessingEnabled()).thenReturn(true);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 721);
   }
 }

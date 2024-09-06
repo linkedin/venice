@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -105,6 +106,10 @@ public class TestChangelogConsumer {
   private VeniceClusterWrapper clusterWrapper;
   private ControllerClient parentControllerClient;
 
+  protected boolean isAAWCParallelProcessingEnabled() {
+    return true;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
@@ -113,6 +118,8 @@ public class TestChangelogConsumer {
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
+    serverProperties
+        .put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         1,
@@ -617,7 +624,7 @@ public class TestChangelogConsumer {
       TestUtils.waitForNonDeterministicAssertion(
           8,
           TimeUnit.SECONDS,
-          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 86));
+          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
       parentControllerClient.disableAndDeleteStore(storeName);
       // Verify that topics and store is cleaned up
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {

@@ -190,6 +190,7 @@ import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ChunkingTestUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -1062,7 +1063,9 @@ public abstract class StoreIngestionTaskTest {
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
-        .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion);
+        .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
+        .setAaWCWorkLoadProcessingThreadPool(
+            Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
