@@ -335,7 +335,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       return;
     }
     LOGGER.info(
-        "Start update replica status for topic: {}, partition: {} in cluster: {}.",
+        "Start batch update replica status for topic: {}, partition: {} in cluster: {}.",
         topic,
         partitionId,
         clusterName);

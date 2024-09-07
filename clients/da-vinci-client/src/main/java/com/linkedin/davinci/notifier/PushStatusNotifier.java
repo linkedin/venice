@@ -33,7 +33,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class PushStatusNotifier implements VeniceNotifier {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusNotifier.class);
-
+  private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private final OfflinePushAccessor offLinePushAccessor;
   private final HelixPartitionStatusAccessor helixPartitionStatusAccessor;
 
@@ -141,8 +141,12 @@ public class PushStatusNotifier implements VeniceNotifier {
      * For system store dual write, this is not perfect but good enough for now to keep a low volume of updates without
      * refactor the key schema.
      */
-    List<String> filteredIncPushVersionList = pendingReportIncPushVersionList
-        .subList(pendingReportIncPushVersionList.size() - 50, pendingReportIncPushVersionList.size());
+    List<String> filteredIncPushVersionList = pendingReportIncPushVersionList;
+    if (pendingReportIncPushVersionList.size() > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
+      filteredIncPushVersionList = pendingReportIncPushVersionList.subList(
+          pendingReportIncPushVersionList.size() - MAX_INCREMENTAL_PUSH_ENTRY_NUM,
+          pendingReportIncPushVersionList.size());
+    }
     offLinePushAccessor
         .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, filteredIncPushVersionList);
     for (String incPushVersion: filteredIncPushVersionList) {
