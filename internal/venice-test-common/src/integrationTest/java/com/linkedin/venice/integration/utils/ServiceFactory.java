@@ -431,6 +431,33 @@ public class ServiceFactory {
       Optional<Properties> parentControllerProps,
       Optional<Properties> childControllerProperties,
       Optional<Properties> serverProps) {
+    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        numberOfRegions,
+        numberOfClustersInEachRegion,
+        numberOfParentControllers,
+        numberOfControllers,
+        numberOfServers,
+        numberOfRouters,
+        replicationFactor,
+        parentControllerProps,
+        childControllerProperties,
+        serverProps,
+        false);
+  }
+
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
+      int numberOfParentControllers,
+      int numberOfControllers,
+      int numberOfServers,
+      int numberOfRouters,
+      int replicationFactor,
+      Optional<Properties> parentControllerProps,
+      Optional<Properties> childControllerProperties,
+      Optional<Properties> serverProps,
+      boolean forkServer,
+      boolean sslToStorageNodes) {
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
             .numberOfClusters(numberOfClustersInEachRegion)
@@ -438,7 +465,9 @@ public class ServiceFactory {
             .numberOfChildControllers(numberOfControllers)
             .numberOfServers(numberOfServers)
             .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor);
+            .replicationFactor(replicationFactor)
+            .sslToStorageNodes(sslToStorageNodes)
+            .forkServer(forkServer);
 
     parentControllerProps.ifPresent(optionsBuilder::parentControllerProperties);
     childControllerProperties.ifPresent(optionsBuilder::childControllerProperties);

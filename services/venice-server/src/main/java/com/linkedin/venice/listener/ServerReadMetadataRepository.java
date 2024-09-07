@@ -83,8 +83,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
 
       if (store.isMigrating()) {
         // only obtain store Config when store is migrating and only throw exceptions when dest cluster is ready or
-        // store
-        // config is not available
+        // store config is not available
         StoreConfig storeConfig = storeConfigRepository.getStoreConfigOrThrow(storeName);
         String storeCluster = storeConfig.getCluster();
         if (storeCluster == null) {

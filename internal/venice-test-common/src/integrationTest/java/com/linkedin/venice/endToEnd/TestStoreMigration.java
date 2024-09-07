@@ -3,7 +3,9 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -76,6 +78,7 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -119,6 +122,8 @@ public class TestStoreMigration {
 
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    serverProperties.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
+    serverProperties.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
 
     // 1 parent controller, 1 child region, 2 clusters per child region, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
@@ -133,7 +138,8 @@ public class TestStoreMigration {
         Optional.of(parentControllerProperties),
         Optional.empty(),
         Optional.of(serverProperties),
-        false);
+        false,
+        true);
 
     multiClusterWrapper = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
@@ -551,9 +557,10 @@ public class TestStoreMigration {
     return props;
   }
 
-  private void readFromStore(AvroGenericStoreClient<String, Object> client) {
+  private void readFromStore(AvroGenericStoreClient<String, Object> client)
+      throws ExecutionException, InterruptedException {
     int key = ThreadLocalRandom.current().nextInt(RECORD_COUNT) + 1;
-    client.get(Integer.toString(key));
+    client.get(Integer.toString(key)).get();
   }
 
   private StoreInfo getStoreConfig(String controllerUrl, String clusterName, String storeName) {
@@ -572,8 +579,9 @@ public class TestStoreMigration {
   public void testStoreMigrationForFastClient() throws Exception {
     String storeName = Utils.getUniqueString("testMigrationWithFastClient");
     createAndPushStore(srcClusterName, storeName);
-    D2Client d2Client =
-        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    // D2 must talk to HTTPS endpoint since SSL is enabled for server
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress(), true);
 
     // this is for SERVER_BASED_METADATA only
     com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder fastClientConfigBuilder =
@@ -581,6 +589,8 @@ public class TestStoreMigration {
             .setR2Client(r2Client)
             .setD2Client(d2Client)
             .setMetadataRefreshIntervalInSeconds(1)
+            .setDualReadEnabled(false)
+            .setSpeculativeQueryEnabled(false)
             .setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setStoreMetadataFetchMode(StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
@@ -588,6 +598,7 @@ public class TestStoreMigration {
         .getAndStartGenericStoreClient(fastClientConfigBuilder.build())) {
       readFromStore(client);
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      readFromStore(client);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
       TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
