@@ -7,11 +7,13 @@ import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -33,21 +35,27 @@ import org.apache.logging.log4j.Logger;
  */
 public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private static final Logger LOGGER = LogManager.getLogger(ServerReadMetadataRepository.class);
+  private final String serverCluster;
   private final ServerMetadataServiceStats serverMetadataServiceStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
 
   public ServerReadMetadataRepository(
+      String serverCluster,
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository storeRepository,
       ReadOnlySchemaRepository schemaRepository,
+      HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture) {
+    this.serverCluster = serverCluster;
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
+    this.storeConfigRepository = storeConfigRepository;
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
@@ -71,6 +79,23 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
             String.format(
                 "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
                 storeName));
+      }
+
+      if (store.isMigrating()) {
+        // only obtain store Config when store is migrating and only throw exceptions when dest cluster is ready or
+        // store config is not available
+        StoreConfig storeConfig = storeConfigRepository.getStoreConfigOrThrow(storeName);
+        String storeCluster = storeConfig.getCluster();
+        if (storeCluster == null) {
+          // defensive check
+          throw new VeniceException("Store: " + storeName + " is migrating but store cluster is not set.");
+        }
+        // store cluster has changed so throw exception to enforce client to do a new service discovery
+        if (!storeCluster.equals(serverCluster)) {
+          throw new VeniceException(
+              "Store: " + storeName + " is migrating. Failing the request to allow fast "
+                  + "client refresh service discovery.");
+        }
       }
       // Version metadata
       int currentVersionNumber = store.getCurrentVersion();

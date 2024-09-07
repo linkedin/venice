@@ -415,9 +415,11 @@ public class VeniceServer {
     services.add(storeValueSchemasCacheService);
 
     serverReadMetadataRepository = new ServerReadMetadataRepository(
+        clusterConfig.getClusterName(),
         metricsRepository,
         metadataRepo,
         schemaRepo,
+        veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture));
 
