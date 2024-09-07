@@ -104,7 +104,6 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
@@ -286,10 +285,7 @@ public class StorageReadRequestHandlerTest {
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
 
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context, times(1)).writeAndFlush(argumentCaptor.capture()));
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
     assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
@@ -491,10 +487,6 @@ public class StorageReadRequestHandlerTest {
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
 
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context, times(1)).writeAndFlush(argumentCaptor.capture()));
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) argumentCaptor.getValue();
     assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
@@ -750,10 +742,7 @@ public class StorageReadRequestHandlerTest {
 
     /** This first request will prime the "perStoreVersionStateMap" inside {@link StorageReadRequestHandler} */
     requestHandler.channelRead(context, request);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)));
+    verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class));
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertTrue(responseObject.isFound());
@@ -769,10 +758,7 @@ public class StorageReadRequestHandlerTest {
     // Second request should not use the stale storage engine
     requestHandler.channelRead(context, request);
     verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)); // No extra invocation
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class))); // Good one
+    verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class)); // Good one
     verify(context, times(2)).writeAndFlush(argumentCaptor.capture());
     responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertTrue(responseObject.isFound());
@@ -812,10 +798,7 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
     Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
   }
 
@@ -839,19 +822,13 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), SERVICE_UNAVAILABLE);
 
     // when current version different from resource, return 400
     doReturn(10).when(store).getCurrentVersion();
     requestHandler.channelRead(context, request);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
+    verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
 
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
   }

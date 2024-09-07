@@ -470,7 +470,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       response.getStats().setStorageExecutionQueueLen(queueLen);
 
       return response;
-    });
+    }, executor);
   }
 
   private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request) {
