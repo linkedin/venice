@@ -3,6 +3,7 @@ package com.linkedin.venice.offsets;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
@@ -40,5 +41,12 @@ public class TestOffsetRecord {
     // no upstream found for it so fall back to use the leaderOffset which is 1
     Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), 1L);
     Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL2), 2L);
+  }
+
+  @Test
+  public void testBatchUpdateEOIP() {
+    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
+    offsetRecord.setPendingReportIncPushVersionList(Arrays.asList("a", "b", "c"));
+    Assert.assertEquals(offsetRecord.getPendingReportIncPushVersionList(), Arrays.asList("a", "b", "c"));
   }
 }
