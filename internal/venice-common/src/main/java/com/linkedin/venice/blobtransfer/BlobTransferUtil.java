@@ -18,7 +18,7 @@ public class BlobTransferUtil {
 
   /**
    * Get a P2P blob transfer manager for DaVinci Client and start it.
-   * @param p2pTransferPort, the port used by the P2P transfer service and client
+   * @param p2pTransferPort, the port used by the P2P transfer server and client
    * @param baseDir, the base directory of the underlying storage
    * @param clientConfig, the client config to start up a transport client
    * @return the blob transfer manager
@@ -53,14 +53,14 @@ public class BlobTransferUtil {
   }
 
   /**
-   * Get a P2P blob transfer manager for Service and start it.
-   * @param p2pTransferServerPort the port used by the P2P transfer service
+   * Get a P2P blob transfer manager for Server and start it.
+   * @param p2pTransferServerPort the port used by the P2P transfer server
    * @param p2pTransferClientPort the port used by the P2P transfer client
    * @param baseDir the base directory of the underlying storage
    * @param customizedViewFuture the future of the customized view repository
    * @return the blob transfer manager
    */
-  public static BlobTransferManager<Void> getP2PBlobTransferManagerForServiceAndStart(
+  public static BlobTransferManager<Void> getP2PBlobTransferManagerForServerAndStart(
       int p2pTransferServerPort,
       int p2pTransferClientPort,
       String baseDir,
@@ -74,7 +74,7 @@ public class BlobTransferUtil {
       return manager;
     } catch (Exception e) {
       // swallow the exception and continue the consumption via pubsub system
-      LOGGER.warn("Failed to start up the P2P blob transfer manager for service", e);
+      LOGGER.warn("Failed to start up the P2P blob transfer manager for server", e);
       return null;
     }
   }

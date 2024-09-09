@@ -446,7 +446,7 @@ public class VeniceServer {
      * Initialize Blob transfer manager for Service
      */
     if (serverConfig.isBlobTransferManagerEnabled()) {
-      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServiceAndStart(
+      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),

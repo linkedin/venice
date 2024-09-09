@@ -163,13 +163,19 @@ public class BlobSnapshotManager {
 
   /**
    * util method to create a snapshot for batch only
+   * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
    */
   public static void createSnapshotForBatch(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
     LOGGER.info("Creating snapshot for batch in directory: {}", fullPathForPartitionDBSnapshot);
 
-    if (fullPathForPartitionDBSnapshot == null || fullPathForPartitionDBSnapshot.isEmpty()) {
-      LOGGER.error("Snapshot directory {} is null or empty", fullPathForPartitionDBSnapshot);
-      return;
+    // clean up the snapshot directory if it exists
+    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
+    if (partitionSnapshotDir.exists()) {
+      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      if (!partitionSnapshotDir.delete()) {
+        throw new VeniceException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot);
+      }
     }
 
     try {
