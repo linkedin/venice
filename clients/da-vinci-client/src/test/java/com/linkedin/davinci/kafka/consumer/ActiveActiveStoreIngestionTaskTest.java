@@ -104,6 +104,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -272,6 +273,26 @@ public class ActiveActiveStoreIngestionTaskTest {
     ingestionTask.addPartitionConsumptionState(2, badPartitionConsumptionState);
 
     Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+  }
+
+  @Test
+  public void testMaybeBatchReportEOIP() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doCallRealMethod().when(ingestionTask).maybeReportBatchEndOfIncPushStatus(any(), anyLong());
+
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs, -1);
+    Mockito.verify(ingestionTask, Mockito.times(0)).getIngestionNotificationDispatcher();
+
+    when(pcs.getPendingReportIncPushVersionList()).thenReturn(Collections.emptyList());
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs, 10);
+    Mockito.verify(ingestionTask, Mockito.times(0)).getIngestionNotificationDispatcher();
+
+    when(pcs.getPendingReportIncPushVersionList()).thenReturn(Collections.singletonList("test"));
+    IngestionNotificationDispatcher ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    when(ingestionTask.getIngestionNotificationDispatcher()).thenReturn(ingestionNotificationDispatcher);
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs, 10);
+    Mockito.verify(ingestionTask, Mockito.times(1)).getIngestionNotificationDispatcher();
   }
 
   @Test
