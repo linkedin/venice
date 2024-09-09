@@ -326,11 +326,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String instanceId,
       long progress,
       List<String> incPushBatchStatus) {
-    // If a version was created prior to the deployment of this new push monitor, an exception would be thrown while
-    // upgrading venice server.
-    // Because the server would try to update replica status but there is no ZNode for that replica. So we add a check
-    // here to ignore the update
-    // in case of ZNode missing.
     if (!pushStatusExists(topic)) {
       return;
     }
@@ -340,15 +335,9 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         partitionId,
         clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
-
-      // currentData can be null if the path read out of zk is blank to start with (as current data is read and passed
-      // in)
-      // So first we do a null check. If it's null, we can return a base object and fill the data we're trying to
-      // persist
       if (currentData == null) {
         currentData = new PartitionStatus(partitionId);
       }
-
       currentData.batchUpdateReplicaIncPushStatus(instanceId, incPushBatchStatus, progress);
       return currentData;
     });
