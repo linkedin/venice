@@ -18,19 +18,19 @@ dependencies {
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
   }
-  implementation('org.apache.helix:helix-core:1.4.0:jdk8') {
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:helix-common:1.4.0:jdk8')  {
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:zookeeper-api:1.4.0:jdk8') {
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:metadata-store-directory-common:1.4.0:jdk8') {
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:metrics-common:1.4.0:jdk8')
+  implementation('org.apache.helix:metrics-common:1.4.1:jdk8')
 
   implementation project(':internal:venice-common')
   implementation project(':clients:venice-thin-client')

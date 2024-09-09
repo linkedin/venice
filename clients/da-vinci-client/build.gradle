@@ -17,19 +17,19 @@ dependencies {
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
   }
-  implementation('org.apache.helix:helix-core:1.4.0:jdk8') {
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:helix-common:1.4.0:jdk8')  {
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:zookeeper-api:1.4.0:jdk8') {
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:metadata-store-directory-common:1.4.0:jdk8') {
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
-  implementation('org.apache.helix:metrics-common:1.4.0:jdk8')
+  implementation('org.apache.helix:metrics-common:1.4.1:jdk8')
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.avroUtilFastserde
