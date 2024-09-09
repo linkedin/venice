@@ -47,14 +47,11 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
     replicaStatus.setCurrentProgress(progress);
   }
 
-  public void batchUpdateReplicaIncPushStatus(
-      String instanceId,
-      ExecutionStatus newStatus,
-      List<String> incPushVersionList,
-      long progress) {
+  public void batchUpdateReplicaIncPushStatus(String instanceId, List<String> incPushVersionList, long progress) {
     ReplicaStatus replicaStatus = null;
     for (String incrementalPushVersion: incPushVersionList) {
-      replicaStatus = updateReplicaStatus(instanceId, newStatus, incrementalPushVersion, true);
+      replicaStatus =
+          updateReplicaStatus(instanceId, ExecutionStatus.END_OF_PUSH_RECEIVED, incrementalPushVersion, true);
     }
     if (replicaStatus != null) {
       replicaStatus.setCurrentProgress(progress);

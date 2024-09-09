@@ -349,11 +349,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         currentData = new PartitionStatus(partitionId);
       }
 
-      currentData.batchUpdateReplicaIncPushStatus(
-          instanceId,
-          ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
-          incPushBatchStatus,
-          progress);
+      currentData.batchUpdateReplicaIncPushStatus(instanceId, incPushBatchStatus, progress);
       return currentData;
     });
     LOGGER.info(
