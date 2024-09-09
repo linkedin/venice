@@ -74,6 +74,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
+  private final AtomicBoolean stopped = new AtomicBoolean(false);
   private final Set<String> childRegions;
   private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -152,8 +153,28 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    // N.B.: The two stop mechanisms below are decomposed for the sake of being able to test them separately.
+    stopViaFlag();
+    stopViaInterrupt();
+  }
+
+  /** Package-private for tests. */
+  void stopViaFlag() {
     stop.set(true);
+  }
+
+  /** Package-private for tests. */
+  void stopViaInterrupt() {
     cleanupThread.interrupt();
+  }
+
+  /**
+   * Package-private for tests.
+   *
+   * @return whether the service has fully stopped.
+   */
+  boolean isStopped() {
+    return this.stopped.get();
   }
 
   TopicManager getTopicManager() {
@@ -198,6 +219,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         }
       }
       LOGGER.info("TopicCleanupTask stopped");
+      stopped.set(true);
     }
   }
 

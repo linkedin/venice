@@ -5,6 +5,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doNothing;
@@ -66,6 +67,7 @@ import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
 import com.linkedin.venice.listener.response.stats.MultiKeyResponseStats;
+import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.QueryAction;
@@ -401,52 +403,86 @@ public class StorageReadRequestHandlerTest {
         }
         multiChunkLargeValueCount = currentValue + 1;
       }
+
+      /**
+       * Previously, in the buggy code, there was no merge logic, so we simulate this behavior here.
+       */
+      @Override
+      public void merge(ReadResponseStatsRecorder other) {
+        if (this == other) {
+          return;
+        }
+        super.merge(other);
+      }
     }
 
     doReturn(parallel.configValue).when(serverConfig).isEnableParallelBatchGet();
     doReturn(chunkSize).when(serverConfig).getParallelBatchGetChunkSize();
-    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(
-        parallel.configValue,
-        s -> new MultiGetResponseWrapper(s, new MultiKeyResponseStatsWithSlowIncrement()));
-    long startTime = System.currentTimeMillis();
-    requestHandler.channelRead(context, request);
-    verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());
-    long timeSpent = System.currentTimeMillis() - startTime;
-    System.out.println("Time spent: " + timeSpent + " ms for " + recordCount + " records.");
 
-    Object response = argumentCaptor.getValue();
-    assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
-    AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
-    RecordDeserializer<MultiGetResponseRecordV1> deserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
-    byte[] responseBytes = new byte[multiGetResponseWrapper.getResponseBody().readableBytes()];
-    multiGetResponseWrapper.getResponseBody().getBytes(0, responseBytes);
-    Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(responseBytes);
-    Map<Integer, String> results = new HashMap<>();
-    values.forEach(K -> {
-      String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
-      results.put(K.keyIndex, valueString);
-    });
-    assertEquals(results.size(), recordCount);
-    for (int i = 0; i < recordCount; i++) {
-      assertEquals(results.get(i), allValueStrings.get(i));
-    }
+    // By using a single shared instance, we simulate the previous structure of the code, and we expect to see a metric
+    // underestimation. This is a kind of "test of the test", to help validate that the test is indeed capable of
+    // catching the regression (see the related verifications at the end).
+    MultiKeyResponseStatsWithSlowIncrement sharedInstance = new MultiKeyResponseStatsWithSlowIncrement();
+    IntFunction<MultiGetResponseWrapper> invalidResponseProvider = s -> new MultiGetResponseWrapper(s, sharedInstance);
+    IntFunction<MultiGetResponseWrapper> validResponseProvider =
+        s -> new MultiGetResponseWrapper(s, new MultiKeyResponseStatsWithSlowIncrement());
+    IntFunction<MultiGetResponseWrapper>[] responseProviders =
+        new IntFunction[] { invalidResponseProvider, validResponseProvider };
 
-    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-    multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
-    verify(stats).recordSuccessRequestKeyCount(recordCount);
-    if (largeValue.config) {
-      /**
-       * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due to
-       * a race condition which is now fixed. Unfortunately, the race is hard to hit, even on the buggy code, so the test
-       * succeeding is not a guarantee of the absence of a regression (but the test failing certainly indicates that).
-       *
-       * We are making the test fail reliably (in the presence of buggy stats handling) via a backdoor available through
-       * {@link ReadResponseLatencyInjector}.
-       */
-      verify(stats).recordMultiChunkLargeValueCount(recordCount);
-    } else {
-      verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
+    for (IntFunction<MultiGetResponseWrapper> responseProvider: responseProviders) {
+      StorageReadRequestHandler requestHandler =
+          createStorageReadRequestHandler(parallel.configValue, responseProvider);
+      reset(context);
+      long startTime = System.currentTimeMillis();
+      requestHandler.channelRead(context, request);
+      verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());
+      long timeSpent = System.currentTimeMillis() - startTime;
+      System.out.println("Time spent: " + timeSpent + " ms for " + recordCount + " records.");
+
+      Object response = argumentCaptor.getValue();
+      assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
+      AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
+      RecordDeserializer<MultiGetResponseRecordV1> deserializer =
+          SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+      byte[] responseBytes = new byte[multiGetResponseWrapper.getResponseBody().readableBytes()];
+      multiGetResponseWrapper.getResponseBody().getBytes(0, responseBytes);
+      Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(responseBytes);
+      Map<Integer, String> results = new HashMap<>();
+      values.forEach(K -> {
+        String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
+        results.put(K.keyIndex, valueString);
+      });
+      assertEquals(results.size(), recordCount);
+      for (int i = 0; i < recordCount; i++) {
+        assertEquals(results.get(i), allValueStrings.get(i));
+      }
+
+      ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+      multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
+      if (responseProvider == validResponseProvider) {
+        verify(stats).recordSuccessRequestKeyCount(recordCount);
+      }
+      if (largeValue.config) {
+        /**
+         * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due
+         * to a race condition which is now fixed.
+         */
+        if (parallel.configValue && responseProvider == invalidResponseProvider) {
+          /**
+           * With the {@link invalidResponseProvider} and {@link MultiKeyResponseStatsWithSlowIncrement}, we simulate
+           * the buggy code, which is vulnerable to the race condition, and so we expect the underestimation.
+           */
+          verify(stats).recordMultiChunkLargeValueCount(intThat(recordedCount -> recordedCount < recordCount));
+        } else {
+          /**
+           * With only the {@link MultiKeyResponseStatsWithSlowIncrement} in play, the new code should be resilient to
+           * the race.
+           */
+          verify(stats).recordMultiChunkLargeValueCount(recordCount);
+        }
+      } else {
+        verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
+      }
     }
   }
 

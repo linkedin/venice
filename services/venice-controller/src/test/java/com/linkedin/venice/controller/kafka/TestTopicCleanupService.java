@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
@@ -44,6 +45,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -519,5 +521,29 @@ public class TestTopicCleanupService {
     topicCleanupService.cleanupVeniceTopics();
 
     verify(remoteTopicManager, atLeastOnce()).listTopics();
+  }
+
+  @Test
+  public void testStopViaFlag() {
+    testStop(service -> service.stopViaFlag());
+  }
+
+  @Test
+  public void testStopViaInterrupt() {
+    testStop(service -> service.stopViaInterrupt());
+  }
+
+  /**
+   * Test that the {@link TopicCleanupService} can close either via interruption or via its
+   * {@link java.util.concurrent.atomic.AtomicBoolean}, thus providing redundant stop mechanisms.
+   */
+  private void testStop(Consumer<TopicCleanupService> stopMechanism) {
+    topicCleanupService.start();
+    TestUtils
+        .waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, () -> assertTrue(topicCleanupService.isRunning()));
+    assertFalse(topicCleanupService.isStopped());
+    stopMechanism.accept(topicCleanupService);
+    TestUtils
+        .waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, () -> assertTrue(topicCleanupService.isStopped()));
   }
 }

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -168,10 +169,16 @@ public class HelixReadOnlySchemaRepositoryTest {
     String storeName = "store";
     String schemaStr = "int";
     Store store = mock(Store.class);
+    when(store.getName()).thenReturn(storeName);
     when(store.isWriteComputationEnabled()).thenReturn(wcEnabled);
     when(store.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
     when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
+    verify(accessor, never()).subscribeDerivedSchemaCreationChange(anyString(), any());
+    verify(accessor, never()).subscribeReplicationMetadataSchemaCreationChange(anyString(), any());
     GeneratedSchemaID generatedSchemaID = schemaRepository.getDerivedSchemaId(storeName, schemaStr);
+    verify(accessor, wcEnabled ? times(1) : never()).subscribeDerivedSchemaCreationChange(anyString(), any());
+    verify(accessor, aaEnabled ? times(1) : never())
+        .subscribeReplicationMetadataSchemaCreationChange(anyString(), any());
     assertNotNull(generatedSchemaID);
     assertEquals(generatedSchemaID, GeneratedSchemaID.INVALID);
 
@@ -188,6 +195,7 @@ public class HelixReadOnlySchemaRepositoryTest {
         new HelixReadOnlySchemaRepository(storeRepository, zkClient, accessor, 10, 100);
     String storeName = "store";
     Store store = mock(Store.class);
+    when(store.getName()).thenReturn(storeName);
     when(store.isWriteComputationEnabled()).thenReturn(wcEnabled);
     when(store.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
@@ -197,7 +205,12 @@ public class HelixReadOnlySchemaRepositoryTest {
     List<SchemaEntry> listOfSchemaEntriesToReturn = new ArrayList<>();
     listOfSchemaEntriesToReturn.add(schemaEntryToReturn);
     when(accessor.getAllValueSchemas(storeName)).thenReturn(listOfSchemaEntriesToReturn);
+    verify(accessor, never()).subscribeDerivedSchemaCreationChange(anyString(), any());
+    verify(accessor, never()).subscribeReplicationMetadataSchemaCreationChange(anyString(), any());
     SchemaEntry schemaEntry = schemaRepository.getSupersetOrLatestValueSchema(storeName);
+    verify(accessor, wcEnabled ? times(1) : never()).subscribeDerivedSchemaCreationChange(anyString(), any());
+    verify(accessor, aaEnabled ? times(1) : never())
+        .subscribeReplicationMetadataSchemaCreationChange(anyString(), any());
     assertNotNull(schemaEntry);
     assertEquals(schemaEntry, schemaEntryToReturn);
   }
