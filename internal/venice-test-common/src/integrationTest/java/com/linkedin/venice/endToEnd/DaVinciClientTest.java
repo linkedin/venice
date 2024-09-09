@@ -995,7 +995,8 @@ public class DaVinciClientTest {
         "10",
         "true",
         Integer.toString(port1),
-        Integer.toString(port2));
+        Integer.toString(port2),
+        StorageClass.DISK.toString());
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1109,10 +1110,10 @@ public class DaVinciClientTest {
   }
 
   /**
-   * Test to verify the snapshot generation for plain table.
+   * Test to verify the snapshot generation
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT)
-  public void testDVCSnapshotGenerationForPT() throws Exception {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False", timeOut = 2 * TEST_TIMEOUT)
+  public void testDVCSnapshotGeneration(boolean useDiskStorage) throws Exception {
     String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
@@ -1127,6 +1128,7 @@ public class DaVinciClientTest {
     LOGGER.info("zkHosts is {}", zkHosts);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    String storageClass = useDiskStorage ? StorageClass.DISK.toString() : StorageClass.MEMORY_BACKED_BY_DISK.toString();
     ForkedJavaProcess.exec(
         DaVinciUserApp.class,
         zkHosts,
@@ -1137,7 +1139,7 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.MEMORY_BACKED_BY_DISK.toString());
+        storageClass);
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);

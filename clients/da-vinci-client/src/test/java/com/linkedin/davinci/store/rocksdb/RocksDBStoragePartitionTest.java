@@ -905,8 +905,8 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
-  @Test
-  public void testCreateSnapshotWithBlobTransferEnable() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testCreateSnapshot(boolean blobTransferEnabled) {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -918,7 +918,10 @@ public class RocksDBStoragePartitionTest {
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
     VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
-    storeConfig.setBlobTransferEnabled(true);
+
+    // Set the blob transfer enabled flag
+    storeConfig.setBlobTransferEnabled(blobTransferEnabled);
+
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -934,53 +937,19 @@ public class RocksDBStoragePartitionTest {
             return null;
           });
       storagePartition.createSnapshot();
-      mockedBlobSnapshotManager
-          .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.times(1));
+      if (blobTransferEnabled) {
+        mockedBlobSnapshotManager
+            .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.times(1));
+      } else {
+        mockedBlobSnapshotManager
+            .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.never());
+      }
     }
 
     if (storagePartition != null) {
       storagePartition.close();
       storagePartition.drop();
     }
-  }
-
-  @Test
-  public void testCreateSnapshotWithBlobTransferDisabled() {
-    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 2);
-    String storeDir = getTempDatabaseDir(storeName);
-    int partitionId = 0;
-    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
-    partitionConfig.setDeferredWrite(false);
-    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
-
-    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
-    storeConfig.setBlobTransferEnabled(false);
-    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
-        partitionConfig,
-        factory,
-        DATA_BASE_DIR,
-        null,
-        ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
-
-    try (MockedStatic<BlobSnapshotManager> mockedBlobSnapshotManager = Mockito.mockStatic(BlobSnapshotManager.class)) {
-      mockedBlobSnapshotManager.when(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()))
-          .thenAnswer(invocation -> {
-            return null;
-          });
-      storagePartition.createSnapshot();
-      // the snapshot creation method should not trigger
-      mockedBlobSnapshotManager
-          .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.times(0));
-    }
-
-    if (storagePartition != null) {
-      storagePartition.close();
-      storagePartition.drop();
-    }
+    removeDir(storeDir);
   }
 }

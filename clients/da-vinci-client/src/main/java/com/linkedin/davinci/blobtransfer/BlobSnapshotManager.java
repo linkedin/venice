@@ -8,10 +8,12 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Checkpoint;
@@ -172,9 +174,12 @@ public class BlobSnapshotManager {
     File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
     if (partitionSnapshotDir.exists()) {
       LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
-      if (!partitionSnapshotDir.delete()) {
-        throw new VeniceException(
-            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot);
+      try {
+        FileUtils.deleteDirectory(partitionSnapshotDir);
+      } catch (IOException e) {
+        throw new RuntimeException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
+            e);
       }
     }
 
