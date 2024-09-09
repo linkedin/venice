@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -73,6 +74,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
+  private final AtomicBoolean stopped = new AtomicBoolean(false);
   private final Set<String> childRegions;
   private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -151,8 +153,28 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    // N.B.: The two stop mechanisms below are decomposed for the sake of being able to test them separately.
+    stopViaFlag();
+    stopViaInterrupt();
+  }
+
+  /** Package-private for tests. */
+  void stopViaFlag() {
     stop.set(true);
+  }
+
+  /** Package-private for tests. */
+  void stopViaInterrupt() {
     cleanupThread.interrupt();
+  }
+
+  /**
+   * Package-private for tests.
+   *
+   * @return whether the service has fully stopped.
+   */
+  boolean isStopped() {
+    return this.stopped.get();
   }
 
   TopicManager getTopicManager() {
@@ -169,14 +191,10 @@ public class TopicCleanupService extends AbstractVeniceService {
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
-        } catch (InterruptedException e) {
-          LOGGER.error("Received InterruptedException during sleep in TopicCleanup thread");
-          break;
-        }
-        if (stop.get()) {
-          break;
-        }
-        try {
+
+          if (stop.get()) {
+            break;
+          }
           if (admin.isLeaderControllerOfControllerCluster()) {
             if (!isLeaderControllerOfControllerCluster) {
               /**
@@ -193,10 +211,15 @@ public class TopicCleanupService extends AbstractVeniceService {
             isLeaderControllerOfControllerCluster = false;
           }
         } catch (Exception e) {
+          if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            LOGGER.info("Received InterruptedException in TopicCleanupTask. Will stop.");
+            break;
+          }
           LOGGER.error("Received exception when cleaning up topics", e);
         }
       }
       LOGGER.info("TopicCleanupTask stopped");
+      stopped.set(true);
     }
   }
 

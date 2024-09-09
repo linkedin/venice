@@ -5,6 +5,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doNothing;
@@ -63,8 +64,10 @@ import com.linkedin.venice.listener.request.TopicPartitionIngestionContextReques
 import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
-import com.linkedin.venice.listener.response.stats.ReadResponseLatencyInjector;
+import com.linkedin.venice.listener.response.stats.MultiKeyResponseStats;
+import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.QueryAction;
@@ -103,7 +106,6 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
@@ -132,6 +134,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
@@ -217,7 +220,6 @@ public class StorageReadRequestHandlerTest {
         readMetadataRetriever,
         serverConfig,
         context);
-    ReadResponseLatencyInjector.removeExtraLatency();
   }
 
   private enum ParallelQueryProcessing {
@@ -245,13 +247,14 @@ public class StorageReadRequestHandlerTest {
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler() {
-    return createStorageReadRequestHandler(false, 0);
+    return createStorageReadRequestHandler(false, MultiGetResponseWrapper::new);
   }
 
   private StorageReadRequestHandler createStorageReadRequestHandler(
       boolean parallelBatchGetEnabled,
-      int parallelBatchGetChunkSize) {
+      IntFunction<MultiGetResponseWrapper> multiGetResponseProvider) {
     return new StorageReadRequestHandler(
+        serverConfig,
         parallelBatchGetEnabled ? parallelExecutor : executor,
         parallelBatchGetEnabled ? parallelExecutor : executor,
         storageEngineRepository,
@@ -260,12 +263,10 @@ public class StorageReadRequestHandlerTest {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         healthCheckService,
-        false,
-        parallelBatchGetEnabled,
-        parallelBatchGetChunkSize,
-        serverConfig,
         compressorFactory,
-        Optional.empty());
+        Optional.empty(),
+        multiGetResponseProvider,
+        ComputeResponseWrapper::new);
   }
 
   @Test
@@ -286,10 +287,7 @@ public class StorageReadRequestHandlerTest {
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
 
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context, times(1)).writeAndFlush(argumentCaptor.capture()));
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
     assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
@@ -308,10 +306,9 @@ public class StorageReadRequestHandlerTest {
   }
 
   @Test(dataProvider = "storageReadRequestHandlerParams")
-  public void testMultiGetNotUsingKeyBytes(ParallelQueryProcessing parallel, int recordCount, ValueSize largeValue)
+  public void testParallelMultiGet(ParallelQueryProcessing parallel, int recordCount, ValueSize largeValue)
       throws Exception {
 
-    ReadResponseLatencyInjector.injectExtraLatency();
     doReturn(largeValue.config).when(version).isChunkingEnabled();
     doReturn(largeValue.config).when(storageEngine).isChunked();
 
@@ -390,46 +387,102 @@ public class StorageReadRequestHandlerTest {
     MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper
         .parseMultiGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
-    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler(parallel.configValue, chunkSize);
-    long startTime = System.currentTimeMillis();
-    requestHandler.channelRead(context, request);
-    verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());
-    long timeSpent = System.currentTimeMillis() - startTime;
-    System.out.println("Time spent: " + timeSpent + " ms for " + recordCount + " records.");
+    /**
+     * Special {@link com.linkedin.davinci.listener.response.ReadResponseStats} implementation to reliably trigger a
+     * race condition. The race can still happen without the sleep (assuming the stats handling code regressed to a
+     * buggy state), but it is less likely.
+     */
+    class MultiKeyResponseStatsWithSlowIncrement extends MultiKeyResponseStats {
+      @Override
+      public void incrementMultiChunkLargeValueCount() {
+        int currentValue = multiChunkLargeValueCount;
+        try {
+          Thread.sleep(1);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
+        multiChunkLargeValueCount = currentValue + 1;
+      }
 
-    Object response = argumentCaptor.getValue();
-    assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
-    AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
-    RecordDeserializer<MultiGetResponseRecordV1> deserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
-    byte[] responseBytes = new byte[multiGetResponseWrapper.getResponseBody().readableBytes()];
-    multiGetResponseWrapper.getResponseBody().getBytes(0, responseBytes);
-    Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(responseBytes);
-    Map<Integer, String> results = new HashMap<>();
-    values.forEach(K -> {
-      String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
-      results.put(K.keyIndex, valueString);
-    });
-    assertEquals(results.size(), recordCount);
-    for (int i = 0; i < recordCount; i++) {
-      assertEquals(results.get(i), allValueStrings.get(i));
+      /**
+       * Previously, in the buggy code, there was no merge logic, so we simulate this behavior here.
+       */
+      @Override
+      public void merge(ReadResponseStatsRecorder other) {
+        if (this == other) {
+          return;
+        }
+        super.merge(other);
+      }
     }
 
-    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-    multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
-    verify(stats).recordSuccessRequestKeyCount(recordCount);
-    if (largeValue.config) {
-      /**
-       * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due to
-       * a race condition which is now fixed. Unfortunately, the race is hard to hit, even on the buggy code, so the test
-       * succeeding is not a guarantee of the absence of a regression (but the test failing certainly indicates that).
-       *
-       * We are making the test fail reliably (in the presence of buggy stats handling) via a backdoor available through
-       * {@link ReadResponseLatencyInjector}.
-       */
-      verify(stats).recordMultiChunkLargeValueCount(recordCount);
-    } else {
-      verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
+    doReturn(parallel.configValue).when(serverConfig).isEnableParallelBatchGet();
+    doReturn(chunkSize).when(serverConfig).getParallelBatchGetChunkSize();
+
+    // By using a single shared instance, we simulate the previous structure of the code, and we expect to see a metric
+    // underestimation. This is a kind of "test of the test", to help validate that the test is indeed capable of
+    // catching the regression (see the related verifications at the end).
+    MultiKeyResponseStatsWithSlowIncrement sharedInstance = new MultiKeyResponseStatsWithSlowIncrement();
+    IntFunction<MultiGetResponseWrapper> invalidResponseProvider = s -> new MultiGetResponseWrapper(s, sharedInstance);
+    IntFunction<MultiGetResponseWrapper> validResponseProvider =
+        s -> new MultiGetResponseWrapper(s, new MultiKeyResponseStatsWithSlowIncrement());
+    IntFunction<MultiGetResponseWrapper>[] responseProviders =
+        new IntFunction[] { invalidResponseProvider, validResponseProvider };
+
+    for (IntFunction<MultiGetResponseWrapper> responseProvider: responseProviders) {
+      StorageReadRequestHandler requestHandler =
+          createStorageReadRequestHandler(parallel.configValue, responseProvider);
+      reset(context);
+      long startTime = System.currentTimeMillis();
+      requestHandler.channelRead(context, request);
+      verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());
+      long timeSpent = System.currentTimeMillis() - startTime;
+      System.out.println("Time spent: " + timeSpent + " ms for " + recordCount + " records.");
+
+      Object response = argumentCaptor.getValue();
+      assertTrue(response instanceof AbstractReadResponse, "The response should be castable to AbstractReadResponse.");
+      AbstractReadResponse multiGetResponseWrapper = (AbstractReadResponse) response;
+      RecordDeserializer<MultiGetResponseRecordV1> deserializer =
+          SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+      byte[] responseBytes = new byte[multiGetResponseWrapper.getResponseBody().readableBytes()];
+      multiGetResponseWrapper.getResponseBody().getBytes(0, responseBytes);
+      Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(responseBytes);
+      Map<Integer, String> results = new HashMap<>();
+      values.forEach(K -> {
+        String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
+        results.put(K.keyIndex, valueString);
+      });
+      assertEquals(results.size(), recordCount);
+      for (int i = 0; i < recordCount; i++) {
+        assertEquals(results.get(i), allValueStrings.get(i));
+      }
+
+      ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+      multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
+      if (responseProvider == validResponseProvider) {
+        verify(stats).recordSuccessRequestKeyCount(recordCount);
+      }
+      if (largeValue.config) {
+        /**
+         * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due
+         * to a race condition which is now fixed.
+         */
+        if (parallel.configValue && responseProvider == invalidResponseProvider) {
+          /**
+           * With the {@link invalidResponseProvider} and {@link MultiKeyResponseStatsWithSlowIncrement}, we simulate
+           * the buggy code, which is vulnerable to the race condition, and so we expect the underestimation.
+           */
+          verify(stats).recordMultiChunkLargeValueCount(intThat(recordedCount -> recordedCount < recordCount));
+        } else {
+          /**
+           * With only the {@link MultiKeyResponseStatsWithSlowIncrement} in play, the new code should be resilient to
+           * the race.
+           */
+          verify(stats).recordMultiChunkLargeValueCount(recordCount);
+        }
+      } else {
+        verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
+      }
     }
   }
 
@@ -470,10 +523,6 @@ public class StorageReadRequestHandlerTest {
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
 
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context, times(1)).writeAndFlush(argumentCaptor.capture()));
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) argumentCaptor.getValue();
     assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
@@ -729,10 +778,7 @@ public class StorageReadRequestHandlerTest {
 
     /** This first request will prime the "perStoreVersionStateMap" inside {@link StorageReadRequestHandler} */
     requestHandler.channelRead(context, request);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)));
+    verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class));
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertTrue(responseObject.isFound());
@@ -748,10 +794,7 @@ public class StorageReadRequestHandlerTest {
     // Second request should not use the stale storage engine
     requestHandler.channelRead(context, request);
     verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)); // No extra invocation
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class))); // Good one
+    verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class)); // Good one
     verify(context, times(2)).writeAndFlush(argumentCaptor.capture());
     responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
     assertTrue(responseObject.isFound());
@@ -791,10 +834,7 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
     Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
   }
 
@@ -818,19 +858,13 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), SERVICE_UNAVAILABLE);
 
     // when current version different from resource, return 400
     doReturn(10).when(store).getCurrentVersion();
     requestHandler.channelRead(context, request);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture()));
+    verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
 
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
   }

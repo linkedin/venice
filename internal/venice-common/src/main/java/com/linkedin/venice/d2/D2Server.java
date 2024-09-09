@@ -172,4 +172,18 @@ public class D2Server implements ServiceDiscoveryAnnouncer {
   public void unregister() {
     this.notifyShutdown();
   }
+
+  @Override
+  public String toString() {
+    StringBuilder builder = new StringBuilder().append(this.getClass().getSimpleName()).append("{zkAnnouncers=[");
+    ZooKeeperAnnouncer[] announcers = getAllAnnouncers();
+    for (int x = 0; x < announcers.length; x++) {
+      if (x > 0) {
+        builder.append(", ");
+      }
+      builder.append(getAnnouncerID(announcers[x]));
+    }
+    builder.append("]}");
+    return builder.toString();
+  }
 }
