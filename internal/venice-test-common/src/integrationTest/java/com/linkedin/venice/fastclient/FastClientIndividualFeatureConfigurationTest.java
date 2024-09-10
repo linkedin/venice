@@ -98,6 +98,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     String readQuotaRequestedKPSString = "." + storeName + "--quota_request_key_count.Rate";
     String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_key_count.Rate";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
+    String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     String errorRequestString = ".total--error_request.OccurrenceRate";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
     String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
@@ -109,6 +110,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertNotNull(serverMetric.getMetric(readQuotaRejectedQPSString));
         assertNotNull(serverMetric.getMetric(readQuotaRequestedKPSString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedKPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
         assertNotNull(serverMetric.getMetric(errorRequestString));
         assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
         assertNotNull(serverMetric.getMetric(clientConnectionCountGaugeString));
@@ -134,6 +136,17 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
     assertEquals(routerConnectionCountRateSum, 0, "Servers should have 0 router connections");
+    // At least one server's usage ratio should eventually be a positive decimal
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      double usageRatio = 0;
+      for (MetricsRepository serverMetric: serverMetrics) {
+        usageRatio = serverMetric.getMetric(readQuotaUsageRatio).value();
+        if (usageRatio > 0) {
+          break;
+        }
+      }
+      assertTrue(usageRatio > 0, "Quota usage ratio: " + usageRatio);
+    });
 
     // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {

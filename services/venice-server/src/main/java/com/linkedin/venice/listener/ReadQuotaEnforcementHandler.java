@@ -314,19 +314,24 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       storeVersionRateLimiters.remove(topic);
       return;
     }
-    long quotaInRcu = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic()))
-        .getReadQuotaInCU();
-    storeVersionRateLimiters.compute(
-        topic,
-        (k, v) -> getRateLimiter(
-            topic,
-            quotaInRcu,
-            thisNodeQuotaResponsibility,
-            v,
-            storeVersionRateLimiterType,
-            quotaEnforcementIntervalInMs,
-            enforcementCapacityMultiple,
-            clock));
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    long quotaInRcu = storeRepository.getStore(storeName).getReadQuotaInCU();
+    storeVersionRateLimiters.compute(topic, (k, v) -> {
+      VeniceRateLimiter rateLimiter = getRateLimiter(
+          topic,
+          quotaInRcu,
+          thisNodeQuotaResponsibility,
+          v,
+          storeVersionRateLimiterType,
+          quotaEnforcementIntervalInMs,
+          enforcementCapacityMultiple,
+          clock);
+
+      if (rateLimiter != v) {
+        stats.setNodeQuotaResponsibility(storeName, (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
+      }
+      return rateLimiter;
+    });
   }
 
   /**
