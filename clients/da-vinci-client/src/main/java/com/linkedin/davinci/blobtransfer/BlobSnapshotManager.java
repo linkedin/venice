@@ -177,7 +177,7 @@ public class BlobSnapshotManager {
       try {
         FileUtils.deleteDirectory(partitionSnapshotDir);
       } catch (IOException e) {
-        throw new RuntimeException(
+        throw new VeniceException(
             "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
             e);
       }
