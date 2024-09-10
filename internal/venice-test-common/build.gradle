@@ -128,11 +128,10 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
   "C": [
-      "com.linkedin.venice.endToEnd.ActiveActive*"],
+      "com.linkedin.venice.consumer.*"],
   "D": [
-      "com.linkedin.venice.endToEnd.TestActiveActive*",
-      "com.linkedin.venice.endToEnd.TestChangelogConsumer",
-      "com.linkedin.venice.endToEnd.TestBootstrappingChangelogConsumer"],
+      "com.linkedin.venice.endToEnd.ActiveActive*",
+      "com.linkedin.venice.endToEnd.TestActiveActive*"],
   "E": [
       "com.linkedin.venice.helix.*",
       "com.linkedin.venice.helixrebalance.*"],

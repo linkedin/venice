@@ -10,10 +10,13 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockMetaData;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -26,7 +29,9 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -368,6 +373,33 @@ public class RequestBasedMetadataTest {
     try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
       Assert.assertThrows(ConfigurationException.class, requestBasedMetadata::start);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRequestBasedMetadataOnDemandRefresh() throws IOException, InterruptedException {
+    String storeName = "testStore";
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    CompletableFuture<TransportClientResponse> exceptionFuture = new CompletableFuture<>();
+    exceptionFuture.completeExceptionally(new RuntimeException("Failed to execute"));
+    doReturn(exceptionFuture).when(d2TransportClient).get(anyString());
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    D2ServiceDiscoveryResponse d2Response = new D2ServiceDiscoveryResponse();
+    d2Response.setServerD2Service("test-service");
+    doReturn(d2Response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
+    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+      RequestBasedMetadata spy = spy(requestBasedMetadata);
+      spy.setD2ServiceDiscovery(d2ServiceDiscovery);
+      // let child thread handling the start logic otherwise the main thread cannot verify the invocation times.
+      CompletableFuture.runAsync(spy::start);
+
+      // refresh would happen multiple times
+      // the first one w/o onDemond refresh and would fail due to d2 client exception
+      verify(spy, timeout(3000).atLeast(1)).updateCache(false);
+
+      // the first failed refresh triggers a onDemand refresh
+      verify(spy, timeout(3000).atLeast(1)).updateCache(true);
     }
   }
 }

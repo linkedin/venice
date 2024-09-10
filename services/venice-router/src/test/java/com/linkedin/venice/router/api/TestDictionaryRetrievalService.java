@@ -35,14 +35,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestDictionaryRetrievalService {
-  private static final Logger LOGGER = LogManager.getLogger(TestDictionaryRetrievalService.class);
   OnlineInstanceFinder onlineInstanceFinder;
   VeniceRouterConfig routerConfig;
   ReadOnlyStoreRepository metadataRepository;
@@ -54,9 +51,9 @@ public class TestDictionaryRetrievalService {
 
   private static String STORE_NAME = "test_store";
   private static int VERSION_NUMBER = 1;
-  private static String KAFKA_TOPIC_NAME = "test_store_v1";
+  private static String KAFKA_TOPIC_NAME = STORE_NAME + "_v1";
 
-  @BeforeClass
+  @BeforeMethod
   public void setUp() {
     onlineInstanceFinder = mock(OnlineInstanceFinder.class);
     routerConfig = mock(VeniceRouterConfig.class);
@@ -101,13 +98,15 @@ public class TestDictionaryRetrievalService {
 
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
         assertTrue(
-            redundantExceptionFilter.isRedundantException("Beginning dictionary fetch for test_store_v1", false));
-        assertTrue(
-            redundantExceptionFilter
-                .isRedundantException("Dictionary fetch failed. Store topics were: test_store_v1. null", false));
+            redundantExceptionFilter.isRedundantException("Beginning dictionary fetch for " + KAFKA_TOPIC_NAME, false));
         assertTrue(
             redundantExceptionFilter.isRedundantException(
-                "Exception encountered when asynchronously downloading dictionary for resource: test_store_v1. com.linkedin.venice.exceptions.VeniceException: No online storage instance for resource: null_v0",
+                "Dictionary fetch failed. Store topics were: " + KAFKA_TOPIC_NAME + ". null",
+                false));
+        assertTrue(
+            redundantExceptionFilter.isRedundantException(
+                "Exception encountered when asynchronously downloading dictionary for resource: " + KAFKA_TOPIC_NAME
+                    + ". com.linkedin.venice.exceptions.VeniceException: No online storage instance for resource: null_v0",
                 false));
       });
     } finally {
@@ -141,7 +140,7 @@ public class TestDictionaryRetrievalService {
 
       DictionaryRetrievalService finalDictionaryRetrievalService = dictionaryRetrievalService;
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        assertNotNull(finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get("test_store_v1"));
+        assertNotNull(finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
       });
 
       // start at a higher retry time as it will be easy to miss the first couple of retries
@@ -150,7 +149,7 @@ public class TestDictionaryRetrievalService {
         long finalExpectedValue = expectedValue;
         TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
           assertEquals(
-              (long) finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get("test_store_v1"),
+              (long) finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME),
               finalExpectedValue);
         });
         if (expectedValue == MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS) {

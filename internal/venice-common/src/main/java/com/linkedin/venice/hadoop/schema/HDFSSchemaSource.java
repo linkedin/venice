@@ -1,10 +1,12 @@
 package com.linkedin.venice.hadoop.schema;
 
+import com.google.common.base.Preconditions;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.utils.Utils;
@@ -13,8 +15,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -42,24 +46,46 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   private final Path rmdSchemaDir;
   private final Path valueSchemaDir;
 
-  public HDFSSchemaSource(final Path valueSchemaDir, final Path rmdSchemaDir, final String storeName)
-      throws IOException {
+  // For non ETL flows (historical), the key schema is part of the push configuration and doesn't require caching
+  private final boolean includeKeySchema;
+
+  private final Path keySchemaDir;
+
+  public HDFSSchemaSource(
+      final Path valueSchemaDir,
+      final Path rmdSchemaDir,
+      final Path keySchemaDir,
+      final String storeName) throws IOException {
     Configuration conf = new Configuration();
     this.rmdSchemaDir = rmdSchemaDir;
+    // TODO: Consider either using global filesystem or remove per instance fs and infer filesystem from the path during
+    // usage
     this.fs = this.rmdSchemaDir.getFileSystem(conf);
+    this.valueSchemaDir = valueSchemaDir;
+    this.keySchemaDir = keySchemaDir;
+    this.includeKeySchema = keySchemaDir != null;
+    this.storeName = storeName;
+
+    initialize();
+  }
+
+  private void initialize() throws IOException {
     if (!fs.exists(this.rmdSchemaDir)) {
       fs.mkdirs(this.rmdSchemaDir);
     }
-    this.valueSchemaDir = valueSchemaDir;
+
     if (!fs.exists(this.valueSchemaDir)) {
       fs.mkdirs(this.valueSchemaDir);
     }
 
-    this.storeName = storeName;
+    if (includeKeySchema && !fs.exists(this.keySchemaDir)) {
+      fs.mkdirs(this.keySchemaDir);
+    }
   }
 
-  public HDFSSchemaSource(final Path valueSchemaDir, final Path rmdSchemaDir) throws IOException {
-    this(valueSchemaDir, rmdSchemaDir, null);
+  public HDFSSchemaSource(final Path valueSchemaDir, final Path rmdSchemaDir, final String storeName)
+      throws IOException {
+    this(valueSchemaDir, rmdSchemaDir, null, storeName);
   }
 
   public HDFSSchemaSource(final String valueSchemaDir, final String rmdSchemaDir, final String storeName)
@@ -69,6 +95,10 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
 
   public HDFSSchemaSource(final String valueSchemaDir, final String rmdSchemaDir) throws IOException {
     this(new Path(valueSchemaDir), new Path(rmdSchemaDir), null);
+  }
+
+  public String getKeySchemaPath() {
+    return keySchemaDir.toString();
   }
 
   public String getRmdSchemaPath() {
@@ -87,6 +117,10 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   public void saveSchemasOnDisk(ControllerClient controllerClient) throws IOException, IllegalStateException {
     saveSchemaResponseToDisk(controllerClient.getAllReplicationMetadataSchemas(storeName).getSchemas(), true);
     saveSchemaResponseToDisk(controllerClient.getAllValueSchema(storeName).getSchemas(), false);
+
+    if (includeKeySchema) {
+      saveKeySchemaToDisk(controllerClient.getKeySchema(storeName));
+    }
   }
 
   void saveSchemaResponseToDisk(MultiSchemaResponse.Schema[] schemas, boolean isRmdSchema)
@@ -118,6 +152,23 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
       } else {
         throw new IllegalStateException(String.format("The schema path %s already exists.", schemaPath));
       }
+    }
+  }
+
+  void saveKeySchemaToDisk(SchemaResponse schema) throws IOException, IllegalStateException {
+    Preconditions.checkState(includeKeySchema, "Cannot be invoked with invalid key schema directory");
+    Preconditions.checkState(!schema.isError(), "Cannot persist schema. Encountered error in schema response");
+    LOGGER.info("Caching key schema for store: {} in {}", storeName, keySchemaDir.getName());
+
+    Path schemaPath = new Path(keySchemaDir, String.valueOf(schema.getId()));
+    if (!fs.exists(schemaPath)) {
+      try (FSDataOutputStream outputStream = fs.create(schemaPath);
+          OutputStreamWriter outputStreamWriter = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
+        outputStreamWriter.write(schema.getSchemaStr() + "\n");
+        outputStreamWriter.flush();
+      }
+    } else {
+      throw new IllegalStateException(String.format("The schema path %s already exists", schemaPath));
     }
   }
 
@@ -171,6 +222,32 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
       }
     }
     return mapping;
+  }
+
+  @Override
+  public Schema fetchKeySchema() throws IOException {
+    Preconditions.checkState(includeKeySchema, "Cannot be invoked with invalid key schema directory");
+    FileStatus[] fileStatus = fs.listStatus(keySchemaDir);
+    LOGGER.info("Fetching key schemas from :{}", keySchemaDir);
+
+    Optional<Schema> keySchema = Arrays.stream(fileStatus).map(status -> {
+      Path path = status.getPath();
+      Schema outputSchema = null;
+      try (FSDataInputStream in = fs.open(path);
+          BufferedReader reader = new BufferedReader((new InputStreamReader(in, StandardCharsets.UTF_8)))) {
+        String schemaStr = reader.readLine();
+        if (schemaStr != null) {
+          outputSchema = Schema.parse(schemaStr.trim());
+        }
+      } catch (Exception e) {
+        LOGGER.error("Failed to fetch key schema due to ", e);
+      }
+
+      return outputSchema;
+    }).findFirst();
+
+    return keySchema
+        .orElseThrow(() -> new RuntimeException(String.format("Failed to load key schema from %s", keySchemaDir)));
   }
 
   @Override

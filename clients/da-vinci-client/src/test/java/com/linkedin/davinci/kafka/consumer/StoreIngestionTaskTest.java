@@ -4854,6 +4854,33 @@ public abstract class StoreIngestionTaskTest {
         "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
   }
 
+  /**
+   * When SIT encounters a corrupted {@link OffsetRecord} in {@link StoreIngestionTask#processCommonConsumerAction} and
+   * {@link StorageMetadataService#getLastOffset} throws an exception due to a deserialization error,
+   * {@link StoreIngestionTask#reportError(String, int, Exception)} should be called in order to trigger a Helix
+   * state transition without waiting 24+ hours for the Helix state transition timeout.
+   */
+  @Test
+  public void testProcessConsumerActionsError() throws Exception {
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      // This is an actual exception thrown when deserializing a corrupted OffsetRecord
+      String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
+          + "The only supported Magic Byte for this implementation is '24'.";
+      doThrow(new VeniceMessageException(msg)).when(mockStorageMetadataService).getLastOffset(any(), anyInt());
+
+      for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS; i++) {
+        try {
+          storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
+      }
+      ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
+      verify(storeIngestionTaskUnderTest, atLeastOnce()).reportError(anyString(), eq(PARTITION_FOO), captor.capture());
+      assertTrue(captor.getValue().getMessage().endsWith(msg));
+    }, AA_OFF);
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config

@@ -185,6 +185,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
   public StorageReadRequestHandler(
+      VeniceServerConfig serverConfig,
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
@@ -193,12 +194,45 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       IngestionMetadataRetriever ingestionMetadataRetriever,
       ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService healthCheckService,
-      boolean fastAvroEnabled,
-      boolean parallelBatchGetEnabled,
-      int parallelBatchGetChunkSize,
-      VeniceServerConfig serverConfig,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker) {
+    this(
+        serverConfig,
+        executor,
+        computeExecutor,
+        storageEngineRepository,
+        metadataStoreRepository,
+        schemaRepository,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
+        healthCheckService,
+        compressorFactory,
+        optionalResourceReadUsageTracker,
+        serverConfig.isKeyValueProfilingEnabled()
+            ? s -> new MultiGetResponseWrapper(s, new MultiGetResponseStatsWithSizeProfiling(s))
+            : MultiGetResponseWrapper::new,
+        serverConfig.isKeyValueProfilingEnabled()
+            ? s -> new ComputeResponseWrapper(s, new ComputeResponseStatsWithSizeProfiling(s))
+            : ComputeResponseWrapper::new);
+  }
+
+  /**
+   * Package-private constructor intended for tests to inject special behavior.
+   */
+  StorageReadRequestHandler(
+      VeniceServerConfig serverConfig,
+      ThreadPoolExecutor executor,
+      ThreadPoolExecutor computeExecutor,
+      StorageEngineRepository storageEngineRepository,
+      ReadOnlyStoreRepository metadataStoreRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
+      DiskHealthCheckService healthCheckService,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ResourceReadUsageTracker> optionalResourceReadUsageTracker,
+      IntFunction<MultiGetResponseWrapper> multiGetResponseProvider,
+      IntFunction<ComputeResponseWrapper> computeResponseProvider) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
@@ -207,28 +241,21 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     this.ingestionMetadataRetriever = ingestionMetadataRetriever;
     this.readMetadataRetriever = readMetadataRetriever;
     this.diskHealthCheckService = healthCheckService;
-    this.fastAvroEnabled = fastAvroEnabled;
-    this.genericSerializerGetter = fastAvroEnabled
+    this.fastAvroEnabled = serverConfig.isComputeFastAvroEnabled();
+    this.genericSerializerGetter = this.fastAvroEnabled
         ? FastSerializerDeserializerFactory::getFastAvroGenericSerializer
         : SerializerDeserializerFactory::getAvroGenericSerializer;
     this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
-    this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
-    if (parallelBatchGetEnabled) {
+    this.parallelBatchGetChunkSize = serverConfig.getParallelBatchGetChunkSize();
+    if (serverConfig.isEnableParallelBatchGet()) {
       this.multiGetHandler = this::handleMultiGetRequestInParallel;
       this.computeHandler = this::handleComputeRequestInParallel;
     } else {
       this.multiGetHandler = this::handleMultiGetRequest;
       this.computeHandler = this::handleComputeRequest;
     }
-    boolean keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
-    if (keyValueProfilingEnabled) {
-      this.multiGetResponseProvider =
-          s -> new MultiGetResponseWrapper(s, new MultiGetResponseStatsWithSizeProfiling(s));
-      this.computeResponseProvider = s -> new ComputeResponseWrapper(s, new ComputeResponseStatsWithSizeProfiling(s));
-    } else {
-      this.multiGetResponseProvider = MultiGetResponseWrapper::new;
-      this.computeResponseProvider = ComputeResponseWrapper::new;
-    }
+    this.multiGetResponseProvider = multiGetResponseProvider;
+    this.computeResponseProvider = computeResponseProvider;
     this.serverConfig = serverConfig;
     this.compressorFactory = compressorFactory;
     if (optionalResourceReadUsageTracker.isPresent()) {
@@ -443,7 +470,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       response.getStats().setStorageExecutionQueueLen(queueLen);
 
       return response;
-    });
+    }, executor);
   }
 
   private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request) {
