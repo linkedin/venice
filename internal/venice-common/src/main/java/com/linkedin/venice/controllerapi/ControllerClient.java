@@ -713,10 +713,10 @@ public class ControllerClient implements Closeable {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
     }
-    int currentAttempt = 1;
-    while (true) {
-      R response = null;
-      Exception exception = null;
+    Exception exception = null;
+    R response = null;
+
+    for (int currentAttempt = 0; currentAttempt < totalAttempts; currentAttempt++) {
       try {
         response = request.apply(client);
       } catch (Exception e) {
@@ -724,8 +724,8 @@ public class ControllerClient implements Closeable {
       }
       // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return
       // INVALID schema ID in the response.
-      if (exception == null && (!response.isError() || currentAttempt == totalAttempts
-          || valueSchemaNotFoundSchemaResponse(response) || abortRetryCondition.apply(response))) {
+      if (exception == null && (!response.isError() || valueSchemaNotFoundSchemaResponse(response)
+          || abortRetryCondition.apply(response))) {
         return response;
       } else {
         if (exception != null) {
@@ -741,6 +741,11 @@ public class ControllerClient implements Closeable {
         currentAttempt++;
         Utils.sleep(2000);
       }
+    }
+    if (exception != null) {
+      throw new VeniceException("Could not execute query even after " + totalAttempts + " attempts.", exception);
+    } else {
+      return response;
     }
   }
 
@@ -1472,14 +1477,14 @@ public class ControllerClient implements Closeable {
     return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 
-  private <T extends ControllerResponse> T makeErrorResponse(
+  private static <T extends ControllerResponse> T makeErrorResponse(
       String message,
       Exception exception,
       Class<T> responseType) {
     return makeErrorResponse(message, exception, responseType, true);
   }
 
-  private <T extends ControllerResponse> T makeErrorResponse(
+  private static <T extends ControllerResponse> T makeErrorResponse(
       String message,
       Exception exception,
       Class<T> responseType,
