@@ -1,7 +1,8 @@
 package com.linkedin.venice.acl.handler;
 
-import static com.linkedin.venice.grpc.GrpcUtils.*;
-import static com.linkedin.venice.listener.ServerHandlerUtils.*;
+import static com.linkedin.venice.grpc.GrpcUtils.extractGrpcClientCert;
+import static com.linkedin.venice.grpc.GrpcUtils.httpResponseStatusToGrpcStatus;
+import static com.linkedin.venice.listener.ServerHandlerUtils.extractClientCert;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.acl.AclCreationDeletionListener;

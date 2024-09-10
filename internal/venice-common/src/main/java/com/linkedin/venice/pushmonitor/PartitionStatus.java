@@ -1,10 +1,10 @@
 package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
-import static com.linkedin.venice.utils.Utils.*;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -90,7 +90,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   public boolean hasFatalDataValidationError() {
     for (ReplicaStatus replicaStatus: replicaStatusMap.values()) {
       if (ExecutionStatus.isError(replicaStatus.getCurrentStatus()) && replicaStatus.getIncrementalPushVersion() != null
-          && replicaStatus.getIncrementalPushVersion().contains(FATAL_DATA_VALIDATION_ERROR)) {
+          && replicaStatus.getIncrementalPushVersion().contains(Utils.FATAL_DATA_VALIDATION_ERROR)) {
         return true;
       }
     }

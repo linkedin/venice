@@ -1,10 +1,13 @@
 package com.linkedin.venice.throttle;
 
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
+
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -28,7 +31,7 @@ public class EventThrottlerTest {
     // Quota exceeds.
     try {
       sendRequests(1, throttler);
-      Assert.fail("Number of request exceed quota, throttler should reject them.");
+      fail("Number of request exceed quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected.
     }
@@ -39,7 +42,7 @@ public class EventThrottlerTest {
     // Quota exceeds, case we only have half quota for the in flight time window.
     try {
       sendRequests(quota / 2, throttler);
-      Assert.fail("Number of request exceed quota, throttler should reject them.");
+      fail("Number of request exceed quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected
     }
@@ -59,14 +62,14 @@ public class EventThrottlerTest {
     // Send the single request that usage exceeds the quota.
     try {
       throttler.maybeThrottle((int) quota * 10);
-      Assert.fail("Usage exceeds the quota, throttler should reject them.");
+      fail("Usage exceeds the quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected
     }
     try {
       throttler.maybeThrottle(1);
     } catch (QuotaExceededException e) {
-      Assert.fail("The previous usage should not be recorded, so we have enough quota to accept this request.");
+      fail("The previous usage should not be recorded, so we have enough quota to accept this request.");
     }
   }
 
@@ -89,7 +92,7 @@ public class EventThrottlerTest {
     throttler.maybeThrottle(quota * 30 / (double) 2);
     try {
       throttler.maybeThrottle(1);
-      Assert.fail("Usage exceeds the quota, throttler should reject them.");
+      fail("Usage exceeds the quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
     }
   }
@@ -119,9 +122,7 @@ public class EventThrottlerTest {
     try {
       sendRequests((int) quota / 2 - 1, throttler);
     } catch (QuotaExceededException e) {
-      Assert.fail(
-          "Request should be accepted, throttler check the quota before recording, so we have enough quota now.",
-          e);
+      fail("Request should be accepted, throttler check the quota before recording, so we have enough quota now.", e);
     }
   }
 
@@ -146,7 +147,7 @@ public class EventThrottlerTest {
     // Quota exceeds.
     try {
       sendRequests(updatedQuotaValue, throttler);
-      Assert.fail("Number of request exceed quota, throttler should reject them.");
+      fail("Number of request exceed quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected.
     }
@@ -160,7 +161,7 @@ public class EventThrottlerTest {
     // Quota exceeds, case we only have half quota for the in flight time window.
     try {
       sendRequests(1, throttler);
-      Assert.fail("Number of request exceed quota, throttler should reject them.");
+      fail("Number of request exceed quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected
     }
@@ -180,7 +181,7 @@ public class EventThrottlerTest {
     // Quota exceeds.
     try {
       sendRequests(1, throttler);
-      Assert.fail("Number of request exceed quota, throttler should reject them.");
+      fail("Number of request exceed quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected.
     }
@@ -224,5 +225,30 @@ public class EventThrottlerTest {
     public void sleep(long l) {
       milliseconds += l;
     }
+  }
+
+  @Test
+  public void testTryAcquirePermit() {
+    int quota = 10;
+    long timeWindowMS = 1000L;
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        quota,
+        timeWindowMS,
+        "testSilentRejectThrottler",
+        true,
+        EventThrottler.REJECT_STRATEGY);
+
+    for (int i = 0; i < quota; i++) {
+      assertTrue(throttler.tryAcquirePermit(1));
+    }
+
+    // Quota exceeds.
+    assertFalse(throttler.tryAcquirePermit(5));
+
+    // Time goes 1.5 second so throttler starts second time window. Now we have more capacity granted.
+    testTime.sleep((long) (1500));
+    assertTrue(throttler.tryAcquirePermit(1));
+    assertFalse(throttler.tryAcquirePermit(quota));
   }
 }

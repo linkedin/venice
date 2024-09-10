@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.throttle.TokenBucket;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -17,9 +17,9 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
   private final Sensor rejectedQPS; // rejected query per second
   private final Sensor rejectedKPS; // rejected key per second
   private final Sensor allowedUnintentionallyKPS; // allowed KPS unintentionally due to error or insufficient info
-  private final Sensor usageRatioSensor; // requested qps divided by amortized refill per second on this node for a
-                                         // store
-  private TokenBucket tokenBucket; // The corresponding store's token bucket that this stats instance is tracking for
+  private final Sensor usageRatioSensor; // requested qps divided by nodes quota responsibility
+
+  private long nodeQpsResponsibility = 0;
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -55,19 +55,23 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
     allowedUnintentionallyKPS.record(rcu);
   }
 
-  public void setTokenBucket(TokenBucket tokenBucket) {
-    this.tokenBucket = tokenBucket;
+  public void setNodeQuotaResponsibility(long nodeQpsResponsibility) {
+    this.nodeQpsResponsibility = nodeQpsResponsibility;
   }
 
   /**
-   * The usage ratio is calculated within the token bucket based on the number of token requested since last refill
-   * @return usage ratio in decimal or -1 if tokenBucket is not set for this instance
+   * @return the ratio of the read quota usage to the node's quota responsibility
    */
   private Double getReadQuotaUsageRatio() {
-    if (tokenBucket == null) {
+    if (nodeQpsResponsibility < 1) {
       return Double.NaN;
-    } else {
-      return tokenBucket.getStaleUsageRatio();
     }
+    MetricsRepository metricsRepository = getMetricsRepository();
+    Metric metric = metricsRepository.getMetric(requestedKPS.name() + ".Rate");
+    if (metric == null) {
+      return Double.NaN;
+    }
+
+    return metric.value() / nodeQpsResponsibility;
   }
 }

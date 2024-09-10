@@ -1,7 +1,5 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.kafka.protocol.enums.MessageType.*;
-
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -82,8 +80,9 @@ public final class ChunkingTestUtils {
     ChunkedKeySuffix chunkKeySuffix = createChunkedKeySuffix(firstSegmentNumber, firstSequenceNumber, chunkIndex);
     ByteBuffer chunkKeyWithSuffix =
         KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeChunkedKey(serializedKey, chunkKeySuffix);
-    KafkaKey kafkaKey = new KafkaKey(PUT, ByteUtils.extractByteArray(chunkKeyWithSuffix));
-    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(PUT, firstSegmentNumber, newSequenceNumber);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, ByteUtils.extractByteArray(chunkKeyWithSuffix));
+    KafkaMessageEnvelope messageEnvelope =
+        createKafkaMessageEnvelope(MessageType.PUT, firstSegmentNumber, newSequenceNumber);
 
     Put put = new Put();
     put.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
@@ -101,9 +100,9 @@ public final class ChunkingTestUtils {
       PubSubTopicPartition pubSubTopicPartition) {
     long newOffset = firstMessage.getOffset() + numberOfChunks;
     byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
-    KafkaKey kafkaKey = new KafkaKey(PUT, chunkKeyWithSuffix);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(
-        PUT,
+        MessageType.PUT,
         firstMessage.getValue().getProducerMetadata().segmentNumber,
         firstMessage.getValue().getProducerMetadata().messageSequenceNumber + numberOfChunks);
 
@@ -138,8 +137,8 @@ public final class ChunkingTestUtils {
       byte[] serializedRmd,
       PubSubTopicPartition pubSubTopicPartition) {
     byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
-    KafkaKey kafkaKey = new KafkaKey(DELETE, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(DELETE, 0, 0);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, chunkKeyWithSuffix);
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(MessageType.DELETE, 0, 0);
 
     Delete delete = new Delete();
     delete.schemaId = 1;
@@ -157,8 +156,8 @@ public final class ChunkingTestUtils {
       byte[] serializedRmd,
       PubSubTopicPartition pubSubTopicPartition) {
     byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
-    KafkaKey kafkaKey = new KafkaKey(PUT, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(PUT, 0, 0);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, chunkKeyWithSuffix);
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(MessageType.PUT, 0, 0);
 
     Put put = new Put();
     put.schemaId = 1;
@@ -176,8 +175,8 @@ public final class ChunkingTestUtils {
       byte[] serializedValue,
       PubSubTopicPartition pubSubTopicPartition) {
     byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
-    KafkaKey kafkaKey = new KafkaKey(UPDATE, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(UPDATE, 0, 0);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.UPDATE, chunkKeyWithSuffix);
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(MessageType.UPDATE, 0, 0);
 
     Update update = new Update();
     update.schemaId = 1;

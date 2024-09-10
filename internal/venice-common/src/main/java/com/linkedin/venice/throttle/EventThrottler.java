@@ -30,7 +30,7 @@ import org.apache.logging.log4j.Logger;
  * This is a generalized IoThrottler as it existed before, which can be used to
  * throttle Bytes read or written, number of entries scanned, etc.
  */
-public class EventThrottler {
+public class EventThrottler implements VeniceRateLimiter {
   private static final Logger LOGGER = LogManager.getLogger(EventThrottler.class);
   private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30);
   private static final String THROTTLER_NAME = "event-throttler";
@@ -50,6 +50,9 @@ public class EventThrottler {
   private Sensor rateSensor = null;
   private MetricConfig rateConfig = null;
   private final EventThrottlingStrategy throttlingStrategy;
+
+  // Used only to compare if the new quota requests are different from the existing quota.
+  private long quota = -1;
 
   /**
    * @param maxRatePerSecond Maximum rate that this throttler should allow (-1 is unlimited)
@@ -278,5 +281,37 @@ public class EventThrottler {
 
   protected boolean isCheckQuotaBeforeRecording() {
     return checkQuotaBeforeRecording;
+  }
+
+  @Override
+  public boolean tryAcquirePermit(int units) {
+    if (getMaxRatePerSecond() < 0) {
+      return true;
+    }
+    long now = time.milliseconds();
+    try {
+      rateSensor.record(units, now);
+      return true;
+    } catch (QuotaViolationException e) {
+      return false;
+    }
+  }
+
+  @Override
+  public void setQuota(long quota) {
+    this.quota = quota;
+  }
+
+  @Override
+  public long getQuota() {
+    return quota;
+  }
+
+  @Override
+  public String toString() {
+    return "EventThrottler{" + "maxRatePerSecondProvider=" + maxRatePerSecondProvider + ", enforcementIntervalMs="
+        + enforcementIntervalMs + ", throttlerName='" + throttlerName + ", checkQuotaBeforeRecording="
+        + checkQuotaBeforeRecording + ", configuredMaxRatePerSecond=" + configuredMaxRatePerSecond + ", time=" + time
+        + ", throttlingStrategy=" + throttlingStrategy + '}';
   }
 }

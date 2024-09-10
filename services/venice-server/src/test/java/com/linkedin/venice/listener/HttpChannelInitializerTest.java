@@ -58,6 +58,8 @@ public class HttpChannelInitializerTest {
   public void testQuotaEnforcementEnabled() {
     doReturn(true).when(serverConfig).isQuotaEnforcementEnabled();
     doReturn(10l).when(serverConfig).getNodeCapacityInRcu();
+    doReturn(10000).when(serverConfig).getQuotaEnforcementIntervalInMs();
+    doReturn(5).when(serverConfig).getQuotaEnforcementCapacityMultiple();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
         storeMetadataRepository,
         customizedViewRepository,

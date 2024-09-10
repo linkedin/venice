@@ -3,7 +3,6 @@ package com.linkedin.venice.stats;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
 import org.testng.Assert;
@@ -62,18 +61,8 @@ public class AggServerQuotaUsageStatsTest {
         + metricsRepository.getMetric(readQuotaRejectedQPSString2).value();
     double totalRejectedKPS = metricsRepository.getMetric(readQuotaRejectedKPSString).value()
         + metricsRepository.getMetric(readQuotaRejectedKPSString2).value();
+
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedQPSString).value(), totalRejectedQPS, 0.05);
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRejectedKPSString).value(), totalRejectedKPS, 0.05);
-
-    String readQuotaUsageRatioString = "." + storeName + "--quota_requested_usage_ratio.Gauge";
-    TokenBucket mockTokenBucket = mock(TokenBucket.class);
-    double expectedUsageRatio = 0.5;
-    doReturn(expectedUsageRatio).when(mockTokenBucket).getStaleUsageRatio();
-
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), Double.NaN);
-    aggServerQuotaUsageStats.setStoreTokenBucket(storeName, mockTokenBucket);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), expectedUsageRatio);
-    aggServerQuotaUsageStats.setStoreTokenBucket(storeName, null);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaUsageRatioString).value(), Double.NaN);
   }
 }
