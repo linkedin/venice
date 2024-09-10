@@ -715,18 +715,29 @@ public class ControllerClient implements Closeable {
     }
     int currentAttempt = 1;
     while (true) {
-      R response = request.apply(client);
+      R response = null;
+      Exception exception = null;
+      try {
+        response = request.apply(client);
+      } catch (Exception e) {
+        exception = e;
+      }
       // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return
       // INVALID schema ID in the response.
-      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)
-          || abortRetryCondition.apply(response)) {
+      if (exception == null && (!response.isError() || currentAttempt == totalAttempts
+          || valueSchemaNotFoundSchemaResponse(response) || abortRetryCondition.apply(response))) {
         return response;
       } else {
-        LOGGER.warn(
-            "Error on attempt {}/{} of querying the Controller: {}",
-            currentAttempt,
-            totalAttempts,
-            response.getError());
+        if (exception != null) {
+          LOGGER
+              .warn("Exception on attempt {}/{} of querying the Controller", currentAttempt, totalAttempts, exception);
+        } else {
+          LOGGER.warn(
+              "Error on attempt {}/{} of querying the Controller: {}",
+              currentAttempt,
+              totalAttempts,
+              response.getError());
+        }
         currentAttempt++;
         Utils.sleep(2000);
       }
@@ -1433,6 +1444,8 @@ public class ControllerClient implements Closeable {
             throw e;
           }
           // leader controller has changed. Let's wait for a new leader to realize it.
+          lastException = e;
+        } catch (Exception e) {
           lastException = e;
         }
 
