@@ -7,10 +7,15 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.apache.commons.io.FileUtils;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -139,5 +144,43 @@ public class BlobSnapshotManagerTest {
             BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
     blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
     verify(mockCheckpoint, times(0)).createCheckpoint(DB_DIR + "/.snapshot_files");
+  }
+
+  @Test
+  public void testCreateSnapshotForBatch() throws RocksDBException, IOException {
+    try (MockedStatic<Checkpoint> checkpointMockedStatic = Mockito.mockStatic(Checkpoint.class)) {
+      try (MockedStatic<FileUtils> fileUtilsMockedStatic = Mockito.mockStatic(FileUtils.class)) {
+        // case 1: snapshot file not exists
+        // test prepare
+        RocksDB mockRocksDB = mock(RocksDB.class);
+        Checkpoint mockCheckpoint = mock(Checkpoint.class);
+        checkpointMockedStatic.when(() -> Checkpoint.create(mockRocksDB)).thenReturn(mockCheckpoint);
+
+        String fullSnapshotPath = DB_DIR + "/.snapshot_files";
+        BlobSnapshotManager blobSnapshotManager =
+            spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
+        File file = spy(new File(fullSnapshotPath));
+        doReturn(false).when(file).exists();
+
+        doNothing().when(mockCheckpoint).createCheckpoint(fullSnapshotPath);
+
+        // test execute
+        blobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+        // test verify
+        verify(mockCheckpoint, times(1)).createCheckpoint(fullSnapshotPath);
+
+        // case 2: snapshot file exists
+        // test prepare
+        doReturn(true).when(file).exists();
+        fileUtilsMockedStatic.when(() -> FileUtils.deleteDirectory(file)).thenAnswer(invocation -> {
+          return null;
+        });
+
+        // test execute
+        blobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+        // test verify
+        verify(mockCheckpoint, times(2)).createCheckpoint(fullSnapshotPath);
+      }
+    }
   }
 }
