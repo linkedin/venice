@@ -716,7 +716,7 @@ public class ControllerClient implements Closeable {
     Exception exception = null;
     R response = null;
 
-    for (int currentAttempt = 0; currentAttempt < totalAttempts; currentAttempt++) {
+    for (int currentAttempt = 1; currentAttempt <= totalAttempts; currentAttempt++) {
       try {
         response = request.apply(client);
       } catch (Exception e) {
@@ -738,7 +738,6 @@ public class ControllerClient implements Closeable {
               totalAttempts,
               response.getError());
         }
-        currentAttempt++;
         Utils.sleep(2000);
       }
     }
