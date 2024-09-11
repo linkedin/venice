@@ -22,6 +22,18 @@ dependencies {
 
   testImplementation libraries.mockito
   testImplementation libraries.testng
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
 }
 
 nar {
