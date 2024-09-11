@@ -724,8 +724,8 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
       "server.ingestion.isolation.heartbeat.request.timeout.seconds";
 
-  public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_INTERVAL_SECONDS =
-      "server.batch.report.end.of.incremental.push.status.interval.seconds";
+  public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
+      "server.batch.report.end.of.incremental.push.status.enabled";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will

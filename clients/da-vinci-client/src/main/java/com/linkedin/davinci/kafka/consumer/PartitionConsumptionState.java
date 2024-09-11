@@ -205,7 +205,6 @@ public class PartitionConsumptionState {
   private long lastLeaderCompleteStateUpdateInMs;
 
   private final List<String> pendingReportIncPushVersionList;
-  private long batchReportIncPushTimestamp;
 
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
@@ -250,7 +249,6 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
-    this.batchReportIncPushTimestamp = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
   }
 
@@ -852,13 +850,5 @@ public class PartitionConsumptionState {
   public void clearPendingReportIncPushVersionList() {
     pendingReportIncPushVersionList.clear();
     offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
-  }
-
-  public long getBatchIncPushReportTimestamp() {
-    return batchReportIncPushTimestamp;
-  }
-
-  public void setBatchIncPushReportTimestamp(long updateTimestamp) {
-    batchReportIncPushTimestamp = updateTimestamp;
   }
 }

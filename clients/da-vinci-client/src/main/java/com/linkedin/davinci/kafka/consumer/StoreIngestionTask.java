@@ -502,7 +502,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
-    this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPIntervalSecond() != -1;
+    this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -2886,7 +2886,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               fatalException.getMessage());
         }
       }
-      maybeReportBatchEndOfIncPushStatus(partitionConsumptionState, serverConfig.getBatchReportEOIPIntervalSecond());
+      if (batchReportIncPushStatusEnabled) {
+        maybeReportBatchEndOfIncPushStatus(partitionConsumptionState);
+      }
 
       /**
        heavy internal processing starts here
@@ -4065,20 +4067,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected abstract Set<String> maybeSendIngestionHeartbeat();
 
-  void maybeReportBatchEndOfIncPushStatus(
-      PartitionConsumptionState partitionConsumptionState,
-      long reportIntervalInSecond) {
-    if (reportIntervalInSecond == -1 || partitionConsumptionState.getPendingReportIncPushVersionList().isEmpty()) {
+  void maybeReportBatchEndOfIncPushStatus(PartitionConsumptionState partitionConsumptionState) {
+    if (partitionConsumptionState.getPendingReportIncPushVersionList().isEmpty()) {
       return;
     }
     // When PCS is completed but the pending report list is not empty, we should perform one last report to make sure
     // all EOIPs are reported.
-    if (partitionConsumptionState.isComplete()
-        || (System.currentTimeMillis() - partitionConsumptionState.getBatchIncPushReportTimestamp()) > SECONDS
-            .toMillis(reportIntervalInSecond)) {
+    if (partitionConsumptionState.isComplete()) {
       getIngestionNotificationDispatcher().reportBatchEndOfIncrementalPushStatus(partitionConsumptionState);
       partitionConsumptionState.clearPendingReportIncPushVersionList();
-      partitionConsumptionState.setBatchIncPushReportTimestamp(System.currentTimeMillis());
     }
   }
 
