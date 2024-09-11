@@ -12,7 +12,6 @@ import org.apache.hc.core5.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
-import org.apache.hc.core5.http2.config.H2Config;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.util.Timeout;
 
@@ -34,12 +33,6 @@ import org.apache.hc.core5.util.Timeout;
  * TODO: follow up with the httpclient team to get a proper fix.
  */
 public class HttpClient5Utils {
-  public static final int H2_HEADER_TABLE_SIZE = 4096;
-  public static final int H2_MAX_HEADER_LIST_SIZE = 8092;
-  public static final int H2_MAX_FRAME_SIZE = 8 * 1024 * 1024;
-  public static final int H2_INITIAL_WINDOW_SIZE = 8 * 1024 * 1024;
-  public static final int H2_MAX_CONCURRENT_STREAMS = 100;
-
   public static class HttpClient5Builder {
     private SSLContext sslContext;
     private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
@@ -157,20 +150,6 @@ public class HttpClient5Utils {
             .setIOReactorConfig(ioReactorConfig)
             .setDefaultConnectionConfig(getDefaultConnectionConfig())
             .setDefaultRequestConfig(getDefaultRequestConfig())
-            .setH2Config(
-                /**
-                 * The following settings are important to avoid the slow start issue
-                 * as if we use a small Frame/initial window setting, it will take
-                 * time to ramp them up, which would result in a slow start issue
-                 * for medium/large responses.
-                 */
-                H2Config.initial()
-                    .setHeaderTableSize(H2_HEADER_TABLE_SIZE)
-                    .setMaxFrameSize(H2_MAX_FRAME_SIZE)
-                    .setInitialWindowSize(H2_INITIAL_WINDOW_SIZE)
-                    .setMaxHeaderListSize(H2_MAX_HEADER_LIST_SIZE)
-                    .setMaxConcurrentStreams(H2_MAX_CONCURRENT_STREAMS)
-                    .build())
             .build();
       }
     }

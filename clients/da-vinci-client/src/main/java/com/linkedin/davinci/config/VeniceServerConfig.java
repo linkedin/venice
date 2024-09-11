@@ -155,11 +155,6 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_STA
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_HEADER_TABLE_SIZE;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_INITIAL_WINDOW_SIZE;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_CONCURRENT_STREAMS;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_FRAME_SIZE;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_HEADER_LIST_SIZE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -754,11 +749,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH, false);
 
     http2InboundEnabled = serverProperties.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
-    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, H2_MAX_CONCURRENT_STREAMS);
-    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE);
-    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, H2_INITIAL_WINDOW_SIZE);
-    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, H2_HEADER_TABLE_SIZE);
-    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, H2_MAX_HEADER_LIST_SIZE);
+    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
+    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
+    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
+    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
+    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart =
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
