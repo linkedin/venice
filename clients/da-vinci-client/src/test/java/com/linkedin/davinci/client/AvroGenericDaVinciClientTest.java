@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EXECUTOR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -10,7 +11,9 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -19,6 +22,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
@@ -109,5 +113,29 @@ public class AvroGenericDaVinciClientTest {
     for (int i = 0; i < keyCnt; ++i) {
       assertEquals(resultMap.get(keyPrefix + i), testValue);
     }
+  }
+
+  @Test
+  public void constructorTest() {
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    VeniceProperties backendConfig = mock(VeniceProperties.class);
+    ICProvider icProvider = mock(ICProvider.class);
+
+    AvroGenericDaVinciClient daVinciClient =
+        new AvroGenericDaVinciClient(daVinciConfig, clientConfig, backendConfig, Optional.empty(), icProvider, null);
+
+    assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), READ_CHUNK_EXECUTOR);
+
+    Executor readChunkExecutor = mock(Executor.class);
+    daVinciClient = new AvroGenericDaVinciClient(
+        daVinciConfig,
+        clientConfig,
+        backendConfig,
+        Optional.empty(),
+        icProvider,
+        readChunkExecutor);
+    assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), readChunkExecutor);
+
   }
 }

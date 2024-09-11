@@ -112,7 +112,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
    * 1. Split the big request into smaller chunks.
    * 2. Execute these chunks concurrently.
    */
-  private static final ExecutorService READ_CHUNK_EXECUTOR = Executors.newFixedThreadPool(
+  public static final ExecutorService READ_CHUNK_EXECUTOR = Executors.newFixedThreadPool(
       Runtime.getRuntime().availableProcessors(),
       new DaemonThreadFactory("DaVinci_Read_Chunk_Executor"));
   public static final int DEFAULT_CHUNK_SPLIT_THRESHOLD = 100;
