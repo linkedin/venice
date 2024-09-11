@@ -1601,6 +1601,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return channelOptionWriteBufferHighBytes;
   }
 
+<<<<<<< HEAD
   public VeniceRateLimiter.RateLimiterType getStoreVersionQpsRateLimiterType() {
     return storeVersionQpsRateLimiterType;
   }
@@ -1618,10 +1619,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public boolean isAaWCWorkloadParallelProcessingEnabled() {
+=======
+  public boolean isAAWCWorkloadParallelProcessingEnabled() {
+>>>>>>> f92e376bf (Addressed the review comments)
     return aaWCWorkloadParallelProcessingEnabled;
   }
 
-  public int getAaWCWorkloadParallelProcessingThreadPoolSize() {
+  public int getAAWCWorkloadParallelProcessingThreadPoolSize() {
     return aaWCWorkloadParallelProcessingThreadPoolSize;
   }
 }

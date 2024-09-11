@@ -1069,7 +1069,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
-        .setAaWCWorkLoadProcessingThreadPool(
+        .setAAWCWorkLoadProcessingThreadPool(
             Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
   }
 

@@ -509,8 +509,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
+<<<<<<< HEAD
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAaWCWorkLoadProcessingThreadPool();
+=======
+    this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
+>>>>>>> 59831839b (Addressed the review comments)
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -1142,7 +1146,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, topicPartition);
 
     if ((isActiveActiveReplicationEnabled || isWriteComputationEnabled)
-        && serverConfig.isAaWCWorkloadParallelProcessingEnabled()
+        && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
         && IngestionBatchProcessor.isAllMessagesFromRTTopic(records)) {
       produceToStoreBufferServiceOrKafkaInBatch(
           records,
@@ -1158,8 +1162,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     boolean metricsEnabled = emitMetrics.get();
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
 
+    partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
-      partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       if (!shouldProcessRecord(record)) {
@@ -1214,7 +1218,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Split the records into mini batches.
      */
-    int batchSize = serverConfig.getAaWCWorkloadParallelProcessingThreadPoolSize();
+    int batchSize = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
     List<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> batches = new ArrayList<>();
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> ongoingBatch = new ArrayList<>(batchSize);
     Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();

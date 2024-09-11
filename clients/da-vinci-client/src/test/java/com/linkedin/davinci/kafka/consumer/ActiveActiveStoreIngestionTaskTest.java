@@ -729,8 +729,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 91);
 
     // Test with parallel compute is enabled
-    when(serverConfig.getAaWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
-    when(serverConfig.isAaWCWorkloadParallelProcessingEnabled()).thenReturn(true);
+    when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
+    when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
     assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 721);
   }
 }

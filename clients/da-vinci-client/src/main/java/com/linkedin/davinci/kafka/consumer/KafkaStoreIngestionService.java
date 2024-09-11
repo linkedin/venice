@@ -439,9 +439,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
 
-    if (serverConfig.isAaWCWorkloadParallelProcessingEnabled()) {
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
-          serverConfig.getAaWCWorkloadParallelProcessingThreadPoolSize(),
+          serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
           new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING"));
     } else {
       this.aaWCWorkLoadProcessingThreadPool = null;
@@ -472,7 +472,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
-        .setAaWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
+        .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .build();
   }
 

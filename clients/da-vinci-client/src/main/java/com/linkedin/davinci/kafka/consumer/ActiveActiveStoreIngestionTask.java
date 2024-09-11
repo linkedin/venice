@@ -153,7 +153,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
-      if (!serverConfig.isAaWCWorkloadParallelProcessingEnabled()) {
+      if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
         LOGGER.info("AA-WC workload parallel processing enabled is false");
         return null;
       }
@@ -179,8 +179,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
     }
     int multiplier = 1;
-    if (serverConfig.isAaWCWorkloadParallelProcessingEnabled()) {
-      multiplier = serverConfig.getAaWCWorkloadParallelProcessingThreadPoolSize();
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
     }
     return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
         * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;

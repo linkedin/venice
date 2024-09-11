@@ -314,7 +314,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getStoreName(),
         serverConfig.isComputeFastAvroEnabled());
     this.ingestionBatchProcessingLazy = Lazy.of(() -> {
-      if (!serverConfig.isAaWCWorkloadParallelProcessingEnabled()) {
+      if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
         LOGGER.info("AA-WC workload parallel processing enabled is false");
         return null;
       }
@@ -2160,6 +2160,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     if (partitionConsumptionState == null) {
       // The partition is likely unsubscribed, will skip these messages.
+      LOGGER.warn(
+          "No partition consumption state for store version: {}, partition:{}, will filter out all the messages",
+          kafkaVersionTopic,
+          topicPartition.getPartitionNumber());
       return Collections.emptyList();
     }
     boolean isEndOfPushReceived = partitionConsumptionState.isEndOfPushReceived();

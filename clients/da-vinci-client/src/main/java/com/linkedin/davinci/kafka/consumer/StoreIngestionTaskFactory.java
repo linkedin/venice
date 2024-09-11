@@ -321,11 +321,11 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.runnableForKillIngestionTasksForNonCurrentVersions = runnable);
     }
 
-    public Builder setAaWCWorkLoadProcessingThreadPool(ExecutorService executorService) {
+    public Builder setAAWCWorkLoadProcessingThreadPool(ExecutorService executorService) {
       return set(() -> this.aaWCWorkLoadProcessingThreadPool = executorService);
     }
 
-    public ExecutorService getAaWCWorkLoadProcessingThreadPool() {
+    public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
       return this.aaWCWorkLoadProcessingThreadPool;
     }
   }
