@@ -73,6 +73,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -111,7 +112,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
    * 1. Split the big request into smaller chunks.
    * 2. Execute these chunks concurrently.
    */
-  private static final ExecutorService READ_CHUNK_EXECUTOR = Executors.newFixedThreadPool(
+  public static final ExecutorService READ_CHUNK_EXECUTOR = Executors.newFixedThreadPool(
       Runtime.getRuntime().availableProcessors(),
       new DaemonThreadFactory("DaVinci_Read_Chunk_Executor"));
   public static final int DEFAULT_CHUNK_SPLIT_THRESHOLD = 100;
@@ -135,13 +136,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private static final Map<CharSequence, Schema> computeResultSchemaCache = new VeniceConcurrentHashMap<>();
 
   private final AbstractAvroChunkingAdapter<V> chunkingAdapter;
+  private final Executor readChunkExecutorForLargeRequest;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients) {
-    this(daVinciConfig, clientConfig, backendConfig, managedClients, null);
+    this(daVinciConfig, clientConfig, backendConfig, managedClients, null, null);
   }
 
   public AvroGenericDaVinciClient(
@@ -149,7 +151,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
-      ICProvider icProvider) {
+      ICProvider icProvider,
+      Executor readChunkExecutorForLargeRequest) {
     this(
         daVinciConfig,
         clientConfig,
@@ -157,7 +160,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         managedClients,
         icProvider,
         GenericChunkingAdapter.INSTANCE,
-        () -> {});
+        () -> {},
+        readChunkExecutorForLargeRequest);
   }
 
   protected AvroGenericDaVinciClient(
@@ -167,7 +171,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       AbstractAvroChunkingAdapter<V> chunkingAdapter,
-      Runnable preValidation) {
+      Runnable preValidation,
+      Executor readChunkExecutorForLargeRequest) {
     logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
@@ -175,6 +180,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.managedClients = managedClients;
     this.icProvider = icProvider;
     this.chunkingAdapter = chunkingAdapter;
+    this.readChunkExecutorForLargeRequest =
+        readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
     preValidation.run();
   }
 
@@ -343,6 +350,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return this.daVinciConfig;
   }
 
+  Executor getReadChunkExecutorForLargeRequest() {
+    return this.readChunkExecutorForLargeRequest;
+  }
+
   CompletableFuture<Map<K, V>> batchGetFromLocalStorage(Iterable<K> keys) {
     // expose underlying getAll functionality.
     Map<K, V> result = new VeniceConcurrentHashMap<>();
@@ -392,8 +403,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         CompletableFuture[] splitFutures = new CompletableFuture[splits.size()];
         for (int cur = 0; cur < splits.size(); ++cur) {
           List<K> currentSplit = splits.get(cur);
-          splitFutures[cur] =
-              CompletableFuture.runAsync(() -> keyArrayConsumer.accept(currentSplit), READ_CHUNK_EXECUTOR);
+          splitFutures[cur] = CompletableFuture
+              .runAsync(() -> keyArrayConsumer.accept(currentSplit), getReadChunkExecutorForLargeRequest());
         }
         CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
         CompletableFuture.allOf(splitFutures).whenComplete((ignored, throwable) -> {
