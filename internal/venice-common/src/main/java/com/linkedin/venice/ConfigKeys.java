@@ -1809,13 +1809,6 @@ public class ConfigKeys {
   public static final String LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS = "leaked.resource.allowed.linger.time.ms";
 
   /**
-   * This config controls whether to use da-vinci based implementation of the system store repository when
-   * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
-   */
-  public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY =
-      "client.use.da.vinci.based.system.store.repository";
-
-  /**
    *
    */
   public static final String CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES =
