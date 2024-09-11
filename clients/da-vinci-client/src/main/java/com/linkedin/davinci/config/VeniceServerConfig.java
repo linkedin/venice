@@ -1601,7 +1601,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return channelOptionWriteBufferHighBytes;
   }
 
-<<<<<<< HEAD
   public VeniceRateLimiter.RateLimiterType getStoreVersionQpsRateLimiterType() {
     return storeVersionQpsRateLimiterType;
   }
@@ -1618,10 +1617,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return quotaEnforcementCapacityMultiple;
   }
 
-  public boolean isAaWCWorkloadParallelProcessingEnabled() {
-=======
   public boolean isAAWCWorkloadParallelProcessingEnabled() {
->>>>>>> f92e376bf (Addressed the review comments)
     return aaWCWorkloadParallelProcessingEnabled;
   }
 
