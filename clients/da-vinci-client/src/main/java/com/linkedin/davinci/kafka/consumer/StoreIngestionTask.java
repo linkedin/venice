@@ -2704,15 +2704,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage endOfIncrementalPush,
       PartitionConsumptionState partitionConsumptionState) {
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
-    LOGGER.info(
-        "DEBUGGING BATCH REPORT ENABLED? {}, PCS completed {}",
-        batchReportIncPushStatusEnabled,
-        partitionConsumptionState.isComplete());
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
     } else {
-      // TODO: We will still need to update push status store, for now it is still writing entry by entry.
       LOGGER.info(
           "Adding incremental push: {} to pending batch report list for replica: {}.",
           endVersion.toString(),

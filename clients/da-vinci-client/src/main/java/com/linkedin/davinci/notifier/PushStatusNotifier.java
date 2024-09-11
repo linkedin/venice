@@ -149,12 +149,8 @@ public class PushStatusNotifier implements VeniceNotifier {
     }
     offLinePushAccessor
         .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, filteredIncPushVersionList);
+    // We don't need to report redundant SOIP for these stale inc push versions as they've all received EOIP.
     for (String incPushVersion: filteredIncPushVersionList) {
-      updateIncrementalPushStatusToPushStatusStore(
-          topic,
-          incPushVersion,
-          partitionId,
-          START_OF_INCREMENTAL_PUSH_RECEIVED);
       updateIncrementalPushStatusToPushStatusStore(
           topic,
           incPushVersion,
