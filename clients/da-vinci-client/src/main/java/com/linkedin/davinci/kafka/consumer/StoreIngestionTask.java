@@ -2061,7 +2061,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
-    return getTopicManager(kafkaUrl).getLatestOffsetCached(pubSubTopic, partition);
+    return getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
   }
 
   protected long getPartitionOffsetLagBasedOnMetrics(String kafkaSourceAddress, PubSubTopic topic, int partition) {
