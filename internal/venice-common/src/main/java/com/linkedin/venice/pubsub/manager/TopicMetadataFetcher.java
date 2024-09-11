@@ -390,7 +390,10 @@ class TopicMetadataFetcher implements Closeable {
             pubSubTopicPartition,
             DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
     if (cachedValue == null) {
-      return -1; // good enough sentinel value?
+      cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+      if (cachedValue == null) {
+        return -1;
+      }
     }
     return cachedValue.getValue();
   }
