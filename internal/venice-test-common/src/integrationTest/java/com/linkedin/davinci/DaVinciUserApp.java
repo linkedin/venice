@@ -45,6 +45,7 @@ public class DaVinciUserApp {
     boolean ingestionIsolation = Boolean.parseBoolean(args[5]);
     int blobTransferServerPort = Integer.parseInt(args[6]);
     int blobTransferClientPort = Integer.parseInt(args[7]);
+    String storageClass = args[8]; // DISK or MEMORY_BACKED_BY_DISK
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
@@ -60,6 +61,9 @@ public class DaVinciUserApp {
     extraBackendConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     extraBackendConfig.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
 
+    // convert the storage class string to enum
+    StorageClass storageClassEnum = StorageClass.valueOf(storageClass);
+
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -67,7 +71,7 @@ public class DaVinciUserApp {
             Optional.empty(),
             zkHosts,
             storeName,
-            new DaVinciConfig().setStorageClass(StorageClass.DISK),
+            new DaVinciConfig().setStorageClass(storageClassEnum),
             extraBackendConfig);
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {

@@ -2,15 +2,21 @@ package com.linkedin.davinci.blobtransfer;
 
 import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.apache.commons.io.FileUtils;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -139,5 +145,73 @@ public class BlobSnapshotManagerTest {
             BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
     blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
     verify(mockCheckpoint, times(0)).createCheckpoint(DB_DIR + "/.snapshot_files");
+  }
+
+  @Test
+  public void testCreateSnapshotForBatch() throws RocksDBException {
+    try (MockedStatic<Checkpoint> checkpointMockedStatic = Mockito.mockStatic(Checkpoint.class)) {
+      try (MockedStatic<FileUtils> fileUtilsMockedStatic = Mockito.mockStatic(FileUtils.class)) {
+        // test prepare
+        RocksDB mockRocksDB = mock(RocksDB.class);
+        Checkpoint mockCheckpoint = mock(Checkpoint.class);
+        checkpointMockedStatic.when(() -> Checkpoint.create(mockRocksDB)).thenReturn(mockCheckpoint);
+        String fullSnapshotPath = DB_DIR + "/.snapshot_files";
+        File file = spy(new File(fullSnapshotPath));
+        doNothing().when(mockCheckpoint).createCheckpoint(fullSnapshotPath);
+
+        // case 1: snapshot file not exists
+        // test execute
+        BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+        // test verify
+        verify(mockCheckpoint, times(1)).createCheckpoint(fullSnapshotPath);
+        fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(0));
+
+        // case 2: snapshot file exists
+        // test prepare
+        File fullSnapshotDir = new File(fullSnapshotPath);
+        if (!fullSnapshotDir.exists()) {
+          fullSnapshotDir.mkdirs();
+        }
+        // test execute
+        BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+        // test verify
+        verify(mockCheckpoint, times(2)).createCheckpoint(fullSnapshotPath);
+        fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(1));
+
+        // case 3: delete snapshot file fail
+        // test prepare
+        fileUtilsMockedStatic.when(() -> FileUtils.deleteDirectory(any(File.class)))
+            .thenThrow(new IOException("Delete snapshot file failed."));
+        // test execute
+        try {
+          BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+          Assert.fail("Should throw exception");
+        } catch (VeniceException e) {
+          // test verify
+          verify(mockCheckpoint, times(2)).createCheckpoint(fullSnapshotPath);
+          fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(2));
+          Assert.assertEquals(e.getMessage(), "Failed to delete the existing snapshot directory: " + fullSnapshotPath);
+        }
+
+        // case 4: create createCheckpoint failed
+        // test prepare
+        fullSnapshotDir.delete();
+        fileUtilsMockedStatic.reset();
+        doThrow(new RocksDBException("Create checkpoint failed.")).when(mockCheckpoint)
+            .createCheckpoint(fullSnapshotPath);
+        // test execute
+        try {
+          BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+          Assert.fail("Should throw exception");
+        } catch (VeniceException e) {
+          // test verify
+          verify(mockCheckpoint, times(3)).createCheckpoint(fullSnapshotPath);
+          fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(0));
+          Assert.assertEquals(
+              e.getMessage(),
+              "Received exception during RocksDB's snapshot creation in directory " + fullSnapshotPath);
+        }
+      }
+    }
   }
 }

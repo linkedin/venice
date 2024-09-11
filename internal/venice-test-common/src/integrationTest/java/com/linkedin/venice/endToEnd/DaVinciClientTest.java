@@ -995,7 +995,8 @@ public class DaVinciClientTest {
         "10",
         "true",
         Integer.toString(port1),
-        Integer.toString(port2));
+        Integer.toString(port2),
+        StorageClass.DISK.toString());
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1069,7 +1070,8 @@ public class DaVinciClientTest {
         "10",
         "false",
         Integer.toString(port1),
-        Integer.toString(port2));
+        Integer.toString(port2),
+        StorageClass.DISK.toString());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1104,6 +1106,48 @@ public class DaVinciClientTest {
         String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
+    }
+  }
+
+  /**
+   * Test to verify the snapshot generation
+   */
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False", timeOut = 2 * TEST_TIMEOUT)
+  public void testDVCSnapshotGeneration(boolean useDiskStorage) throws Exception {
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    String storeName = Utils.getUniqueString("test-store");
+    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
+    LOGGER.info("zkHosts is {}", zkHosts);
+
+    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    String storageClass = useDiskStorage ? StorageClass.DISK.toString() : StorageClass.MEMORY_BACKED_BY_DISK.toString();
+    ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        dvcPath1,
+        storeName,
+        "100",
+        "10",
+        "false",
+        Integer.toString(port1),
+        Integer.toString(port2),
+        storageClass);
+
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // verify the dvc1 snapshot is created
+    for (int i = 0; i < 3; i++) {
+      String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
     }
   }
 
