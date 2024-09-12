@@ -799,12 +799,11 @@ allprojects {
   task printAllDependencies(type: DependencyReportTask) {}
 }
 
-def supportedJdkVersions = ["8", "11", "17"]
+def supportedJdkVersions = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_11, JavaVersion.VERSION_17]
 
 task verifyJdkVersion {
-  def currentJdkVersion = System.getProperty('java.version')
-  def currentJdkMajorVersion = currentJdkVersion.startsWith('1.') ? currentJdkVersion.split("\\.")[1] : currentJdkVersion.split("\\.")[0]
-  def isSupported = supportedJdkVersions.any {majorVersion -> currentJdkMajorVersion.equals(majorVersion) }
+  def currentJdkVersion = JavaVersion.current()
+  def isSupported = supportedJdkVersions.any {majorVersion -> currentJdkVersion.equals(majorVersion) }
   if (!isSupported) {
     throw new GradleException("Invalid JDK version: ${currentJdkVersion}. Supported versions: ${supportedJdkVersions.join(', ')}.")
   }
