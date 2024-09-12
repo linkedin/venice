@@ -409,6 +409,11 @@ public class VersionBackend {
           pendingReportIncPushVersionList.size() - MAX_INCREMENTAL_PUSH_ENTRY_NUM,
           pendingReportIncPushVersionList.size());
     }
+    LOGGER.info(
+        "Topic: {}, partition: {} batch reporting EOIP for inc push versions: {}",
+        version.kafkaTopicName(),
+        partition,
+        filteredIncPushVersionList);
     for (String incPushVersion: filteredIncPushVersionList) {
       reportConsumer.accept(incPushVersion);
     }
@@ -426,6 +431,11 @@ public class VersionBackend {
     if (executionStatus.equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)) {
       return;
     }
+    LOGGER.info(
+        "Adding incremental push version: {} to pending report list for topic: {}, partition: {}",
+        incrementalPushVersion,
+        version.kafkaTopicName(),
+        partition);
     getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>())
         .add(incrementalPushVersion);
   }

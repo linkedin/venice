@@ -279,7 +279,6 @@ public class DaVinciBackend implements Closeable {
           null);
 
       ingestionService.start();
-      ingestionService.addIngestionNotifier(ingestionListener);
 
       if (isIsolatedIngestion() && cacheConfig.isPresent()) {
         // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL
@@ -704,7 +703,11 @@ public class DaVinciBackend implements Closeable {
           versionBackend.completePartition(partitionId);
           versionBackend.maybeReportBatchEOIPStatus(
               partitionId,
-              v -> reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(v)));
+              v -> reportPushStatus(
+                  kafkaTopic,
+                  partitionId,
+                  ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+                  Optional.of(v)));
           versionBackend.tryStopHeartbeat();
           reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
         }

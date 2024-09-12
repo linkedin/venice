@@ -1,5 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
@@ -13,7 +19,10 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
-import com.linkedin.venice.ConfigKeys;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -24,17 +33,23 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -64,7 +79,6 @@ public class TestBatchReportIncrementalPush {
     serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, Long.toString(60L));
     Properties controllerProps = new Properties();
-    controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -137,7 +151,49 @@ public class TestBatchReportIncrementalPush {
       long waitTime = TimeUnit.SECONDS.toMillis(3);
       Utils.sleep(waitTime);
       veniceClusterWrapper.restartVeniceServer(port);
-      runIncrementalPush(storeName, 1001, 1100, childControllerUrl, veniceClusterWrapper);
+
+      DaVinciConfig daVinciConfig = new DaVinciConfig();
+      daVinciConfig.setIsolated(true);
+
+      VeniceProperties backendConfig =
+          new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+              .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+              .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+              .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+              .put(PUSH_STATUS_STORE_ENABLED, true)
+              .put(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, true)
+              .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+              .build();
+
+      D2Client d2Client = D2TestUtils.getAndStartD2Client(
+          multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
+      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+          d2Client,
+          VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+          new MetricsRepository(),
+          backendConfig)) {
+        DaVinciClient<Object, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+        client.subscribeAll().get();
+        runIncrementalPush(storeName, 1001, 1100, childControllerUrl, veniceClusterWrapper);
+
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1001; i < 1100; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = readValue(client, key);
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "first_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+      } catch (ExecutionException | InterruptedException e) {
+        throw new VeniceException(e);
+      }
+
     }
   }
 
@@ -191,6 +247,11 @@ public class TestBatchReportIncrementalPush {
   }
 
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
+      throws ExecutionException, InterruptedException {
+    return (GenericRecord) storeReader.get(key).get();
+  }
+
+  private GenericRecord readValue(DaVinciClient<Object, Object> storeReader, String key)
       throws ExecutionException, InterruptedException {
     return (GenericRecord) storeReader.get(key).get();
   }
