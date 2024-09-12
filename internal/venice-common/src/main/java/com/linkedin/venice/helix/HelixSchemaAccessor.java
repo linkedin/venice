@@ -145,32 +145,32 @@ public class HelixSchemaAccessor {
 
   public void subscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.subscribeChildChanges(getKeySchemaParentPath(storeName).toString(), childListener);
-    logger.info("Subscribe key schema child changes for store: {}.", storeName);
+    logger.debug("Subscribe key schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.unsubscribeChildChanges(getKeySchemaParentPath(storeName).toString(), childListener);
-    logger.info("Unsubscribe key schema child changes for store: {}.", storeName);
+    logger.debug("Unsubscribe key schema child changes for store: {}.", storeName);
   }
 
   public void subscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.subscribeChildChanges(getValueSchemaParentPath(storeName).toString(), childListener);
-    logger.info("Subscribe value schema child changes for store: {}.", storeName);
+    logger.debug("Subscribe value schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.unsubscribeChildChanges(getValueSchemaParentPath(storeName).toString(), childListener);
-    logger.info("Unsubscribe value schema child changes for store: {}.", storeName);
+    logger.debug("Unsubscribe value schema child changes for store: {}.", storeName);
   }
 
   public void subscribeDerivedSchemaCreationChange(String storeName, IZkChildListener childListener) {
     derivedSchemaAccessor.subscribeChildChanges(getDerivedSchemaParentPath(storeName).toString(), childListener);
-    logger.info("Subscribe derived schema child changes for store: {}.", storeName);
+    logger.debug("Subscribe derived schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeDerivedSchemaCreationChanges(String storeName, IZkChildListener childListener) {
     derivedSchemaAccessor.unsubscribeChildChanges(getDerivedSchemaParentPath(storeName).toString(), childListener);
-    logger.info("Unsubscribe derived schema child changes for store: {}.", storeName);
+    logger.debug("Unsubscribe derived schema child changes for store: {}.", storeName);
   }
 
   protected StringBuilder getStorePath(String storeName) {
@@ -252,13 +252,13 @@ public class HelixSchemaAccessor {
   public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
     replicationMetadataSchemaAccessor
         .subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName).toString(), childListener);
-    logger.info("Subscribe replication metadata schema child changes for store: {}", storeName);
+    logger.debug("Subscribe replication metadata schema child changes for store: {}", storeName);
   }
 
   public void unsubscribeReplicationMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
     replicationMetadataSchemaAccessor
         .unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName).toString(), childListener);
-    logger.info("Unsubscribe replication metadata schema child changes for store: {}.", storeName);
+    logger.debug("Unsubscribe replication metadata schema child changes for store: {}.", storeName);
   }
 
   StringBuilder getReplicationMetadataSchemaParentPath(String storeName) {

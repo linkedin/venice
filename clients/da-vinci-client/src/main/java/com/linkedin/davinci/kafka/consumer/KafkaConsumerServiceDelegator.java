@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -59,6 +61,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     KafkaConsumerService apply(int poolSize, ConsumerPoolType poolType);
   }
 
+  private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerServiceDelegator.class);
+
   public KafkaConsumerServiceDelegator(
       VeniceServerConfig serverConfig,
       KafkaConsumerServiceBuilder consumerServiceConstructor,
@@ -72,7 +76,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     // TODO: Remove this boolean check after new pooling strategy is verified in production environment.
     if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
       this.consumerPoolStrategy = new AAOrWCLeaderConsumerPoolStrategy();
-      logger.info(
+      LOGGER.info(
           "Initializing Consumer Service Delegator with Consumer pool strategy: "
               + ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED);
     } else {
@@ -91,9 +95,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         default:
           consumerPoolStrategy = new DefaultConsumerPoolStrategy();
       }
-      logger.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
+      LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
     }
-
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
 
@@ -112,6 +115,10 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     return topicPartitionToConsumerService.get(versionTopicPartitionPair);
   }
 
+  /**
+    * There might be no consumer service found for the version topic and topic partition, which means the topic partition
+   *  is not subscribed. In this case, we should return null. Caller should check the return value and handle it properly.
+   */
   @Override
   public SharedKafkaConsumer getConsumerAssignedToVersionTopicPartition(
       PubSubTopic versionTopic,
@@ -120,10 +127,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     if (kafkaConsumerService != null) {
       return kafkaConsumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
     } else {
-      logger.error(
-          "No consumer service found for version topic {} and partition {} when fetch assigned consumer.",
-          versionTopic,
-          topicPartition);
       return null;
     }
   }
@@ -134,7 +137,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     if (kafkaConsumerService != null) {
       return kafkaConsumerService.assignConsumerFor(versionTopic, pubSubTopicPartition);
     } else {
-      logger.error(
+      LOGGER.error(
           "No consumer service found for version topic {} and partition {} when assigning consumer.",
           versionTopic,
           pubSubTopicPartition);
@@ -156,7 +159,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       kafkaConsumerService.unSubscribe(versionTopic, pubSubTopicPartition);
       topicPartitionToConsumerService.remove(new TopicPartitionForIngestion(versionTopic, pubSubTopicPartition));
     } else {
-      logger.warn(
+      LOGGER.warn(
           "No consumer service found for version topic {} and partition {} when unsubscribing.",
           versionTopic,
           pubSubTopicPartition);
@@ -201,11 +204,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     if (kafkaConsumerService != null) {
       return kafkaConsumerService.getOffsetLagBasedOnMetrics(versionTopic, pubSubTopicPartition);
     } else {
-      logger.warn(
-          "No consumer service found for version topic {} and partition {} when fetching offset lag based"
-              + " metrics.",
-          versionTopic,
-          pubSubTopicPartition);
       return -1;
     }
   }
@@ -216,11 +214,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     if (kafkaConsumerService != null) {
       return kafkaConsumerService.getLatestOffsetBasedOnMetrics(versionTopic, pubSubTopicPartition);
     } else {
-      logger.warn(
-          "No consumer service found for version topic {} and partition {} when fetching latest offset"
-              + " lag based metrics.",
-          versionTopic,
-          pubSubTopicPartition);
       return -1;
     }
   }
@@ -233,7 +226,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     if (kafkaConsumerService != null) {
       return kafkaConsumerService.getIngestionInfoFromConsumer(versionTopic, pubSubTopicPartition);
     } else {
-      logger.warn(
+      LOGGER.warn(
           "No consumer service found for version topic {} and partition {} when fetching ingestion info"
               + " from consumer.",
           versionTopic,

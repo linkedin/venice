@@ -46,12 +46,19 @@ dependencies {
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
   }
 
-  implementation (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
-    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
-    exclude group: 'com.github.sgroschupf'
-    // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
-    exclude module: 'zookeeper'
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
   }
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metrics-common:1.4.1:jdk8')
 
   implementation project(':internal:alpini:netty4:alpini-netty4-base')
   implementation libraries.httpAsyncClient

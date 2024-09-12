@@ -8,7 +8,7 @@ public class VeniceRequestEarlyTerminationException extends VeniceException {
   private final String storeName;
 
   public VeniceRequestEarlyTerminationException(String storeName) {
-    super("The request to store: " + storeName + " is terminated because of early termination setup");
+    super(getMessage(storeName));
     this.storeName = storeName;
   }
 
@@ -19,6 +19,10 @@ public class VeniceRequestEarlyTerminationException extends VeniceException {
 
   public static HttpResponseStatus getHttpResponseStatus() {
     return HttpResponseStatus.REQUEST_TIMEOUT;
+  }
+
+  public static String getMessage(String storeName) {
+    return "The request to store: " + storeName + " is terminated because of early termination setup";
   }
 
   public String getStoreName() {

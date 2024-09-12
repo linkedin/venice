@@ -64,10 +64,6 @@ public class ListenerService extends AbstractVeniceService {
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-  private StorageReadRequestHandler storageReadRequestHandler;
-
-  private boolean isDaVinciClient;
-
   public ListenerService(
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
@@ -118,13 +114,8 @@ public class ListenerService extends AbstractVeniceService {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         diskHealthService,
-        serverConfig.isComputeFastAvroEnabled(),
-        serverConfig.isEnableParallelBatchGet(),
-        serverConfig.getParallelBatchGetChunkSize(),
         compressorFactory,
         resourceReadUsageTracker);
-
-    storageReadRequestHandler = requestHandler;
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
@@ -240,12 +231,10 @@ public class ListenerService extends AbstractVeniceService {
       IngestionMetadataRetriever ingestionMetadataRetriever,
       ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService diskHealthService,
-      boolean fastAvroEnabled,
-      boolean parallelBatchGetEnabled,
-      int parallelBatchGetChunkSize,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
     return new StorageReadRequestHandler(
+        serverConfig,
         executor,
         computeExecutor,
         storageEngineRepository,
@@ -254,10 +243,6 @@ public class ListenerService extends AbstractVeniceService {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         diskHealthService,
-        fastAvroEnabled,
-        parallelBatchGetEnabled,
-        parallelBatchGetChunkSize,
-        serverConfig,
         compressorFactory,
         resourceReadUsageTracker);
   }

@@ -61,8 +61,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           super.getOptions(),
           fullPathForTempSSTFileDir,
           true,
-          rocksDBServerConfig,
-          super.getBlobTransferEnabled());
+          rocksDBServerConfig);
     }
   }
 
@@ -131,12 +130,16 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   }
 
   @Override
-  public byte[] getReplicationMetadata(byte[] key) {
+  public byte[] getReplicationMetadata(ByteBuffer key) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB
-          .get(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), READ_OPTIONS_DEFAULT, key);
+      return rocksDB.get(
+          columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
+          READ_OPTIONS_DEFAULT,
+          key.array(),
+          key.position(),
+          key.remaining());
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {

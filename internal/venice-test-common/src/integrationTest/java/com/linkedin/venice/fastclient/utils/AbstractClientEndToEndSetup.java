@@ -99,6 +99,7 @@ public abstract class AbstractClientEndToEndSetup {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   protected Client r2Client;
   protected D2Client d2Client;
+  protected String controllerUrl;
 
   // da-vinci client for the da-vinci client based metadata
   private VeniceProperties daVinciBackendConfig;
@@ -225,6 +226,7 @@ public abstract class AbstractClientEndToEndSetup {
         .toAbsolutePath()
         .toString();
 
+    controllerUrl = veniceCluster.getAllControllersURLs();
     prepareData();
     prepareMetaSystemStore();
     waitForRouterD2();
@@ -274,7 +276,6 @@ public abstract class AbstractClientEndToEndSetup {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
           .getStore()

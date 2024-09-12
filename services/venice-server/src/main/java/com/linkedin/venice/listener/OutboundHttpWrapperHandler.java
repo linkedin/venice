@@ -10,11 +10,11 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
-import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -53,8 +53,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean isStreamingResponse = false;
     try {
-      if (msg instanceof ReadResponse) {
-        ReadResponse obj = (ReadResponse) msg;
+      if (msg instanceof AbstractReadResponse) {
+        AbstractReadResponse obj = (AbstractReadResponse) msg;
         ServerStatsContext statsContext = statsHandler.getServerStatsContext();
         setStats(statsContext, obj);
 
@@ -76,9 +76,10 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         responseStatus = shortcutResponse.getStatus();
         String message = shortcutResponse.getMessage();
         if (message == null) {
-          message = "";
+          body = Unpooled.EMPTY_BUFFER;
+        } else {
+          body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         }
-        body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         contentType = HttpConstants.TEXT_PLAIN;
         if (shortcutResponse.getStatus().equals(VeniceRequestEarlyTerminationException.getHttpResponseStatus())) {
           statsHandler.setRequestTerminatedEarly();
@@ -185,22 +186,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     ctx.writeAndFlush(response);
   }
 
-  public void setStats(ServerStatsContext statsContext, ReadResponse obj) {
-    statsContext.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
-    statsContext.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
-    statsContext.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
-    statsContext.setSuccessRequestKeyCount(obj.getRecordCount());
-    statsContext.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
-    statsContext.setReadComputeLatency(obj.getReadComputeLatency());
-    statsContext.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
-    statsContext.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
-    statsContext.setDotProductCount(obj.getDotProductCount());
-    statsContext.setCosineSimilarityCount(obj.getCosineSimilarityCount());
-    statsContext.setHadamardProductCount(obj.getHadamardProductCount());
-    statsContext.setCountOperatorCount(obj.getCountOperatorCount());
-    statsContext.setKeySizeList(obj.getKeySizeList());
-    statsContext.setValueSizeList(obj.getValueSizeList());
-    statsContext.setValueSize(obj.getValueSize());
-    statsContext.setReadComputeOutputSize(obj.getReadComputeOutputSize());
+  public void setStats(ServerStatsContext statsContext, AbstractReadResponse obj) {
+    statsContext.setReadResponseStats(obj.getStatsRecorder());
   }
 }

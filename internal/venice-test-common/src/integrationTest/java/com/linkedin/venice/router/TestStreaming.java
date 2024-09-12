@@ -113,9 +113,11 @@ public class TestStreaming {
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
 
-    Properties serverProperties = new Properties();
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
+    Properties serverProperties = new Properties();
+    serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true);
+    serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 100);
     veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);
 
     // Create test store

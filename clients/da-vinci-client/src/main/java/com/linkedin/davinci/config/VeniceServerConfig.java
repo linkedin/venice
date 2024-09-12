@@ -118,7 +118,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELA
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
@@ -153,11 +155,6 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_STA
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_HEADER_TABLE_SIZE;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_INITIAL_WINDOW_SIZE;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_CONCURRENT_STREAMS;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_FRAME_SIZE;
-import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_HEADER_LIST_SIZE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -168,12 +165,14 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -294,6 +293,26 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Max request size for request to Storage Node.
    */
   private final int maxRequestSize;
+
+  /**
+   * Rate limiter type for store version QPS rate limiter.
+   */
+  private VeniceRateLimiter.RateLimiterType storeVersionQpsRateLimiterType;
+
+  /**
+   * Rate limiter type for storage node.
+   */
+  private VeniceRateLimiter.RateLimiterType storageNodeRateLimiterType;
+
+  /**
+   * Server quota enforcement interval in seconds.
+   */
+  private final int quotaEnforcementIntervalInMs;
+
+  /**
+   * Server quota enforcement capacity multiple.
+   */
+  private final int quotaEnforcementCapacityMultiple;
 
   /**
    * Time interval for offset check of topic in Hybrid Store lag measurement.
@@ -570,6 +589,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     serverComputeThreadNum = serverProperties.getInt(SERVER_COMPUTE_THREAD_NUM, 16);
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3));
     maxRequestSize = (int) serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024);
+    storeVersionQpsRateLimiterType = extractRateLimiterType(
+        serverProperties.getString(
+            ConfigKeys.SERVER_STORE_VERSION_QPS_RATE_LIMITER,
+            VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_INCREMENTAL_REFILL.name()));
+    storageNodeRateLimiterType = extractRateLimiterType(
+        serverProperties.getString(
+            ConfigKeys.SERVER_STORAGE_NODE_RATE_LIMITER,
+            VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_INCREMENTAL_REFILL.name()));
+    quotaEnforcementIntervalInMs = serverProperties.getInt(SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS, 10_000);
+    quotaEnforcementCapacityMultiple = serverProperties.getInt(SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE, 5);
     topicOffsetCheckIntervalMs =
         serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     this.topicManagerMetadataFetcherConsumerPoolSize = serverProperties.getInt(
@@ -720,11 +749,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH, false);
 
     http2InboundEnabled = serverProperties.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
-    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, H2_MAX_CONCURRENT_STREAMS);
-    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE);
-    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, H2_INITIAL_WINDOW_SIZE);
-    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, H2_HEADER_TABLE_SIZE);
-    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, H2_MAX_HEADER_LIST_SIZE);
+    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
+    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
+    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
+    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
+    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart =
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
@@ -937,6 +966,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     return extractedMemoryLimit;
+  }
+
+  private VeniceRateLimiter.RateLimiterType extractRateLimiterType(String rateLimiterTypeStr) {
+    try {
+      return VeniceRateLimiter.RateLimiterType.valueOf(rateLimiterTypeStr);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException("Invalid rate limiter type: " + rateLimiterTypeStr);
+    }
   }
 
   public int getListenerPort() {
@@ -1546,5 +1583,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getChannelOptionWriteBufferHighBytes() {
     return channelOptionWriteBufferHighBytes;
+  }
+
+  public VeniceRateLimiter.RateLimiterType getStoreVersionQpsRateLimiterType() {
+    return storeVersionQpsRateLimiterType;
+  }
+
+  public VeniceRateLimiter.RateLimiterType getStorageNodeRateLimiterType() {
+    return storageNodeRateLimiterType;
+  }
+
+  public int getQuotaEnforcementIntervalInMs() {
+    return quotaEnforcementIntervalInMs;
+  }
+
+  public int getQuotaEnforcementCapacityMultiple() {
+    return quotaEnforcementCapacityMultiple;
   }
 }

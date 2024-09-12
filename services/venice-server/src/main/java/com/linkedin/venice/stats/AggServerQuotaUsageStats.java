@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 
 
@@ -28,7 +27,7 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerQuota
     getStoreStats(storeName).recordAllowedUnintentionally(rcu);
   }
 
-  public void setStoreTokenBucket(String storeName, TokenBucket tokenBucket) {
-    getStoreStats(storeName).setTokenBucket(tokenBucket);
+  public void setNodeQuotaResponsibility(String storeName, long nodeQpsResponsibility) {
+    getStoreStats(storeName).setNodeQuotaResponsibility(nodeQpsResponsibility);
   }
 }

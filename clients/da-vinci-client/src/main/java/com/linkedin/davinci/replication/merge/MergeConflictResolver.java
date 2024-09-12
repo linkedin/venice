@@ -764,13 +764,15 @@ public class MergeConflictResolver {
         return true; // Write Compute does not try to update any non-existing fields in the old value (schema).
 
       case PER_FIELD_TIMESTAMP:
-        GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
+        GenericRecord oldTimestampRecord = (GenericRecord) oldTimestampObject;
         for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
-          if (getFieldOperationType(writeComputeRecord.get(field.pos())) != NO_OP_ON_FIELD
-              && timestampRecord.get(field.name()) == null) {
-            return false; // Write Compute tries to update a non-existing field.
+          if (!oldTimestampRecord.hasField(field.name())) {
+            if (getFieldOperationType(writeComputeRecord.get(field.pos())) == NO_OP_ON_FIELD) {
+              continue; // New field does not perform actual update.
+            }
+            return false; // Partial update tries to update a non-existing field.
           }
-          if (isRmdFieldTimestampSmaller(timestampRecord, field.name(), updateOperationTimestamp, false)) {
+          if (isRmdFieldTimestampSmaller(oldTimestampRecord, field.name(), updateOperationTimestamp, false)) {
             return false; // One existing field must be updated.
           }
         }

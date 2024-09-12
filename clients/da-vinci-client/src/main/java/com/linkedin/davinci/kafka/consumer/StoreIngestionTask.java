@@ -5,7 +5,8 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
@@ -166,7 +167,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
-  private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
+  static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
@@ -239,7 +240,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
   private final ExecutorService missingSOPCheckExecutor = Executors.newSingleThreadExecutor();
-
+  private final VeniceStoreVersionConfig storeConfig;
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
 
@@ -348,6 +349,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       Queue<VeniceNotifier> notifiers) {
+    this.storeConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -1630,7 +1632,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Consumes the kafka actions messages in the queue.
    */
-  private void processConsumerActions(Store store) throws InterruptedException {
+  void processConsumerActions(Store store) throws InterruptedException {
     Instant startTime = Instant.now();
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
@@ -1678,7 +1680,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (consumerActionsQueue.remove(action)) {
           partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
         }
-        if (state != null && !state.isCompletionReported()) {
+        /**
+         * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in
+         * {@link #processCommonConsumerAction}, so the {@link PartitionConsumptionState} was never created
+         */
+        if (state == null || !state.isCompletionReported()) {
           reportError(
               "Error when processing consumer action: " + action,
               action.getPartition(),
@@ -2676,6 +2682,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get().getStorageEngine(kafkaVersionTopic).endBatchWrite(storagePartitionConfig);
       }
+    }
+
+    /**
+     * Generate snapshot after batch write is done.
+     */
+    if (storeConfig.isBlobTransferEnabled()) {
+      storageEngine.createSnapshot(storagePartitionConfig);
     }
 
     /**

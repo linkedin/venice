@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVA
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -215,7 +216,7 @@ public class VersionBackend {
         reusableValue,
         binaryDecoder,
         version.isChunkingEnabled(),
-        null,
+        NoOpReadResponseStats.SINGLETON,
         readerSchemaId,
         storeDeserializerCache,
         compressor.get());
@@ -242,7 +243,7 @@ public class VersionBackend {
         reusableValueRecord,
         binaryDecoder,
         version.isChunkingEnabled(),
-        null,
+        NoOpReadResponseStats.SINGLETON,
         readerSchemaId,
         storeDeserializerCache,
         compressor.get());
@@ -296,7 +297,6 @@ public class VersionBackend {
         reusableBinaryDecoder,
         keyRecordDeserializer,
         this.version.isChunkingEnabled(),
-        null,
         getSupersetOrLatestValueSchemaId(),
         this.storeDeserializerCache,
         this.compressor.get(),

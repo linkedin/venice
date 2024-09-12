@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -17,6 +20,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerializer;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
@@ -71,10 +75,12 @@ public class TestVeniceChunkedPayloadTTLFilter {
     validProps.put(RMD_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VENICE_STORE_NAME_PROP, TEST_STORE);
+    validProps.put(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
+    validProps.put(KAFKA_INPUT_BROKER_URL, "dummy");
+    validProps.put(KAFKA_INPUT_TOPIC, TEST_STORE + "_v1");
     VeniceProperties valid = new VeniceProperties(validProps);
     // set up HDFS schema source to write dummy RMD schemas on temp directory
     setupHDFS(valid);
-
     this.filter = new VeniceChunkedPayloadTTLFilter(valid);
   }
 

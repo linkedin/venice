@@ -1,7 +1,5 @@
 package com.linkedin.venice.listener.grpc.handlers;
 
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ServerStatsContext;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
@@ -40,7 +38,8 @@ public class GrpcOutboundStatsHandler extends VeniceServerGrpcHandler {
 
     double elapsedTime = LatencyUtils.getElapsedTimeFromNSToMS(statsContext.getRequestStartTimeInNS());
 
-    if (!ctx.hasError() && !responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND)) {
+    if (!ctx.hasError() && !responseStatus.equals(HttpResponseStatus.OK)
+        || responseStatus.equals(HttpResponseStatus.NOT_FOUND)) {
       statsContext.successRequest(serverHttpRequestStats, elapsedTime);
     } else {
       statsContext.errorRequest(serverHttpRequestStats, elapsedTime);

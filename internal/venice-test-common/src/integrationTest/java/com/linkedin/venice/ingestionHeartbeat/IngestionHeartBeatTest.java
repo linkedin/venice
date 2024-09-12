@@ -111,10 +111,12 @@ public class IngestionHeartBeatTest {
 
   @AfterTest(alwaysRun = true)
   public void cleanupStore() {
-    String parentControllerUrl = parentController.getControllerUrl();
-    try (ControllerClient parentControllerClient =
-        new ControllerClient(multiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {
-      parentControllerClient.disableAndDeleteStore(storeName);
+    if (this.parentController != null) {
+      String parentControllerUrl = parentController.getControllerUrl();
+      try (ControllerClient parentControllerClient =
+          new ControllerClient(multiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {
+        parentControllerClient.disableAndDeleteStore(storeName);
+      }
     }
   }
 

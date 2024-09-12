@@ -1,11 +1,13 @@
 package com.linkedin.davinci.client;
 
+import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EXECUTOR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 import com.linkedin.davinci.DaVinciBackend;
+import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
@@ -16,6 +18,8 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -30,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -124,6 +129,8 @@ public class AvroGenericDaVinciClientTest {
 
   @Test
   public void testBatchGetSplit() throws ExecutionException, InterruptedException {
+    Executor readChunkExecutorForLargeRequest =
+        Executors.newFixedThreadPool(2, new DaemonThreadFactory("davinci_read_chunk"));
     AvroGenericDaVinciClient<String, String> dvcClient = mock(AvroGenericDaVinciClient.class);
     when(dvcClient.getStoreName()).thenReturn("test_store");
 
@@ -142,6 +149,8 @@ public class AvroGenericDaVinciClientTest {
         new ReferenceCounted<>(versionBackend, ignored -> {});
     when(storeBackend.getDaVinciCurrentVersion()).thenReturn(versionBackendReferenceCounted);
     when(dvcClient.getStoreBackend()).thenReturn(storeBackend);
+
+    when(dvcClient.getReadChunkExecutorForLargeRequest()).thenReturn(readChunkExecutorForLargeRequest);
 
     when(dvcClient.getKeySerializer()).thenReturn(new AvroSerializer<>(Schema.create(Schema.Type.STRING)));
     when(dvcClient.getStoreDeserializerCache()).thenReturn(null);
@@ -173,5 +182,29 @@ public class AvroGenericDaVinciClientTest {
     for (int i = 0; i < keyCnt; ++i) {
       assertEquals(resultMap.get(keyPrefix + i), testValue);
     }
+  }
+
+  @Test
+  public void constructorTest() {
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    VeniceProperties backendConfig = mock(VeniceProperties.class);
+    ICProvider icProvider = mock(ICProvider.class);
+
+    AvroGenericDaVinciClient daVinciClient =
+        new AvroGenericDaVinciClient(daVinciConfig, clientConfig, backendConfig, Optional.empty(), icProvider, null);
+
+    assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), READ_CHUNK_EXECUTOR);
+
+    Executor readChunkExecutor = mock(Executor.class);
+    daVinciClient = new AvroGenericDaVinciClient(
+        daVinciConfig,
+        clientConfig,
+        backendConfig,
+        Optional.empty(),
+        icProvider,
+        readChunkExecutor);
+    assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), readChunkExecutor);
+
   }
 }

@@ -1,12 +1,12 @@
 package com.linkedin.venice.listener;
 
-import static com.linkedin.venice.grpc.GrpcUtils.*;
-import static com.linkedin.venice.listener.ServerHandlerUtils.*;
+import static com.linkedin.venice.listener.ServerHandlerUtils.extractClientCert;
 import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
 import static io.grpc.Metadata.Key;
 
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.utils.NettyUtils;
 import io.grpc.ForwardingServerCallListener;
@@ -98,7 +98,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
 
         boolean accessApproved = false;
         try {
-          X509Certificate clientCert = extractGrpcClientCert(call);
+          X509Certificate clientCert = GrpcUtils.extractGrpcClientCert(call);
           accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
           headers.put(accessApprovedKey, Boolean.toString(accessApproved));
         } catch (SSLPeerUnverifiedException e) {

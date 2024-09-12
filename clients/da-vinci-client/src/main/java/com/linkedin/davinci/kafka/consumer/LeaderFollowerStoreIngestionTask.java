@@ -19,6 +19,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -358,7 +359,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * it indicates that Helix has already assigned a new role to this replica (can be leader or follower),
            * so quickly skip this state transition and go straight to the final transition.
            */
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from STANDBY to LEADER is skipped for replica: {}, because Helix has assigned another role to it.",
               Utils.getReplicaId(topicName, partition));
           return;
@@ -366,21 +367,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
         if (partitionConsumptionState == null) {
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from STANDBY to LEADER is skipped for replica: {}, because PCS is null and the partition may have been unsubscribed.",
               Utils.getReplicaId(topicName, partition));
           return;
         }
 
         if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from STANDBY to LEADER is skipped for replica: {} as it is already the partition leader.",
               Utils.getReplicaId(topicName, partition));
           return;
         }
         if (store.isMigrationDuplicateStore()) {
           partitionConsumptionState.setLeaderFollowerState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
@@ -399,7 +400,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * it indicates that Helix has already assigned a new role to this replica (can be leader or follower),
            * so quickly skip this state transition and go straight to the final transition.
            */
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from LEADER to STANDBY is skipped for replica: {}, because Helix has assigned another role to this replica.",
               Utils.getReplicaId(topicName, partition));
           return;
@@ -407,14 +408,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         partitionConsumptionState = partitionConsumptionStateMap.get(partition);
         if (partitionConsumptionState == null) {
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from LEADER to STANDBY is skipped for replica: {}, because PCS is null and the partition may have been unsubscribed.",
               Utils.getReplicaId(topicName, partition));
           return;
         }
 
         if (partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-          LOGGER.info(
+          LOGGER.warn(
               "State transition from LEADER to STANDBY is skipped for replica: {} as this replica is already a follower.",
               partitionConsumptionState.getReplicaId());
           return;
@@ -2106,14 +2107,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           versionNumber,
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp);
+          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          partitionConsumptionState.isWaitingForReplicationLag());
     } else {
       heartbeatMonitoringService.recordFollowerHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp);
+          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          partitionConsumptionState.isWaitingForReplicationLag());
     }
   }
 
@@ -3204,7 +3207,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             isChunked,
             null,
             null,
-            null,
+            NoOpReadResponseStats.SINGLETON,
             readerValueSchemaID,
             storeDeserializerCache,
             compressor.get(),
