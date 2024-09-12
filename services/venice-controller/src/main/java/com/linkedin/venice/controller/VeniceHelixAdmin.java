@@ -2667,6 +2667,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
                       clusterConfig.getMinInSyncReplicasRealTimeTopics(),
                       false);
+                  if (version.isSeparateRealTimeTopicEnabled()) {
+                    getTopicManager().createTopic(
+                        pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
+                        numberOfPartitions,
+                        clusterConfig.getKafkaReplicationFactorRTTopics(),
+                        StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
+                        false,
+                        // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+                        clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+                        false);
+                  }
                 } else {
                   // If real-time topic already exists, check whether its retention time is correct.
                   PubSubTopicConfiguration pubSubTopicConfiguration =
@@ -3030,14 +3041,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public String getRealTimeTopic(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
-    TopicManager topicManager = getTopicManager();
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+    ensureRealTimeTopicIsReady(clusterName, realTimeTopic);
+    return realTimeTopic.getName();
+  }
+
+  @Override
+  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    PubSubTopic incrementalPushRealTimeTopic =
+        pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+    ensureRealTimeTopicIsReady(clusterName, incrementalPushRealTimeTopic);
+    return incrementalPushRealTimeTopic.getName();
+  }
+
+  private void ensureRealTimeTopicIsReady(String clusterName, PubSubTopic realTimeTopic) {
+    TopicManager topicManager = getTopicManager();
+    String storeName = realTimeTopic.getStoreName();
     if (!topicManager.containsTopic(realTimeTopic)) {
       HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         // The topic might be created by another thread already. Check before creating.
         if (topicManager.containsTopic(realTimeTopic)) {
-          return realTimeTopic.getName();
+          return;
         }
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store store = repository.getStore(storeName);
@@ -3081,7 +3107,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName);
       }
     }
-    return realTimeTopic.getName();
   }
 
   /**
@@ -3439,6 +3464,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       truncateKafkaTopic(rtTopicToDelete);
       for (ControllerClient controllerClient: controllerClientMap.values()) {
         controllerClient.deleteKafkaTopic(rtTopicToDelete);
+      }
+      // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
+      // delete it.
+      String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+      if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
+        truncateKafkaTopic(incrementalPushRTTopicToDelete);
+        for (ControllerClient controllerClient: controllerClientMap.values()) {
+          controllerClient.deleteKafkaTopic(incrementalPushRTTopicToDelete);
+        }
       }
     }
   }
@@ -4347,6 +4381,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  void setSeparateRealTimeTopicEnabled(String clusterName, String storeName, boolean separateRealTimeTopicEnabled) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setSeparateRealTimeTopicEnabled(separateRealTimeTopicEnabled);
+      return store;
+    });
+  }
+
   private void setReplicationFactor(String clusterName, String storeName, int replicaFactor) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setReplicationFactor(replicaFactor);
@@ -4626,6 +4667,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
+    Optional<Boolean> separateRealTimeTopicEnabled = params.getSeparateRealTimeTopicEnabled();
     Optional<Boolean> storeMigration = params.getStoreMigration();
     Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
     Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
@@ -4812,6 +4854,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           enableHybridModeOrUpdateSettings(clusterName, storeName);
         }
         setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
+      }
+
+      if (separateRealTimeTopicEnabled.isPresent()) {
+        setSeparateRealTimeTopicEnabled(clusterName, storeName, separateRealTimeTopicEnabled.get());
       }
 
       if (replicationFactor.isPresent()) {

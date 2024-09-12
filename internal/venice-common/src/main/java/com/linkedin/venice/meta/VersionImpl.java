@@ -269,6 +269,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return storeVersion.separateRealTimeTopicEnabled;
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    this.storeVersion.setSeparateRealTimeTopicEnabled(separateRealTimeTopicEnabled);
+  }
+
+  @Override
   public boolean isBlobTransferEnabled() {
     return this.storeVersion.blobTransferEnabled;
   }
@@ -450,6 +460,7 @@ public class VersionImpl implements Version {
     clonedVersion.setReplicationFactor(getReplicationFactor());
     clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());
+    clonedVersion.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
     clonedVersion.setUseVersionLevelIncrementalPushEnabled(isUseVersionLevelIncrementalPushEnabled());
     clonedVersion.setHybridStoreConfig(getHybridStoreConfig());
     clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());

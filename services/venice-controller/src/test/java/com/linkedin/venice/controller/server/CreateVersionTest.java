@@ -145,8 +145,8 @@ public class CreateVersionTest {
     }
   }
 
-  @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
-  public void testRequestTopicForHybridIncPushEnabled() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
+  public void testRequestTopicForHybridIncPushEnabled(boolean isSeparateTopicEnabled) throws Exception {
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
@@ -156,6 +156,7 @@ public class CreateVersionTest {
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
+    version.setSeparateRealTimeTopicEnabled(isSeparateTopicEnabled);
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
             CLUSTER_NAME,
@@ -186,7 +187,11 @@ public class CreateVersionTest {
     assertNotNull(result);
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
+    if (isSeparateTopicEnabled) {
+      assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeSeparateRealTimeTopic(STORE_NAME));
+    } else {
+      assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeRealTimeTopic(STORE_NAME));
+    }
   }
 
   // A store should never end up in the state where inc-push is enabled but hybrid configs are not set, nevertheless

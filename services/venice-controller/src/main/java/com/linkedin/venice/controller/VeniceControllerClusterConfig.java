@@ -98,6 +98,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
+import static com.linkedin.venice.ConfigKeys.ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
 import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
@@ -434,6 +435,12 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean enabledIncrementalPushForHybridActiveActiveUserStores;
 
+  /**
+   * When the following option is enabled, new user hybrid store with incremental push enabled will automatically
+   * have separate real time topic enabled.
+   */
+  private final boolean enabledSeparateRealTimeTopicForStoreWithIncrementalPush;
+
   private final boolean enablePartialUpdateForHybridActiveActiveUserStores;
   private final boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
 
@@ -564,6 +571,8 @@ public class VeniceControllerClusterConfig {
     this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
     this.enabledIncrementalPushForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    this.enabledSeparateRealTimeTopicForStoreWithIncrementalPush =
+        props.getBoolean(ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH, false);
     this.enablePartialUpdateForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
     this.enablePartialUpdateForHybridNonActiveActiveUserStores =
@@ -1130,6 +1139,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean enabledIncrementalPushForHybridActiveActiveUserStores() {
     return enabledIncrementalPushForHybridActiveActiveUserStores;
+  }
+
+  public boolean enabledSeparateRealTimeTopicForStoreWithIncrementalPush() {
+    return enabledSeparateRealTimeTopicForStoreWithIncrementalPush;
   }
 
   public boolean isEnablePartialUpdateForHybridActiveActiveUserStores() {

@@ -198,6 +198,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setBatchGetLimit(store.getBatchGetLimit());
     setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     setIncrementalPushEnabled(store.isIncrementalPushEnabled());
+    setSeparateRealTimeTopicEnabled(store.isSeparateRealTimeTopicEnabled());
     setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     setMigrating(store.isMigrating());
     setWriteComputationEnabled(store.isWriteComputationEnabled());
@@ -542,6 +543,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     this.storeProperties.incrementalPushEnabled = incrementalPushEnabled;
+  }
+
+  @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return this.storeProperties.separateRealTimeTopicEnabled;
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    this.storeProperties.separateRealTimeTopicEnabled = separateRealTimeTopicEnabled;
   }
 
   /**

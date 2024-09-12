@@ -165,6 +165,16 @@ public class RealTimeTopicSwitcher {
           false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           minISR,
           false);
+      if (version.isSeparateRealTimeTopicEnabled()) {
+        getTopicManager().createTopic(
+            pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName())),
+            partitionCount,
+            replicationFactor,
+            StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get()),
+            false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+            minISR,
+            false);
+      }
     } else {
       /**
        * If real-time topic already exists, check whether its retention time is correct.
