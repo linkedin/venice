@@ -803,7 +803,7 @@ def supportedJdkVersions = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_11, Jav
 
 task verifyJdkVersion {
   def currentJdkVersion = JavaVersion.current()
-  def isSupported = supportedJdkVersions.any {majorVersion -> currentJdkVersion.equals(majorVersion) }
+  def isSupported = supportedJdkVersions.any {version -> currentJdkVersion.equals(version) }
   if (!isSupported) {
     throw new GradleException("Invalid JDK version: ${currentJdkVersion}. Supported versions: ${supportedJdkVersions.join(', ')}.")
   }
