@@ -376,6 +376,8 @@ public class VersionBackend {
       completePartition(partition);
       backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
       partitionFutures.remove(partition);
+      partitionToPendingReportIncrementalPushList.remove(partition);
+      partitionToBatchReportEOIPEnabled.remove(partition);
     }
     tryStopHeartbeat();
   }
@@ -398,9 +400,9 @@ public class VersionBackend {
   }
 
   void maybeReportBatchEOIPStatus(int partition, Consumer<String> reportConsumer) {
-    partitionToBatchReportEOIPEnabled.put(partition, false);
+    getPartitionToBatchReportEOIPEnabled().put(partition, false);
     List<String> pendingReportIncPushVersionList =
-        partitionToPendingReportIncrementalPushList.getOrDefault(partition, Collections.emptyList());
+        getPartitionToPendingReportIncrementalPushList().getOrDefault(partition, Collections.emptyList());
     List<String> filteredIncPushVersionList = pendingReportIncPushVersionList;
     if (pendingReportIncPushVersionList.size() > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
       filteredIncPushVersionList = pendingReportIncPushVersionList.subList(
@@ -417,15 +419,23 @@ public class VersionBackend {
       String incrementalPushVersion,
       ExecutionStatus executionStatus,
       Consumer<String> reportConsumer) {
-    if (!partitionToBatchReportEOIPEnabled.getOrDefault(partition, false)) {
+    if (!getPartitionToBatchReportEOIPEnabled().getOrDefault(partition, false)) {
       reportConsumer.accept(incrementalPushVersion);
       return;
     }
     if (executionStatus.equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)) {
       return;
     }
-    partitionToPendingReportIncrementalPushList.computeIfAbsent(partition, p -> new ArrayList<>())
+    getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>())
         .add(incrementalPushVersion);
+  }
+
+  Map<Integer, Boolean> getPartitionToBatchReportEOIPEnabled() {
+    return partitionToBatchReportEOIPEnabled;
+  }
+
+  Map<Integer, List<String>> getPartitionToPendingReportIncrementalPushList() {
+    return partitionToPendingReportIncrementalPushList;
   }
 
   private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
