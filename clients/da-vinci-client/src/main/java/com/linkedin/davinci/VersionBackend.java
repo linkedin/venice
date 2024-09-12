@@ -30,6 +30,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,6 +38,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -50,6 +52,7 @@ public class VersionBackend {
   private static final Logger LOGGER = LogManager.getLogger(VersionBackend.class);
 
   private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS = 10;
+  private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
 
   private final DaVinciBackend backend;
   private final Version version;
@@ -63,6 +66,10 @@ public class VersionBackend {
   private final StoreBackendStats storeBackendStats;
   private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
+  private final Map<Integer, List<String>> partitionToPendingReportIncrementalPushList =
+      new VeniceConcurrentHashMap<>();
+  private final Map<Integer, Boolean> partitionToBatchReportEOIPEnabled = new VeniceConcurrentHashMap<>();
+  private final boolean batchReportEOIPStatusEnabled;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -76,6 +83,8 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
+    this.batchReportEOIPStatusEnabled = backend.getConfigLoader().getVeniceServerConfig().getBatchReportEOIPEnabled();
+
     if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /*
        * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by
@@ -346,6 +355,7 @@ public class VersionBackend {
         backend.getIngestionBackend().startConsumption(config, partition);
         tryStartHeartbeat();
       }
+      partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
     }
 
@@ -381,10 +391,41 @@ public class VersionBackend {
   }
 
   boolean areAllPartitionFuturesCompletedSuccessfully() {
-    if (partitionFutures == null || partitionFutures.isEmpty()) {
+    if (partitionFutures.isEmpty()) {
       return false;
     }
     return partitionFutures.values().stream().allMatch(f -> (f.isDone() && !f.isCompletedExceptionally()));
+  }
+
+  void maybeReportBatchEOIPStatus(int partition, Consumer<String> reportConsumer) {
+    partitionToBatchReportEOIPEnabled.put(partition, false);
+    List<String> pendingReportIncPushVersionList =
+        partitionToPendingReportIncrementalPushList.getOrDefault(partition, Collections.emptyList());
+    List<String> filteredIncPushVersionList = pendingReportIncPushVersionList;
+    if (pendingReportIncPushVersionList.size() > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
+      filteredIncPushVersionList = pendingReportIncPushVersionList.subList(
+          pendingReportIncPushVersionList.size() - MAX_INCREMENTAL_PUSH_ENTRY_NUM,
+          pendingReportIncPushVersionList.size());
+    }
+    for (String incPushVersion: filteredIncPushVersionList) {
+      reportConsumer.accept(incPushVersion);
+    }
+  }
+
+  void maybeReportIncrementalPushStatus(
+      int partition,
+      String incrementalPushVersion,
+      ExecutionStatus executionStatus,
+      Consumer<String> reportConsumer) {
+    if (!partitionToBatchReportEOIPEnabled.getOrDefault(partition, false)) {
+      reportConsumer.accept(incrementalPushVersion);
+      return;
+    }
+    if (executionStatus.equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)) {
+      return;
+    }
+    partitionToPendingReportIncrementalPushList.computeIfAbsent(partition, p -> new ArrayList<>())
+        .add(incrementalPushVersion);
   }
 
   private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
