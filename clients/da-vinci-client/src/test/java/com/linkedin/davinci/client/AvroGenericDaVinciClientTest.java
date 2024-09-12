@@ -6,8 +6,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
-import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
