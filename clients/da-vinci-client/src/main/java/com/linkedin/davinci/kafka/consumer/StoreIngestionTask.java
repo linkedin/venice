@@ -2062,13 +2062,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
-    return RetryUtils.executeWithMaxAttempt(() -> {
-      long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
-      if (offset == -1) {
-        throw new VeniceException("Found latest offset -1");
-      }
-      return offset;
-    }, 5, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
+    try {
+      return RetryUtils.executeWithMaxAttempt(() -> {
+        long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
+        if (offset == -1) {
+          throw new VeniceException("Found latest offset -1");
+        }
+        return offset;
+      }, 5, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
+    } catch (Exception e) {
+      LOGGER.error("Could not find latest offset for {} even after 5 retries", pubSubTopic.getName());
+      return -1;
+    }
   }
 
   protected long getPartitionOffsetLagBasedOnMetrics(String kafkaSourceAddress, PubSubTopic topic, int partition) {
