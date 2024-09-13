@@ -157,7 +157,7 @@ public class VersionBackend {
       }
       /**
        * The following function is used to forcibly clean up any leaking data partitions, which are not
-       * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
+       * visible to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
        * to open because of DaVinci memory limiter.
        */
       backend.getStorageService().forceStorageEngineCleanup(topicName);
@@ -399,6 +399,11 @@ public class VersionBackend {
     return partitionFutures.values().stream().allMatch(f -> (f.isDone() && !f.isCompletedExceptionally()));
   }
 
+  /**
+   *  This method will batch report {@link ExecutionStatus#END_OF_INCREMENTAL_PUSH_RECEIVED} for incremental push status
+   *  prior to ready-to-serve. It will only report last 50 incremental pushes as stale incremental pushes are not
+   *  being tracked, and it could reduce the volumes to system store.
+   */
   void maybeReportBatchEOIPStatus(int partition, Consumer<String> reportConsumer) {
     getPartitionToBatchReportEOIPEnabled().put(partition, false);
     List<String> pendingReportIncPushVersionList =
@@ -410,8 +415,8 @@ public class VersionBackend {
           pendingReportIncPushVersionList.size());
     }
     LOGGER.info(
-        "Topic: {}, partition: {} batch reporting EOIP for inc push versions: {}",
-        version.kafkaTopicName(),
+        "Topic: {}, partition: {} batch report END_OF_INCREMENTAL_PUSH for inc push versions: {}",
+        getVersion().kafkaTopicName(),
         partition,
         filteredIncPushVersionList);
     for (String incPushVersion: filteredIncPushVersionList) {
@@ -419,6 +424,14 @@ public class VersionBackend {
     }
   }
 
+  /**
+   *  This method may report incremental push status based on ingestion status.
+   *  Prior to ready-to-serve, if we enable batch report feature, it will accumulate the version and will not write to
+   *  system store.
+   *  When ready-to-serve is reported, we will invoke {@link VersionBackend#maybeReportIncrementalPushStatus(int, String, ExecutionStatus, Consumer)}
+   *  to clear all accumulated incremental push status. After that, it will fall back to default behavior and report
+   *  every incremental push status it received.
+   */
   void maybeReportIncrementalPushStatus(
       int partition,
       String incrementalPushVersion,
@@ -434,7 +447,7 @@ public class VersionBackend {
     LOGGER.info(
         "Adding incremental push version: {} to pending report list for topic: {}, partition: {}",
         incrementalPushVersion,
-        version.kafkaTopicName(),
+        getVersion().kafkaTopicName(),
         partition);
     getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>())
         .add(incrementalPushVersion);

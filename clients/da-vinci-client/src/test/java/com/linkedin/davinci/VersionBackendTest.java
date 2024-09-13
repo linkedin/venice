@@ -9,6 +9,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
@@ -29,6 +31,8 @@ public class VersionBackendTest {
     doReturn(partitionToBatchReportEOIPEnabled).when(versionBackend).getPartitionToBatchReportEOIPEnabled();
     doReturn(partitionToPendingReportIncrementalPushList).when(versionBackend)
         .getPartitionToPendingReportIncrementalPushList();
+    Version version = new VersionImpl("test_store", 1, "dummy");
+    doReturn(version).when(versionBackend).getVersion();
     doCallRealMethod().when(versionBackend).maybeReportIncrementalPushStatus(anyInt(), anyString(), any(), any());
     Consumer<String> mockConsumer = mock(Consumer.class);
 
@@ -64,6 +68,8 @@ public class VersionBackendTest {
     doReturn(partitionToPendingReportIncrementalPushList).when(versionBackend)
         .getPartitionToPendingReportIncrementalPushList();
     doCallRealMethod().when(versionBackend).maybeReportBatchEOIPStatus(anyInt(), any());
+    Version version = new VersionImpl("test_store", 1, "dummy");
+    doReturn(version).when(versionBackend).getVersion();
     Consumer<String> mockConsumer = mock(Consumer.class);
     versionBackend.maybeReportBatchEOIPStatus(0, mockConsumer);
     verify(mockConsumer, times(50)).accept(anyString());
