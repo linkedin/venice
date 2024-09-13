@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient.factory;
 
+import static com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode.SERVER_BASED_METADATA;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -14,18 +16,12 @@ import com.linkedin.venice.fastclient.RetriableAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.RetriableAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
-import com.linkedin.venice.fastclient.meta.DaVinciClientBasedMetadata;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
-import com.linkedin.venice.fastclient.meta.ThinClientBasedMetadata;
 import java.util.Objects;
 import org.apache.avro.specific.SpecificRecord;
 
 
-/**
- * Every call in this factory will create its own {@link ThinClientBasedMetadata}. However, they will share the same
- * thin-client that's being passed in as a config.
- */
 public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
@@ -46,23 +42,14 @@ public class ClientFactory {
   }
 
   private static StoreMetadata constructStoreMetadataReader(ClientConfig clientConfig) {
-    switch (clientConfig.getStoreMetadataFetchMode()) {
-      case THIN_CLIENT_BASED_METADATA:
-        Objects.requireNonNull(clientConfig.getThinClientForMetaStore());
-        return new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore());
-      case SERVER_BASED_METADATA:
-        Objects.requireNonNull(clientConfig.getClusterDiscoveryD2Service());
-        Objects.requireNonNull(clientConfig.getD2Client());
-        return new RequestBasedMetadata(
-            clientConfig,
-            new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()));
-      case DA_VINCI_CLIENT_BASED_METADATA:
-        Objects.requireNonNull(clientConfig.getDaVinciClientForMetaStore());
-        return new DaVinciClientBasedMetadata(clientConfig, clientConfig.getDaVinciClientForMetaStore());
-      default:
-        throw new VeniceUnsupportedOperationException(
-            "Store metadata with " + clientConfig.getStoreMetadataFetchMode());
+    if (clientConfig.getStoreMetadataFetchMode() == SERVER_BASED_METADATA) {
+      Objects.requireNonNull(clientConfig.getClusterDiscoveryD2Service());
+      Objects.requireNonNull(clientConfig.getD2Client());
+      return new RequestBasedMetadata(
+          clientConfig,
+          new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()));
     }
+    throw new VeniceUnsupportedOperationException("Store metadata with " + clientConfig.getStoreMetadataFetchMode());
   }
 
   /**

@@ -53,7 +53,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
-  private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   /**
    * Config to enable/disable warm up connection to instances from fetched metadata.
    */
@@ -114,7 +113,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
-      AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore,
       boolean isMetadataConnWarmupEnabled,
       long metadataRefreshIntervalInSeconds,
       long metadataConnWarmupTimeoutInSeconds,
@@ -199,7 +197,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         : 50;
 
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
-    this.thinClientForMetaStore = thinClientForMetaStore;
     this.isMetadataConnWarmupEnabled = isMetadataConnWarmupEnabled;
     this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
     this.metadataConnWarmupTimeoutInSeconds = metadataConnWarmupTimeoutInSeconds;
@@ -327,10 +324,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return daVinciClientForMetaStore;
   }
 
-  public AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> getThinClientForMetaStore() {
-    return thinClientForMetaStore;
-  }
-
   public boolean isMetadataConnWarmupEnabled() {
     return isMetadataConnWarmupEnabled;
   }
@@ -453,7 +446,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
 
     private boolean isVsonStore = false;
-    private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
+    private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.SERVER_BASED_METADATA;
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
     private boolean useGrpc = false;
@@ -716,7 +709,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           daVinciClientForMetaStore,
-          thinClientForMetaStore,
           isMetadataConnWarmupEnabled,
           metadataRefreshIntervalInSeconds,
           metadataConnWarmupTimeoutInSeconds,

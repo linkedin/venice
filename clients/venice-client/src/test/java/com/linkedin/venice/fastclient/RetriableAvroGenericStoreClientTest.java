@@ -14,6 +14,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
@@ -103,6 +104,8 @@ public class RetriableAvroGenericStoreClientTest {
     timeoutProcessor = new TimeoutProcessor(null, true, 1);
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))
+        .setD2Client(mock(D2Client.class))
+        .setClusterDiscoveryD2Service("test_server_discovery")
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
