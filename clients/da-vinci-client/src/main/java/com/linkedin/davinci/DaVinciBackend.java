@@ -109,7 +109,6 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
-  private final ClientConfig clientConfig;
   private BlobTransferManager<Void> blobTransferManager;
   private final boolean writeBatchingPushStatus;
 
@@ -126,7 +125,6 @@ public class DaVinciBackend implements Closeable {
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
-      this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
@@ -279,7 +277,6 @@ public class DaVinciBackend implements Closeable {
           null);
 
       ingestionService.start();
-      ingestionService.addIngestionNotifier(ingestionListener);
 
       if (isIsolatedIngestion() && cacheConfig.isPresent()) {
         // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL
@@ -697,6 +694,13 @@ public class DaVinciBackend implements Closeable {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
           versionBackend.completePartition(partitionId);
+          versionBackend.maybeReportBatchEOIPStatus(
+              partitionId,
+              v -> reportPushStatus(
+                  kafkaTopic,
+                  partitionId,
+                  ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+                  Optional.of(v)));
           versionBackend.tryStopHeartbeat();
           reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
         }
@@ -757,11 +761,15 @@ public class DaVinciBackend implements Closeable {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
-          reportPushStatus(
-              kafkaTopic,
+          versionBackend.maybeReportIncrementalPushStatus(
               partitionId,
+              incrementalPushVersion,
               ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
-              Optional.of(incrementalPushVersion));
+              v -> reportPushStatus(
+                  kafkaTopic,
+                  partitionId,
+                  ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
+                  Optional.of(v)));
           versionBackend.tryStartHeartbeat();
         }
       });
@@ -777,11 +785,15 @@ public class DaVinciBackend implements Closeable {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
           versionBackend.tryStopHeartbeat();
-          reportPushStatus(
-              kafkaTopic,
+          versionBackend.maybeReportIncrementalPushStatus(
               partitionId,
+              incrementalPushVersion,
               ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
-              Optional.of(incrementalPushVersion));
+              v -> reportPushStatus(
+                  kafkaTopic,
+                  partitionId,
+                  ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+                  Optional.of(v)));
         }
       });
     }

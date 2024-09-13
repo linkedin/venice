@@ -97,13 +97,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -275,8 +274,30 @@ public class ActiveActiveStoreIngestionTaskTest {
   }
 
   @Test
-  public void testLeaderCanSendValueChunksIntoDrainer()
-      throws ExecutionException, InterruptedException, TimeoutException {
+  public void testMaybeBatchReportEOIP() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doCallRealMethod().when(ingestionTask).maybeReportBatchEndOfIncPushStatus(any());
+
+    when(pcs.getPendingReportIncPushVersionList()).thenReturn(Collections.emptyList());
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs);
+    Mockito.verify(ingestionTask, Mockito.times(0)).getIngestionNotificationDispatcher();
+
+    when(pcs.getPendingReportIncPushVersionList()).thenReturn(Collections.singletonList("test"));
+    IngestionNotificationDispatcher ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    when(ingestionTask.getIngestionNotificationDispatcher()).thenReturn(ingestionNotificationDispatcher);
+
+    when(pcs.isComplete()).thenReturn(false);
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs);
+    Mockito.verify(ingestionTask, Mockito.times(0)).getIngestionNotificationDispatcher();
+
+    when(pcs.isComplete()).thenReturn(true);
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs);
+    Mockito.verify(ingestionTask, Mockito.times(1)).getIngestionNotificationDispatcher();
+  }
+
+  @Test
+  public void testLeaderCanSendValueChunksIntoDrainer() throws InterruptedException {
     String testTopic = "test";
     int valueSchemaId = 1;
     int rmdProtocolVersionID = 1;
