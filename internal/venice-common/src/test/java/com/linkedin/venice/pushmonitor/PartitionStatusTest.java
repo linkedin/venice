@@ -66,11 +66,22 @@ public class PartitionStatusTest {
 
     partitionStatus.batchUpdateReplicaIncPushStatus("testInstance1", Arrays.asList("a", "b", "c"), 100L);
     Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
-    Assert.assertEquals(partitionStatus.getReplicaStatus("testInstance1"), ExecutionStatus.END_OF_PUSH_RECEIVED);
+    Assert.assertEquals(
+        partitionStatus.getReplicaStatus("testInstance1"),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
     ReplicaStatus replicaStatus = partitionStatus.getReplicaStatuses().iterator().next();
     Assert.assertEquals(replicaStatus.getCurrentProgress(), 100L);
     Assert.assertEquals(replicaStatus.getStatusHistory().get(0).getIncrementalPushVersion(), "a");
+    Assert.assertEquals(
+        replicaStatus.getStatusHistory().get(0).getStatus(),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
     Assert.assertEquals(replicaStatus.getStatusHistory().get(1).getIncrementalPushVersion(), "b");
+    Assert.assertEquals(
+        replicaStatus.getStatusHistory().get(1).getStatus(),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
     Assert.assertEquals(replicaStatus.getStatusHistory().get(2).getIncrementalPushVersion(), "c");
+    Assert.assertEquals(
+        replicaStatus.getStatusHistory().get(2).getStatus(),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 }
