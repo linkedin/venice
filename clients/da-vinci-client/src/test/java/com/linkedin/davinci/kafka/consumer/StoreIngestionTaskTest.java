@@ -3169,6 +3169,15 @@ public abstract class StoreIngestionTaskTest {
     } else {
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers));
     }
+    doReturn(10L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+    long endOffset =
+        storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 0);
+    assertEquals(endOffset, 10L);
+    doReturn(-1L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+    endOffset =
+        storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 0);
+    assertEquals(endOffset, 0L);
+
   }
 
   @DataProvider
