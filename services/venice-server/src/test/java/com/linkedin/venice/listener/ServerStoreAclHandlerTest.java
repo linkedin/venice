@@ -12,17 +12,15 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
@@ -299,19 +297,16 @@ public class ServerStoreAclHandlerTest {
     // Happy path is tested in "testAllRequestTypes". Only test the invalid paths
 
     // #parts == 2 but != HEALTH request
-    assertTrue(handler.isInvalidRequest(new String[] { "", "invalid" }));
+    assertNull(handler.validateRequest(new String[] { "", "invalid" }));
 
     // #parts == 1 (if request is made to "/")
-    assertTrue(handler.isInvalidRequest(new String[] { "" }));
+    assertNull(handler.validateRequest(new String[] { "" }));
 
     // #parts == 1 (if request is made without "/". Not sure if this is possible too. But testing for completeness)
-    assertTrue(handler.isInvalidRequest(new String[] { "invalid" }));
+    assertNull(handler.validateRequest(new String[] { "invalid" }));
 
     // #parts >= 3, but invalid QueryAction
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> handler.isInvalidRequest(new String[] { "", "invalidQueryAction", "whatever" }));
-    assertEquals(e.getMessage(), "Unknown query action: invalidQueryAction");
+    assertNull(handler.validateRequest(new String[] { "", "invalid", "whatever" }));
   }
 
   @Test

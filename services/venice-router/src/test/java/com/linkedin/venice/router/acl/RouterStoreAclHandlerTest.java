@@ -1,23 +1,33 @@
 package com.linkedin.venice.router.acl;
 
+import static com.linkedin.venice.router.api.VenicePathParser.TASK_READ_QUOTA_THROTTLE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.AbstractStoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.api.RouterResourceType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -31,9 +41,12 @@ import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -248,6 +261,206 @@ public class RouterStoreAclHandlerTest {
     @Override
     public boolean matches(FullHttpResponse argument) {
       return argument.status().equals(status);
+    }
+  }
+
+  /**
+   * Mock access controller to verify basic request parsing and handling for {@link RouterStoreAclHandler}
+   */
+  private static class MockAccessController implements DynamicAccessController {
+    private RouterResourceType resourceType;
+
+    public MockAccessController(RouterResourceType resourceType) {
+      this.resourceType = resourceType;
+    }
+
+    @Override
+    public boolean hasAccessToTopic(X509Certificate clientCert, String resource, String method) throws AclException {
+      assertNotNull(clientCert, resourceType.toString());
+      validateStringArg(resource, "resource");
+      validateStringArg(method, "method");
+      return true;
+    }
+
+    @Override
+    public boolean hasAccessToAdminOperation(X509Certificate clientCert, String operation) throws AclException {
+      assertNotNull(clientCert, resourceType.toString());
+      validateStringArg(operation, "operation");
+      return true;
+    }
+
+    @Override
+    public boolean isAllowlistUsers(X509Certificate clientCert, String resource, String method) {
+      assertNotNull(clientCert, resourceType.toString());
+      validateStringArg(resource, "resource");
+      validateStringArg(method, "method");
+      return true;
+    }
+
+    @Override
+    public String getPrincipalId(X509Certificate clientCert) {
+      assertNotNull(clientCert, resourceType.toString());
+      return "testPrincipalId";
+    }
+
+    @Override
+    public DynamicAccessController init(List<String> resources) {
+      return this;
+    }
+
+    @Override
+    public boolean hasAccess(X509Certificate clientCert, String resource, String method) throws AclException {
+      assertNotNull(clientCert);
+      validateStringArg(resource, "resource");
+      validateStringArg(method, "method");
+      return true;
+    }
+
+    @Override
+    public boolean hasAcl(String resource) throws AclException {
+      validateStringArg(resource, "resource");
+      return true;
+    }
+
+    @Override
+    public void addAcl(String resource) throws AclException {
+      validateStringArg(resource, "resource");
+    }
+
+    @Override
+    public void removeAcl(String resource) throws AclException {
+      validateStringArg(resource, "resource");
+    }
+
+    @Override
+    public Set<String> getAccessControlledResources() {
+      return null;
+    }
+
+    @Override
+    public boolean isFailOpen() {
+      return false;
+    }
+
+    private void validateStringArg(String arg, String argName) {
+      assertNotNull(arg, argName + " should not be null for resource type " + resourceType.toString());
+      assertFalse(arg.isEmpty(), argName + " should not be empty string for resource type " + resourceType.toString());
+    }
+  }
+
+  @Test
+  public void testAllRequestTypes() throws SSLPeerUnverifiedException, AclException {
+    Store store = mock(Store.class);
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    when(metadataRepo.getStore(storeName)).thenReturn(store);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
+    StoreConfig storeConfig = mock(StoreConfig.class);
+    when(storeConfig.getCluster()).thenReturn(clusterName);
+    when(storeConfigRepository.getStoreConfig(storeName)).thenReturn(Optional.of(storeConfig));
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    HttpRequest request = mock(HttpRequest.class);
+    Channel channel = mock(Channel.class);
+    SocketAddress socketAddress = mock(SocketAddress.class);
+    doReturn("testRemoteHost").when(socketAddress).toString();
+    doReturn(socketAddress).when(channel).remoteAddress();
+    doReturn(channel).when(ctx).channel();
+    SslHandler sslHandler = mock(SslHandler.class);
+    ChannelPipeline channelPipeline = mock(ChannelPipeline.class);
+    doReturn(sslHandler).when(channelPipeline).get(SslHandler.class);
+    SSLEngine sslEngine = mock(SSLEngine.class);
+    SSLSession sslSession = mock(SSLSession.class);
+    X509Certificate certificate = mock(X509Certificate.class);
+    Certificate[] certificates = new Certificate[1];
+    certificates[0] = certificate;
+    doReturn(certificates).when(sslSession).getPeerCertificates();
+    doReturn(sslSession).when(sslEngine).getSession();
+    doReturn(sslEngine).when(sslHandler).engine();
+    doReturn(channelPipeline).when(ctx).pipeline();
+    doReturn(HttpMethod.GET).when(request).method();
+    VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
+    IdentityParser identityParser = mock(IdentityParser.class);
+    doReturn("testPrincipalId").when(identityParser).parseIdentityFromCert(certificate);
+    for (RouterResourceType resourceType: RouterResourceType.values()) {
+      clearInvocations(ctx);
+      MockAccessController mockAccessController = new MockAccessController(resourceType);
+      MockAccessController spyMockAccessController = spy(mockAccessController);
+      RouterStoreAclHandler storeAclHandler = new RouterStoreAclHandler(
+          routerConfig,
+          identityParser,
+          spyMockAccessController,
+          metadataRepo,
+          storeConfigRepository);
+      doReturn(buildTestURI(resourceType)).when(request).uri();
+      storeAclHandler.channelRead0(ctx, request);
+
+      LOGGER.info("Testing {} resource type", resourceType);
+      switch (resourceType) {
+        case TYPE_LEADER_CONTROLLER:
+        case TYPE_LEADER_CONTROLLER_LEGACY:
+        case TYPE_KEY_SCHEMA:
+        case TYPE_VALUE_SCHEMA:
+        case TYPE_LATEST_VALUE_SCHEMA:
+        case TYPE_GET_UPDATE_SCHEMA:
+        case TYPE_ALL_VALUE_SCHEMA_IDS:
+        case TYPE_CLUSTER_DISCOVERY:
+        case TYPE_STREAM_HYBRID_STORE_QUOTA:
+        case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
+        case TYPE_STORE_STATE:
+        case TYPE_PUSH_STATUS:
+        case TYPE_ADMIN:
+        case TYPE_RESOURCE_STATE:
+        case TYPE_CURRENT_VERSION:
+        case TYPE_BLOB_DISCOVERY:
+        case TYPE_REQUEST_TOPIC:
+          verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
+          break;
+        case TYPE_STORAGE:
+        case TYPE_COMPUTE:
+          verify(spyMockAccessController).hasAccess(any(), eq(storeName), any());
+          break;
+        case TYPE_INVALID:
+          verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
+          verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+          break;
+        default:
+          throw new IllegalArgumentException("Invalid resource type: " + resourceType);
+      }
+    }
+  }
+
+  private String buildTestURI(RouterResourceType resourceType) {
+    switch (resourceType) {
+      case TYPE_LEADER_CONTROLLER:
+      case TYPE_LEADER_CONTROLLER_LEGACY:
+      case TYPE_RESOURCE_STATE:
+        return "/" + resourceType.toString().toLowerCase();
+      case TYPE_KEY_SCHEMA:
+      case TYPE_VALUE_SCHEMA:
+      case TYPE_LATEST_VALUE_SCHEMA:
+      case TYPE_GET_UPDATE_SCHEMA:
+      case TYPE_ALL_VALUE_SCHEMA_IDS:
+      case TYPE_STORE_STATE:
+      case TYPE_CLUSTER_DISCOVERY:
+      case TYPE_STREAM_HYBRID_STORE_QUOTA:
+      case TYPE_CURRENT_VERSION:
+      case TYPE_REQUEST_TOPIC:
+        return "/" + resourceType.toString().toLowerCase() + "/" + storeName;
+      case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
+      case TYPE_PUSH_STATUS:
+        String topicName = Version.composeKafkaTopic(storeName, 1);
+        return "/" + resourceType.toString().toLowerCase() + "/" + topicName;
+      case TYPE_ADMIN:
+        return "/" + resourceType.toString().toLowerCase() + "/" + TASK_READ_QUOTA_THROTTLE;
+      case TYPE_STORAGE:
+      case TYPE_COMPUTE:
+        return "/" + resourceType.toString().toLowerCase() + "/" + storeName + "/ABCDEFG";
+      case TYPE_BLOB_DISCOVERY:
+        return "/" + resourceType.toString().toLowerCase() + "?store=" + storeName
+            + "&store_version=1&store_partition=2";
+      case TYPE_INVALID:
+        return "/invalid";
+      default:
+        throw new IllegalArgumentException("Invalid resource type: " + resourceType);
     }
   }
 }

@@ -320,12 +320,16 @@ public class AbstractStoreAclHandlerTest {
     }
   }
 
+  private enum TestRequestType {
+    GOOD_URI, NO_ACL
+  }
+
   /**
    * Assume a service with the following endpoints:
    * /goodUri/{storeName}/random
    * /noAcl
    */
-  private static class MockStoreAclHandler extends AbstractStoreAclHandler {
+  private static class MockStoreAclHandler extends AbstractStoreAclHandler<TestRequestType> {
     public MockStoreAclHandler(
         IdentityParser identityParser,
         DynamicAccessController accessController,
@@ -334,18 +338,24 @@ public class AbstractStoreAclHandlerTest {
     }
 
     @Override
-    protected boolean needsAclValidation(String[] requestParts) {
-      return !requestParts[1].equals("noAcl");
+    protected boolean needsAclValidation(TestRequestType requestType) {
+      return requestType != TestRequestType.NO_ACL;
     }
 
     @Override
-    protected String extractStoreName(String[] requestParts) {
+    protected String extractStoreName(TestRequestType requestType, String[] requestParts) {
       return requestParts[2];
     }
 
     @Override
-    protected boolean isInvalidRequest(String[] requestParts) {
-      return requestParts[1].equals("badUri");
+    protected TestRequestType validateRequest(String[] requestParts) {
+      if (requestParts[1].equals("noAcl")) {
+        return TestRequestType.NO_ACL;
+      } else if (requestParts[1].equals("goodUri")) {
+        return TestRequestType.GOOD_URI;
+      } else {
+        return null;
+      }
     }
   }
 }

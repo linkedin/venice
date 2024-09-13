@@ -40,7 +40,7 @@ import org.apache.logging.log4j.Logger;
  *    validate the request in store-level, which is exactly same as the access control behavior in Router.
  * If both of them fail, the request will be rejected.
  */
-public class ServerStoreAclHandler extends AbstractStoreAclHandler implements ServerInterceptor {
+public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> implements ServerInterceptor {
   private final static Logger LOGGER = LogManager.getLogger(ServerStoreAclHandler.class);
 
   /**
@@ -63,13 +63,12 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler implements Se
   }
 
   @Override
-  protected boolean needsAclValidation(String[] requestParts) {
+  protected boolean needsAclValidation(QueryAction queryAction) {
     /*
      * Skip request uri validations for store name and certificates due to special actions
      * TODO: Identify validations for each query actions and have a flow to perform validations and actions based on
      * query actions
      */
-    QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
     return !QUERIES_TO_SKIP_ACL.contains(queryAction);
   }
 
@@ -136,9 +135,8 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler implements Se
   }
 
   @Override
-  protected String extractStoreName(String[] requestParts) {
+  protected String extractStoreName(QueryAction queryAction, String[] requestParts) {
     String resourceName = requestParts[2];
-    QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
     return extractStoreName(resourceName, queryAction);
   }
 
@@ -159,24 +157,24 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler implements Se
   }
 
   @Override
-  protected boolean isInvalidRequest(String[] requestParts) {
+  protected QueryAction validateRequest(String[] requestParts) {
     int partsLength = requestParts.length;
-    boolean invalidRequest = false;
-
     // Only for HEALTH queries, parts length can be 2
     if (partsLength == 2) {
-      invalidRequest = !requestParts[1].equalsIgnoreCase(QueryAction.HEALTH.name());
+      if (requestParts[1].equalsIgnoreCase(QueryAction.HEALTH.name())) {
+        return QueryAction.HEALTH;
+      } else {
+        return null;
+      }
     } else if (partsLength < 3) { // invalid request if parts length < 3 except health queries
-      invalidRequest = true;
+      return null;
     } else { // throw exception to retain current behavior for invalid query actions
       try {
-        QueryAction.valueOf(requestParts[1].toUpperCase());
+        return QueryAction.valueOf(requestParts[1].toUpperCase());
       } catch (IllegalArgumentException exception) {
-        throw new VeniceException("Unknown query action: " + requestParts[1]);
+        return null;
       }
     }
-
-    return invalidRequest;
   }
 
   @Override

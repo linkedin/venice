@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
  * Store-level access control handler, which is being used by both Router and Server.
  */
 @ChannelHandler.Sharable
-public abstract class AbstractStoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
+public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStoreAclHandler.class);
 
   private final IdentityParser identityParser;
@@ -73,19 +73,20 @@ public abstract class AbstractStoreAclHandler extends SimpleChannelInboundHandle
 
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
+    REQUEST_TYPE requestType = validateRequest(requestParts);
 
-    if (isInvalidRequest(requestParts)) {
+    if (requestType == null) {
       errorHandler.accept(HttpResponseStatus.BAD_REQUEST, "Invalid request uri: " + uri);
       return;
     }
 
-    if (!needsAclValidation(requestParts)) {
+    if (!needsAclValidation(requestType)) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
       return;
     }
 
-    String storeName = extractStoreName(requestParts);
+    String storeName = extractStoreName(requestType, requestParts);
     X509Certificate clientCert = extractClientCert(ctx);
 
     try {
@@ -113,11 +114,17 @@ public abstract class AbstractStoreAclHandler extends SimpleChannelInboundHandle
     return false;
   }
 
-  protected abstract boolean needsAclValidation(String[] requestParts);
+  protected abstract boolean needsAclValidation(REQUEST_TYPE requestType);
 
-  protected abstract String extractStoreName(String[] requestParts);
+  protected abstract String extractStoreName(REQUEST_TYPE requestType, String[] requestParts);
 
-  protected abstract boolean isInvalidRequest(String[] requestParts);
+  /**
+   * Validate the request and return the request type. If the request is invalid, return {@code null}
+   *
+   * @param requestParts the parts of the request URI
+   * @return the request type; null if the request is invalid
+   */
+  protected abstract REQUEST_TYPE validateRequest(String[] requestParts);
 
   @VisibleForTesting
   protected boolean hasAccess(
