@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -15,6 +16,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -138,4 +141,20 @@ public class PartitionConsumptionStateTest {
     pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_COMPLETED);
     assertTrue(pcs.isLeaderCompleted());
   }
+
+  @Test
+  public void testAddIncPushVersionToPendingReportList() {
+    List<String> pendingReportIncrementalPush = new ArrayList<>();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(pendingReportIncrementalPush).when(offsetRecord).getPendingReportIncPushVersionList();
+    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, offsetRecord, false);
+    pcs.addIncPushVersionToPendingReportList("a");
+    Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 1);
+    for (int i = 0; i < 50; i++) {
+      pcs.addIncPushVersionToPendingReportList("v_" + i);
+    }
+    Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 50);
+    Assert.assertEquals(pcs.getPendingReportIncPushVersionList().get(0), "v_0");
+  }
+
 }

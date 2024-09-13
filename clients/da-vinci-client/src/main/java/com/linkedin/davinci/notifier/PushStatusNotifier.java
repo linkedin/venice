@@ -33,7 +33,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class PushStatusNotifier implements VeniceNotifier {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusNotifier.class);
-  private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private final OfflinePushAccessor offLinePushAccessor;
   private final HelixPartitionStatusAccessor helixPartitionStatusAccessor;
 
@@ -135,22 +134,11 @@ public class PushStatusNotifier implements VeniceNotifier {
       int partitionId,
       long offset,
       List<String> pendingReportIncPushVersionList) {
-    /**
-     * We will perform filtering on batch inc push to report, as by original design we will only keep latest N inc push
-     * entries.
-     * For system store dual write, this is not perfect but good enough for now to keep a low volume of updates without
-     * refactor the key schema.
-     */
-    List<String> filteredIncPushVersionList = pendingReportIncPushVersionList;
-    if (pendingReportIncPushVersionList.size() > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
-      filteredIncPushVersionList = pendingReportIncPushVersionList.subList(
-          pendingReportIncPushVersionList.size() - MAX_INCREMENTAL_PUSH_ENTRY_NUM,
-          pendingReportIncPushVersionList.size());
-    }
+
     offLinePushAccessor
-        .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, filteredIncPushVersionList);
+        .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, pendingReportIncPushVersionList);
     // We don't need to report redundant SOIP for these stale inc push versions as they've all received EOIP.
-    for (String incPushVersion: filteredIncPushVersionList) {
+    for (String incPushVersion: pendingReportIncPushVersionList) {
       updateIncrementalPushStatusToPushStatusStore(
           topic,
           incPushVersion,

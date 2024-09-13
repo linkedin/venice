@@ -27,6 +27,12 @@ public class VersionBackendTest {
   public void testMaybeReportIncrementalPushStatus() {
     VersionBackend versionBackend = mock(VersionBackend.class);
     Map<Integer, List<String>> partitionToPendingReportIncrementalPushList = new VeniceConcurrentHashMap<>();
+    List<String> pendingReportVersionList = new ArrayList<>();
+    for (int i = 0; i < 50; i++) {
+      pendingReportVersionList.add("version_" + i);
+    }
+    partitionToPendingReportIncrementalPushList.put(0, pendingReportVersionList);
+
     Map<Integer, Boolean> partitionToBatchReportEOIPEnabled = new VeniceConcurrentHashMap<>();
     doReturn(partitionToBatchReportEOIPEnabled).when(versionBackend).getPartitionToBatchReportEOIPEnabled();
     doReturn(partitionToPendingReportIncrementalPushList).when(versionBackend)
@@ -47,18 +53,24 @@ public class VersionBackendTest {
     versionBackend
         .maybeReportIncrementalPushStatus(0, "a", ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, mockConsumer);
     verify(mockConsumer, times(2)).accept("a");
+    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).size(), 50);
+    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).get(0), "version_0");
+    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).get(49), "version_49");
+
     versionBackend
         .maybeReportIncrementalPushStatus(0, "a", ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, mockConsumer);
     verify(mockConsumer, times(2)).accept("a");
     Assert.assertTrue(partitionToPendingReportIncrementalPushList.containsKey(0));
-    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).size(), 1);
+    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).size(), 50);
+    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).get(0), "version_1");
+    Assert.assertEquals(partitionToPendingReportIncrementalPushList.get(0).get(49), "a");
   }
 
   @Test
   public void testMaybeReportBatchEOIPStatus() {
     VersionBackend versionBackend = mock(VersionBackend.class);
     List<String> incPushList = new ArrayList<>();
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 50; i++) {
       incPushList.add("inc_" + i);
     }
     Map<Integer, List<String>> partitionToPendingReportIncrementalPushList = Collections.singletonMap(0, incPushList);
@@ -73,10 +85,8 @@ public class VersionBackendTest {
     Consumer<String> mockConsumer = mock(Consumer.class);
     versionBackend.maybeReportBatchEOIPStatus(0, mockConsumer);
     verify(mockConsumer, times(50)).accept(anyString());
-    verify(mockConsumer, times(0)).accept("inc_0");
-    verify(mockConsumer, times(0)).accept("inc_49");
-    verify(mockConsumer, times(1)).accept("inc_50");
-    verify(mockConsumer, times(1)).accept("inc_99");
+    verify(mockConsumer, times(1)).accept("inc_0");
+    verify(mockConsumer, times(1)).accept("inc_49");
     Assert.assertFalse(partitionToBatchReportEOIPEnabled.get(0));
   }
 }

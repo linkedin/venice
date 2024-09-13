@@ -83,7 +83,7 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
-    this.batchReportEOIPStatusEnabled = backend.getConfigLoader().getVeniceServerConfig().getBatchReportEOIPEnabled();
+    this.batchReportEOIPStatusEnabled = config.getBatchReportEOIPEnabled();
 
     if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /*
@@ -408,18 +408,15 @@ public class VersionBackend {
     getPartitionToBatchReportEOIPEnabled().put(partition, false);
     List<String> pendingReportIncPushVersionList =
         getPartitionToPendingReportIncrementalPushList().getOrDefault(partition, Collections.emptyList());
-    List<String> filteredIncPushVersionList = pendingReportIncPushVersionList;
-    if (pendingReportIncPushVersionList.size() > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
-      filteredIncPushVersionList = pendingReportIncPushVersionList.subList(
-          pendingReportIncPushVersionList.size() - MAX_INCREMENTAL_PUSH_ENTRY_NUM,
-          pendingReportIncPushVersionList.size());
+    if (pendingReportIncPushVersionList.isEmpty()) {
+      return;
     }
     LOGGER.info(
         "Topic: {}, partition: {} batch report END_OF_INCREMENTAL_PUSH for inc push versions: {}",
         getVersion().kafkaTopicName(),
         partition,
-        filteredIncPushVersionList);
-    for (String incPushVersion: filteredIncPushVersionList) {
+        pendingReportIncPushVersionList);
+    for (String incPushVersion: pendingReportIncPushVersionList) {
       reportConsumer.accept(incPushVersion);
     }
   }
@@ -449,8 +446,15 @@ public class VersionBackend {
         incrementalPushVersion,
         getVersion().kafkaTopicName(),
         partition);
-    getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>())
-        .add(incrementalPushVersion);
+    List<String> pendingReportIncPushVersionList =
+        getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>());
+    pendingReportIncPushVersionList.add(incrementalPushVersion);
+    int versionCount = pendingReportIncPushVersionList.size();
+    if (versionCount > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
+      getPartitionToPendingReportIncrementalPushList().put(
+          partition,
+          pendingReportIncPushVersionList.subList(versionCount - MAX_INCREMENTAL_PUSH_ENTRY_NUM, versionCount));
+    }
   }
 
   Map<Integer, Boolean> getPartitionToBatchReportEOIPEnabled() {

@@ -30,6 +30,8 @@ import org.apache.avro.generic.GenericRecord;
  * This class is used to maintain internal state for consumption of each partition.
  */
 public class PartitionConsumptionState {
+  private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
+
   private final String replicaId;
   private final int partition;
   private final boolean hybrid;
@@ -204,7 +206,7 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
-  private final List<String> pendingReportIncPushVersionList;
+  private List<String> pendingReportIncPushVersionList;
 
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
@@ -840,7 +842,16 @@ public class PartitionConsumptionState {
 
   public void addIncPushVersionToPendingReportList(String incPushVersion) {
     pendingReportIncPushVersionList.add(incPushVersion);
-    offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
+    /**
+     * We will perform filtering on batch inc push to report, as by original design we will only keep latest 50 inc push
+     * entries.
+     */
+    int versionCount = pendingReportIncPushVersionList.size();
+    if (versionCount > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
+      pendingReportIncPushVersionList =
+          pendingReportIncPushVersionList.subList(versionCount - MAX_INCREMENTAL_PUSH_ENTRY_NUM, versionCount);
+    }
+    getOffsetRecord().setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
   }
 
   public List<String> getPendingReportIncPushVersionList() {
