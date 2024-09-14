@@ -54,6 +54,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -883,7 +884,7 @@ public class VenicePushJobTest {
   }
 
   /**
-   * Tests that the error message for the {@link VenicePushJob.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
    * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -901,7 +902,7 @@ public class VenicePushJobTest {
       final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
       final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
       Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "100.0 MiB" : "950.0 KiB"), errorMessage);
-      Assert.assertEquals(latestCheckpoint, VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
+      Assert.assertEquals(latestCheckpoint, PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
     }
   }
 

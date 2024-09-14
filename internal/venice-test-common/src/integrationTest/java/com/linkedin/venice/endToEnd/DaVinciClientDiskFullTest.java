@@ -11,8 +11,6 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.DVC_INGESTION_ERROR_DISK_FULL;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_JOB_STATUS_POLLING;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -33,6 +31,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -290,8 +289,8 @@ public class DaVinciClientDiskFullTest {
                 .getPushJobLatestCheckpoint()
                 .intValue(),
             useDaVinciSpecificExecutionStatusForError
-                ? DVC_INGESTION_ERROR_DISK_FULL.getValue()
-                : START_JOB_STATUS_POLLING.getValue());
+                ? PushJobCheckpoints.DVC_INGESTION_ERROR_DISK_FULL.getValue()
+                : PushJobCheckpoints.START_JOB_STATUS_POLLING.getValue());
       } finally {
         controllerClient.disableAndDeleteStore(storeName);
       }

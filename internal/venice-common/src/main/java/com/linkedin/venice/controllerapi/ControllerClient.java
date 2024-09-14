@@ -40,7 +40,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_O
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
@@ -820,13 +819,6 @@ public class ControllerClient implements Closeable {
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(FABRIC, region);
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, QUERY_JOB_STATUS_TIMEOUT, 1, null);
-  }
-
-  // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
-  public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
-    QueryParams params =
-        newParams().add(NAME, storeName).add(VERSION, version).add(PUSH_JOB_DETAILS, pushJobDetailsString);
-    return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class);
   }
 
   public ControllerResponse sendPushJobDetails(String storeName, int version, byte[] pushJobDetails) {

@@ -33,6 +33,7 @@ import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -56,6 +57,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -182,10 +184,12 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.system.store.MetaStoreReader;
@@ -246,6 +250,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.AccessOption;
@@ -394,6 +399,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int pushJobDetailsSchemaId = -1;
 
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
+  private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
 
   private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
   private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
@@ -673,8 +679,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
       DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
+      PushJobStatusStats pushJobStatusStats = new PushJobStatusStats(metricsRepository, clusterName);
       disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
       liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
+      pushJobStatusStatsMap.put(clusterName, pushJobStatusStats);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -1174,6 +1182,70 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return response.getId();
   }
 
+  static boolean isPushJobFailedUserError(PushJobDetailsStatus status, PushJobCheckpoints pushJobCheckpoint) {
+    if (PushJobDetailsStatus.isFailed(status)) {
+      if (pushJobCheckpoint != null) {
+        switch (pushJobCheckpoint) {
+          case QUOTA_EXCEEDED:
+          case WRITE_ACL_FAILED:
+          case DUP_KEY_WITH_DIFF_VALUE:
+          case INPUT_DATA_SCHEMA_VALIDATION_FAILED:
+          case EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED:
+          case RECORD_TOO_LARGE_FAILED:
+          case CONCURRENT_BATCH_PUSH:
+          case DATASET_CHANGED:
+          case INVALID_INPUT_FILE:
+          case DVC_INGESTION_ERROR_DISK_FULL:
+          case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
+            return true;
+
+          default:
+            return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  static void emitPushJobDetailsMetrics(Map<String, PushJobStatusStats> pushJobStatusStatsMap, PushJobDetails value) {
+    List<PushJobDetailsStatusTuple> overallStatuses = value.getOverallStatus();
+    if (overallStatuses.isEmpty()) {
+      return;
+    }
+    boolean isIncrementalPush = false;
+    String cluster = value.getClusterName().toString();
+    PushJobStatusStats pushJobStatusStats = pushJobStatusStatsMap.get(cluster);
+    Utf8 incPushKey = new Utf8("incremental.push");
+    if (value.getPushJobConfigs().containsKey(incPushKey)) {
+      isIncrementalPush = Boolean.parseBoolean(value.getPushJobConfigs().get(incPushKey).toString());
+    }
+    PushJobDetailsStatus overallStatus =
+        PushJobDetailsStatus.fromInt(overallStatuses.get(overallStatuses.size() - 1).getStatus());
+    PushJobCheckpoints checkpoint = PushJobCheckpoints.fromInt(value.getPushJobLatestCheckpoint());
+    if (PushJobDetailsStatus.isFailed(overallStatus)) {
+      if (isPushJobFailedUserError(overallStatus, checkpoint)) {
+        if (isIncrementalPush) {
+          pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
+        } else {
+          pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor();
+        }
+      } else {
+        if (isIncrementalPush) {
+          pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor();
+        } else {
+          pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor();
+        }
+      }
+    } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
+      // Emit metrics for successful push jobs
+      if (isIncrementalPush) {
+        pushJobStatusStats.recordIncrementalPushSuccessSensor();
+      } else {
+        pushJobStatusStats.recordBatchPushSuccessSensor();
+      }
+    }
+  }
+
   /**
    * Lazy initialize a Venice writer for an internal real time topic store of push job details records.
    * Use this writer to put a pair of push job detail record (<code>key</code> and <code>value</code>).
@@ -1182,6 +1254,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    // Emit push job status metrics
+    emitPushJobDetailsMetrics(pushJobStatusStatsMap, value);
+    // Send push job details to the push job status system store
     if (pushJobStatusStoreClusterName.isEmpty()) {
       throw new VeniceException(
           ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
@@ -5753,6 +5828,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public DisabledPartitionStats getDisabledPartitionStats(String clusterName) {
     return disabledPartitionStatMap.get(clusterName);
+  }
+
+  public PushJobStatusStats getPushJobStatusStats(String clusterName) {
+    return pushJobStatusStatsMap.get(clusterName);
   }
 
   /**
