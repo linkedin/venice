@@ -8,8 +8,6 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.NettyUtils;
@@ -67,7 +65,6 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
 
     String uri = req.uri();
     String method = req.method().name();
-    String client = ctx.channel().remoteAddress().toString(); // ip and port
     BiConsumer<HttpResponseStatus, String> errorHandler =
         (status, errorMessage) -> NettyUtils.setupResponseAndFlush(status, errorMessage.getBytes(), false, ctx);
 
@@ -87,26 +84,22 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
     }
 
     String storeName = extractStoreName(requestType, requestParts);
+
+    // When there is no store present in the metadata repository, pass the ACL check and let the next handler handle the
+    // case of deleted or migrated store
+    if (metadataRepository.getStore(storeName) == null) {
+      ReferenceCountUtil.retain(req);
+      ctx.fireChannelRead(req);
+      return;
+    }
+
     X509Certificate clientCert = extractClientCert(ctx);
 
-    try {
-      Store store = metadataRepository.getStore(storeName);
-      if (store == null || store.isMigrating()) {
-        handleStoreMigration(ctx, req, storeName, store);
-      }
-
-      // Check ACL in case of non system store as system store contain public information
-      if (VeniceSystemStoreUtils.isSystemStore(storeName)
-          || hasAccess(uri, clientCert, storeName, method, errorHandler)) {
-        ReferenceCountUtil.retain(req);
-        ctx.fireChannelRead(req);
-      }
-    } catch (VeniceNoStoreException noStoreException) {
-      LOGGER.debug("Requested store does not exist: {} requested {} {}", client, method, req.uri());
-      errorHandler.accept(HttpResponseStatus.BAD_REQUEST, "Invalid Venice store name: " + storeName);
-    } catch (VeniceStoreIsMigratedException storeIsMigratedException) {
-      LOGGER.debug("Requested store is being migrated: {} requested {} {}", client, method, req.uri());
-      errorHandler.accept(HttpResponseStatus.MOVED_PERMANENTLY, storeIsMigratedException.getMessage());
+    // Check ACL in case of non system store as system store contain public information
+    if (VeniceSystemStoreUtils.isSystemStore(storeName)
+        || hasAccess(uri, clientCert, storeName, method, errorHandler)) {
+      ReferenceCountUtil.retain(req);
+      ctx.fireChannelRead(req);
     }
   }
 
@@ -216,10 +209,5 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
     }
 
     return allowRequest;
-  }
-
-  protected void handleStoreMigration(ChannelHandlerContext ctx, HttpRequest req, String storeName, Store store)
-      throws VeniceNoStoreException, VeniceStoreIsMigratedException {
-    throw new VeniceNoStoreException(storeName);
   }
 }

@@ -26,7 +26,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.RouterResourceType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -40,9 +39,7 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import javax.net.ssl.SSLEngine;
@@ -65,25 +62,17 @@ public class RouterStoreAclHandlerTest {
   private String storeName;
   private Store store;
   private String clusterName;
-  private String migratedClusterName;
-  private VeniceRouterConfig routerConfig;
-  private HelixReadOnlyStoreConfigRepository storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
   private boolean[] hasStore = { false };
-  private boolean[] storeMigrating = { false };
-  private boolean[] storeMigrated = { false };
   private boolean[] isBadUri = { false };
 
   private void resetAllConditions() {
     hasStore[0] = false;
-    storeMigrating[0] = false;
-    storeMigrated[0] = false;
     isBadUri[0] = false;
   }
 
   @BeforeMethod
   public void setUp() throws Exception {
     clusterName = "testCluster";
-    migratedClusterName = "migratedCluster";
     storeName = "testStore";
     identityParser = mock(IdentityParser.class);
     accessController = mock(DynamicAccessController.class);
@@ -92,14 +81,6 @@ public class RouterStoreAclHandlerTest {
     store = mock(Store.class);
 
     when(accessController.init(any())).thenReturn(accessController);
-
-    routerConfig = mock(VeniceRouterConfig.class);
-    when(routerConfig.getClusterName()).thenReturn(clusterName);
-
-    Map<String, String> clusterToD2Map = new HashMap<>();
-    clusterToD2Map.put(clusterName, "testClusterD2");
-    clusterToD2Map.put(migratedClusterName, "migratedClusterD2");
-    when(routerConfig.getClusterToD2Map()).thenReturn(clusterToD2Map);
 
     // Certificate
     ChannelPipeline pipe = mock(ChannelPipeline.class);
@@ -130,42 +111,33 @@ public class RouterStoreAclHandlerTest {
   @Test
   public void storeMissing() throws Exception {
     hasStore[0] = false;
-    enumerate(storeMigrating, storeMigrated);
+    enumerate();
 
-    verify(ctx, never()).fireChannelRead(req);
+    verify(ctx, times(1)).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
-
-    // When !storeMigrated
-    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
-
-    // When storeMigrated
-    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.MOVED_PERMANENTLY)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
 
   @Test
   public void isBadUri() throws Exception {
     isBadUri[0] = true;
-    enumerate(hasStore, storeMigrated, storeMigrating);
+    enumerate(hasStore);
 
     // should fail every time for BAD_REQUEST
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
 
   @Test
   public void testAllCases() throws Exception {
-    enumerate(hasStore, storeMigrated, storeMigrating, isBadUri);
+    enumerate(hasStore, isBadUri);
 
-    // !isBadUri && hasStore && !storeMigrating = 2 times
+    // !isBadUri && hasStore = 1 times
+    // !isBadUri && !hasStore = 1 times
     verify(ctx, times(2)).fireChannelRead(req);
 
-    // !isBadUri && hasStore && storeMigrating = 2 times
-    // !isBadUri && !hasStore && storeMigrated = 2 times
-    verify(ctx, times(4)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.MOVED_PERMANENTLY)));
-
-    // isBadUri = 8 times
-    // !isBadUri && !hasStore && !storeMigrated = 2 times
-    verify(ctx, times(10)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    // isBadUri = 2 times
+    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -180,20 +152,6 @@ public class RouterStoreAclHandlerTest {
       when(metadataRepo.getStore(any())).thenReturn(store);
     } else {
       when(metadataRepo.getStore(any())).thenReturn(null);
-    }
-
-    if (storeMigrating[0]) {
-      when(store.isMigrating()).thenReturn(true);
-    } else {
-      when(store.isMigrating()).thenReturn(false);
-    }
-
-    if ((hasStore[0] && storeMigrating[0]) || storeMigrated[0]) {
-      StoreConfig storeConfig = mock(StoreConfig.class);
-      when(storeConfig.getCluster()).thenReturn(migratedClusterName);
-      when(storeConfigRepository.getStoreConfig(storeName)).thenReturn(Optional.of(storeConfig));
-    } else {
-      when(storeConfigRepository.getStoreConfig(storeName)).thenReturn(Optional.empty());
     }
 
     String storeNameInRequest = storeName;
@@ -230,20 +188,10 @@ public class RouterStoreAclHandlerTest {
       }
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);
-      AbstractStoreAclHandler aclHandler = spy(
-          new RouterStoreAclHandler(
-              routerConfig,
-              identityParser,
-              accessController,
-              metadataRepo,
-              storeConfigRepository));
+      AbstractStoreAclHandler aclHandler =
+          spy(new RouterStoreAclHandler(identityParser, accessController, metadataRepo));
       update();
-      LOGGER.info(
-          "hasStore: {}, storeMigrating: {}, storeMigrated: {}, isBadUri: {}",
-          hasStore[0],
-          storeMigrating[0],
-          storeMigrated[0],
-          isBadUri[0]);
+      LOGGER.info("hasStore: {}, isBadUri: {}", hasStore[0], isBadUri[0]);
       aclHandler.channelRead0(ctx, req);
     }
 
@@ -377,19 +325,14 @@ public class RouterStoreAclHandlerTest {
     doReturn(sslEngine).when(sslHandler).engine();
     doReturn(channelPipeline).when(ctx).pipeline();
     doReturn(HttpMethod.GET).when(request).method();
-    VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     IdentityParser identityParser = mock(IdentityParser.class);
     doReturn("testPrincipalId").when(identityParser).parseIdentityFromCert(certificate);
     for (RouterResourceType resourceType: RouterResourceType.values()) {
       clearInvocations(ctx);
       MockAccessController mockAccessController = new MockAccessController(resourceType);
       MockAccessController spyMockAccessController = spy(mockAccessController);
-      RouterStoreAclHandler storeAclHandler = new RouterStoreAclHandler(
-          routerConfig,
-          identityParser,
-          spyMockAccessController,
-          metadataRepo,
-          storeConfigRepository);
+      RouterStoreAclHandler storeAclHandler =
+          new RouterStoreAclHandler(identityParser, spyMockAccessController, metadataRepo);
       doReturn(buildTestURI(resourceType)).when(request).uri();
       storeAclHandler.channelRead0(ctx, request);
 

@@ -2,24 +2,14 @@ package com.linkedin.venice.router.acl;
 
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_INVALID;
 
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.AbstractStoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreConfig;
-import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.RouterResourceType;
 import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.HttpRequest;
-import java.util.Optional;
 
 
 /**
@@ -27,18 +17,11 @@ import java.util.Optional;
  */
 @ChannelHandler.Sharable
 public class RouterStoreAclHandler extends AbstractStoreAclHandler<RouterResourceType> {
-  private final HelixReadOnlyStoreConfigRepository storeConfigRepository;
-  private final VeniceRouterConfig config;
-
   public RouterStoreAclHandler(
-      VeniceRouterConfig config,
       IdentityParser identityParser,
       DynamicAccessController accessController,
-      ReadOnlyStoreRepository metadataRepository,
-      HelixReadOnlyStoreConfigRepository storeConfigRepository) {
+      ReadOnlyStoreRepository metadataRepository) {
     super(identityParser, accessController, metadataRepository);
-    this.config = config;
-    this.storeConfigRepository = storeConfigRepository;
     metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessController));
   }
 
@@ -95,25 +78,6 @@ public class RouterStoreAclHandler extends AbstractStoreAclHandler<RouterResourc
         return null;
       }
       return resourceType;
-    }
-  }
-
-  @Override
-  protected void handleStoreMigration(ChannelHandlerContext ctx, HttpRequest req, String storeName, Store store)
-      throws VeniceNoStoreException, VeniceStoreIsMigratedException {
-    // The client might be idle for a long time while the store is migrated. Check for store migration.
-    if (req.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
-      Optional<StoreConfig> storeConfig = storeConfigRepository.getStoreConfig(storeName);
-      if (storeConfig.isPresent()) {
-        String newCluster = storeConfig.get().getCluster();
-        if (!config.getClusterName().equals(newCluster)) {
-          String d2Service = config.getClusterToD2Map().get(newCluster);
-          throw new VeniceStoreIsMigratedException(storeName, newCluster, d2Service);
-        }
-      }
-    }
-    if (store == null) {
-      throw new VeniceNoStoreException(storeName);
     }
   }
 }

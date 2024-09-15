@@ -111,14 +111,13 @@ public class AbstractStoreAclHandlerTest {
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
-
-    // Store doesn't exist 8 times
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
     // !needsAcl = 16 times
+    // needsAcl && !hasStore = 8 times
     // needsAcl && hasStore && isSystemStore = 4 times
     // needsAcl && hasStore && !isSystemStore = 4 times
-    verify(ctx, times(24)).fireChannelRead(req);
+    verify(ctx, times(32)).fireChannelRead(req);
   }
 
   @Test
@@ -126,11 +125,12 @@ public class AbstractStoreAclHandlerTest {
     hasAccess[0] = false;
     enumerate(needsAcl, hasAcl, hasStore, isSystemStore, isFailOpen);
 
-    // Store doesn't exist 8 times
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
-    // No access control needed 16 times + 4 times (!hasStore && isSystemStore)
-    verify(ctx, times(20)).fireChannelRead(req);
+    // No access control needed 16 times
+    // needsAcl && !hasStore = 8 times
+    // needsAcl && hasStore && isSystemStore = 4 times
+    verify(ctx, times(28)).fireChannelRead(req);
 
     // UNAUTHORIZED when needsAcl && hasStore && !hasAccess && !hasAcl && !isFailOpen && !isSystemStore
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -164,10 +164,10 @@ public class AbstractStoreAclHandlerTest {
     enumerate(needsAcl, hasAccess, hasAcl, isFailOpen, isSystemStore);
 
     // !needsAcl = 16 times
-    verify(ctx, times(16)).fireChannelRead(req);
+    // needsAcl && !hasStore = 16 times
+    verify(ctx, times(32)).fireChannelRead(req);
 
-    // needsAcl && !hasStore
-    verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
 
   @Test
@@ -196,12 +196,12 @@ public class AbstractStoreAclHandlerTest {
     enumerate(needsAcl, hasStore, hasAccess, isSystemStore, isFailOpen);
 
     // !needsAcl = 16 times
+    // needsAcl && !hasStore = 8 times
     // needsAcl && hasStore && isSystemStore = 4 times
     // needsAcl && hasStore && !isSystemStore && hasAccess = 2 times
-    verify(ctx, times(22)).fireChannelRead(req);
+    verify(ctx, times(30)).fireChannelRead(req);
 
-    // needsAcl && !hasStore
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
     // needsAcl && hasStore && !isSystemStore && !hasAccess && !hasAcl && !isFailOpen
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -216,12 +216,13 @@ public class AbstractStoreAclHandlerTest {
     enumerate(needsAcl, hasStore, hasAccess, isSystemStore, isFailOpen);
 
     // !needsAcl = 16 times
+    // needsAcl && !hasStore
     // needsAcl && hasStore && isSystemStore = 4 times
     // needsAcl && hasStore && !isSystemStore && hasAccess = 2 times
-    verify(ctx, times(22)).fireChannelRead(req);
+    verify(ctx, times(30)).fireChannelRead(req);
 
     // needsAcl && !hasStore
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
     // Since hasAcl = true, UNAUTHORIZED is not possible
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -235,13 +236,13 @@ public class AbstractStoreAclHandlerTest {
     enumerate(needsAcl, hasAcl, hasStore, hasAccess, isSystemStore, isFailOpen, isBadUri);
 
     // !needsAcl = 64 times
+    // needsAcl && !isBadUri && !hasStore = 16 times
     // needsAcl && !isBadUri && hasStore && isSystemStore = 8 times
     // needsAcl && !isBadUri && hasStore && !isSystemStore && hasAccess = 4 times
-    verify(ctx, times(76)).fireChannelRead(req);
+    verify(ctx, times(92)).fireChannelRead(req);
 
     // needsAcl && isBadUri = 32 times
-    // needsAcl && !isBadUri && !hasStore = 16 times
-    verify(ctx, times(48)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, times(32)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
     // needsAcl && !isBadUri && hasStore && !isSystemStore && !hasAccess && !hasAcl && !isFailOpen = 1 time
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
