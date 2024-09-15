@@ -1,12 +1,12 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.grpc.GrpcUtils.accessResultToGrpcStatus;
 import static com.linkedin.venice.grpc.GrpcUtils.extractGrpcClientCert;
-import static com.linkedin.venice.grpc.GrpcUtils.httpResponseStatusToGrpcStatus;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.AbstractStoreAclHandler;
+import com.linkedin.venice.acl.handler.AccessResult;
 import com.linkedin.venice.authorization.IdentityParser;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -19,13 +19,11 @@ import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.Status;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.Attribute;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.commons.lang.StringUtils;
@@ -90,6 +88,7 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
     }
   }
 
+  // Visible for testing
   <ReqT, RespT> void validateStoreAclForGRPC(
       Consumer<ReqT> onAuthenticated,
       ReqT message,
@@ -108,29 +107,31 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
     }
     String method = request.getMethod();
 
-    BiConsumer<Status, Metadata> grpcCloseConsumer = call::close;
-    BiConsumer<HttpResponseStatus, String> errorHandler = ((httpResponseStatus, s) -> grpcCloseConsumer
-        .accept(httpResponseStatusToGrpcStatus(httpResponseStatus, s), headers));
-
     if (StringUtils.isEmpty(method)) {
       LOGGER.error("Invalid method {}", method);
-      grpcCloseConsumer.accept(Status.INVALID_ARGUMENT.withDescription("Invalid request"), headers);
+      call.close(Status.INVALID_ARGUMENT.withDescription("Invalid request"), headers);
       return;
     }
 
     try {
       X509Certificate clientCert = extractGrpcClientCert(call);
-      if (VeniceSystemStoreUtils.isSystemStore(storeName)
-          || hasAccess(call.getAuthority(), clientCert, storeName, method, errorHandler)) {
-        LOGGER.info("Requested principal has access to resource. Processing request");
-        onAuthenticated.accept(message);
+      AccessResult accessResult = checkAccess(call.getAuthority(), clientCert, storeName, method);
+      switch (accessResult) {
+        case GRANTED:
+          onAuthenticated.accept(message);
+          break;
+        case UNAUTHORIZED:
+        case FORBIDDEN:
+        case ERROR_FORBIDDEN:
+          call.close(accessResultToGrpcStatus(accessResult), headers);
+          break;
       }
     } catch (SSLPeerUnverifiedException e) {
       LOGGER.error("Cannot verify the certificate.", e);
-      grpcCloseConsumer.accept(Status.UNAUTHENTICATED.withDescription("Invalid certificate"), headers);
+      call.close(Status.UNAUTHENTICATED.withDescription("Invalid certificate"), headers);
     } catch (VeniceException e) {
       LOGGER.error("Cannot process request successfully due to", e);
-      grpcCloseConsumer.accept(Status.INTERNAL.withDescription(e.getMessage()), headers);
+      call.close(Status.INTERNAL.withDescription(e.getMessage()), headers);
     }
   }
 
