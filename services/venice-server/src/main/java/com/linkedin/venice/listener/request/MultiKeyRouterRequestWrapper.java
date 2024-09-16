@@ -1,6 +1,5 @@
 package com.linkedin.venice.listener.request;
 
-import io.netty.handler.codec.http.HttpRequest;
 import java.util.List;
 
 
@@ -9,11 +8,6 @@ import java.util.List;
  */
 public abstract class MultiKeyRouterRequestWrapper<K> extends RouterRequest {
   private final List<K> keys;
-
-  protected MultiKeyRouterRequestWrapper(String resourceName, List<K> keys, HttpRequest request) {
-    super(resourceName, request);
-    this.keys = keys;
-  }
 
   protected MultiKeyRouterRequestWrapper(
       String resourceName,

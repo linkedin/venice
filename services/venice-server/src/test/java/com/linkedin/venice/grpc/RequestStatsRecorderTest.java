@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.listener.ServerStatsContext;
+import com.linkedin.venice.listener.RequestStatsRecorder;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.stats.ComputeResponseStats;
 import com.linkedin.venice.read.RequestType;
@@ -16,7 +16,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
-public class ServerStatsContextTest {
+public class RequestStatsRecorderTest {
   private AggServerHttpRequestStats singleGetStats;
 
   private AggServerHttpRequestStats multiGetStats;
@@ -32,14 +32,14 @@ public class ServerStatsContextTest {
 
   @Test
   public void testSetStoreName() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
     context.setStoreName("testStore");
     assertEquals("testStore", context.getStoreName());
   }
 
   @Test
   public void testSetRequestType() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
 
     context.setRequestType(RequestType.SINGLE_GET);
     assertEquals(singleGetStats, context.getCurrentStats());
@@ -53,7 +53,7 @@ public class ServerStatsContextTest {
 
   @Test
   public void testSuccessRequest() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
     context.setStoreName("testStore");
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.successRequest(stats, 10.5);
@@ -64,7 +64,7 @@ public class ServerStatsContextTest {
 
   @Test
   public void testErrorRequest() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
 
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setRequestType(RequestType.SINGLE_GET);
@@ -88,7 +88,7 @@ public class ServerStatsContextTest {
     doReturn(RequestType.MULTI_GET).when(routerRequest).getRequestType();
     doReturn(123).when(routerRequest).getKeyCount();
 
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
     context.setRequestInfo(routerRequest);
 
     assertEquals("testStore", context.getStoreName());
@@ -98,7 +98,7 @@ public class ServerStatsContextTest {
 
   @Test
   public void setRequestType() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
 
     context.setRequestType(RequestType.SINGLE_GET);
     assertEquals(singleGetStats, context.getCurrentStats());
@@ -112,7 +112,7 @@ public class ServerStatsContextTest {
 
   @Test
   public void testRecordBasicMetrics() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
+    RequestStatsRecorder context = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
     context.setRequestType(RequestType.COMPUTE);

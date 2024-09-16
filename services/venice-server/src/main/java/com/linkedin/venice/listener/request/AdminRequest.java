@@ -40,6 +40,20 @@ public class AdminRequest {
     }
   }
 
+  public static AdminRequest parseAdminGrpcRequest(com.linkedin.venice.protocols.AdminRequest request) {
+    try {
+      String topicName = request.getResourceName();
+      ServerAdminAction serverAdminAction = ServerAdminAction.valueOf(request.getServerAdminAction().toUpperCase());
+      Integer partition = request.hasPartition() ? request.getPartition() : null;
+      if (!Version.isVersionTopic(topicName)) {
+        throw new VeniceException("Invalid store version for an ADMIN action: " + serverAdminAction);
+      }
+      return new AdminRequest(topicName, serverAdminAction, partition);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException("Invalid server admin action: " + request.getServerAdminAction());
+    }
+  }
+
   public String getStoreName() {
     return this.storeName;
   }

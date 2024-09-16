@@ -267,17 +267,24 @@ public class GrpcTransportClient extends InternalTransportClient {
 
     @Override
     public void onNext(VeniceServerResponse value) {
-      if (value.getErrorCode() != VeniceReadResponseStatus.OK) {
-        handleResponseError(value);
+      int statusCode = value.getErrorCode();
+      // Successful response
+      if (statusCode == VeniceReadResponseStatus.OK.getCode()) {
+        complete(
+            new TransportClientResponse(
+                value.getSchemaId(),
+                CompressionStrategy.valueOf(value.getCompressionStrategy()),
+                value.getData().toByteArray()),
+            null);
         return;
       }
-
-      complete(
-          new TransportClientResponse(
-              value.getSchemaId(),
-              CompressionStrategy.valueOf(value.getCompressionStrategy()),
-              value.getData().toByteArray()),
-          null);
+      // Key not found is a valid response
+      if (statusCode == VeniceReadResponseStatus.KEY_NOT_FOUND.getCode()) {
+        complete(null, null);
+        return;
+      }
+      // Handle the cases where the status code doesn't match healthy response codes
+      handleResponseError(value);
     }
 
     @Override
@@ -308,30 +315,29 @@ public class GrpcTransportClient extends InternalTransportClient {
       int statusCode = response.getErrorCode();
       String errorMessage = response.getErrorMessage();
       Exception exception;
-
-      switch (statusCode) {
-        case VeniceReadResponseStatus.BAD_REQUEST:
-          exception = new VeniceClientHttpException(errorMessage, statusCode);
-          break;
-        case VeniceReadResponseStatus.TOO_MANY_REQUESTS:
-          exception = new VeniceClientRateExceededException(errorMessage);
-          break;
-        case VeniceReadResponseStatus.KEY_NOT_FOUND:
-          exception = null;
-          break;
-        default:
-          exception = new VeniceClientException(
-              String
-                  .format("An unexpected error occurred with status code: %d, message: %s", statusCode, errorMessage));
-          break;
+      try {
+        switch (VeniceReadResponseStatus.fromCode(statusCode)) {
+          case BAD_REQUEST:
+            exception = new VeniceClientHttpException(errorMessage, statusCode);
+            break;
+          case TOO_MANY_REQUESTS:
+            exception = new VeniceClientRateExceededException(errorMessage);
+            break;
+          default:
+            exception = new VeniceClientException(
+                String.format(
+                    "An unexpected error occurred with status code: %d, message: %s",
+                    statusCode,
+                    errorMessage));
+            break;
+        }
+      } catch (IllegalArgumentException e) {
+        // Handle the case where the status code doesn't match any known values
+        exception = new VeniceClientException(
+            String.format("Unknown status code: %d, message: %s", statusCode, errorMessage),
+            e);
       }
-
-      if (exception != null) {
-        LOGGER.error("Got error in response due to", exception);
-      }
-
-      // In the event of record not found, we treat that as a successful response and complete the future with a null
-      // value and the exception is set to null as well.
+      LOGGER.error("Received error response with status code: {}, message: {}", statusCode, errorMessage);
       complete(null, exception);
     }
 

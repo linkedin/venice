@@ -1,5 +1,6 @@
 package com.linkedin.venice.grpc;
 
+import com.google.protobuf.ByteString;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
@@ -7,6 +8,7 @@ import com.linkedin.venice.utils.SslUtils;
 import io.grpc.Grpc;
 import io.grpc.ServerCall;
 import io.grpc.Status;
+import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,5 +93,24 @@ public final class GrpcUtils {
       keyStore.load(in, password);
     }
     return keyStore;
+  }
+
+  /**
+   * Converts a Netty ByteBuf to a ByteString, checking if it has a backing array to avoid manual copying.
+   *
+   * @param body The ByteBuf to be converted to ByteString.
+   * @return The resulting ByteString.
+   */
+  public static ByteString toByteString(ByteBuf body) {
+    if (body.hasArray()) {
+      // Directly use the backing array to avoid copying
+      return ByteString.copyFrom(body.array(), body.arrayOffset() + body.readerIndex(), body.readableBytes());
+    }
+    // Fallback to nioBuffer() to handle the conversion efficiently
+    return ByteString.copyFrom(body.nioBuffer());
+  }
+
+  public static ByteString toByteString(byte[] bytes) {
+    return ByteString.copyFrom(bytes);
   }
 }

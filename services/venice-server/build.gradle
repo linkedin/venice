@@ -63,6 +63,8 @@ dependencies {
   testImplementation libraries.fastUtil
   testImplementation project(':internal:alpini:router:alpini-router-api')
   testImplementation project(':services:venice-router')
+
+  testImplementation libraries.grpcTesting
 }
 
 jar {
