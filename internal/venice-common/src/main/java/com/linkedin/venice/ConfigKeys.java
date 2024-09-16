@@ -2234,4 +2234,10 @@ public class ConfigKeys {
 
   public static final String SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES =
       "server.channel.option.write.buffer.watermark.high.bytes";
+
+  public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED =
+      "server.aa.wc.workload.parallel.processing.enabled";
+
+  public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
+      "server.aa.wc.workload.parallel.processing.thread.pool.size";
 }

@@ -17,6 +17,7 @@ import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
@@ -190,6 +191,7 @@ import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ChunkingTestUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -447,6 +449,10 @@ public abstract class StoreIngestionTaskTest {
     replicationMetadataWithValueSchemaId
         .position(replicationMetadataWithValueSchemaId.position() - ByteUtils.SIZE_OF_INT);
     return ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId);
+  }
+
+  protected boolean isAaWCParallelProcessingEnabled() {
+    return false;
   }
 
   @BeforeClass(alwaysRun = true)
@@ -1062,7 +1068,9 @@ public abstract class StoreIngestionTaskTest {
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
-        .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion);
+        .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
+        .setAAWCWorkLoadProcessingThreadPool(
+            Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
@@ -2657,6 +2665,8 @@ public abstract class StoreIngestionTaskTest {
     remoteKafkaMapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, "remote");
     remoteKafkaMapping.put(KAFKA_CLUSTER_MAP_KEY_URL, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     kafkaClusterMap.put(String.valueOf(1), remoteKafkaMapping);
+
+    propertyBuilder.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAaWCParallelProcessingEnabled());
 
     return new VeniceServerConfig(propertyBuilder.build(), kafkaClusterMap);
   }
