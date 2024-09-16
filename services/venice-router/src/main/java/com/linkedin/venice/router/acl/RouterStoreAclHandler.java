@@ -1,6 +1,8 @@
 package com.linkedin.venice.router.acl;
 
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_COMPUTE;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_INVALID;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_STORAGE;
 
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -27,32 +29,15 @@ public class RouterStoreAclHandler extends AbstractStoreAclHandler<RouterResourc
 
   @Override
   protected boolean needsAclValidation(RouterResourceType resourceType) {
-    switch (resourceType) {
-      case TYPE_LEADER_CONTROLLER:
-      case TYPE_LEADER_CONTROLLER_LEGACY:
-      case TYPE_KEY_SCHEMA:
-      case TYPE_VALUE_SCHEMA:
-      case TYPE_LATEST_VALUE_SCHEMA:
-      case TYPE_GET_UPDATE_SCHEMA:
-      case TYPE_ALL_VALUE_SCHEMA_IDS:
-      case TYPE_CLUSTER_DISCOVERY:
-      case TYPE_STREAM_HYBRID_STORE_QUOTA:
-      case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
-      case TYPE_STORE_STATE:
-      case TYPE_PUSH_STATUS:
-      case TYPE_ADMIN: // Access control for Admin operations are handled in AdminOperationsHandler
-      case TYPE_CURRENT_VERSION:
-      case TYPE_RESOURCE_STATE:
-      case TYPE_BLOB_DISCOVERY:
-      case TYPE_REQUEST_TOPIC:
-        return false;
-      case TYPE_STORAGE:
-      case TYPE_COMPUTE:
-        return true;
-      case TYPE_INVALID:
-      default:
-        throw new VeniceUnsupportedOperationException(resourceType.name());
+    if (resourceType == TYPE_STORAGE || resourceType == TYPE_COMPUTE) {
+      return true;
     }
+
+    if (resourceType == TYPE_INVALID) {
+      throw new VeniceUnsupportedOperationException(resourceType.name());
+    }
+
+    return false;
   }
 
   /**
