@@ -107,7 +107,7 @@ public class TestChangelogConsumer {
   private ControllerClient parentControllerClient;
 
   protected boolean isAAWCParallelProcessingEnabled() {
-    return true;
+    return false;
   }
 
   @BeforeClass(alwaysRun = true)
@@ -118,8 +118,7 @@ public class TestChangelogConsumer {
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
-    serverProperties
-        .put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
+    serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         1,

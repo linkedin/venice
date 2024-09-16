@@ -315,9 +315,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         serverConfig.isComputeFastAvroEnabled());
     this.ingestionBatchProcessingLazy = Lazy.of(() -> {
       if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-        LOGGER.info("AA-WC workload parallel processing enabled is false");
+        LOGGER.info("AA/WC workload parallel processing enabled is false");
         return null;
       }
+      LOGGER.info("AA/WC workload parallel processing enabled is true");
       return new IngestionBatchProcessor(
           kafkaVersionTopic,
           parallelProcessingThreadPool,

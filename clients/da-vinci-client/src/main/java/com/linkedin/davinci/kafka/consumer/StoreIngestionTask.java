@@ -509,12 +509,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
-<<<<<<< HEAD
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
-    this.parallelProcessingThreadPool = builder.getAaWCWorkLoadProcessingThreadPool();
-=======
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
->>>>>>> 59831839b (Addressed the review comments)
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
