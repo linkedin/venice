@@ -42,6 +42,20 @@ rules and there may be good reasons to deviate from them occasionally. When devi
 explaining why we deviated, whether it was intentional, or due to the need for expediency. This helps future maintainers 
 understand what is actually worth cleaning up and how careful they need to be when doing it.
 
+### Compatibility
+
+We care about compatibility across versions of the software. This is a bidirectional statement. Old clients need to be
+able to talk with new servers, and new clients with old servers as well. It also includes interactions across lifetimes
+of the same process, for example, state persisted by an old version of the server code should be usable by a newer 
+version of the server code, and vice versa. If compatibility is impossible, then we should look for ways to achieve
+correct behavior anyway (e.g. potentially at the cost of efficiency, such as the server needing to throw away and
+regenerate the state).
+
+For enums which are going to be communicated across processes or across lifetimes of the same process, consider using 
+[VeniceEnumValue](http://venicedb.org/javadoc/com/linkedin/venice/utils/VeniceEnumValue.html), [EnumUtils](http://venicedb.org/javadoc/com/linkedin/venice/utils/EnumUtils.html)
+and related unit test classes, which provide a structure to minimize the chance that we mistakenly change the mapping of
+numeric ID -> enum value.
+
 ### JavaDoc
 
 Speaking of comments, we ideally want JavaDoc at the top of all classes. The top of class JavaDoc should indicate the
