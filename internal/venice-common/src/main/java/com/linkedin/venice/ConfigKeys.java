@@ -745,6 +745,9 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
       "server.ingestion.isolation.heartbeat.request.timeout.seconds";
 
+  public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
+      "server.batch.report.end.of.incremental.push.status.enabled";
+
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
@@ -1807,13 +1810,6 @@ public class ConfigKeys {
    * This config defines the allowed linger time for a leaked resource.
    */
   public static final String LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS = "leaked.resource.allowed.linger.time.ms";
-
-  /**
-   * This config controls whether to use da-vinci based implementation of the system store repository when
-   * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
-   */
-  public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY =
-      "client.use.da.vinci.based.system.store.repository";
 
   /**
    *

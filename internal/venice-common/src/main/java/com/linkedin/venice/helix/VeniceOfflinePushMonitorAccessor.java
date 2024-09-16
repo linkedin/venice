@@ -258,6 +258,16 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         incrementalPushVersion);
   }
 
+  @Override
+  public void batchUpdateReplicaIncPushStatus(
+      String kafkaTopic,
+      int partitionId,
+      String instanceId,
+      long progress,
+      List<String> pendingReportIncPushVersionList) {
+    compareAndBatchUpdateReplicaStatus(kafkaTopic, partitionId, instanceId, progress, pendingReportIncPushVersionList);
+  }
+
   /**
    * Because one partition status could contain multiple replicas statuses. So during the updating, the conflicts would
    * happen once there are more than one instance updating its status. In order to handle this conflict, we use a
@@ -307,6 +317,35 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         topic,
         partitionId,
         status,
+        clusterName);
+  }
+
+  private void compareAndBatchUpdateReplicaStatus(
+      String topic,
+      int partitionId,
+      String instanceId,
+      long progress,
+      List<String> incPushBatchStatus) {
+    if (!pushStatusExists(topic)) {
+      return;
+    }
+    LOGGER.info(
+        "Start batch update replica status for topic: {}, partition: {} in cluster: {}.",
+        topic,
+        partitionId,
+        clusterName);
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
+      if (currentData == null) {
+        currentData = new PartitionStatus(partitionId);
+      }
+      currentData.batchUpdateReplicaIncPushStatus(instanceId, incPushBatchStatus, progress);
+      return currentData;
+    });
+    LOGGER.info(
+        "Updated replica status for topic: {} partition: {}, EOIP for incremental push versions: {} in cluster: {}.",
+        topic,
+        partitionId,
+        incPushBatchStatus,
         clusterName);
   }
 

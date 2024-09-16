@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -51,6 +53,7 @@ public class VersionBackend {
   private static final Logger LOGGER = LogManager.getLogger(VersionBackend.class);
 
   private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS = 10;
+  private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
 
   private final DaVinciBackend backend;
   private final Version version;
@@ -64,6 +67,10 @@ public class VersionBackend {
   private final StoreBackendStats storeBackendStats;
   private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
+  private final Map<Integer, List<String>> partitionToPendingReportIncrementalPushList =
+      new VeniceConcurrentHashMap<>();
+  private final Map<Integer, Boolean> partitionToBatchReportEOIPEnabled = new VeniceConcurrentHashMap<>();
+  private final boolean batchReportEOIPStatusEnabled;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -77,6 +84,8 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
+    this.batchReportEOIPStatusEnabled = config.getBatchReportEOIPEnabled();
+
     if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /*
        * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by
@@ -149,7 +158,7 @@ public class VersionBackend {
       }
       /**
        * The following function is used to forcibly clean up any leaking data partitions, which are not
-       * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
+       * visible to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
        * to open because of DaVinci memory limiter.
        */
       backend.getStorageService().forceStorageEngineCleanup(topicName);
@@ -346,6 +355,7 @@ public class VersionBackend {
         backend.getIngestionBackend().startConsumption(config, partition);
         tryStartHeartbeat();
       }
+      partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
     }
 
@@ -366,6 +376,8 @@ public class VersionBackend {
       completePartition(partition);
       backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
       partitionFutures.remove(partition);
+      partitionToPendingReportIncrementalPushList.remove(partition);
+      partitionToBatchReportEOIPEnabled.remove(partition);
     }
     tryStopHeartbeat();
   }
@@ -381,10 +393,76 @@ public class VersionBackend {
   }
 
   boolean areAllPartitionFuturesCompletedSuccessfully() {
-    if (partitionFutures == null || partitionFutures.isEmpty()) {
+    if (partitionFutures.isEmpty()) {
       return false;
     }
     return partitionFutures.values().stream().allMatch(f -> (f.isDone() && !f.isCompletedExceptionally()));
+  }
+
+  /**
+   *  This method will batch report {@link ExecutionStatus#END_OF_INCREMENTAL_PUSH_RECEIVED} for incremental push status
+   *  prior to ready-to-serve. It will only report last 50 incremental pushes as stale incremental pushes are not
+   *  being tracked, and it could reduce the volumes to system store.
+   */
+  void maybeReportBatchEOIPStatus(int partition, Consumer<String> reportConsumer) {
+    getPartitionToBatchReportEOIPEnabled().put(partition, false);
+    List<String> pendingReportIncPushVersionList =
+        getPartitionToPendingReportIncrementalPushList().getOrDefault(partition, Collections.emptyList());
+    if (pendingReportIncPushVersionList.isEmpty()) {
+      return;
+    }
+    LOGGER.info(
+        "Topic: {}, partition: {} batch report END_OF_INCREMENTAL_PUSH for inc push versions: {}",
+        getVersion().kafkaTopicName(),
+        partition,
+        pendingReportIncPushVersionList);
+    for (String incPushVersion: pendingReportIncPushVersionList) {
+      reportConsumer.accept(incPushVersion);
+    }
+  }
+
+  /**
+   *  This method may report incremental push status based on ingestion status.
+   *  Prior to ready-to-serve, if we enable batch report feature, it will accumulate the version and will not write to
+   *  system store.
+   *  When ready-to-serve is reported, we will invoke {@link VersionBackend#maybeReportIncrementalPushStatus(int, String, ExecutionStatus, Consumer)}
+   *  to clear all accumulated incremental push status. After that, it will fall back to default behavior and report
+   *  every incremental push status it received.
+   */
+  void maybeReportIncrementalPushStatus(
+      int partition,
+      String incrementalPushVersion,
+      ExecutionStatus executionStatus,
+      Consumer<String> reportConsumer) {
+    if (!getPartitionToBatchReportEOIPEnabled().getOrDefault(partition, false)) {
+      reportConsumer.accept(incrementalPushVersion);
+      return;
+    }
+    if (executionStatus.equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)) {
+      return;
+    }
+    LOGGER.info(
+        "Adding incremental push version: {} to pending report list for topic: {}, partition: {}",
+        incrementalPushVersion,
+        getVersion().kafkaTopicName(),
+        partition);
+    List<String> pendingReportIncPushVersionList =
+        getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>());
+    pendingReportIncPushVersionList.add(incrementalPushVersion);
+    int versionCount = pendingReportIncPushVersionList.size();
+    if (versionCount > MAX_INCREMENTAL_PUSH_ENTRY_NUM) {
+      getPartitionToPendingReportIncrementalPushList().put(
+          partition,
+          pendingReportIncPushVersionList.subList(versionCount - MAX_INCREMENTAL_PUSH_ENTRY_NUM, versionCount));
+    }
+  }
+
+  Map<Integer, Boolean> getPartitionToBatchReportEOIPEnabled() {
+    return partitionToBatchReportEOIPEnabled;
+  }
+
+  Map<Integer, List<String>> getPartitionToPendingReportIncrementalPushList() {
+    return partitionToPendingReportIncrementalPushList;
   }
 
   private List<Integer> getPartitions(ComplementSet<Integer> partitions) {

@@ -337,6 +337,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean isGlobalRtDivEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
+  protected final boolean batchReportIncPushStatusEnabled;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -506,6 +507,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
+    this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -2327,14 +2329,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Retrieve current LeaderFollowerState from partition's PCS. This method is used by IsolatedIngestionServer to sync
-   * user-partition LeaderFollower status from child process to parent process in ingestion isolation.
-   */
-  public LeaderFollowerStateType getLeaderState(int partition) {
-    return partitionConsumptionStateMap.get(partition).getLeaderFollowerState();
-  }
-
-  /**
    * Update the offset metadata in OffsetRecord in the following cases:
    * 1. A ControlMessage other than Start_of_Segment and End_of_Segment is processed
    * 2. The size of total processed message has exceeded a threshold: {@link #databaseSyncBytesIntervalForDeferredWriteMode}
@@ -2720,18 +2714,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage startOfIncrementalPush,
       PartitionConsumptionState partitionConsumptionState) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
-    ingestionNotificationDispatcher
-        .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+    if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
+      ingestionNotificationDispatcher
+          .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+    }
   }
 
   protected void processEndOfIncrementalPush(
       ControlMessage endOfIncrementalPush,
       PartitionConsumptionState partitionConsumptionState) {
-    // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
-    // Reset incremental push version
-    ingestionNotificationDispatcher
-        .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
+    if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
+      ingestionNotificationDispatcher
+          .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
+    } else {
+      LOGGER.info(
+          "Adding incremental push: {} to pending batch report list for replica: {}.",
+          endVersion.toString(),
+          partitionConsumptionState.getReplicaId());
+      partitionConsumptionState.addIncPushVersionToPendingReportList(endVersion.toString());
+    }
   }
 
   /**
@@ -2904,6 +2906,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               partitionConsumptionState.getReplicaId(),
               fatalException.getMessage());
         }
+      }
+      if (batchReportIncPushStatusEnabled) {
+        maybeReportBatchEndOfIncPushStatus(partitionConsumptionState);
       }
 
       /**
@@ -3765,7 +3770,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           || (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
         if (isReadyToServe(partitionConsumptionState)) {
           int partition = partitionConsumptionState.getPartition();
-
           if (!partitionConsumptionState.isCompletionReported()) {
             Store store = storeRepository.getStoreOrThrow(storeName);
             reportCompleted(partitionConsumptionState);
@@ -4087,6 +4091,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Check {@link LeaderFollowerStoreIngestionTask#maybeSendIngestionHeartbeat()} for more details.
    */
   protected abstract Set<String> maybeSendIngestionHeartbeat();
+
+  void maybeReportBatchEndOfIncPushStatus(PartitionConsumptionState partitionConsumptionState) {
+    if (partitionConsumptionState.getPendingReportIncPushVersionList().isEmpty()) {
+      return;
+    }
+    // When PCS is completed but the pending report list is not empty, we should perform one last report to make sure
+    // all EOIPs are reported.
+    if (partitionConsumptionState.isComplete()) {
+      getIngestionNotificationDispatcher().reportBatchEndOfIncrementalPushStatus(partitionConsumptionState);
+      partitionConsumptionState.clearPendingReportIncPushVersionList();
+    }
+  }
 
   private void mayResumeRecordLevelMetricsForCurrentVersion() {
     if (recordLevelMetricEnabled.get()) {

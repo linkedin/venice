@@ -173,6 +173,14 @@
         "items": "string"
       },
       "default": []
+    }, {
+      "name": "realtimeTopicProducerStates",
+      "doc": "A map of producer GUID -> producer state for real-time data.",
+      "type": {
+        "type": "map",
+        "values": "com.linkedin.venice.kafka.protocol.state.ProducerPartitionState"
+      },
+      "default": {}
     }
   ]
 }
