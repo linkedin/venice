@@ -386,7 +386,7 @@ public class RouterBackedSchemaReaderTest {
         0);
 
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
-      Assert.assertNull(schemaReader.getLatestValueSchema());
+      Assert.assertThrows(VeniceClientException.class, () -> schemaReader.getLatestValueSchema());
       Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
     }
   }
