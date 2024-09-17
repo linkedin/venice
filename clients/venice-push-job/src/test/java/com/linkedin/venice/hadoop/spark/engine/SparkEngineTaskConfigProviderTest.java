@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.spark.engine;
 
-import com.linkedin.venice.hadoop.spark.SparkConstants;
+import com.linkedin.venice.spark.SparkConstants;
+import com.linkedin.venice.spark.engine.SparkEngineTaskConfigProvider;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;

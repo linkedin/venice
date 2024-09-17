@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop.spark.datawriter.task;
 
-import com.linkedin.venice.hadoop.spark.SparkConstants;
+import com.linkedin.venice.spark.SparkConstants;
+import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import org.apache.spark.sql.SparkSession;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;

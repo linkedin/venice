@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.spark.datawriter.partition;
 
+import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.testng.Assert;
