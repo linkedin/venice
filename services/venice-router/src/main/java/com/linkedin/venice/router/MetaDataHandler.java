@@ -311,7 +311,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         responseObject.setSuperSetSchemaId(superSetSchemaId);
       }
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);
-      int schemaNum = valueSchemaEntries.size();
+      int schemaNum = (int) valueSchemaEntries.stream().filter(schemaEntry -> schemaEntry.getId() > 0).count();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
       int index = 0;
       for (SchemaEntry entry: valueSchemaEntries) {
@@ -321,7 +321,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
               "Got an invalid schema id ({}) for store {} in handleValueSchemaLookup; will not include this in the {}.",
               entry.getId(),
               storeName,
-              MultiSchemaIdResponse.class.getSimpleName());
+              responseObject.getClass().getSimpleName());
           continue;
         }
         schemas[index] = new MultiSchemaResponse.Schema();
@@ -398,7 +398,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
             "Got an invalid schema id ({}) for store {} in handleValueSchemaIdsLookup; will not include this in the {}.",
             entry.getId(),
             storeName,
-            MultiSchemaIdResponse.class.getSimpleName());
+            responseObject.getClass().getSimpleName());
         continue;
       }
       schemaIdSet.add(entry.getId());

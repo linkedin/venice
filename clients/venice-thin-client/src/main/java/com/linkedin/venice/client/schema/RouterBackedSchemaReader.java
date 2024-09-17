@@ -454,7 +454,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
         latest = latestValueSchemaEntry.get();
       }
     }
-    if (!isValidSchemaEntry(latest)) {
+    if (latest == null || !isValidSchemaEntry(latest)) {
       throw new VeniceClientException("Could not find latest value schema for store " + storeName);
     }
     return latest;

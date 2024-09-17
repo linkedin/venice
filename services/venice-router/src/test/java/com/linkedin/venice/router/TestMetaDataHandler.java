@@ -348,7 +348,10 @@ public class TestMetaDataHandler {
     ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
     SchemaEntry valueSchemaEntry1 = new SchemaEntry(valueSchemaId1, valueSchemaStr1);
     SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
-    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2)).when(schemaRepo).getValueSchemas(storeName);
+    SchemaEntry valueSchemaEntry3 = new SchemaEntry(-1, valueSchemaStr2);
+    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2, valueSchemaEntry3))
+        .when(schemaRepo)
+        .getValueSchemas(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/all_value_schema_ids/" + storeName,
         null,
@@ -412,7 +415,8 @@ public class TestMetaDataHandler {
     SchemaEntry valueSchemaEntry1 = new SchemaEntry(valueSchemaId1, valueSchemaStr1);
     SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
     SchemaEntry valueSchemaEntry3 = new SchemaEntry(valueSchemaId3, valueSchemaStr3);
-    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2, valueSchemaEntry3))
+    SchemaEntry valueSchemaEntry4 = new SchemaEntry(-1, valueSchemaStr3);
+    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2, valueSchemaEntry3, valueSchemaEntry4))
         .when(schemaRepo)
         .getValueSchemas(storeName);
 
