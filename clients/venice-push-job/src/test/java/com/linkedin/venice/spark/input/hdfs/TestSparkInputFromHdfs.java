@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.spark.input.hdfs;
+package com.linkedin.venice.spark.input.hdfs;
 
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -23,13 +23,6 @@ import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputPartition;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputPartitionReader;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputPartitionReaderFactory;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputScan;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputScanBuilder;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputTable;
-import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.utils.TestWriteUtils;
 import java.io.File;
 import java.io.IOException;

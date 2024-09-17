@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.spark.datawriter.partition;
+package com.linkedin.venice.spark.datawriter.partition;
 
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
 
@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.spark.SparkConstants;
-import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;

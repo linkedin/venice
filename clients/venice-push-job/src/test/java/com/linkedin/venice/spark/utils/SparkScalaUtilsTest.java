@@ -1,10 +1,9 @@
-package com.linkedin.venice.hadoop.spark.utils;
+package com.linkedin.venice.spark.utils;
 
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 
-import com.linkedin.venice.spark.utils.SparkScalaUtils;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
