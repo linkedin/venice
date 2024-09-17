@@ -111,7 +111,6 @@ public class DaVinciBackend implements Closeable {
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private DaVinciRecordTransformer recordTransformer;
-  private final ClientConfig clientConfig;
   private BlobTransferManager<Void> blobTransferManager;
   private final boolean writeBatchingPushStatus;
 
