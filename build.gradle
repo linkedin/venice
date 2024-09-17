@@ -805,7 +805,9 @@ task verifyJdkVersion {
   def currentJdkVersion = JavaVersion.current()
   def isSupported = supportedJdkVersions.any {version -> currentJdkVersion.equals(version) }
   if (!isSupported) {
-    throw new GradleException("Invalid JDK version: ${currentJdkVersion}. Supported versions: ${supportedJdkVersions.join(', ')}.")
+    throw new GradleException("Invalid JDK version: ${currentJdkVersion}.\n" + \
+    "Supported versions: ${supportedJdkVersions.join(', ')}.\n" + \
+    "Please set the JAVA_HOME environment variable to a supported version either locally or globally.")
   }
   println "JDK version ${currentJdkVersion} is valid."
 }
