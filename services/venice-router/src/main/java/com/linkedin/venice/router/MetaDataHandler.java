@@ -316,6 +316,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       int index = 0;
       for (SchemaEntry entry: valueSchemaEntries) {
         int schemaId = entry.getId();
+        if (schemaId < 1) {
+          LOGGER.warn(
+              "Got an invalid schema id ({}) for store {} in handleValueSchemaLookup; will not include this in the {}.",
+              entry.getId(),
+              storeName,
+              MultiSchemaIdResponse.class.getSimpleName());
+          continue;
+        }
         schemas[index] = new MultiSchemaResponse.Schema();
         schemas[index].setId(schemaId);
         schemas[index].setSchemaStr(entry.getSchema().toString());
@@ -385,6 +393,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
     Set<Integer> schemaIdSet = new HashSet<>();
     for (SchemaEntry entry: schemaRepo.getValueSchemas(storeName)) {
+      if (entry.getId() < 1) {
+        LOGGER.warn(
+            "Got an invalid schema id ({}) for store {} in handleValueSchemaIdsLookup; will not include this in the {}.",
+            entry.getId(),
+            storeName,
+            MultiSchemaIdResponse.class.getSimpleName());
+        continue;
+      }
       schemaIdSet.add(entry.getId());
     }
     responseObject.setSchemaIdSet(schemaIdSet);
