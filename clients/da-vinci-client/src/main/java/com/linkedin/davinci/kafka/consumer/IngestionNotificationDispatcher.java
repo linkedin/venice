@@ -260,6 +260,17 @@ class IngestionNotificationDispatcher {
             version));
   }
 
+  void reportBatchEndOfIncrementalPushStatus(PartitionConsumptionState pcs) {
+    report(
+        pcs,
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+        notifier -> notifier.batchEndOfIncrementalPushReceived(
+            topic,
+            pcs.getPartition(),
+            pcs.getLatestProcessedLocalVersionTopicOffset(),
+            pcs.getPendingReportIncPushVersionList()));
+  }
+
   void reportTopicSwitchReceived(PartitionConsumptionState pcs) {
     report(
         pcs,

@@ -187,6 +187,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
+  private final ExecutorService aaWCWorkLoadProcessingThreadPool;
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -437,6 +438,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
 
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
+          serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
+          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING"));
+    } else {
+      this.aaWCWorkLoadProcessingThreadPool = null;
+    }
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageEngineRepository(storageEngineRepository)
@@ -462,6 +471,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
+        .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .build();
   }
 
@@ -567,6 +577,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
+
+    shutdownExecutorService(aaWCWorkLoadProcessingThreadPool, "aaWCWorkLoadProcessingThreadPool", true);
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 

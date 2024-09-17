@@ -799,3 +799,19 @@ ext.parseJacocoXml = { filePath ->
 allprojects {
   task printAllDependencies(type: DependencyReportTask) {}
 }
+
+def supportedJdkVersions = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_11, JavaVersion.VERSION_17]
+
+task verifyJdkVersion {
+  def currentJdkVersion = JavaVersion.current()
+  def isSupported = supportedJdkVersions.any {version -> currentJdkVersion.equals(version) }
+  if (!isSupported) {
+    throw new GradleException("Invalid JDK version: ${currentJdkVersion}. Supported versions: ${supportedJdkVersions.join(', ')}.")
+  }
+  println "JDK version ${currentJdkVersion} is valid."
+}
+
+gradle.taskGraph.whenReady {
+  // Ensure the JDK version is verified before any other tasks
+  verifyJdkVersion
+}

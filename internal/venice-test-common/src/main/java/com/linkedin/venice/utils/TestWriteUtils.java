@@ -357,6 +357,13 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(File parentDir) throws IOException {
+    return writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(parentDir, 1, 100);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(
+      File parentDir,
+      int startIndex,
+      int endIndex) throws IOException {
     return writeAvroFile(
         parentDir,
         "string2record.avro",
@@ -364,7 +371,7 @@ public class TestWriteUtils {
         (recordSchema, writer) -> {
           String firstName = "first_name_";
           String lastName = "last_name_";
-          for (int i = 1; i <= 100; ++i) {
+          for (int i = startIndex; i <= endIndex; ++i) {
             GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
             keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
             GenericRecord valueRecord =
