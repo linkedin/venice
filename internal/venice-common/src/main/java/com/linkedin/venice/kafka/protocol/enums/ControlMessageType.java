@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+import java.util.List;
 
 
 /**
@@ -28,12 +29,13 @@ public enum ControlMessageType implements VeniceEnumValue {
 
   /** The value is the byte used on the wire format */
   private final int value;
-  private static final ControlMessageType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(ControlMessageType.class);
+  private static final List<ControlMessageType> TYPES = EnumUtils.getEnumValuesList(ControlMessageType.class);
 
   ControlMessageType(int value) {
     this.value = value;
   }
 
+  @Override
   public int getValue() {
     return value;
   }
@@ -76,11 +78,7 @@ public enum ControlMessageType implements VeniceEnumValue {
   }
 
   public static ControlMessageType valueOf(int value) {
-    try {
-      return TYPES_ARRAY[value];
-    } catch (IndexOutOfBoundsException e) {
-      throw new VeniceMessageException("Invalid control message type: " + value);
-    }
+    return EnumUtils.valueOf(TYPES, value, ControlMessageType.class, VeniceMessageException::new);
   }
 
   public static ControlMessageType valueOf(ControlMessage controlMessage) {

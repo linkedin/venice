@@ -13,6 +13,7 @@ import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+import java.util.List;
 
 
 public enum ComputeOperationType implements VeniceEnumValue {
@@ -21,7 +22,7 @@ public enum ComputeOperationType implements VeniceEnumValue {
 
   private final ReadComputeOperator operator;
   private final int value;
-  private static final ComputeOperationType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(ComputeOperationType.class);
+  private static final List<ComputeOperationType> TYPES = EnumUtils.getEnumValuesList(ComputeOperationType.class);
 
   ComputeOperationType(int value, ReadComputeOperator operator) {
     this.value = value;
@@ -44,17 +45,14 @@ public enum ComputeOperationType implements VeniceEnumValue {
   }
 
   public static ComputeOperationType valueOf(int value) {
-    try {
-      return TYPES_ARRAY[value];
-    } catch (IndexOutOfBoundsException e) {
-      throw new VeniceException("Invalid compute operation type: " + value);
-    }
+    return EnumUtils.valueOf(TYPES, value, ComputeOperationType.class);
   }
 
   public static ComputeOperationType valueOf(ComputeOperation operation) {
     return valueOf(operation.operationType);
   }
 
+  @Override
   public int getValue() {
     return value;
   }
