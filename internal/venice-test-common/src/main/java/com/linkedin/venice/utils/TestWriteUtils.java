@@ -97,6 +97,8 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV4.avsc"));
   public static final Schema NAME_RECORD_V5_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV5.avsc"));
+  public static final Schema NAME_RECORD_V6_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV6.avsc"));
 
   // ETL Schema
   public static final Schema ETL_KEY_SCHEMA = AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/Key.avsc"));

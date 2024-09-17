@@ -5,6 +5,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V4_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V5_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V6_SCHEMA;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -490,8 +491,15 @@ public class TestAvroSupersetSchemaUtils {
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V2_SCHEMA, NAME_RECORD_V3_SCHEMA.toString()));
     Assert.assertFalse(
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V3_SCHEMA, NAME_RECORD_V4_SCHEMA.toString()));
+
+    // NAME_RECORD_V5_SCHEMA and NAME_RECORD_V6_SCHEMA are different in props for field.
+    Assert.assertNotEquals(NAME_RECORD_V5_SCHEMA, NAME_RECORD_V6_SCHEMA);
     // Test validation skip comparing props when checking for subset schema.
+    Schema supersetSchemaForV5AndV4 =
+        AvroSupersetSchemaUtils.generateSuperSetSchema(NAME_RECORD_V5_SCHEMA, NAME_RECORD_V4_SCHEMA);
     Assert.assertTrue(
-        AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V5_SCHEMA, NAME_RECORD_V2_SCHEMA.toString()));
+        AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V5_SCHEMA, supersetSchemaForV5AndV4.toString()));
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V6_SCHEMA, supersetSchemaForV5AndV4.toString()));
   }
 }
