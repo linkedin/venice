@@ -30,7 +30,6 @@ import org.apache.avro.io.ResolvingDecoder;
 import org.apache.avro.io.parsing.Symbol;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
-import org.apache.logging.log4j.LogManager;
 
 
 public class AvroSchemaUtils {
@@ -267,8 +266,6 @@ public class AvroSchemaUtils {
        * {@link AvroSchemaUtils#generateSuperSetSchema} method.
        */
       tmpSupersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(valueSchema, tmpSupersetSchema);
-      LogManager.getLogger(AvroSupersetSchemaUtils.class)
-          .info("DEBUGGING GENERATED SUPERSET SCHEMA FOR ID: {}, SCHEMA: {}", i, tmpSupersetSchema.toString(true));
     }
     final Schema supersetSchema = tmpSupersetSchema;
 
