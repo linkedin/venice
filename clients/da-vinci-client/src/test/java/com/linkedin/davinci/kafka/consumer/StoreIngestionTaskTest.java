@@ -2035,6 +2035,21 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "aaConfigProvider")
+  public void testRemoveUnsubscribedPartitions(AAConfig aaConfig) throws Exception {
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
+      // Start of push has already been consumed. Stop consumption.
+      storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
+      // Unassigned partitions should be removed.
+      storeIngestionTaskUnderTest.removeUnsubscribedPartitions();
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).stopped(anyString(), anyInt(), anyLong());
+    }, aaConfig);
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
   public void testKillConsumption(AAConfig aaConfig) throws Exception {
     final Thread writingThread = new Thread(() -> {
       while (true) {
