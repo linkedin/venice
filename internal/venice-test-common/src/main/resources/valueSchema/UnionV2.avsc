@@ -1,0 +1,15 @@
+{
+  "type" : "record",
+  "name" : "User",
+  "namespace" : "example.avro",
+  "fields" : [
+    {
+      "name": "count",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
+    }
+  ]
+}

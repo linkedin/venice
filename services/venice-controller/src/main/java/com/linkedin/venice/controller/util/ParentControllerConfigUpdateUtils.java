@@ -152,6 +152,7 @@ public class ParentControllerConfigUpdateUtils {
       } catch (Exception e) {
         // Allow failure in update schema generation in all schema except the latest value schema
         if (valueSchemaEntry.getId() == maxId) {
+          LOGGER.info("DEBUGGING TO BE GENERATED SCHEMA: {}", valueSchemaEntry.getSchema().toString(true));
           throw new VeniceException(
               "For store " + storeName + " cannot generate update schema for value schema ID :"
                   + valueSchemaEntry.getId() + ", top level field probably missing defaults.",

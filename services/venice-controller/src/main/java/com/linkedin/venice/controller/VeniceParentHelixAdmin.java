@@ -2738,6 +2738,7 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
+      LOGGER.info("DEBUGGING: MESSAGE: {}", message);
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       if (needToGenerateSupersetSchema) {
@@ -3040,6 +3041,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     if (doUpdateSupersetSchemaID) {
+      LOGGER.info("DEBUGGING PERFORMING UPDATE SUPERSET SCHEMA: {} {}", doUpdateSupersetSchemaID, newValueSchemaId);
       updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(newValueSchemaId));
     }
 
@@ -3077,8 +3079,13 @@ public class VeniceParentHelixAdmin implements Admin {
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
-        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
+        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(newValueSchema, existingValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
+        LOGGER.info("DEBUGGING: ADD VALUE SCHEMA. NewSupersetSchema: {}", newSuperSetSchema.toString(true));
+        LOGGER.info("DEBUGGING: ADD VALUE SCHEMA. NewValueSchema: {}", newValueSchema.toString(true));
+        LOGGER.info(
+            "DEBUGGING: ADD VALUE SCHEMA. COMPARE: {}",
+            supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema));
 
         if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
           doUpdateSupersetSchemaID = true;
@@ -3125,7 +3132,7 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         doUpdateSupersetSchemaID = false;
       }
-
+      LOGGER.info("DEBUGGING: doUpdate: {}", doUpdateSupersetSchemaID);
       SchemaEntry addedSchemaEntry =
           addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId, doUpdateSupersetSchemaID);
 
