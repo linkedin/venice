@@ -88,6 +88,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -97,13 +98,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -140,7 +140,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     kafkaValue.payloadUnion = deletePayload;
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    ingestionTask.processMessageAndMaybeProduceToKafka(consumerRecord, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    ingestionTask.processMessageAndMaybeProduceToKafka(
+        new PubSubMessageProcessedResultWrapper<>(consumerRecord),
+        pcs,
+        0,
+        "dummyUrl",
+        0,
+        0L,
+        0L);
     verify(ingestionTask, times(1)).produceToLocalKafka(
         any(),
         any(),
@@ -275,8 +282,30 @@ public class ActiveActiveStoreIngestionTaskTest {
   }
 
   @Test
-  public void testLeaderCanSendValueChunksIntoDrainer()
-      throws ExecutionException, InterruptedException, TimeoutException {
+  public void testMaybeBatchReportEOIP() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doCallRealMethod().when(ingestionTask).maybeReportBatchEndOfIncPushStatus(any());
+
+    when(pcs.getPendingReportIncPushVersionList()).thenReturn(Collections.emptyList());
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs);
+    Mockito.verify(ingestionTask, Mockito.times(0)).getIngestionNotificationDispatcher();
+
+    when(pcs.getPendingReportIncPushVersionList()).thenReturn(Collections.singletonList("test"));
+    IngestionNotificationDispatcher ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    when(ingestionTask.getIngestionNotificationDispatcher()).thenReturn(ingestionNotificationDispatcher);
+
+    when(pcs.isComplete()).thenReturn(false);
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs);
+    Mockito.verify(ingestionTask, Mockito.times(0)).getIngestionNotificationDispatcher();
+
+    when(pcs.isComplete()).thenReturn(true);
+    ingestionTask.maybeReportBatchEndOfIncPushStatus(pcs);
+    Mockito.verify(ingestionTask, Mockito.times(1)).getIngestionNotificationDispatcher();
+  }
+
+  @Test
+  public void testLeaderCanSendValueChunksIntoDrainer() throws InterruptedException {
     String testTopic = "test";
     int valueSchemaId = 1;
     int rmdProtocolVersionID = 1;
@@ -675,5 +704,33 @@ public class ActiveActiveStoreIngestionTaskTest {
       return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
     }
     return new CompressorFactory().getCompressor(strategy);
+  }
+
+  @Test
+  public void getKeyLevelLockMaxPoolSizeBasedOnServerConfigTest() {
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    Int2ObjectMap<String> clusterIdToUrlMap = new Int2ObjectOpenHashMap<>();
+    clusterIdToUrlMap.put(1, "region_1_url");
+    clusterIdToUrlMap.put(2, "region_2_url");
+    clusterIdToUrlMap.put(3, "region_3_url");
+    when(serverConfig.getConsumerPoolStrategyType())
+        .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT);
+    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(100);
+    when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(clusterIdToUrlMap);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
+
+    // Test when current version prioritization strategy is enabled.
+    when(serverConfig.getConsumerPoolStrategyType())
+        .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
+    when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);
+    when(serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader()).thenReturn(20);
+    when(serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader()).thenReturn(30);
+    when(serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader()).thenReturn(40);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 91);
+
+    // Test with parallel compute is enabled
+    when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
+    when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 721);
   }
 }

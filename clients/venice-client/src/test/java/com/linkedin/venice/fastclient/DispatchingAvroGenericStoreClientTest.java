@@ -22,6 +22,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
@@ -163,6 +164,8 @@ public class DispatchingAvroGenericStoreClientTest {
 
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(getMockR2Client(false))
+        .setD2Client(mock(D2Client.class))
+        .setClusterDiscoveryD2Service("test_server_discovery")
         .setMetadataRefreshIntervalInSeconds(1L)
         .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS)
         .setRoutingPendingRequestCounterInstanceBlockThreshold(1);

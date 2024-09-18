@@ -1,0 +1,178 @@
+{
+  "name": "PartitionState",
+  "namespace": "com.linkedin.venice.kafka.protocol.state",
+  "doc": "This record holds the state necessary for a consumer to checkpoint its progress when consuming a Venice partition. When provided the state in this record, a consumer should thus be able to resume consuming midway through a stream.",
+  "type": "record",
+  "fields": [
+    {
+      "name": "offset",
+      "doc": "The last Kafka offset consumed successfully in this partition from version topic.",
+      "type": "long"
+    }, {
+      "name": "offsetLag",
+      "doc": "The last Kafka offset lag in this partition for fast online transition in server restart.",
+      "type": "long",
+      "default": -1
+    }, {
+      "name": "endOfPush",
+      "doc": "Whether the EndOfPush control message was consumed in this partition.",
+      "type": "boolean"
+    }, {
+      "name": "lastUpdate",
+      "doc": "The last time this PartitionState was updated. Can be compared against the various messageTimestamp in ProducerPartitionState in order to infer lag time between producers and the consumer maintaining this PartitionState.",
+      "type": "long"
+    }, {
+      "name": "startOfBufferReplayDestinationOffset",
+      "doc": "This is the offset at which the StartOfBufferReplay control message was consumed in the current partition of the destination topic. This is not the same value as the source offsets contained in the StartOfBufferReplay control message itself. The source and destination offsets act together as a synchronization marker. N.B.: null means that the SOBR control message was not received yet.",
+      "type": ["null", "long"],
+      "default": null
+    }, {
+      "name": "databaseInfo",
+      "doc": "A map of string -> string to store database related info, which is necessary to checkpoint",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    }, {
+      "name": "incrementalPushInfo",
+      "doc": "metadata of ongoing incremental push in the partition",
+      "type": [
+        "null",
+        {
+          "name": "IncrementalPush",
+          "type": "record",
+          "fields": [
+            {
+              "name": "version",
+              "doc": "The version of current incremental push",
+              "type": "string"
+            }, {
+              "name": "error",
+              "doc": "The first error founded during in`gestion",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        }
+      ],
+      "default": null
+    }, {
+      "name": "leaderTopic",
+      "type": ["null", "string"],
+      "doc": "The topic that leader is consuming from; for leader, leaderTopic can be different from the version topic; for follower, leaderTopic is the same as version topic.",
+      "default": null
+    }, {
+      "name": "leaderOffset",
+      "type": "long",
+      "doc": "The last Kafka offset consumed successfully in this partition from the leader topic. TODO: remove this field once upstreamOffsetMap is used everywhere.",
+      "default": -1
+    }, {
+      "name": "upstreamOffsetMap",
+      "type": {
+        "type": "map",
+        "values": "long",
+        "java-key-class": "java.lang.String",
+        "avro.java.string": "String"
+      },
+      "doc": "A map of upstream Kafka bootstrap server url -> the last Kafka offset consumed from upstream topic.",
+      "default": {}
+    }, {
+      "name": "upstreamVersionTopicOffset",
+      "type": "long",
+      "doc": "The last upstream version topic offset persisted to disk; if the batch native-replication source is the same as local region, this value will always be -1",
+      "default": -1
+    }, {
+      "name": "leaderGUID",
+      "type": [
+        "null",
+        {
+          "namespace": "com.linkedin.venice.kafka.protocol",
+          "name": "GUID",
+          "type": "fixed",
+          "size": 16
+        }
+      ],
+      "doc": "This field is deprecated since GUID is no longer able to identify the split-brain issue once 'pass-through' mode is enabled in venice writer. The field is superseded by leaderHostId and will be removed in the future ",
+      "default": null
+    }, {
+      "name": "leaderHostId",
+      "type": ["null", "string"],
+      "doc": "An unique identifier (such as host name) that stands for each host. It's used to identify if there is a split-brain happened while the leader(s) re-produce records",
+      "default": null
+    }, {
+      "name": "producerStates",
+      "doc": "A map of producer GUID -> producer state.",
+      "type": {
+        "type": "map",
+        "values": {
+          "name": "ProducerPartitionState",
+          "doc": "A record containing the state pertaining to the data sent by one upstream producer into one partition.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "segmentNumber",
+              "doc": "The current segment number corresponds to the last (highest) segment number for which we have seen a StartOfSegment control message.",
+              "type": "int"
+            }, {
+              "name": "segmentStatus",
+              "doc": "The status of the current segment: 0 => NOT_STARTED, 1 => IN_PROGRESS, 2 => END_OF_INTERMEDIATE_SEGMENT, 3 => END_OF_FINAL_SEGMENT.",
+              "type": "int"
+            }, {
+              "name": "isRegistered",
+              "doc": "Whether the segment is registered. i.e. received Start_Of_Segment to initialize the segment.",
+              "type": "boolean",
+              "default": false
+            }, {
+              "name": "messageSequenceNumber",
+              "doc": "The current message sequence number, within the current segment, which we have seen for this partition/producer pair.",
+              "type": "int"
+            }, {
+              "name": "messageTimestamp",
+              "doc": "The timestamp included in the last message we have seen for this partition/producer pair.",
+              "type": "long"
+            }, {
+              "name": "checksumType",
+              "doc": "The current mapping is the following: 0 => None, 1 => MD5, 2 => Adler32, 3 => CRC32.",
+              "type": "int"
+            }, {
+              "name": "checksumState",
+              "doc": "The value of the checksum computed since the last StartOfSegment ControlMessage.",
+              "type": "bytes"
+            }, {
+              "name": "aggregates",
+              "doc": "The aggregates that have been computed so far since the last StartOfSegment ControlMessage.",
+              "type": {
+                "type": "map",
+                "values": "long"
+              }
+            }, {
+              "name": "debugInfo",
+              "doc": "The debug info received as part of the last StartOfSegment ControlMessage.",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            }
+          ]
+        }
+      }
+    }, {
+      "name": "previousStatuses",
+      "doc": "A map of string -> string which stands for previous PartitionStatus",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    }, {
+      "name": "pendingReportIncrementalPushVersions",
+      "doc": "A list of string which stands for incremental push versions which have received EOIP but not yet reported prior to lag caught up, they will be reported in batch",
+      "type": {
+        "type":  "array",
+        "items": "string"
+      },
+      "default": []
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 package com.linkedin.venice.grpc;
 
+import com.linkedin.venice.acl.handler.AccessResult;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
@@ -7,7 +8,6 @@ import com.linkedin.venice.utils.SslUtils;
 import io.grpc.Grpc;
 import io.grpc.ServerCall;
 import io.grpc.Status;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -50,12 +50,17 @@ public final class GrpcUtils {
     return trustManagerFactory.getTrustManagers();
   }
 
-  public static Status httpResponseStatusToGrpcStatus(HttpResponseStatus status, String errorMessage) {
-    if (status.equals(HttpResponseStatus.FORBIDDEN) || status.equals(HttpResponseStatus.UNAUTHORIZED)) {
-      return Status.PERMISSION_DENIED.withDescription(errorMessage);
+  public static Status accessResultToGrpcStatus(AccessResult accessResult) {
+    switch (accessResult) {
+      case GRANTED:
+        return Status.OK;
+      case FORBIDDEN:
+      case UNAUTHORIZED:
+      case ERROR_FORBIDDEN:
+        return Status.PERMISSION_DENIED.withDescription(accessResult.getMessage());
+      default:
+        return Status.UNKNOWN.withDescription(accessResult.getMessage());
     }
-
-    return Status.UNKNOWN.withDescription(errorMessage);
   }
 
   public static X509Certificate extractGrpcClientCert(ServerCall<?, ?> call) throws SSLPeerUnverifiedException {

@@ -1,30 +1,27 @@
 package com.linkedin.venice.kafka.protocol.enums;
 
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_INCREMENTAL_PUSH;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_SEGMENT;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_INCREMENTAL_PUSH;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_PUSH;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.TOPIC_SWITCH;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.VERSION_SWAP;
-
-import org.testng.Assert;
-import org.testng.annotations.Test;
+import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.VeniceEnumValueTest;
+import java.util.Map;
 
 
-public class ControlMessageTypeTest {
-  @Test
-  public void test() {
-    String assertionErrorMessage = "The value ID of enums should not be changed, as that is backwards incompatible.";
+public class ControlMessageTypeTest extends VeniceEnumValueTest<ControlMessageType> {
+  public ControlMessageTypeTest() {
+    super(ControlMessageType.class);
+  }
 
-    Assert.assertEquals(ControlMessageType.valueOf(0), START_OF_PUSH, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(1), END_OF_PUSH, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(2), START_OF_SEGMENT, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(3), END_OF_SEGMENT, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(5), START_OF_INCREMENTAL_PUSH, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(6), END_OF_INCREMENTAL_PUSH, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(7), TOPIC_SWITCH, assertionErrorMessage);
-    Assert.assertEquals(ControlMessageType.valueOf(8), VERSION_SWAP, assertionErrorMessage);
+  @Override
+  protected Map<Integer, ControlMessageType> expectedMapping() {
+    return CollectionUtil.<Integer, ControlMessageType>mapBuilder()
+        .put(0, ControlMessageType.START_OF_PUSH)
+        .put(1, ControlMessageType.END_OF_PUSH)
+        .put(2, ControlMessageType.START_OF_SEGMENT)
+        .put(3, ControlMessageType.END_OF_SEGMENT)
+        .put(4, ControlMessageType.START_OF_BUFFER_REPLAY)
+        .put(5, ControlMessageType.START_OF_INCREMENTAL_PUSH)
+        .put(6, ControlMessageType.END_OF_INCREMENTAL_PUSH)
+        .put(7, ControlMessageType.TOPIC_SWITCH)
+        .put(8, ControlMessageType.VERSION_SWAP)
+        .build();
   }
 }

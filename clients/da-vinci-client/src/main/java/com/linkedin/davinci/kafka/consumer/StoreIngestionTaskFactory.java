@@ -27,6 +27,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -116,6 +117,7 @@ public class StoreIngestionTaskFactory {
     private StorageEngineBackedCompressorFactory compressorFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
+    private ExecutorService aaWCWorkLoadProcessingThreadPool;
 
     private interface Setter {
       void apply();
@@ -317,6 +319,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setRunnableForKillIngestionTasksForNonCurrentVersions(Runnable runnable) {
       return set(() -> this.runnableForKillIngestionTasksForNonCurrentVersions = runnable);
+    }
+
+    public Builder setAAWCWorkLoadProcessingThreadPool(ExecutorService executorService) {
+      return set(() -> this.aaWCWorkLoadProcessingThreadPool = executorService);
+    }
+
+    public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
+      return this.aaWCWorkLoadProcessingThreadPool;
     }
   }
 }

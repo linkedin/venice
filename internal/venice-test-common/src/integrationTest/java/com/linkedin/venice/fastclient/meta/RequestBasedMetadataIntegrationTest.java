@@ -75,15 +75,21 @@ public class RequestBasedMetadataIntegrationTest {
     // Populate required ClientConfig fields for initializing RequestBasedMetadata
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder();
     clientConfigBuilder.setStoreName(storeName);
-    clientConfigBuilder.setR2Client(r2Client);
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    setCommonClientConfigs(clientConfigBuilder);
     clientConfig = clientConfigBuilder.build();
     requestBasedMetadata = new RequestBasedMetadata(
         clientConfig,
         new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
     requestBasedMetadata.start();
+  }
+
+  private void setCommonClientConfigs(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
+    clientConfigBuilder.setR2Client(r2Client);
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setSpeculativeQueryEnabled(true);
+    clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    clientConfigBuilder.setD2Client(d2Client);
+    clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -138,10 +144,7 @@ public class RequestBasedMetadataIntegrationTest {
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder();
     clientConfigBuilder.setStoreName(zstdStoreName);
-    clientConfigBuilder.setR2Client(r2Client);
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    setCommonClientConfigs(clientConfigBuilder);
     ClientConfig zstdClientConfig = clientConfigBuilder.build();
 
     RequestBasedMetadata zstdRequestBasedMetadata = new RequestBasedMetadata(

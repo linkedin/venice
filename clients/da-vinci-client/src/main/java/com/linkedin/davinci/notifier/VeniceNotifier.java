@@ -2,6 +2,7 @@ package com.linkedin.davinci.notifier;
 
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import java.io.Closeable;
+import java.util.List;
 
 
 /**
@@ -85,6 +86,13 @@ public interface VeniceNotifier extends Closeable {
   }
 
   default void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+  }
+
+  default void batchEndOfIncrementalPushReceived(
+      String kafkaTopic,
+      int partitionId,
+      long offset,
+      List<String> historicalIncPushes) {
   }
 
   default void catchUpVersionTopicOffsetLag(String kafkaTopic, int partitionId) {

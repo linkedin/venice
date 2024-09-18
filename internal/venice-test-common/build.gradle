@@ -77,6 +77,20 @@ dependencies {
   implementation project(':internal:alpini:router:alpini-router-api')
   implementation project(':internal:alpini:router:alpini-router-base')
 
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metrics-common:1.4.1:jdk8')
+
   implementation libraries.avroUtilCompatHelper
   implementation libraries.avroUtilFastserde
   implementation libraries.commonsCli
@@ -85,7 +99,6 @@ dependencies {
   implementation (libraries.hadoopCommon) {
     exclude group: 'javax.servlet'
   }
-  implementation libraries.helix
   implementation libraries.httpAsyncClient
   implementation libraries.javax
   implementation libraries.kafka

@@ -61,8 +61,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           super.getOptions(),
           fullPathForTempSSTFileDir,
           true,
-          rocksDBServerConfig,
-          super.getBlobTransferEnabled());
+          rocksDBServerConfig);
     }
   }
 

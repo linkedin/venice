@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -40,7 +39,7 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         clientConfigBuilder,
         new MetricsRepository(),
         TestValueSchema.class,
-        StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA);
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
     Assert.assertNotNull(fastClient.get("key_1").get());
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
       daVinciClient.subscribeAll().get();
@@ -69,38 +68,14 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
           clientConfigBuilder,
           new MetricsRepository(),
           TestValueSchema.class,
-          StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA);
+          StoreMetadataFetchMode.SERVER_BASED_METADATA);
       Assert.assertNotNull(fastClient.get("key_1").get());
       AvroSpecificStoreClient<String, TestValueSchema> fastClient2 = getSpecificFastClient(
           clientConfigBuilder,
           new MetricsRepository(),
           TestValueSchema.class,
-          StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA);
+          StoreMetadataFetchMode.SERVER_BASED_METADATA);
       Assert.assertNotNull(fastClient2.get("key_1").get());
-    }
-  }
-
-  @Test(timeOut = TIME_OUT)
-  public void testDaVinciClientAfterFC() throws Exception {
-    // Create a DVC based metadata FC to leave behind some meta system store rocksDB remains.
-    ClientConfig.ClientConfigBuilder clientConfigBuilder =
-        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
-            .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
-            .setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
-    AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
-        clientConfigBuilder,
-        new MetricsRepository(),
-        TestValueSchema.class,
-        StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA);
-    Assert.assertNotNull(fastClient.get("key_1").get());
-    fastClient.close();
-    cleanupDaVinciClientForMetaStore();
-    try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
-      daVinciClient.subscribeAll().get();
-      Assert.assertNotNull(daVinciClient.get("key_1").get());
     }
   }
 
@@ -114,7 +89,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-            .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)
             .put(DATA_BASE_PATH, dataPath)
             .build();
     daVinciClientFactory = new CachingDaVinciClientFactory(

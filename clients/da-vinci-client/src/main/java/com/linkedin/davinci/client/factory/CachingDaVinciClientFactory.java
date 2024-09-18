@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,6 +38,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final Map<String, DaVinciClient> sharedClients = new HashMap<>();
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
+  private final Executor readChunkExecutorForLargeRequest;
 
   @Deprecated
   public CachingDaVinciClientFactory(
@@ -100,6 +102,17 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
+    this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, managedClients, null, null);
+  }
+
+  public CachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider,
+      Executor readChunkExecutorForLargeRequest) {
     LOGGER.info(
         "Creating client factory, managedClients={}, existingMetrics={}",
         managedClients,
@@ -110,6 +123,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
     this.icProvider = icProvider;
+    this.readChunkExecutorForLargeRequest = readChunkExecutorForLargeRequest;
   }
 
   @Override
@@ -215,8 +229,13 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         VeniceProperties backendConfig,
         Optional<Set<String>> managedClients,
         ICProvider icProvider) {
-      AvroGenericDaVinciClient<K, V> client =
-          new AvroGenericDaVinciClient<>(config, clientConfig, backendConfig, managedClients, icProvider);
+      AvroGenericDaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(
+          config,
+          clientConfig,
+          backendConfig,
+          managedClients,
+          icProvider,
+          readChunkExecutorForLargeRequest);
       if (config.isReadMetricsEnabled()) {
         return new StatsAvroGenericDaVinciClient<>(client, clientConfig);
       }
@@ -232,8 +251,13 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         VeniceProperties backendConfig,
         Optional<Set<String>> managedClients,
         ICProvider icProvider) {
-      AvroSpecificDaVinciClient<K, V> client =
-          new AvroSpecificDaVinciClient<>(config, clientConfig, backendConfig, managedClients, icProvider);
+      AvroSpecificDaVinciClient<K, V> client = new AvroSpecificDaVinciClient<>(
+          config,
+          clientConfig,
+          backendConfig,
+          managedClients,
+          icProvider,
+          readChunkExecutorForLargeRequest);
       if (config.isReadMetricsEnabled()) {
         return new StatsAvroSpecificDaVinciClient<>(client, clientConfig);
       }

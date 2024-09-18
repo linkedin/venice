@@ -8,4 +8,9 @@ public class SITWithPWiseAndBufferAfterLeaderTest extends StoreIngestionTaskTest
   protected boolean isStoreWriterBufferAfterLeaderLogicEnabled() {
     return true;
   }
+
+  @Override
+  protected boolean isAaWCParallelProcessingEnabled() {
+    return true;
+  }
 }

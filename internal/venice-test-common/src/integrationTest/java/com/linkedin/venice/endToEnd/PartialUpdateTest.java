@@ -160,6 +160,10 @@ public class PartialUpdateTest {
   private VeniceControllerWrapper parentController;
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
+  protected boolean isAAWCParallelProcessingEnabled() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
@@ -167,6 +171,9 @@ public class PartialUpdateTest {
     serverProperties.put(
         ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
         KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name());
+    serverProperties.put(
+        ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED,
+        Boolean.toString(isAAWCParallelProcessingEnabled()));
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(

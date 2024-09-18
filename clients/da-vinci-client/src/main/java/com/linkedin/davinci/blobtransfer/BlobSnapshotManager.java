@@ -8,10 +8,12 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Checkpoint;
@@ -161,4 +163,37 @@ public class BlobSnapshotManager {
     return Checkpoint.create(rocksDB);
   }
 
+  /**
+   * util method to create a snapshot for batch only
+   * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
+   */
+  public static void createSnapshotForBatch(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
+    LOGGER.info("Creating snapshot for batch in directory: {}", fullPathForPartitionDBSnapshot);
+
+    // clean up the snapshot directory if it exists
+    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
+    if (partitionSnapshotDir.exists()) {
+      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      try {
+        FileUtils.deleteDirectory(partitionSnapshotDir);
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
+            e);
+      }
+    }
+
+    try {
+      LOGGER.info("Start creating snapshots for batch in directory: {}", fullPathForPartitionDBSnapshot);
+
+      Checkpoint checkpoint = Checkpoint.create(rocksDB);
+      checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
+
+      LOGGER.info("Finished creating snapshots for batch in directory: {}", fullPathForPartitionDBSnapshot);
+    } catch (RocksDBException e) {
+      throw new VeniceException(
+          "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
+          e);
+    }
+  }
 }

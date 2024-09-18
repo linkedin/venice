@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -39,6 +40,7 @@ import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
@@ -901,5 +903,53 @@ public class RocksDBStoragePartitionTest {
       }
       removeDir(storeDir);
     }
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testCreateSnapshot(boolean blobTransferEnabled) {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(false);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+
+    // Set the blob transfer enabled flag
+    storeConfig.setBlobTransferEnabled(blobTransferEnabled);
+
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+
+    try (MockedStatic<BlobSnapshotManager> mockedBlobSnapshotManager = Mockito.mockStatic(BlobSnapshotManager.class)) {
+      mockedBlobSnapshotManager.when(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()))
+          .thenAnswer(invocation -> {
+            return null;
+          });
+      storagePartition.createSnapshot();
+      if (blobTransferEnabled) {
+        mockedBlobSnapshotManager
+            .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.times(1));
+      } else {
+        mockedBlobSnapshotManager
+            .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.never());
+      }
+    }
+
+    if (storagePartition != null) {
+      storagePartition.close();
+      storagePartition.drop();
+    }
+    removeDir(storeDir);
   }
 }

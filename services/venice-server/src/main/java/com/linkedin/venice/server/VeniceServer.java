@@ -21,6 +21,8 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
+import com.linkedin.venice.blobtransfer.BlobTransferUtil;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
@@ -114,6 +116,7 @@ public class VeniceServer {
   StorageEngineBackedCompressorFactory compressorFactory;
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
+  private BlobTransferManager<Void> blobTransferManager;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -442,6 +445,19 @@ public class VeniceServer {
     services.add(listenerService);
 
     /**
+     * Initialize Blob transfer manager for Service
+     */
+    if (serverConfig.isBlobTransferManagerEnabled()) {
+      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
+          serverConfig.getDvcP2pBlobTransferServerPort(),
+          serverConfig.getDvcP2pBlobTransferClientPort(),
+          serverConfig.getRocksDBPath(),
+          customizedViewFuture);
+    } else {
+      blobTransferManager = null;
+    }
+
+    /**
      * Helix participator service should start last since we need to make sure current Storage Node is ready to take
      * read requests if it claims to be available in Helix.
      */
@@ -458,7 +474,8 @@ public class VeniceServer {
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
         veniceConfigLoader.getVeniceServerConfig().getListenerHostname(),
         managerFuture,
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        blobTransferManager);
     services.add(helixParticipationService);
 
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case

@@ -95,6 +95,10 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV3.avsc"));
   public static final Schema NAME_RECORD_V4_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV4.avsc"));
+  public static final Schema NAME_RECORD_V5_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV5.avsc"));
+  public static final Schema NAME_RECORD_V6_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV6.avsc"));
 
   // ETL Schema
   public static final Schema ETL_KEY_SCHEMA = AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/Key.avsc"));
@@ -357,6 +361,13 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(File parentDir) throws IOException {
+    return writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(parentDir, 1, 100);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(
+      File parentDir,
+      int startIndex,
+      int endIndex) throws IOException {
     return writeAvroFile(
         parentDir,
         "string2record.avro",
@@ -364,7 +375,7 @@ public class TestWriteUtils {
         (recordSchema, writer) -> {
           String firstName = "first_name_";
           String lastName = "last_name_";
-          for (int i = 1; i <= 100; ++i) {
+          for (int i = startIndex; i <= endIndex; ++i) {
             GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
             keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
             GenericRecord valueRecord =

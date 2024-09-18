@@ -85,7 +85,6 @@ ext.libraries = [
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
-    helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.3',
     httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.4',
@@ -135,7 +134,7 @@ ext.libraries = [
     xalan: 'xalan:xalan:2.7.1',
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
-    zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
+    zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
     zstd: 'com.github.luben:zstd-jni:1.5.2-3',
 ]
 
@@ -798,4 +797,22 @@ ext.parseJacocoXml = { filePath ->
 
 allprojects {
   task printAllDependencies(type: DependencyReportTask) {}
+}
+
+def supportedJdkVersions = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_11, JavaVersion.VERSION_17]
+
+task verifyJdkVersion {
+  def currentJdkVersion = JavaVersion.current()
+  def isSupported = supportedJdkVersions.any {version -> currentJdkVersion.equals(version) }
+  if (!isSupported) {
+    throw new GradleException("Invalid JDK version: ${currentJdkVersion}.\n" + \
+    "Supported versions: ${supportedJdkVersions.join(', ')}.\n" + \
+    "Please set the JAVA_HOME environment variable to a supported version either locally or globally.")
+  }
+  println "JDK version ${currentJdkVersion} is valid."
+}
+
+gradle.taskGraph.whenReady {
+  // Ensure the JDK version is verified before any other tasks
+  verifyJdkVersion
 }

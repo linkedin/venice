@@ -80,10 +80,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     };
-
-    // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
-    // though
-    // Only DVC would create blobTransferManager.
+    // TODO: remove hybrid check after blob transfer in hybrid mode is fully supported
     if (!storeAndVersion.getFirst().isBlobTransferEnabled() || storeAndVersion.getFirst().isHybrid()
         || blobTransferManager == null) {
       runnable.run();
