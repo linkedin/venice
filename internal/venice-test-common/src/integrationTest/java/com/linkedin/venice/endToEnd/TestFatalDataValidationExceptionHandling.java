@@ -27,6 +27,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -34,7 +35,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -246,7 +246,7 @@ public class TestFatalDataValidationExceptionHandling {
     pushJobDetails.totalRawValueBytes = -1;
     pushJobDetails.totalCompressedValueBytes = -1;
     pushJobDetails.failureDetails = "";
-    pushJobDetails.pushJobLatestCheckpoint = VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
+    pushJobDetails.pushJobLatestCheckpoint = PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
     pushJobDetails.pushJobConfigs =
         Collections.singletonMap(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(true));
   }
