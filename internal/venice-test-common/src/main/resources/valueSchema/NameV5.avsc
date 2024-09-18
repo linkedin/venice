@@ -1,0 +1,21 @@
+{
+  "type" : "record",
+  "name" : "nameRecord",
+  "namespace" : "example.avro",
+  "fields" : [ {
+    "name" : "firstName",
+    "type" : "string",
+    "default" : "",
+    "custom_prop" : "custom_prop_value_1, custom_prop_value_2"
+  }, {
+    "name" : "lastName",
+    "type" : "string",
+    "default" : "",
+    "custom_prop" : "custom_prop_value_1, custom_prop_value_2"
+  }, {
+    "name" : "age",
+    "type" : "int",
+    "default" : -1,
+    "custom_prop" : "custom_prop_value_1, custom_prop_value_2"
+  } ]
+}

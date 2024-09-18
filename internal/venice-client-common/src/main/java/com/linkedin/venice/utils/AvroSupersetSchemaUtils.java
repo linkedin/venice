@@ -116,19 +116,22 @@ public class AvroSupersetSchemaUtils {
     });
   }
 
-  private static FieldBuilder deepCopySchemaField(Schema.Field field) {
+  private static FieldBuilder deepCopySchemaFieldWithoutFieldProps(Schema.Field field) {
     FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(null)
         .setName(field.name())
         .setSchema(field.schema())
         .setDoc(field.doc())
         .setOrder(field.order());
-    copyFieldProperties(fieldBuilder, field);
-
     // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
     if (field.hasDefaultValue()) {
       fieldBuilder.setDefault(getFieldDefault(field));
     }
+    return fieldBuilder;
+  }
 
+  private static FieldBuilder deepCopySchemaField(Schema.Field field) {
+    FieldBuilder fieldBuilder = deepCopySchemaFieldWithoutFieldProps(field);
+    copyFieldProperties(fieldBuilder, field);
     return fieldBuilder;
   }
 
@@ -192,6 +195,10 @@ public class AvroSupersetSchemaUtils {
     return updateSchema;
   }
 
+  /**
+   * * Validate if the Subset Value Schema is a subset of the Superset Value Schema, here the field props are not used to
+   * check if the field is same or not.
+   */
   public static boolean validateSubsetValueSchema(Schema subsetValueSchema, String supersetSchemaStr) {
     Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(supersetSchemaStr);
     for (Schema.Field field: subsetValueSchema.getFields()) {
@@ -199,11 +206,13 @@ public class AvroSupersetSchemaUtils {
       if (fieldInSupersetSchema == null) {
         return false;
       }
-      if (!field.equals(fieldInSupersetSchema)) {
+      Schema.Field subsetValueSchemaWithoutFieldProps = deepCopySchemaFieldWithoutFieldProps(field).build();
+      Schema.Field fieldInSupersetSchemaWithoutFieldProps =
+          deepCopySchemaFieldWithoutFieldProps(fieldInSupersetSchema).build();
+      if (!subsetValueSchemaWithoutFieldProps.equals(fieldInSupersetSchemaWithoutFieldProps)) {
         return false;
       }
     }
     return true;
   }
-
 }
