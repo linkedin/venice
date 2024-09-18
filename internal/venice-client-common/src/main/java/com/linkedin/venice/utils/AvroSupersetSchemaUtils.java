@@ -9,14 +9,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
-import org.apache.logging.log4j.LogManager;
 
 
 public class AvroSupersetSchemaUtils {
@@ -42,14 +40,6 @@ public class AvroSupersetSchemaUtils {
    * @return super-set schema of existingSchema abd newSchema
    */
   public static Schema generateSuperSetSchema(Schema newSchema, Schema oldSchema) {
-    LogManager.getLogger(AvroSupersetSchemaUtils.class)
-        .info(
-            "DEBUGGING: generateSupersetSchema: call stack: {}",
-            Arrays.toString(Thread.currentThread().getStackTrace()));
-    LogManager.getLogger(AvroSupersetSchemaUtils.class)
-        .info("DEBUGGING: generateSupersetSchema: existing: {}", newSchema.toString(true));
-    LogManager.getLogger(AvroSupersetSchemaUtils.class)
-        .info("DEBUGGING: generateSupersetSchema: new: {}", oldSchema.toString(true));
     if (newSchema.getType() != oldSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
