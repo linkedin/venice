@@ -1,16 +1,16 @@
 package com.linkedin.venice.spark.input.hdfs;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SCHEMA_STRING_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.SCHEMA_STRING_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.VSON_PUSH;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputTable.INPUT_TABLE_NAME;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.spark.input;
 
-import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
+import com.linkedin.venice.input.recordreader.VeniceRecordIterator;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;

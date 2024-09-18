@@ -1,24 +1,24 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.VALUE_FIELD_PROP;
 
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
-import com.linkedin.venice.hadoop.input.recordreader.avro.HdfsAvroUtils;
-import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
-import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
-import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonFileIterator;
-import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.input.recordreader.VeniceRecordIterator;
+import com.linkedin.venice.input.recordreader.avro.HdfsAvroUtils;
+import com.linkedin.venice.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.input.recordreader.vson.VeniceVsonFileIterator;
+import com.linkedin.venice.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;

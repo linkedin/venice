@@ -1,9 +1,9 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.map;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;

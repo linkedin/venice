@@ -1,14 +1,14 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
-import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
+import com.linkedin.venice.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;

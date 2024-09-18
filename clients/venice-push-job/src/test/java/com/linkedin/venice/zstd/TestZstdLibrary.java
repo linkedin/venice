@@ -1,8 +1,8 @@
 package com.linkedin.venice.zstd;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.PATH_FILTER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
@@ -12,10 +12,10 @@ import com.github.luben.zstd.ZstdException;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.InputDataInfoProvider;
 import com.linkedin.venice.hadoop.PushJobZstdConfig;
-import com.linkedin.venice.hadoop.VenicePushJobConstants;
-import com.linkedin.venice.hadoop.input.recordreader.avro.HdfsAvroUtils;
-import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
-import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.input.recordreader.avro.HdfsAvroUtils;
+import com.linkedin.venice.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.pushjob.VenicePushJobConstants;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;

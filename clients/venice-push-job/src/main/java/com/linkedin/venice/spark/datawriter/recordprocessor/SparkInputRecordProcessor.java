@@ -1,9 +1,9 @@
 package com.linkedin.venice.spark.datawriter.recordprocessor;
 
-import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.hadoop.input.recordreader.avro.IdentityVeniceRecordReader;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractInputRecordProcessor;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.input.recordreader.avro.IdentityVeniceRecordReader;
 import com.linkedin.venice.spark.SparkConstants;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;

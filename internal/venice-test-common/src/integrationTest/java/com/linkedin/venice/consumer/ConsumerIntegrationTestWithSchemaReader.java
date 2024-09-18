@@ -1,9 +1,9 @@
 package com.linkedin.venice.consumer;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.pushjob.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
