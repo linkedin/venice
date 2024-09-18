@@ -9,13 +9,6 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
-import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundStatsHandler;
-import com.linkedin.venice.listener.grpc.handlers.GrpcReadQuotaEnforcementHandler;
-import com.linkedin.venice.listener.grpc.handlers.GrpcRouterRequestHandler;
-import com.linkedin.venice.listener.grpc.handlers.GrpcStatsHandler;
-import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
-import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.security.SSLFactory;
@@ -152,9 +145,6 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
   }
 
-  /*
-    Test only
-   */
   protected ReadQuotaEnforcementHandler getQuotaEnforcer() {
     return quotaEnforcer;
   }
@@ -177,8 +167,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ServerConnectionStatsHandler serverConnectionStatsHandler =
           new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
       pipeline.addLast(serverConnectionStatsHandler);
-      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
-      pipeline.addLast(statsHandler);
+      /**
+       * In the Netty pipeline, we create one {@link RequestStatsRecorder} per channel. Since only one request is processed at a time
+       * per channel (with each HTTP/2 stream having its own child channel, see {@link io.netty.handler.codec.http2.Http2MultiplexHandler}),
+       * the same instance of {@link RequestStatsRecorder} can be reused for all requests processed within that channel.
+       * The {@link RequestStatsRecorder} is reset before processing each new request.
+       */
+      RequestStatsRecorder requestStatsRecorder = new RequestStatsRecorder(singleGetStats, multiGetStats, computeStats);
+      pipeline.addLast(new StatsHandler(requestStatsRecorder));
       if (whetherNeedServerCodec) {
         pipeline.addLast(new HttpServerCodec());
       } else {
@@ -202,7 +198,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       }
 
       pipeline.addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
-          .addLast(new OutboundHttpWrapperHandler(statsHandler))
+          .addLast(new OutboundHttpWrapperHandler(requestStatsRecorder))
           .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
       if (sslFactory.isPresent()) {
         pipeline.addLast(verifySsl);
@@ -216,8 +212,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           pipeline.addLast(storeAclHandler.get());
         }
       }
-      pipeline
-          .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+      pipeline.addLast(
+          new RouterRequestHttpHandler(requestStatsRecorder, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
         pipeline.addLast(quotaEnforcer);
       }
@@ -233,32 +229,16 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
   }
 
-  public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
-    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
+  public AggServerHttpRequestStats getSingleGetStats() {
+    return singleGetStats;
+  }
 
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
-    GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
-    grpcServerRequestProcessor.addHandler(grpcStatsHandler);
+  public AggServerHttpRequestStats getMultiGetStats() {
+    return multiGetStats;
+  }
 
-    GrpcRouterRequestHandler grpcRouterRequestHandler = new GrpcRouterRequestHandler();
-    grpcServerRequestProcessor.addHandler(grpcRouterRequestHandler);
-
-    if (quotaEnforcer != null) {
-      GrpcReadQuotaEnforcementHandler grpcReadQuotaEnforcementHandler =
-          new GrpcReadQuotaEnforcementHandler(quotaEnforcer);
-      grpcServerRequestProcessor.addHandler(grpcReadQuotaEnforcementHandler);
-    }
-
-    GrpcStorageReadRequestHandler storageReadRequestHandler = new GrpcStorageReadRequestHandler(requestHandler);
-    grpcServerRequestProcessor.addHandler(storageReadRequestHandler);
-
-    GrpcOutboundResponseHandler grpcOutboundResponseHandler = new GrpcOutboundResponseHandler();
-    grpcServerRequestProcessor.addHandler(grpcOutboundResponseHandler);
-
-    GrpcOutboundStatsHandler grpcOutboundStatsHandler = new GrpcOutboundStatsHandler();
-    grpcServerRequestProcessor.addHandler(grpcOutboundStatsHandler);
-
-    return grpcServerRequestProcessor;
+  public AggServerHttpRequestStats getComputeStats() {
+    return computeStats;
   }
 
   /**

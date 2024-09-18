@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.listener.ServerHandlerUtils.extractClientCert;
+import static com.linkedin.venice.response.VeniceReadResponseStatus.FORBIDDEN;
 import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
 import static io.grpc.Metadata.Key;
 
@@ -20,7 +21,6 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
@@ -79,7 +79,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
         String errLine = String.format("%s requested %s %s", client, method, req.uri());
         LOGGER.debug("Unauthorized access rejected: {}", errLine);
       }
-      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+      NettyUtils.setupResponseAndFlush(FORBIDDEN.getHttpResponseStatus(), new byte[0], false, ctx);
     }
   }
 

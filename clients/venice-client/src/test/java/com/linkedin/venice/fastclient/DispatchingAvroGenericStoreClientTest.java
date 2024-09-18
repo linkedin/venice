@@ -28,12 +28,12 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
+import com.linkedin.venice.fastclient.transport.FastClientTransport;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.meta.Store;
@@ -103,7 +103,7 @@ public class DispatchingAvroGenericStoreClientTest {
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient = null;
   private Map<String, ? extends Metric> metrics;
   private StoreMetadata storeMetadata = null;
-  private TransportClient mockedTransportClient;
+  private FastClientTransport mockedTransportClient;
 
   @BeforeClass
   public void setUp() {
@@ -190,7 +190,7 @@ public class DispatchingAvroGenericStoreClientTest {
 
     mockedTransportClient = null;
     if (mockTransportClient) {
-      mockedTransportClient = mock(TransportClient.class);
+      mockedTransportClient = mock(FastClientTransport.class);
       dispatchingAvroGenericStoreClient =
           new DispatchingAvroGenericStoreClient(storeMetadata, clientConfig, mockedTransportClient);
     } else {
@@ -203,7 +203,7 @@ public class DispatchingAvroGenericStoreClientTest {
 
     if (mockTransportClient) {
       // mock get()
-      doReturn(valueFuture).when(mockedTransportClient).get(any());
+      doReturn(valueFuture).when(mockedTransportClient).singleGet(any(), any());
       if (transportClientThrowsException) {
         valueFuture.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
       } else {
@@ -227,7 +227,8 @@ public class DispatchingAvroGenericStoreClientTest {
       TransportClientResponseForRoute computeResponse0, computeResponse1;
 
       if (transportClientThrowsException) {
-        doReturn(batchGetValueFuture0).when(mockedTransportClient).post(any(), any(), any());
+        doReturn(batchGetValueFuture0).when(mockedTransportClient)
+            .multiKeyStreamingRequest(any(), any(), any(), any(), any());
         batchGetValueFuture0.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
         batchGetValueFuture1.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
         computeResponseValueFuture0
@@ -243,10 +244,10 @@ public class DispatchingAvroGenericStoreClientTest {
             serializeBatchGetResponse(BATCH_GET_PARTIAL_KEYS_1),
             mock(CompletableFuture.class));
         doReturn(batchGetValueFuture0).when(mockedTransportClient)
-            .post(eq(REPLICA1_NAME + "/storage/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA1_NAME), any(BatchGetRequestContext.class), any(), any(), any());
         batchGetValueFuture0.complete(batchGetResponse0);
         doReturn(batchGetValueFuture1).when(mockedTransportClient)
-            .post(eq(REPLICA2_NAME + "/storage/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA2_NAME), any(BatchGetRequestContext.class), any(), any(), any());
 
         computeResponse0 = new TransportClientResponseForRoute(
             "0",
@@ -255,10 +256,10 @@ public class DispatchingAvroGenericStoreClientTest {
             serializeComputeResponse(COMPUTE_REQUEST_PARTIAL_KEYS_1),
             mock(CompletableFuture.class));
         doReturn(computeResponseValueFuture0).when(mockedTransportClient)
-            .post(eq(REPLICA1_NAME + "/compute/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA1_NAME), any(ComputeRequestContext.class), any(), any(), any());
         computeResponseValueFuture0.complete(computeResponse0);
         doReturn(computeResponseValueFuture1).when(mockedTransportClient)
-            .post(eq(REPLICA2_NAME + "/compute/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA2_NAME), any(ComputeRequestContext.class), any(), any(), any());
 
         if (!transportClientPartialIncomplete) {
           batchGetValueFuture1.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
@@ -279,10 +280,10 @@ public class DispatchingAvroGenericStoreClientTest {
             serializeBatchGetResponse(BATCH_GET_PARTIAL_KEYS_2),
             mock(CompletableFuture.class));
         doReturn(batchGetValueFuture0).when(mockedTransportClient)
-            .post(eq(REPLICA1_NAME + "/storage/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA1_NAME), any(BatchGetRequestContext.class), any(), any(), any());
         batchGetValueFuture0.complete(batchGetResponse0);
         doReturn(batchGetValueFuture1).when(mockedTransportClient)
-            .post(eq(REPLICA2_NAME + "/storage/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA2_NAME), any(BatchGetRequestContext.class), any(), any(), any());
         batchGetValueFuture1.complete(batchGetResponse1);
 
         computeResponse0 = new TransportClientResponseForRoute(
@@ -298,10 +299,10 @@ public class DispatchingAvroGenericStoreClientTest {
             serializeComputeResponse(COMPUTE_REQUEST_PARTIAL_KEYS_2),
             mock(CompletableFuture.class));
         doReturn(computeResponseValueFuture0).when(mockedTransportClient)
-            .post(eq(REPLICA1_NAME + "/compute/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA1_NAME), any(ComputeRequestContext.class), any(), any(), any());
         computeResponseValueFuture0.complete(computeResponse0);
         doReturn(computeResponseValueFuture1).when(mockedTransportClient)
-            .post(eq(REPLICA2_NAME + "/compute/test_store_v1"), any(), any());
+            .multiKeyStreamingRequest(eq(REPLICA2_NAME), any(ComputeRequestContext.class), any(), any(), any());
         computeResponseValueFuture1.complete(computeResponse1);
       }
     }
@@ -831,7 +832,8 @@ public class DispatchingAvroGenericStoreClientTest {
       assertEquals(response.getTotalEntryCount(), 1);
       assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
       ArgumentCaptor<Map<String, String>> headerCaptor = ArgumentCaptor.forClass(Map.class);
-      verify(mockedTransportClient, atLeastOnce()).post(any(), headerCaptor.capture(), any());
+      verify(mockedTransportClient, atLeastOnce())
+          .multiKeyStreamingRequest(any(), any(), any(), any(), headerCaptor.capture());
       assertTrue(headerCaptor.getValue().containsKey(HttpConstants.VENICE_KEY_COUNT));
       assertEquals(
           headerCaptor.getValue().get(HttpConstants.VENICE_KEY_COUNT),

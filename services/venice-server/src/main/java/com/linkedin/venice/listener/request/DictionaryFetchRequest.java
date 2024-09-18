@@ -30,6 +30,10 @@ public class DictionaryFetchRequest {
     }
   }
 
+  public static DictionaryFetchRequest create(String storeName, String resourceName) {
+    return new DictionaryFetchRequest(storeName, resourceName);
+  }
+
   public String getResourceName() {
     return resourceName;
   }

@@ -1,9 +1,9 @@
 package com.linkedin.venice.hadoop.input.recordreader.vson;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;

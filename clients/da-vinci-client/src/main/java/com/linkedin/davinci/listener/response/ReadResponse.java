@@ -2,6 +2,7 @@ package com.linkedin.davinci.listener.response;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
+import java.util.List;
 
 
 /**
@@ -36,6 +37,8 @@ public interface ReadResponse {
   boolean isFound();
 
   ByteBuf getResponseBody();
+
+  <K> List<K> getRecords();
 
   int getResponseSchemaIdHeader();
 }

@@ -1,11 +1,40 @@
 syntax = 'proto3';
 package com.linkedin.venice.protocols;
+import "google/protobuf/empty.proto";
 
 option java_multiple_files = true;
 
 service VeniceReadService {
-  rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
-  rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
+
+  rpc get (VeniceClientRequest) returns (VeniceServerResponse) {
+    option deprecated = true;
+  }
+
+  rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {
+    option deprecated = true;
+  }
+
+  rpc singleGet(SingleGetRequest) returns (SingleGetResponse) {}
+
+  rpc multiGet(MultiGetRequest) returns (MultiKeyResponse) {}
+
+  rpc multiGetStreaming(MultiGetRequest) returns (stream MultiKeyStreamingResponse) {}
+
+  rpc compute(ComputeRequest) returns (MultiKeyResponse) {}
+
+  rpc computeStreaming(ComputeRequest) returns (stream MultiKeyStreamingResponse) {}
+
+  rpc isServerHealthy(HealthCheckRequest) returns (HealthCheckResponse) {}
+
+  rpc getCompressionDictionary(CompressionDictionaryRequest) returns (CompressionDictionaryResponse) {}
+
+  rpc handleAdminRequest(AdminRequest) returns (AdminResponse) {}
+
+  rpc getMetadata(MetadataRequest) returns (MetadataResponse) {}
+
+  rpc getCurrentVersionInfo(CurrentVersionInfoRequest) returns (CurrentVersionInfoResponse) {}
+
+  rpc getIngestionContext(IngestionContextRequest) returns (IngestionContextResponse) {}
 }
 
 message VeniceClientRequest {
@@ -29,4 +58,155 @@ message VeniceServerResponse {
 
   uint32 errorCode = 6;
   string errorMessage = 7;
+}
+
+
+/*
+ * Note: The following message formats will be evolved in the future. The current format is used
+  * for the initial implementation and help refactor the existing code.
+ */
+message SingleGetRequest {
+  string resourceName = 1;
+  uint32 partition = 2;
+  string key = 3;
+  bool isRetryRequest = 4;
+  string keyEncodingType = 5;
+}
+
+message SingleGetResponse {
+  int32 statusCode = 1;
+  bytes value = 2;
+  sint32 schemaId = 3;
+  uint32 compressionStrategy = 4;
+  optional string errorMessage = 5;
+  string contentType = 6;
+  uint32 contentLength = 7;
+  uint32 rcu = 8;
+}
+
+message MultiGetRequest {
+  string resourceName = 1;
+  bool isRetryRequest = 2;
+  uint32 keyCount = 3;
+  repeated MultiKeyRequestKey keys = 4;
+  repeated RpcRequestHeader headers = 5;
+}
+
+message MultiKeyRequestKey {
+  uint32 keyIndex = 1;
+  uint32 partition = 2;
+  bytes keyBytes = 3;
+}
+
+message ComputeRequest {
+  string resourceName = 1;
+  bytes computeRequestBytes = 2;
+  sint32 computeValueSchemaId = 3;
+  bool isRetryRequest = 4;
+  uint32 apiVersion = 5;
+  uint32 keyCount = 6;
+  repeated MultiKeyRequestKey keys = 7;
+  repeated RpcRequestHeader headers = 8;
+}
+
+message MultiKeyResponse {
+  int32 statusCode = 1;
+  bytes value = 2;
+  sint32 schemaId = 3;
+  uint32 compressionStrategy = 4;
+  optional string errorMessage = 5;
+  string contentType = 6;
+  uint32 contentLength = 7;
+  uint32 rcu = 8;
+}
+
+message MultiKeyStreamingResponse {
+  int32 statusCode = 1;
+  sint32 keyIndex = 2;
+  bytes value = 3;
+  sint32 schemaId = 4;
+  uint32 compressionStrategy = 5;
+  optional string errorMessage = 6;
+  string contentType = 7;
+  uint32 contentLength = 8;
+  uint32 rcu = 9;
+}
+
+message RpcRequestHeader {
+  string key = 1;
+  string value = 2;
+}
+
+message HealthCheckRequest {
+}
+
+message HealthCheckResponse {
+  int32 statusCode = 1;
+  string message = 2;
+}
+
+message CompressionDictionaryRequest {
+  string storeName = 1;
+  uint32 storeVersion = 2;
+}
+
+message CompressionDictionaryResponse {
+  int32 statusCode = 1;
+  bytes value = 2;
+  string contentType = 3;
+  uint32 contentLength = 4;
+  string errorMessage = 5;
+}
+
+message AdminRequest {
+  string resourceName = 1;
+  optional uint32 partition = 2;
+  string serverAdminAction = 3;
+}
+
+message AdminResponse {
+  int32 statusCode = 1;
+  bytes value = 2;
+  sint32 schemaId = 3;
+  string contentType = 4;
+  uint32 contentLength = 5;
+  string errorMessage = 6;
+}
+
+message CurrentVersionInfoRequest {
+  string storeName = 1;
+}
+
+message CurrentVersionInfoResponse {
+  int32 statusCode = 1;
+  sint32 currentVersion = 2;
+  string errorMessage = 3;
+  string contentType = 4;
+}
+
+message MetadataRequest {
+  string storeName = 1;
+}
+
+message MetadataResponse {
+  int32 statusCode = 1;
+  bytes value = 2;
+  sint32 schemaId = 3;
+  string contentType = 4;
+  uint32 contentLength = 5;
+  string errorMessage = 6;
+}
+
+message IngestionContextRequest {
+  string versionTopicName = 1;
+  string topicName = 2;
+  uint32 partition = 3;
+}
+
+message IngestionContextResponse {
+  int32 statusCode = 1;
+  bytes value = 2;
+  string contentType = 3;
+  uint32 contentLength = 4;
+  string errorMessage = 5;
 }

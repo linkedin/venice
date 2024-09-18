@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.MetadataRequest;
 
 
 /**
@@ -22,6 +23,10 @@ public class MetadataFetchRequest {
     } else {
       throw new VeniceException("not a valid request for a METADATA action: " + uri);
     }
+  }
+
+  public static MetadataFetchRequest parseGetGrpcRequest(MetadataRequest request) {
+    return new MetadataFetchRequest(request.getStoreName());
   }
 
   public String getStoreName() {

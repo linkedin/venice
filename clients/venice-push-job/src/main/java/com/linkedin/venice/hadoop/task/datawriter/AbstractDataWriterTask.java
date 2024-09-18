@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;

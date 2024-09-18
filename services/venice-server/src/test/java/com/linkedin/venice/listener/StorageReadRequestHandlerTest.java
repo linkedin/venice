@@ -8,14 +8,12 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -50,9 +48,6 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.JavaUtilGuidV4Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.listener.grpc.GrpcRequestContext;
-import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
-import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -79,8 +74,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.protocols.VeniceClientRequest;
-import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -458,7 +451,7 @@ public class StorageReadRequestHandlerTest {
       }
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-      multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
+      multiGetResponseWrapper.getReadResponseStatsRecorder().recordMetrics(stats);
       if (responseProvider == validResponseProvider) {
         verify(stats).recordSuccessRequestKeyCount(recordCount);
       }
@@ -647,7 +640,7 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) argumentCaptor.getValue();
     assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    assertEquals(shortcutResponse.getMessage(), "Unrecognized object in StorageExecutionHandler");
+    assertEquals(shortcutResponse.getMessage(), "Unrecognized request type");
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -734,7 +727,7 @@ public class StorageReadRequestHandlerTest {
       double expectedReadComputeEfficiency = (double) valueBytes.length / (double) expectedReadComputeOutputSize;
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-      computeResponse.getStatsRecorder().recordMetrics(stats);
+      computeResponse.getReadResponseStatsRecorder().recordMetrics(stats);
       verify(stats).recordSuccessRequestKeyCount(keySet.size());
       verify(stats).recordDotProductCount(1);
       verify(stats).recordHadamardProduct(1);
@@ -802,23 +795,6 @@ public class StorageReadRequestHandlerTest {
   }
 
   @Test
-  public void testGrpcReadReturnsInternalErrorWhenRouterRequestIsNull() {
-    VeniceClientRequest clientRequest =
-        VeniceClientRequest.newBuilder().setIsBatchRequest(true).setResourceName("testStore_v1").build();
-    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
-    GrpcRequestContext ctx = new GrpcRequestContext(clientRequest, builder, null);
-    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
-    GrpcStorageReadRequestHandler grpcReadRequestHandler = spy(new GrpcStorageReadRequestHandler(requestHandler));
-    VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);
-    grpcReadRequestHandler.addNextHandler(mockNextHandler);
-    doNothing().when(mockNextHandler).processRequest(any());
-    grpcReadRequestHandler.processRequest(ctx); // will cause np exception
-
-    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
-    assertTrue(builder.getErrorMessage().contains("Internal Error"));
-  }
-
-  @Test
   public void testMisRoutedStoreVersion() throws Exception {
     String storeName = "testStore";
     // The request should throw NPE when the handler is trying to handleSingleGetRequest due to null partition and key.
@@ -835,7 +811,8 @@ public class StorageReadRequestHandlerTest {
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
     verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
-    Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
+    HttpResponseStatus response = shortcutResponseArgumentCaptor.getValue().getStatus();
+    assertEquals(response, VeniceReadResponseStatus.MISROUTED_STORE_VERSION.getHttpResponseStatus());
   }
 
   @Test

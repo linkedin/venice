@@ -379,7 +379,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     }
     genericFastClient.batchGet(keys).get();
     /**
-     * Both multi-get and streaming multi-get is emitted under the multi-get request type on server side. See {@link com.linkedin.venice.listener.ServerStatsContext}
+     * Both multi-get and streaming multi-get is emitted under the multi-get request type on server side. See {@link RequestStatsRecorder}
      */
     String multiGetRequestKeyCountMetric =
         ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "request_key_count.Rate";

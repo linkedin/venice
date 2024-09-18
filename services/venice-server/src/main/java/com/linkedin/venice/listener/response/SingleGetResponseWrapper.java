@@ -29,7 +29,7 @@ public class SingleGetResponseWrapper extends AbstractReadResponse {
   }
 
   @Override
-  public ReadResponseStatsRecorder getStatsRecorder() {
+  public ReadResponseStatsRecorder getReadResponseStatsRecorder() {
     return this.responseStats;
   }
 

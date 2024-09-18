@@ -1,7 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import io.netty.handler.codec.http.HttpResponseStatus;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 
 
 public class VeniceRequestEarlyTerminationException extends VeniceException {
@@ -14,11 +14,11 @@ public class VeniceRequestEarlyTerminationException extends VeniceException {
 
   @Override
   public int getHttpStatusCode() {
-    return HttpResponseStatus.REQUEST_TIMEOUT.code();
+    return VeniceReadResponseStatus.REQUEST_TIMEOUT.getHttpResponseStatus().code();
   }
 
-  public static HttpResponseStatus getHttpResponseStatus() {
-    return HttpResponseStatus.REQUEST_TIMEOUT;
+  public static VeniceReadResponseStatus getResponseStatusCode() {
+    return VeniceReadResponseStatus.REQUEST_TIMEOUT;
   }
 
   public static String getMessage(String storeName) {

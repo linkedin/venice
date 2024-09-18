@@ -2,14 +2,18 @@ package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.MultiGetRequest;
+import com.linkedin.venice.protocols.MultiKeyRequestKey;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.NettyUtils;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpRequest;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
@@ -20,13 +24,6 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<MultiGetRouterRequestKeyV1> {
   private static final RecordDeserializer<MultiGetRouterRequestKeyV1> DESERIALIZER = FastSerializerDeserializerFactory
       .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$, MultiGetRouterRequestKeyV1.class);
-
-  private MultiGetRouterRequestWrapper(
-      String resourceName,
-      List<MultiGetRouterRequestKeyV1> keys,
-      HttpRequest request) {
-    super(resourceName, keys, request);
-  }
 
   private MultiGetRouterRequestWrapper(
       String resourceName,
@@ -57,16 +54,38 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     byte[] content = new byte[httpRequest.content().readableBytes()];
     httpRequest.content().readBytes(content);
     keys = parseKeys(content);
+    boolean isRetryRequest = NettyUtils.containRetryHeader(httpRequest);
+    boolean isStreamingRequest = StreamingUtils.isStreamingEnabled(httpRequest);
 
-    return new MultiGetRouterRequestWrapper(requestParts[2], keys, httpRequest);
+    return new MultiGetRouterRequestWrapper(requestParts[2], keys, isRetryRequest, isStreamingRequest);
   }
 
+  /**
+   * @deprecated This method has been deprecated and will be removed once the corresponding legacy gRPC code is removed.
+   */
+  @Deprecated
   public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientRequest grpcRequest) {
     String resourceName = grpcRequest.getResourceName();
     List<MultiGetRouterRequestKeyV1> keys = parseKeys(grpcRequest.getKeyBytes().toByteArray());
+    boolean isRetryRequest = grpcRequest.getIsRetryRequest();
+    boolean isStreamingRequest = grpcRequest.getIsStreamingRequest();
+    return new MultiGetRouterRequestWrapper(resourceName, keys, isRetryRequest, isStreamingRequest);
+  }
 
-    // isRetryRequest set to false for now, retry functionality is a later milestone
-    return new MultiGetRouterRequestWrapper(resourceName, keys, false, grpcRequest.getIsStreamingRequest());
+  // TODO: Get rid of the avro envelope and use something generic
+  public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(MultiGetRequest grpcRequest) {
+    String resourceName = grpcRequest.getResourceName();
+    List<MultiGetRouterRequestKeyV1> keys = new ArrayList<>(grpcRequest.getKeyCount());
+    for (int i = 0; i < grpcRequest.getKeyCount(); i++) {
+      MultiKeyRequestKey multiKeyRequestKey = grpcRequest.getKeys(i);
+      keys.add(
+          new MultiGetRouterRequestKeyV1(
+              multiKeyRequestKey.getKeyIndex(),
+              multiKeyRequestKey.getKeyBytes().asReadOnlyByteBuffer(),
+              multiKeyRequestKey.getPartition()));
+    }
+    boolean isRetryRequest = grpcRequest.getIsRetryRequest();
+    return new MultiGetRouterRequestWrapper(resourceName, keys, isRetryRequest, true);
   }
 
   private static List<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {

@@ -59,7 +59,7 @@ public abstract class MultiKeyResponseWrapper<K> extends AbstractReadResponse {
   }
 
   @Override
-  public ReadResponseStatsRecorder getStatsRecorder() {
+  public ReadResponseStatsRecorder getReadResponseStatsRecorder() {
     return this.responseStats;
   }
 
@@ -74,6 +74,10 @@ public abstract class MultiKeyResponseWrapper<K> extends AbstractReadResponse {
   @Override
   public ByteBuf getResponseBody() {
     return responseBody.get();
+  }
+
+  public List<K> getRecords() {
+    return records;
   }
 
   @Override

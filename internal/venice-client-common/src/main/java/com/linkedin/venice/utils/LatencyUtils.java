@@ -41,4 +41,8 @@ public class LatencyUtils {
       return false;
     }
   }
+
+  public static long getLatencyInNS(long startTimeInNS) {
+    return System.nanoTime() - startTimeInNS;
+  }
 }

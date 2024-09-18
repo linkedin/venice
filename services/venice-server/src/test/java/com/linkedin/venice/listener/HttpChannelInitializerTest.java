@@ -9,7 +9,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
@@ -109,25 +108,6 @@ public class HttpChannelInitializerTest {
         storeAccessController,
         requestHandler);
     initializer.initChannel(ch);
-  }
-
-  @Test
-  public void initGrpcRequestProcessor() {
-    SSLConfig sslConfig = new SSLConfig();
-    doReturn(sslConfig).when(sslFactory).getSSLConfig();
-    HttpChannelInitializer initializer = new HttpChannelInitializer(
-        storeMetadataRepository,
-        customizedViewRepository,
-        metricsRepository,
-        sslFactoryOptional,
-        sslHandshakeExecutor,
-        serverConfig,
-        accessController,
-        storeAccessController,
-        requestHandler);
-
-    VeniceServerGrpcRequestProcessor processor = initializer.initGrpcRequestProcessor();
-    Assert.assertNotNull(processor);
   }
 
   @Test

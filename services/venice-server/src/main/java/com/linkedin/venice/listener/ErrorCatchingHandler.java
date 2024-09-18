@@ -1,10 +1,11 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.response.VeniceReadResponseStatus.INTERNAL_SERVER_ERROR;
+
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 /***
@@ -16,7 +17,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 public class ErrorCatchingHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    ctx.writeAndFlush(new HttpShortcutResponse(cause.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+    ctx.writeAndFlush(new HttpShortcutResponse(cause.getMessage(), INTERNAL_SERVER_ERROR.getHttpResponseStatus()));
     ctx.close();
   }
 

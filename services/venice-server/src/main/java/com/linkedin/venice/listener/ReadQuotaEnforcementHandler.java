@@ -1,5 +1,8 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.response.VeniceReadResponseStatus.BAD_REQUEST;
+import static com.linkedin.venice.response.VeniceReadResponseStatus.SERVICE_UNAVAILABLE;
+import static com.linkedin.venice.response.VeniceReadResponseStatus.TOO_MANY_REQUESTS;
 import static com.linkedin.venice.throttle.EventThrottler.REJECT_STRATEGY;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -28,7 +31,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
@@ -43,7 +45,7 @@ import org.apache.logging.log4j.Logger;
 
 @ChannelHandler.Sharable
 public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest>
-    implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
+    implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener, QuotaEnforcementHandler {
   private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
   public static final String SERVER_OVER_CAPACITY_MSG = "Server over capacity";
   public static final String INVALID_REQUEST_RESOURCE_MSG = "Invalid request resource: ";
@@ -193,31 +195,24 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return false;
   }
 
-  public enum QuotaEnforcementResult {
-    ALLOWED, // request is allowed
-    REJECTED, // too many requests (store level quota enforcement)
-    OVER_CAPACITY, // server over capacity (server level quota enforcement)
-    BAD_REQUEST, // bad request
-  }
-
   /**
    * Enforce quota for a given request.  This is common to both HTTP and GRPC handlers. Respective handlers will
    * take actions such as retaining the request and passing it to the next handler, or sending an error response.
    * @param request RouterRequest
    * @return QuotaEnforcementResult
    */
-  public QuotaEnforcementResult enforceQuota(RouterRequest request) {
+  public QuotaEnforcementHandler.QuotaEnforcementResult enforceQuota(RouterRequest request) {
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
     if (store == null) {
-      return QuotaEnforcementResult.BAD_REQUEST;
+      return QuotaEnforcementHandler.QuotaEnforcementResult.BAD_REQUEST;
     }
 
     /*
      * If we haven't completed initialization or store does not have SN read quota enabled, allow all requests
      */
     if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
-      return QuotaEnforcementResult.ALLOWED;
+      return QuotaEnforcementHandler.QuotaEnforcementResult.ALLOWED;
     }
 
     int readCapacityUnits = getRcu(request);
@@ -229,7 +224,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     if (veniceRateLimiter != null) {
       if (!request.isRetryRequest() && !veniceRateLimiter.tryAcquirePermit(readCapacityUnits)) {
         stats.recordRejected(request.getStoreName(), readCapacityUnits);
-        return QuotaEnforcementResult.REJECTED;
+        return QuotaEnforcementHandler.QuotaEnforcementResult.REJECTED;
       }
     } else {
       // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
@@ -242,32 +237,33 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      * retried requests need to be throttled at node capacity level
      */
     if (!storageNodeRateLimiter.tryAcquirePermit(readCapacityUnits)) {
-      return QuotaEnforcementResult.OVER_CAPACITY;
+      return QuotaEnforcementHandler.QuotaEnforcementResult.OVER_CAPACITY;
     }
 
     stats.recordAllowed(storeName, readCapacityUnits);
-    return QuotaEnforcementResult.ALLOWED;
+    return QuotaEnforcementHandler.QuotaEnforcementResult.ALLOWED;
   }
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
-    QuotaEnforcementResult result = enforceQuota(request);
+    QuotaEnforcementHandler.QuotaEnforcementResult result = enforceQuota(request);
 
-    if (result == QuotaEnforcementResult.BAD_REQUEST) {
+    if (result == QuotaEnforcementHandler.QuotaEnforcementResult.BAD_REQUEST) {
       ctx.writeAndFlush(
           new HttpShortcutResponse(
               INVALID_REQUEST_RESOURCE_MSG + request.getResourceName(),
-              HttpResponseStatus.BAD_REQUEST));
+              BAD_REQUEST.getHttpResponseStatus()));
       return;
     }
 
-    if (result == QuotaEnforcementResult.REJECTED) {
-      ctx.writeAndFlush(new HttpShortcutResponse(HttpResponseStatus.TOO_MANY_REQUESTS));
+    if (result == QuotaEnforcementHandler.QuotaEnforcementResult.REJECTED) {
+      ctx.writeAndFlush(new HttpShortcutResponse(TOO_MANY_REQUESTS.getHttpResponseStatus()));
       return;
     }
 
-    if (result == QuotaEnforcementResult.OVER_CAPACITY) {
-      ctx.writeAndFlush(new HttpShortcutResponse(SERVER_OVER_CAPACITY_MSG, HttpResponseStatus.SERVICE_UNAVAILABLE));
+    if (result == QuotaEnforcementHandler.QuotaEnforcementResult.OVER_CAPACITY) {
+      ctx.writeAndFlush(
+          new HttpShortcutResponse(SERVER_OVER_CAPACITY_MSG, SERVICE_UNAVAILABLE.getHttpResponseStatus()));
       return;
     }
 

@@ -54,5 +54,5 @@ public abstract class AbstractReadResponse implements ReadResponse {
 
   public abstract int getResponseSchemaIdHeader();
 
-  public abstract ReadResponseStatsRecorder getStatsRecorder();
+  public abstract ReadResponseStatsRecorder getReadResponseStatsRecorder();
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.IngestionContextRequest;
 
 
 public class TopicPartitionIngestionContextRequest {
@@ -24,6 +25,13 @@ public class TopicPartitionIngestionContextRequest {
     } else {
       throw new VeniceException("not a valid request for a TopicPartitionIngestionContext action: " + uri);
     }
+  }
+
+  public static TopicPartitionIngestionContextRequest parseGetGrpcRequest(IngestionContextRequest request) {
+    return new TopicPartitionIngestionContextRequest(
+        request.getVersionTopicName(),
+        request.getTopicName(),
+        request.getPartition());
   }
 
   public String getVersionTopic() {

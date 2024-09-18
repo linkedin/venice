@@ -10,6 +10,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,5 +38,9 @@ public class NettyUtils {
     }
     response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
     ctx.writeAndFlush(response);
+  }
+
+  public static boolean containRetryHeader(HttpRequest request) {
+    return request.headers().contains(HttpConstants.VENICE_RETRY);
   }
 }

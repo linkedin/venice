@@ -9,11 +9,11 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.grpc.GrpcServiceDependencies;
+import com.linkedin.venice.grpc.VeniceGrpcReadServiceImpl;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
-import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
@@ -105,7 +105,7 @@ public class ListenerService extends AbstractVeniceService {
       new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
     }
 
-    StorageReadRequestHandler requestHandler = createRequestHandler(
+    StorageReadRequestHandler storageReadRequestHandler = createRequestHandler(
         executor,
         computeExecutor,
         storageEngineRepository,
@@ -116,7 +116,6 @@ public class ListenerService extends AbstractVeniceService {
         diskHealthService,
         compressorFactory,
         resourceReadUsageTracker);
-
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
         customizedViewRepository,
@@ -126,7 +125,7 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig,
         routerAccessController,
         storeAccessController,
-        requestHandler);
+        storageReadRequestHandler);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();
@@ -165,11 +164,29 @@ public class ListenerService extends AbstractVeniceService {
 
     if (isGrpcEnabled && grpcServer == null) {
       List<ServerInterceptor> interceptors = channelInitializer.initGrpcInterceptors();
-      VeniceServerGrpcRequestProcessor requestProcessor = channelInitializer.initGrpcRequestProcessor();
-      grpcExecutor = createThreadPool(serverConfig.getGrpcWorkerThreadCount(), "GrpcWorkerThread", nettyBacklogSize);
+      grpcExecutor = createThreadPool(
+          serverConfig.getGrpcWorkerThreadCount(),
+          "GrpcWorkerThread",
+          serverConfig.getDatabaseLookupQueueCapacity());
+
+      /**
+       * Ideally, we would not pass the NettyHandlers to the gRPC service, but since the common code resides within
+       * these handlers, we are passing it for now. This should be refactored in the future so that the common code is
+       * shared between both services, and the handlers are only used for their respective services.
+       * For example, common functionality should be extracted from {@link StorageReadRequestHandler} and shared between
+       * {@link HttpChannelInitializer} and {@link VeniceGrpcReadServiceImpl}.
+       */
+      GrpcServiceDependencies dependencies =
+          new GrpcServiceDependencies.Builder().setDiskHealthCheckService(diskHealthService)
+              .setQuotaEnforcementHandler(channelInitializer.getQuotaEnforcer())
+              .setStorageReadRequestHandler(storageReadRequestHandler)
+              .setSingleGetStats(channelInitializer.getSingleGetStats())
+              .setMultiGetStats(channelInitializer.getMultiGetStats())
+              .setComputeStats(channelInitializer.getComputeStats())
+              .build();
 
       VeniceGrpcServerConfig.Builder grpcServerBuilder = new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
-          .setService(new VeniceReadServiceImpl(requestProcessor))
+          .setService(new VeniceGrpcReadServiceImpl(dependencies))
           .setExecutor(grpcExecutor)
           .setInterceptors(interceptors);
 

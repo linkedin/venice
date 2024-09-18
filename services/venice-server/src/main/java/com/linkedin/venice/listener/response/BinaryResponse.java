@@ -1,22 +1,22 @@
 package com.linkedin.venice.listener.response;
 
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 
 
 public class BinaryResponse {
   private final ByteBuf body;
-  private final HttpResponseStatus status;
+  private final VeniceReadResponseStatus status;
 
   public BinaryResponse(ByteBuf body) {
     if (body == null) {
       this.body = Unpooled.EMPTY_BUFFER;
-      this.status = HttpResponseStatus.NOT_FOUND;
+      this.status = VeniceReadResponseStatus.KEY_NOT_FOUND;
     } else {
       this.body = body;
-      this.status = HttpResponseStatus.OK;
+      this.status = VeniceReadResponseStatus.OK;
     }
   }
 
@@ -28,7 +28,7 @@ public class BinaryResponse {
     return body;
   }
 
-  public HttpResponseStatus getStatus() {
+  public VeniceReadResponseStatus getStatus() {
     return status;
   }
 }

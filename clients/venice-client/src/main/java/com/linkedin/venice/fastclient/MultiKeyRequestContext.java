@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
@@ -37,6 +38,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   private final AtomicReference<Throwable> partialResponseException;
 
   private Map<Integer, Set<String>> routesForPartition;
+
+  String requestUri;
+  String resourceName;
 
   final int numKeysInRequest;
   AtomicInteger numKeysCompleted;
@@ -125,7 +129,7 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     routeRequests.get(routeId).recordDeserializationTime.addAndGet(latencyInNS);
   }
 
-  void recordRequestSerializationTime(String routeId, long latencyInNS) {
+  public void recordRequestSerializationTime(String routeId, long latencyInNS) {
     Validate.notNull(routeId);
     routeRequests.get(routeId).requestSerializationTime.addAndGet(latencyInNS);
   }
@@ -183,6 +187,18 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   public int getFanoutSize() {
     return fanoutSize;
   }
+
+  public void setResourceName(String resourceName) {
+    this.resourceName = resourceName;
+  }
+
+  public String getResourceName() {
+    return resourceName;
+  }
+
+  public abstract String computeRequestUri();
+
+  public abstract QueryAction getQueryAction();
 
   /**
    * Utility class to keep track of a single request to a route
