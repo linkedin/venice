@@ -86,16 +86,19 @@ public class EnumUtils {
       int value,
       Class<V> enumClass,
       Function<String, VeniceException> exceptionConstructor) {
-    try {
-      if (values instanceof List) {
+    if (values instanceof List) {
+      try {
         return ((List<V>) values).get(value);
-      } else if (values instanceof Map) {
-        return ((Map<Integer, V>) values).get(value);
-      } else {
-        throw new IllegalArgumentException("Invalid values type: " + values.getClass().getSimpleName());
+      } catch (IndexOutOfBoundsException e) {
+        throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
       }
-    } catch (IndexOutOfBoundsException e) {
-      throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
+    } else if (values instanceof Map) {
+      if (!((Map<Integer, V>) values).containsKey(value)) {
+        throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
+      }
+      return ((Map<Integer, V>) values).get(value);
+    } else {
+      throw new IllegalArgumentException("Invalid values type: " + values.getClass().getSimpleName());
     }
   }
 }
