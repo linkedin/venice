@@ -47,8 +47,8 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     }
   }
 
-  public O processDelete(Lazy<K> key) {
-    return (O) this.recordTransformer.processDelete(key);
+  public void processDelete(Lazy<K> key) {
+    this.recordTransformer.processDelete(key);
   }
 
   public void onStart() {

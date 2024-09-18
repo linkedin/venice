@@ -3471,6 +3471,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
 
           // Decompress/assemble record
+          // ToDo: Wrap chunking in Lazy
           Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
               putSchemaId,
@@ -3541,9 +3542,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (recordTransformer != null) {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Object record = recordTransformer.processDelete(lazyKey);
+          recordTransformer.processDelete(lazyKey);
 
-          if (record != null) {
+          if (!recordTransformer.getStoreRecordsInDaVinci()) {
             break;
           }
         }

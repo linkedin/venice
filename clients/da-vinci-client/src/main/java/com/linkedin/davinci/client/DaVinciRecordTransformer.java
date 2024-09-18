@@ -89,14 +89,14 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
 
   /**
    * Override this method to customize the behavior for record deletions.
-   * By default, records will be deleted. Return a non-null object to keep the record in storage.
+   * For example, you can use this method to delete records from a custom storage outside the Da Vinci Client.
+   * By default, it performs no operation.
    *
    * @param key the key of the record to be deleted
-   * @return the object to keep in storage, or null to proceed with the deletion
    */
-  public O processDelete(Lazy<K> key) {
-    return null;
-  }
+  public void processDelete(Lazy<K> key) {
+    return;
+  };
 
   /**
    * Lifecycle event triggered before records are consumed.

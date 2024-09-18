@@ -50,8 +50,6 @@ public class RecordTransformerTest {
     assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue));
 
     recordTransformer.processDelete(lazyKey);
-    String deletedRecord = recordTransformer.processDelete(lazyKey);
-    assertNull(deletedRecord);
 
     assertFalse(recordTransformer.getStoreRecordsInDaVinci());
     Class<String> outputValueClass = recordTransformer.getOutputValueClass();
@@ -111,8 +109,6 @@ public class RecordTransformerTest {
     assertEquals(recordTransformer.transformAndProcessPut(lazyKey, lazyValue), "SampleValueTransformed");
 
     recordTransformer.processDelete(lazyKey);
-    String deletedRecord = recordTransformer.processDelete(lazyKey);
-    assertNull(deletedRecord);
 
     recordTransformer.onEnd();
   }
