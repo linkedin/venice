@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.map;
 
-import com.linkedin.venice.input.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.hadoop.io.BytesWritable;
 

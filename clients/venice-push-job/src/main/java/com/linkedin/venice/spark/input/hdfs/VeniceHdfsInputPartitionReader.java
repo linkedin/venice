@@ -3,11 +3,11 @@ package com.linkedin.venice.spark.input.hdfs;
 import static com.linkedin.venice.pushjob.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.input.recordreader.VeniceRecordIterator;
-import com.linkedin.venice.input.recordreader.avro.VeniceAvroFileIterator;
-import com.linkedin.venice.input.recordreader.avro.VeniceAvroRecordReader;
-import com.linkedin.venice.input.recordreader.vson.VeniceVsonFileIterator;
-import com.linkedin.venice.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.spark.input.VeniceAbstractPartitionReader;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;

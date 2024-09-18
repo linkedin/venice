@@ -8,8 +8,6 @@ import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_SOURCE_KE
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
-import com.linkedin.venice.input.kafka.KafkaInputRecordReader;
-import com.linkedin.venice.input.kafka.KafkaInputSplit;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;

@@ -14,7 +14,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_NAME_RECORD_V1_
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
-import com.linkedin.venice.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RandomGenUtils;

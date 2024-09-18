@@ -5,8 +5,6 @@ import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_BRO
 import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 
-import com.linkedin.venice.input.kafka.KafkaInputFormat;
-import com.linkedin.venice.input.kafka.KafkaInputSplit;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;

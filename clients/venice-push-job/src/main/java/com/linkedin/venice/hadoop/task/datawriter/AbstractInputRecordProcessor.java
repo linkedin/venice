@@ -15,7 +15,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.pushjob.VenicePushJobConstants;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;

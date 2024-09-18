@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.map;
 
-import com.linkedin.venice.input.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.mapred.AvroWrapper;

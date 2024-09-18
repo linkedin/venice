@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.input.recordreader.VeniceRecordIterator;
+import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.Closeable;
 import java.io.IOException;
