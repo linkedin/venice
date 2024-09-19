@@ -112,7 +112,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
   private CountDownLatch isReadyLatch = new CountDownLatch(1);
-  private AtomicReference<String> serverClusterName;
+  private AtomicReference<String> serverClusterName = new AtomicReference<>();
 
   private Set<String> harClusters;
 
