@@ -1,22 +1,22 @@
 package com.linkedin.venice.spark.input.hdfs;
 
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.SCHEMA_STRING_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.VSON_PUSH;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputTable.INPUT_TABLE_NAME;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;

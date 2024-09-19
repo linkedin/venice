@@ -1,12 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJPropsWithoutD2Routing;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -16,6 +9,13 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeMultiLevelVsonFile2;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFile;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeVsonByteAndShort;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

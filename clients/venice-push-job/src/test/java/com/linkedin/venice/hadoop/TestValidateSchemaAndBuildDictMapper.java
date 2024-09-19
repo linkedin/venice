@@ -1,13 +1,13 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;

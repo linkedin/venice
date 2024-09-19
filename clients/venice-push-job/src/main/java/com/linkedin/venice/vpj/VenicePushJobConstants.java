@@ -1,4 +1,4 @@
-package com.linkedin.venice.pushjob;
+package com.linkedin.venice.vpj;
 
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 

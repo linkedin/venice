@@ -2,11 +2,11 @@ package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.pushjob.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
