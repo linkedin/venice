@@ -2054,4 +2054,30 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     stopParticipant(newNodeId);
   }
 
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testInstanceTagging() {
+    String instanceTag = "GENERAL";
+    int newAdminPort = controllerConfig.getAdminPort() + 1; /* Note: dummy port */
+    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties())
+        .put("admin.port", newAdminPort)
+        .put("controller.instance.tag", instanceTag);
+
+    VeniceProperties newControllerProps = builder.build();
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
+    VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
+        TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory());
+    // Start stand by controller
+    newLeaderAdmin.initStorageCluster(clusterName);
+
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
+      List<String> instances = newLeaderAdmin.getHelixAdmin().getInstancesInClusterWithTag(clusterName, instanceTag);
+      return instances.size() == 1;
+    });
+
+  }
+
 }
