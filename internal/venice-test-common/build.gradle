@@ -133,83 +133,87 @@ def integrationTestConfigs = {
 }
 
 def integrationTestBuckets = [
-  "A": [
-      "com.linkedin.davinci.*"],
-  "A1": [
-      "com.linkedin.venice.endToEnd.DaVinciClient*"],
-  "B": [
+  "1000": [
+      "com.linkedin.davinci.*",
+      "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
+      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest"],
+  "1010": [
+       "com.linkedin.venice.endToEnd.DaVinciClientTest"],
+  "1020": [
       "com.linkedin.venice.endToEnd.DaVinciCluster*",
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
-  "C": [
+  "1030": [
       "com.linkedin.venice.consumer.*"],
-  "D": [
-      "com.linkedin.venice.endToEnd.ActiveActive*",
+  "1040": [
+      "com.linkedin.venice.endToEnd.ActiveActive*"],
+  "1050": [
       "com.linkedin.venice.endToEnd.TestActiveActive*"],
-  "E": [
+  "1060": [
       "com.linkedin.venice.helix.*",
       "com.linkedin.venice.helixrebalance.*"],
-  "F": [
+  "1070": [
       "com.linkedin.venice.fastclient.*"],
-  "G": [
+  "1080": [
       "com.linkedin.venice.endToEnd.TestEmptyPush",
       "com.linkedin.venice.ingestionHeartbeat.*"],
-  "G1": [
+  "1090": [
       "com.linkedin.venice.router.*"
         ],
-  "H": [
-      "com.linkedin.venice.server.*",
-      "com.linkedin.venice.storagenode.*",
+  "1100": [
+      "com.linkedin.venice.server.*"],
+  "1110": [
       "com.linkedin.venice.restart.*"],
-  "I": [
+  "1120": [
+      "com.linkedin.venice.storagenode.*"],
+  "1130": [
       "com.linkedin.venice.endToEnd.TestStoreMigration",
       "com.linkedin.venice.endToEnd.TestStuckConsumerRepair",
       "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
       "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience",
-      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"
-  ],
-  "J": [
+      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"],
+  "1210": [
       "com.linkedin.venice.hadoop.*",
       "com.linkedin.venice.endToEnd.TestVson*",
       "com.linkedin.venice.endToEnd.Push*"],
-  "K": [
+  "1220": [
       "com.linkedin.venice.endToEnd.TestPushJob*"],
-  "L": [
+  "1230": [
       "com.linkedin.venice.endToEnd.TestBatch*"],
-  "M": [
+  "1240": [
       "com.linkedin.venice.kafka.*",
       "com.linkedin.venice.samza.*",
       "com.linkedin.venice.writer.*"],
-  "M1": [
-      "com.linkedin.venice.endToEnd.PartialUpdateTest",
+  "1250": [
+      "com.linkedin.venice.endToEnd.PartialUpdateTest"],
+  "1260": [
       "com.linkedin.venice.endToEnd.PartialUpdateWithParallelProcessingTest"],
-  "M2": [
+  "1270": [
       "com.linkedin.venice.endToEnd.TestWritePathComputation",
-      "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest"],
-  "N": [
+      "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest",
       "com.linkedin.venice.endToEnd.StoragePersona*",
       "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
       "com.linkedin.venice.persona.*"],
-  "N1": [
+  "1280": [
       "com.linkedin.venice.pubsub.*"],
-  "O": [
+  "1400": [
       "com.linkedin.venice.endToEnd.TestHybrid*"],
-  "P": [
+  "1410": [
       "com.linkedin.venice.controller.server.*",
       "com.linkedin.venice.controller.kafka.consumer.*",
       "com.linkedin.venice.controller.migration.*"],
-  "P1": [
+  "1420": [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
-  "Q": [
+  "1430": [
       "com.linkedin.venice.controller.Test*"],
-  "R": [
+  "1440": [
       "com.linkedin.venice.endToEnd.DataRecoveryTest",
       "com.linkedin.venice.controllerapi.TestControllerClient"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
-  task "integrationTest${name}" (type: Test) {
+  task "integrationTest_${name}" (type: Test) {
     filter {
       patterns.each { pattern ->
         includeTestsMatching pattern
@@ -219,6 +223,12 @@ integrationTestBuckets.each { name, patterns ->
     useTestNG {
       excludeGroups 'flaky'
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
+    }
+    beforeSuite {
+      suiteStartTime = System.currentTimeMillis()
+    }
+    afterSuite { descriptor, result ->
+      println "Test Suite ${descriptor.name} completed in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
     }
   }
 }
