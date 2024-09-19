@@ -18,6 +18,8 @@ import java.util.concurrent.CompletableFuture;
  * to decide the healthiness of each replica.
  */
 public interface StoreMetadata extends SchemaReader {
+  String getClusterName();
+
   String getStoreName();
 
   int getCurrentStoreVersion();
