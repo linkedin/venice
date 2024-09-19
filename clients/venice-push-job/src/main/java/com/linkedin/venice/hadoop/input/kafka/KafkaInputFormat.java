@@ -49,7 +49,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
   public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  public Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
+  protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> consumerProperties)
