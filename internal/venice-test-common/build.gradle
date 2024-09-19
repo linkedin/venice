@@ -213,7 +213,7 @@ def integrationTestBuckets = [
 ]
 
 integrationTestBuckets.each { name, patterns ->
-  task "integrationTest_${name}" (type: Test) {
+  task "integrationTests_${name}" (type: Test) {
     filter {
       patterns.each { pattern ->
         includeTestsMatching pattern
@@ -273,9 +273,9 @@ task generateGHCI() {
 
   def common = "--continue --no-daemon "
 
-  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
+  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTests_"
   integrationTestBuckets.each { name, patterns ->
-    def flowName = "IntegrationTests" + name
+    def flowName = "IntegrationTests_" + name
     jobs << flowName
     appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
   }

@@ -13,7 +13,7 @@ name: E2ETests
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
-  IntegrationTests1000:
+  IntegrationTests_1000:
     strategy:
       fail-fast: false
       matrix:
@@ -38,7 +38,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1000"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1000"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -55,7 +55,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1010:
+  IntegrationTests_1010:
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +80,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1010"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1010"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -97,7 +97,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1020:
+  IntegrationTests_1020:
     strategy:
       fail-fast: false
       matrix:
@@ -122,7 +122,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1020"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1020"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -139,7 +139,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1030:
+  IntegrationTests_1030:
     strategy:
       fail-fast: false
       matrix:
@@ -164,7 +164,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1030"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1030"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -181,7 +181,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1040:
+  IntegrationTests_1040:
     strategy:
       fail-fast: false
       matrix:
@@ -206,7 +206,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1040"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1040"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -223,7 +223,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1050:
+  IntegrationTests_1050:
     strategy:
       fail-fast: false
       matrix:
@@ -248,7 +248,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1050"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1050"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -265,7 +265,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1060:
+  IntegrationTests_1060:
     strategy:
       fail-fast: false
       matrix:
@@ -290,7 +290,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1060"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1060"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -307,7 +307,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1070:
+  IntegrationTests_1070:
     strategy:
       fail-fast: false
       matrix:
@@ -332,7 +332,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1070"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1070"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -349,7 +349,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1080:
+  IntegrationTests_1080:
     strategy:
       fail-fast: false
       matrix:
@@ -374,7 +374,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1080"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1080"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -391,7 +391,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1090:
+  IntegrationTests_1090:
     strategy:
       fail-fast: false
       matrix:
@@ -416,7 +416,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1090"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1090"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -433,7 +433,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1100:
+  IntegrationTests_1100:
     strategy:
       fail-fast: false
       matrix:
@@ -458,7 +458,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1100"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1100"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -475,7 +475,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1110:
+  IntegrationTests_1110:
     strategy:
       fail-fast: false
       matrix:
@@ -500,7 +500,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1110"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1110"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -517,7 +517,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1120:
+  IntegrationTests_1120:
     strategy:
       fail-fast: false
       matrix:
@@ -542,7 +542,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1120"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1120"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -559,7 +559,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1130:
+  IntegrationTests_1130:
     strategy:
       fail-fast: false
       matrix:
@@ -584,7 +584,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1130"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1130"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -601,7 +601,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1210:
+  IntegrationTests_1210:
     strategy:
       fail-fast: false
       matrix:
@@ -626,7 +626,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1210"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1210"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -643,7 +643,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1220:
+  IntegrationTests_1220:
     strategy:
       fail-fast: false
       matrix:
@@ -668,7 +668,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1220"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1220"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -685,7 +685,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1230:
+  IntegrationTests_1230:
     strategy:
       fail-fast: false
       matrix:
@@ -710,7 +710,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1230"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1230"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -727,7 +727,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1240:
+  IntegrationTests_1240:
     strategy:
       fail-fast: false
       matrix:
@@ -752,7 +752,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1240"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1240"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -769,7 +769,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1250:
+  IntegrationTests_1250:
     strategy:
       fail-fast: false
       matrix:
@@ -794,7 +794,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1250"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1250"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -811,7 +811,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1260:
+  IntegrationTests_1260:
     strategy:
       fail-fast: false
       matrix:
@@ -836,7 +836,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1260"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1260"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -853,7 +853,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1270:
+  IntegrationTests_1270:
     strategy:
       fail-fast: false
       matrix:
@@ -878,7 +878,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1270"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1270"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -895,7 +895,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1280:
+  IntegrationTests_1280:
     strategy:
       fail-fast: false
       matrix:
@@ -920,7 +920,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1280"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1280"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -937,7 +937,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1400:
+  IntegrationTests_1400:
     strategy:
       fail-fast: false
       matrix:
@@ -962,7 +962,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1400"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1400"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -979,7 +979,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1410:
+  IntegrationTests_1410:
     strategy:
       fail-fast: false
       matrix:
@@ -1004,7 +1004,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1410"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1410"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1021,7 +1021,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1420:
+  IntegrationTests_1420:
     strategy:
       fail-fast: false
       matrix:
@@ -1046,7 +1046,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1420"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1420"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1063,7 +1063,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1430:
+  IntegrationTests_1430:
     strategy:
       fail-fast: false
       matrix:
@@ -1088,7 +1088,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1430"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1430"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1105,7 +1105,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests1440:
+  IntegrationTests_1440:
     strategy:
       fail-fast: false
       matrix:
@@ -1130,7 +1130,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTest1440"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1440"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1172,7 +1172,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_Z"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1195,7 +1195,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    needs: [IntegrationTests1000, IntegrationTests1010, IntegrationTests1020, IntegrationTests1030, IntegrationTests1040, IntegrationTests1050, IntegrationTests1060, IntegrationTests1070, IntegrationTests1080, IntegrationTests1090, IntegrationTests1100, IntegrationTests1110, IntegrationTests1120, IntegrationTests1130, IntegrationTests1210, IntegrationTests1220, IntegrationTests1230, IntegrationTests1240, IntegrationTests1250, IntegrationTests1260, IntegrationTests1270, IntegrationTests1280, IntegrationTests1400, IntegrationTests1410, IntegrationTests1420, IntegrationTests1430, IntegrationTests1440, IntegrationTestsZ]
+    needs: [IntegrationTests_1000, IntegrationTests_1010, IntegrationTests_1020, IntegrationTests_1030, IntegrationTests_1040, IntegrationTests_1050, IntegrationTests_1060, IntegrationTests_1070, IntegrationTests_1080, IntegrationTests_1090, IntegrationTests_1100, IntegrationTests_1110, IntegrationTests_1120, IntegrationTests_1130, IntegrationTests_1210, IntegrationTests_1220, IntegrationTests_1230, IntegrationTests_1240, IntegrationTests_1250, IntegrationTests_1260, IntegrationTests_1270, IntegrationTests_1280, IntegrationTests_1400, IntegrationTests_1410, IntegrationTests_1420, IntegrationTests_1430, IntegrationTests_1440, IntegrationTestsZ]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
