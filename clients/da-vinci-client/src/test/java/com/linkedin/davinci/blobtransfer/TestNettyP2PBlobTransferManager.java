@@ -7,13 +7,19 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,6 +31,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -36,6 +43,7 @@ public class TestNettyP2PBlobTransferManager {
   P2PBlobTransferService server;
   NettyFileTransferClient client;
   NettyP2PBlobTransferManager manager;
+  StorageMetadataService storageMetadataService;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
   String TEST_STORE = "test_store";
@@ -50,7 +58,8 @@ public class TestNettyP2PBlobTransferManager {
     tmpSnapshotDir = Files.createTempDirectory(TMP_SNAPSHOT_DIR);
     tmpPartitionDir = Files.createTempDirectory(TMP_PARTITION_DIR);
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
-    server = new P2PBlobTransferService(port, tmpSnapshotDir.toString());
+    storageMetadataService = mock(StorageMetadataService.class);
+    server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), storageMetadataService);
     client = new NettyFileTransferClient(port, tmpPartitionDir.toString());
     finder = mock(BlobFinder.class);
     manager = new NettyP2PBlobTransferManager(server, client, finder);
@@ -78,7 +87,7 @@ public class TestNettyP2PBlobTransferManager {
 
   @Test
   public void testFailedConnectPeer() {
-    CompletionStage<InputStream> future = client.get("remotehost123", "test_store", 1, 1);
+    CompletionStage<BlobTransferPartitionMetadata> future = client.get("remotehost123", "test_store", 1, 1);
     Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
   }
 
@@ -113,6 +122,15 @@ public class TestNettyP2PBlobTransferManager {
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
 
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
     // Prepare files in the snapshot directory
     Path snapshotDir = Paths.get(
         RocksDBUtils.composeSnapshotDir(tmpSnapshotDir.toString(), TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION));
@@ -146,8 +164,8 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Files.notExists(destFile3));
 
     // Manager should be able to fetch the file and download it to another directory
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    future.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    CompletionStage<BlobTransferPartitionMetadata> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobTransferPartitionMetadata actualMetadata = future.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify files are all written to the partition directory
     Assert.assertTrue(Files.exists(destFile1));
@@ -157,5 +175,18 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file1), Files.readAllBytes(destFile1)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
+
+    // Verify the offset record
+    ByteBuffer actualOffsetLag = actualMetadata.getOffsetRecord();
+    ByteBuffer expectOffsetLag = ByteBuffer.wrap(expectOffsetRecord.toBytes());
+    Assert.assertEquals(actualOffsetLag, expectOffsetLag);
+
+    // Verify the store version state
+    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    ByteBuffer actualStoreVersionState = actualMetadata.getStoreVersionState();
+    ByteBuffer expectStoreVersionState =
+        ByteBuffer.wrap(storeVersionStateSerializer.serialize(TEST_STORE, storeVersionState));
+    Assert.assertEquals(actualStoreVersionState, expectStoreVersionState);
   }
 }

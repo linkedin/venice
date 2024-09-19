@@ -1,10 +1,16 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.*;
 
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import io.netty.buffer.UnpooledHeapByteBuf;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -13,6 +19,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.IdleStateEvent;
@@ -24,6 +31,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -33,11 +41,15 @@ import org.testng.annotations.Test;
 public class TestP2PFileTransferServerHandler {
   EmbeddedChannel ch;
   Path baseDir;
+  StorageMetadataService storageMetadataService;
+  P2PFileTransferServerHandler serverHandler;
 
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
-    ch = new EmbeddedChannel(new P2PFileTransferServerHandler(baseDir.toString()));
+    storageMetadataService = Mockito.mock(StorageMetadataService.class);
+    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), storageMetadataService);
+    ch = new EmbeddedChannel(serverHandler);
   }
 
   @AfterMethod
@@ -97,7 +109,18 @@ public class TestP2PFileTransferServerHandler {
   }
 
   @Test
-  public void testTransferSingleFile() throws IOException {
+  public void testTransferSingleFileAndSingleMetadata() throws IOException {
+    // prepare response from metadata service
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
+    // prepare the file request
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
@@ -105,6 +128,7 @@ public class TestP2PFileTransferServerHandler {
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
 
     ch.writeInbound(request);
+
     // start of file1
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
@@ -112,20 +136,50 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(
         httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
         "attachment; filename=\"file1\"");
+    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE).toString(), BlobTransferType.FILE.toString());
+    // send the content in one chunk
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
+    // the last empty response for file1
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof LastHttpContent);
     // end of file1
+
+    // start of metadata
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    DefaultHttpResponse metadataResponse = (DefaultHttpResponse) response;
+    Assert.assertEquals(
+        metadataResponse.headers().get(BLOB_TRANSFER_TYPE).toString(),
+        BlobTransferType.METADATA.toString());
+    // verify the metadata content
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof UnpooledHeapByteBuf);
+    // the last empty response
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof LastHttpContent);
+    // end of metadata
+
+    // start of STATUS response
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
-    // end of all file
+    // end of STATUS response
   }
 
   @Test
   public void testTransferMultipleFiles() throws IOException {
+    // prepare response from metadata service
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
@@ -158,10 +212,60 @@ public class TestP2PFileTransferServerHandler {
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof LastHttpContent);
     // end of a file2
+
+    // start of metadata
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    DefaultHttpResponse metadataResponse = (DefaultHttpResponse) response;
+    Assert.assertEquals(
+        metadataResponse.headers().get(BLOB_TRANSFER_TYPE).toString(),
+        BlobTransferType.METADATA.toString());
+    // verify the metadata content
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof UnpooledHeapByteBuf);
+    // the last empty response
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof LastHttpContent);
+    // end of metadata
+
+    // start of STATUS response
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
-    // end of all file
+    // end of STATUS response
+  }
+
+  @Test
+  public void testWhenMetadataCreateError() throws IOException {
+    // prepare the file request
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Path file1 = snapshotDir.resolve("file1");
+    Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+
+    ch.writeInbound(request);
+
+    // start of file1
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
+    Assert.assertEquals(
+        httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
+        "attachment; filename=\"file1\"");
+    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE).toString(), BlobTransferType.FILE.toString());
+    // send the content in one chunk
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultFileRegion);
+    // the last empty response for file1
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof LastHttpContent);
+    // end of file1
+
+    // metadata in server side has error
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
   }
 }

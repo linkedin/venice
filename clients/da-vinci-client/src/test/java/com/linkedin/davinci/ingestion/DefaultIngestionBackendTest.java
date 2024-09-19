@@ -6,10 +6,12 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -78,25 +80,30 @@ public class DefaultIngestionBackendTest {
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
 
     // Create the DefaultIngestionBackend instance with mocked dependencies
-    ingestionBackend = new DefaultIngestionBackend(
-        storageMetadataService,
-        storeIngestionService,
-        storageService,
-        blobTransferManager,
-        veniceServerConfig);
+    ingestionBackend = spy(
+        new DefaultIngestionBackend(
+            storageMetadataService,
+            storeIngestionService,
+            storageService,
+            blobTransferManager,
+            veniceServerConfig));
   }
 
   // verify that blobTransferManager was called given it is a hybrid & blob enabled
   @Test
   public void testStartConsumptionWithBlobTransfer() {
+    BlobTransferPartitionMetadata metadata = new BlobTransferPartitionMetadata();
+
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
-        .thenReturn(CompletableFuture.completedFuture(null));
+        .thenReturn(CompletableFuture.completedFuture(metadata));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
 
     ingestionBackend.startConsumption(storeConfig, PARTITION);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    // verify the metadata is used to update offset and store version state
+    verify(ingestionBackend).updateStorePartitionMetadata(eq(storageService), eq(metadata));
   }
 
   @Test
@@ -107,7 +114,7 @@ public class DefaultIngestionBackendTest {
         .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
 
     CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION).toCompletableFuture();
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, null).toCompletableFuture();
     Assert.assertTrue(future.isDone());
   }
 }
