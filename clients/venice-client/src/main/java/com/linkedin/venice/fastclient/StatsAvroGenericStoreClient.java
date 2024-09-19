@@ -250,6 +250,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         future.whenComplete((status, throwable) -> {
           ClusterRouteStats.RouteStats routeStats = clusterRouteStats.getRouteStats(
               metricsRepository,
+              /**
+               * There is a race condition during store migration and the cluster name might not match
+               * with the requested instance.
+               * It is fine for tracking purpose as it would only happen for a very short period and
+               * the wrong cluster/instance combination will be deprecated soon because of a short lifetime.
+               */
               requestContext.serverClusterName,
               instance,
               requestContext.getRequestType());
