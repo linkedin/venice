@@ -1,8 +1,9 @@
-package com.linkedin.venice.blobtransfer.server;
+package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 
+import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.embedded.EmbeddedChannel;

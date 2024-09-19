@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer.server;
+package com.linkedin.davinci.blobtransfer.server;
 
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;

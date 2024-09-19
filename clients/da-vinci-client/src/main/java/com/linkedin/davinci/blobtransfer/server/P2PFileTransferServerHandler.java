@@ -1,11 +1,11 @@
-package com.linkedin.venice.blobtransfer.server;
+package com.linkedin.davinci.blobtransfer.server;
 
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STREAM;
 
-import com.linkedin.venice.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.venice.request.RequestHelper;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;

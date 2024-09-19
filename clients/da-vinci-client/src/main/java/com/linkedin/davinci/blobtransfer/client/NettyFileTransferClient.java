@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer.client;
+package com.linkedin.davinci.blobtransfer.client;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;

@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer.server;
+package com.linkedin.davinci.blobtransfer.server;
 
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;

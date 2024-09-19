@@ -1,9 +1,11 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 
-import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
+import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;

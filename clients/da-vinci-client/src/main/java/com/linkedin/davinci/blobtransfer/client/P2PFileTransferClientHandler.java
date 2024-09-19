@@ -1,9 +1,9 @@
-package com.linkedin.venice.blobtransfer.client;
+package com.linkedin.davinci.blobtransfer.client;
 
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 
-import com.linkedin.venice.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;

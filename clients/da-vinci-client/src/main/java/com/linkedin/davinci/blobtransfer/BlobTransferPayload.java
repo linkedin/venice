@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composeSnapshotDir;
