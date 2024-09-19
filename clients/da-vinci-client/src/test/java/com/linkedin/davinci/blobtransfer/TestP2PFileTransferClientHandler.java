@@ -1,10 +1,16 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.*;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
+import static org.mockito.Mockito.spy;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -23,6 +29,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +40,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -45,14 +53,31 @@ public class TestP2PFileTransferClientHandler {
   String TEST_STORE = "test_store";
   int TEST_VERSION = 1;
   int TEST_PARTITION = 0;
-  CompletionStage<BlobTransferPartitionMetadata> metadataFuture;
+  CompletionStage<InputStream> inputStreamFuture;
+  KafkaStoreIngestionService kafkaStoreIngestionService;
+  StorageService storageService;
+
+  P2PFileTransferClientHandler clientHandler;
 
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
-    metadataFuture = new CompletableFuture<>();
-    ch = new EmbeddedChannel(
-        new P2PFileTransferClientHandler(baseDir.toString(), metadataFuture, TEST_STORE, TEST_VERSION, TEST_PARTITION));
+    inputStreamFuture = new CompletableFuture<>();
+    kafkaStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
+    storageService = Mockito.mock(StorageService.class);
+
+    clientHandler = spy(
+        new P2PFileTransferClientHandler(
+            kafkaStoreIngestionService,
+            storageService,
+            baseDir.toString(),
+            inputStreamFuture,
+            TEST_STORE,
+            TEST_VERSION,
+            TEST_PARTITION));
+    Mockito.doNothing().when(clientHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any(), Mockito.any());
+
+    ch = new EmbeddedChannel(clientHandler);
   }
 
   @AfterMethod
@@ -73,7 +98,7 @@ public class TestP2PFileTransferClientHandler {
         new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
     ch.writeInbound(response);
     try {
-      metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -86,9 +111,10 @@ public class TestP2PFileTransferClientHandler {
   @Test
   public void testInvalidResponseHeader() {
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
     ch.writeInbound(response);
     try {
-      metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -102,6 +128,7 @@ public class TestP2PFileTransferClientHandler {
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
     response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
     // content 1
     // length 1
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("0", CharsetUtil.UTF_8));
@@ -109,7 +136,7 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(response);
     ch.writeInbound(chunk1);
     try {
-      metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -124,7 +151,7 @@ public class TestP2PFileTransferClientHandler {
 
     ch.writeInbound(chunk1);
     try {
-      metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -138,6 +165,7 @@ public class TestP2PFileTransferClientHandler {
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
     response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
     // content 1
     HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
 
@@ -152,7 +180,7 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(chunk);
     ch.writeInbound(endOfFile);
     ch.writeInbound(endOfTransfer);
-    metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // verify the content is written to the disk
     BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
@@ -171,10 +199,12 @@ public class TestP2PFileTransferClientHandler {
     DefaultHttpResponse response1 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
     response1.headers().add("Content-Length", "5");
+    response1.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
     // response 2
     DefaultHttpResponse response2 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
+    response2.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
     // content
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
     HttpContent chunk2 = new DefaultHttpContent(Unpooled.copiedBuffer("67890", CharsetUtil.UTF_8));
@@ -190,7 +220,7 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(chunk2);
     ch.writeInbound(chunk3);
     ch.writeInbound(endOfTransfer);
-    metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // verify the content is written to the disk
     BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
@@ -237,14 +267,15 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(endOfTransfer);
 
     // Ensure the future is completed
-    BlobTransferPartitionMetadata actualMetadata = metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify that the metadata was correctly parsed and handled
+    BlobTransferPartitionMetadata actualMetadata = clientHandler.getMetadata();
     Assert.assertNotNull(actualMetadata);
     Assert.assertEquals(actualMetadata.getTopicName(), expectedMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectedMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectedMetadata.getOffsetRecord());
-    Assert.assertTrue(metadataFuture.toCompletableFuture().isDone());
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
   }
 
   @Test
@@ -289,14 +320,15 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(endOfTransfer);
 
     // Ensure the future is completed
-    BlobTransferPartitionMetadata actualMetadata = metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify that the metadata was correctly parsed and handled
+    BlobTransferPartitionMetadata actualMetadata = clientHandler.getMetadata();
     Assert.assertNotNull(actualMetadata);
     Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectMetadata.getOffsetRecord());
-    Assert.assertTrue(metadataFuture.toCompletableFuture().isDone());
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
   }
 
   @Test
@@ -307,13 +339,13 @@ public class TestP2PFileTransferClientHandler {
     DefaultHttpResponse response1 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
     response1.headers().add("Content-Length", "5");
-    response1.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response1.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     // File 2 response
     DefaultHttpResponse response2 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
-    response1.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response2.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     // File content chunks
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
@@ -361,7 +393,7 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(endOfMetadataTransfer);
 
     // Ensure the future is completed
-    BlobTransferPartitionMetadata actualMetadata = metadataFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify the files are written to disk
     BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
@@ -380,12 +412,13 @@ public class TestP2PFileTransferClientHandler {
     Assert.assertEquals(Files.size(file2), 10);
 
     // Verify the metadata was correctly parsed and handled
+    BlobTransferPartitionMetadata actualMetadata = clientHandler.getMetadata();
     Assert.assertNotNull(actualMetadata);
     Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectMetadata.getOffsetRecord());
 
     // Ensure the future is completed
-    Assert.assertTrue(metadataFuture.toCompletableFuture().isDone());
+    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
   }
 }

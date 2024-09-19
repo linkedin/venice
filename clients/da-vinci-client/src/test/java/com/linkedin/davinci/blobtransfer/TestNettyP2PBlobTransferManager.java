@@ -7,7 +7,9 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
@@ -19,6 +21,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +34,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -44,6 +48,9 @@ public class TestNettyP2PBlobTransferManager {
   NettyFileTransferClient client;
   NettyP2PBlobTransferManager manager;
   StorageMetadataService storageMetadataService;
+  KafkaStoreIngestionService kafkaStoreIngestionService;
+  StorageService storageService;
+  BiConsumer<String, StoreVersionState> storeVersionStateSyncer;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
   String TEST_STORE = "test_store";
@@ -60,8 +67,19 @@ public class TestNettyP2PBlobTransferManager {
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     storageMetadataService = mock(StorageMetadataService.class);
     server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), storageMetadataService);
+
+    kafkaStoreIngestionService = mock(KafkaStoreIngestionService.class);
+    Mockito.doNothing()
+        .when(kafkaStoreIngestionService)
+        .updatePartitionOffsetRecords(anyString(), anyInt(), Mockito.any());
+    storageService = mock(StorageService.class);
+    storeVersionStateSyncer = mock(BiConsumer.class);
+    Mockito.doNothing().when(storeVersionStateSyncer).accept(anyString(), Mockito.any());
+    Mockito.doReturn(storeVersionStateSyncer).when(storageService).getStoreVersionStateSyncer();
+
     client = new NettyFileTransferClient(port, tmpPartitionDir.toString());
     finder = mock(BlobFinder.class);
+
     manager = new NettyP2PBlobTransferManager(server, client, finder);
     manager.start();
   }
@@ -87,7 +105,8 @@ public class TestNettyP2PBlobTransferManager {
 
   @Test
   public void testFailedConnectPeer() {
-    CompletionStage<BlobTransferPartitionMetadata> future = client.get("remotehost123", "test_store", 1, 1);
+    CompletionStage<InputStream> future =
+        client.get(kafkaStoreIngestionService, storageService, "remotehost123", "test_store", 1, 1);
     Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
   }
 
@@ -95,7 +114,7 @@ public class TestNettyP2PBlobTransferManager {
   public void testFailedRequestFromFinder() {
     doReturn(null).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
     try {
-      manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+      manager.get(kafkaStoreIngestionService, storageService, TEST_STORE, TEST_VERSION, TEST_PARTITION);
       Assert.fail("Should have thrown exception");
     } catch (Exception e) {
       Assert.assertTrue(e instanceof VenicePeersNotFoundException);
@@ -108,7 +127,7 @@ public class TestNettyP2PBlobTransferManager {
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
     try {
-      manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+      manager.get(kafkaStoreIngestionService, storageService, TEST_STORE, TEST_VERSION, TEST_PARTITION);
       Assert.fail("Should have thrown exception");
     } catch (Exception e) {
       Assert.assertTrue(e instanceof VenicePeersNotFoundException);
@@ -164,8 +183,9 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Files.notExists(destFile3));
 
     // Manager should be able to fetch the file and download it to another directory
-    CompletionStage<BlobTransferPartitionMetadata> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    BlobTransferPartitionMetadata actualMetadata = future.toCompletableFuture().get(1, TimeUnit.MINUTES);
+    CompletionStage<InputStream> future =
+        manager.get(kafkaStoreIngestionService, storageService, TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    future.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify files are all written to the partition directory
     Assert.assertTrue(Files.exists(destFile1));
@@ -176,17 +196,14 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
 
-    // Verify the offset record
-    ByteBuffer actualOffsetLag = actualMetadata.getOffsetRecord();
-    ByteBuffer expectOffsetLag = ByteBuffer.wrap(expectOffsetRecord.toBytes());
-    Assert.assertEquals(actualOffsetLag, expectOffsetLag);
+    // Verify the record is updated
+    Mockito.verify(kafkaStoreIngestionService, Mockito.times(1))
+        .updatePartitionOffsetRecords(
+            TEST_STORE + "_v" + TEST_VERSION,
+            TEST_PARTITION,
+            ByteBuffer.wrap(expectOffsetRecord.toBytes()));
 
-    // Verify the store version state
-    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
-        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    ByteBuffer actualStoreVersionState = actualMetadata.getStoreVersionState();
-    ByteBuffer expectStoreVersionState =
-        ByteBuffer.wrap(storeVersionStateSerializer.serialize(TEST_STORE, storeVersionState));
-    Assert.assertEquals(actualStoreVersionState, expectStoreVersionState);
+    // Verify the store version state is updated
+    Mockito.verify(storeVersionStateSyncer, Mockito.times(1)).accept(Mockito.anyString(), Mockito.any());
   }
 }

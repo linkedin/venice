@@ -206,8 +206,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
   public void sendMetadata(BlobTransferPayload blobTransferRequest, ChannelHandlerContext ctx)
       throws JsonProcessingException {
-    ChannelFuture sendMetadataFuture;
-    ChannelFuture lastMetadataFuture;
+    // prepare metadata
     BlobTransferPartitionMetadata metadata = null;
     try {
       StoreVersionState storeVersionState =
@@ -233,28 +232,18 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     String jsonMetadata = objectMapper.writeValueAsString(metadata);
     byte[] metadataBytes = jsonMetadata.getBytes();
 
-    HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
-    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
-    response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
+    // send metadata
+    DefaultFullHttpResponse metadataResponse =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.wrappedBuffer(metadataBytes));
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
 
-    ctx.write(response);
-    sendMetadataFuture = ctx.writeAndFlush(Unpooled.wrappedBuffer(metadataBytes));
-    lastMetadataFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
-
-    sendMetadataFuture.addListener(future -> {
+    ctx.writeAndFlush(metadataResponse).addListener(future -> {
       if (future.isSuccess()) {
         LOGGER.debug("Metadata for {} sent successfully", blobTransferRequest.getTopicName());
       } else {
         LOGGER.error("Failed to send metadata for {}", blobTransferRequest.getTopicName());
-      }
-    });
-
-    lastMetadataFuture.addListener(future -> {
-      if (future.isSuccess()) {
-        LOGGER.debug("last Metadata for {} sent successfully", blobTransferRequest.getTopicName());
-      } else {
-        LOGGER.error("Failed to send last metadata content for {}", blobTransferRequest.getTopicName());
       }
     });
   }

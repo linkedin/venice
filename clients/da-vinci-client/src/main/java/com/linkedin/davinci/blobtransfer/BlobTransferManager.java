@@ -1,7 +1,10 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
+import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
 
 
@@ -21,6 +24,8 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Get the blobs for the given storeName and partition
+   * @param kafkaStoreIngestionService
+   * @param storageService
    * @param storeName
    * @param version
    * @param partition
@@ -29,8 +34,12 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * thrown, but it's wrapped inside the CompletionStage.
    */
   @Experimental
-  CompletionStage<? extends BlobTransferPartitionMetadata> get(String storeName, int version, int partition)
-      throws VenicePeersNotFoundException;
+  CompletionStage<? extends InputStream> get(
+      KafkaStoreIngestionService kafkaStoreIngestionService,
+      StorageService storageService,
+      String storeName,
+      int version,
+      int partition) throws VenicePeersNotFoundException;
 
   /**
    * Put the blob for the given storeName and partition

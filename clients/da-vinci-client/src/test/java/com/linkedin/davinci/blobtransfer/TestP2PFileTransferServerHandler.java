@@ -10,7 +10,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import io.netty.buffer.UnpooledHeapByteBuf;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -149,15 +148,7 @@ public class TestP2PFileTransferServerHandler {
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse metadataResponse = (DefaultHttpResponse) response;
-    Assert.assertEquals(
-        metadataResponse.headers().get(BLOB_TRANSFER_TYPE).toString(),
-        BlobTransferType.METADATA.toString());
-    // verify the metadata content
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof UnpooledHeapByteBuf);
-    // the last empty response
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
+    Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
     // end of metadata
 
     // start of STATUS response
@@ -217,15 +208,7 @@ public class TestP2PFileTransferServerHandler {
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse metadataResponse = (DefaultHttpResponse) response;
-    Assert.assertEquals(
-        metadataResponse.headers().get(BLOB_TRANSFER_TYPE).toString(),
-        BlobTransferType.METADATA.toString());
-    // verify the metadata content
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof UnpooledHeapByteBuf);
-    // the last empty response
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
+    Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
     // end of metadata
 
     // start of STATUS response
@@ -254,7 +237,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(
         httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
         "attachment; filename=\"file1\"");
-    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE).toString(), BlobTransferType.FILE.toString());
+    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
     // send the content in one chunk
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);

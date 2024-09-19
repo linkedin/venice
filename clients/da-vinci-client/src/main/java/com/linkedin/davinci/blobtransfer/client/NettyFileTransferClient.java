@@ -1,6 +1,7 @@
 package com.linkedin.davinci.blobtransfer.client;
 
-import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.storage.StorageService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -14,6 +15,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.apache.logging.log4j.LogManager;
@@ -45,8 +47,14 @@ public class NettyFileTransferClient {
     });
   }
 
-  public CompletionStage<BlobTransferPartitionMetadata> get(String host, String storeName, int version, int partition) {
-    CompletionStage<BlobTransferPartitionMetadata> blobTransferPartitionMetadata = new CompletableFuture<>();
+  public CompletionStage<InputStream> get(
+      KafkaStoreIngestionService kafkaStoreIngestionService,
+      StorageService storageService,
+      String host,
+      String storeName,
+      int version,
+      int partition) {
+    CompletionStage<InputStream> inputStream = new CompletableFuture<>();
     // Connects to the remote host
     try {
       Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
@@ -54,16 +62,23 @@ public class NettyFileTransferClient {
       // Attach the file handler to the pipeline
       ch.pipeline()
           .addLast(
-              new P2PFileTransferClientHandler(baseDir, blobTransferPartitionMetadata, storeName, version, partition));
+              new P2PFileTransferClientHandler(
+                  kafkaStoreIngestionService,
+                  storageService,
+                  baseDir,
+                  inputStream,
+                  storeName,
+                  version,
+                  partition));
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition));
     } catch (Exception e) {
       LOGGER.error("Failed to connect to the host: {}", host, e);
-      if (!blobTransferPartitionMetadata.toCompletableFuture().isCompletedExceptionally()) {
-        blobTransferPartitionMetadata.toCompletableFuture().completeExceptionally(e);
+      if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
+        inputStream.toCompletableFuture().completeExceptionally(e);
       }
     }
-    return blobTransferPartitionMetadata;
+    return inputStream;
   }
 
   public void close() {
