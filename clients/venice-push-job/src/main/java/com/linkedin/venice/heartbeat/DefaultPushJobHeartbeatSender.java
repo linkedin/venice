@@ -25,7 +25,7 @@ import org.apache.logging.log4j.Logger;
 
 
 @NotThreadSafe
-public class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
+class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   private static final Logger LOGGER = LogManager.getLogger(DefaultPushJobHeartbeatSender.class);
   private static final Duration DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT = Duration.ofSeconds(10);
 
