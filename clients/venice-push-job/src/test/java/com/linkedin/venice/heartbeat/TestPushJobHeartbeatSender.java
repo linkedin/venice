@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.heartbeat;
+package com.linkedin.venice.heartbeat;
 
 import static org.mockito.Mockito.*;
 
