@@ -77,7 +77,7 @@ public class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   }
 
   // For test purpose.
-  public VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
+  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
     return veniceWriter;
   }
 
