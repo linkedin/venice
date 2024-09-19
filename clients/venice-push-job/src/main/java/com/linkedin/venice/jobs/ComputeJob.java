@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.jobs;
+package com.linkedin.venice.jobs;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;

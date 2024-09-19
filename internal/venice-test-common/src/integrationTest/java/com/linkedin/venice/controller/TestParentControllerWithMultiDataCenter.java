@@ -3,9 +3,9 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.AssertJUnit.fail;
 

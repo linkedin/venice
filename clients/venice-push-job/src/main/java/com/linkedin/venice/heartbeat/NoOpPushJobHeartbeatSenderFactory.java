@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.heartbeat;
+package com.linkedin.venice.heartbeat;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.utils.VeniceProperties;
