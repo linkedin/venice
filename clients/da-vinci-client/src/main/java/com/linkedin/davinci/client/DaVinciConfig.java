@@ -31,7 +31,7 @@ public class DaVinciConfig {
   /**
    * Record transformer reference
    */
-  private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
+  private DaVinciRecordTransformerConfig recordTransformerConfig;
 
   /**
    * Whether to enable read-path metrics.
@@ -106,7 +106,7 @@ public class DaVinciConfig {
   }
 
   public boolean isRecordTransformerEnabled() {
-    return recordTransformerFunction != null;
+    return recordTransformerConfig != null;
   }
 
   public ObjectCacheConfig getCacheConfig() {
@@ -118,21 +118,27 @@ public class DaVinciConfig {
     return this;
   }
 
+  public DaVinciConfig setRecordTransformerConfig(DaVinciRecordTransformerConfig recordTransformerConfig) {
+    this.recordTransformerConfig = recordTransformerConfig;
+    return this;
+  }
+
+  public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
+    return recordTransformerConfig;
+  }
+
   public DaVinciRecordTransformer getRecordTransformer(Integer storeVersion) {
-    if (recordTransformerFunction != null) {
-      return recordTransformerFunction.apply(storeVersion);
+    if (recordTransformerConfig == null) {
+      return null;
     }
-    return null;
+    return recordTransformerConfig.getRecordTransformer(storeVersion);
   }
 
   public DaVinciRecordTransformerFunctionalInterface getRecordTransformerFunction() {
-    return recordTransformerFunction;
-  }
-
-  public DaVinciConfig setRecordTransformerFunction(
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
-    this.recordTransformerFunction = recordTransformerFunction;
-    return this;
+    if (recordTransformerConfig == null) {
+      return null;
+    }
+    return recordTransformerConfig.getRecordTransformerFunction();
   }
 
   public boolean isReadMetricsEnabled() {

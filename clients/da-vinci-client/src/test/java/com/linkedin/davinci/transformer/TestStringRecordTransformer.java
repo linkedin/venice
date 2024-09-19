@@ -11,11 +11,11 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     super(storeVersion, storeRecordsInDaVinci);
   }
 
-  public Schema getKeyOutputSchema() {
+  public Schema getKeySchema() {
     return Schema.create(Schema.Type.INT);
   }
 
-  public Schema getValueOutputSchema() {
+  public Schema getOutputValueSchema() {
     return Schema.create(Schema.Type.STRING);
   }
 

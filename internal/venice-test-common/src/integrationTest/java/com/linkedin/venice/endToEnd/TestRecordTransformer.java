@@ -10,25 +10,18 @@ public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Int
     super(storeVersion, storeRecordsInDaVinci);
   }
 
-  Schema originalSchema;
-
-  public Schema getKeyOutputSchema() {
-    return originalSchema;
+  public Schema getKeySchema() {
+    return Schema.create(Schema.Type.INT);
   }
 
-  public Schema getValueOutputSchema() {
-    return originalSchema;
-  }
-
-  public void setOriginalSchema(Schema schema) {
-    this.originalSchema = schema;
+  public Schema getOutputValueSchema() {
+    return Schema.create(Schema.Type.INT);
   }
 
   public Integer transform(Lazy<Integer> key, Lazy<Integer> value) {
     return value.get() * 100;
   }
 
-  @Override
   public void processPut(Lazy<Integer> key, Lazy<Integer> value) {
     return;
   }

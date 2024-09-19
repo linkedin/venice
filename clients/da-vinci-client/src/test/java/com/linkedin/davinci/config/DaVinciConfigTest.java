@@ -7,6 +7,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
@@ -18,11 +19,11 @@ public class DaVinciConfigTest {
       super(storeVersion, storeRecordsInDaVinci);
     }
 
-    public Schema getKeyOutputSchema() {
+    public Schema getKeySchema() {
       return Schema.create(Schema.Type.INT);
     }
 
-    public Schema getValueOutputSchema() {
+    public Schema getOutputValueSchema() {
       return Schema.create(Schema.Type.INT);
     }
 
@@ -40,7 +41,11 @@ public class DaVinciConfigTest {
   public void testRecordTransformerEnabled() {
     DaVinciConfig config = new DaVinciConfig();
     assertFalse(config.isRecordTransformerEnabled());
-    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion, true));
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (storeVersion) -> new TestRecordTransformer(storeVersion, true),
+        Integer.class,
+        Schema.create(Schema.Type.INT));
+    config.setRecordTransformerConfig(recordTransformerConfig);
     assertTrue(config.isRecordTransformerEnabled());
   }
 
@@ -49,7 +54,11 @@ public class DaVinciConfigTest {
     Integer testStoreVersion = 0;
     DaVinciConfig config = new DaVinciConfig();
     assertNull(config.getRecordTransformer(testStoreVersion));
-    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion, true));
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (storeVersion) -> new TestRecordTransformer(storeVersion, true),
+        Integer.class,
+        Schema.create(Schema.Type.INT));
+    config.setRecordTransformerConfig(recordTransformerConfig);
     assertNotNull(config.getRecordTransformer(testStoreVersion));
   }
 

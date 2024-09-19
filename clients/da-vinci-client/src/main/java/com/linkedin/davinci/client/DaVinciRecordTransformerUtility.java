@@ -97,7 +97,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
 
   public AvroGenericDeserializer<K> getKeyDeserializer() {
     if (outputValueDeserializer == null) {
-      Schema keySchema = recordTransformer.getKeyOutputSchema();
+      Schema keySchema = recordTransformer.getKeySchema();
       keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
     }
     return keyDeserializer;
@@ -105,7 +105,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
 
   public AvroGenericDeserializer<O> getOutputValueDeserializer() {
     if (outputValueDeserializer == null) {
-      Schema outputValueSchema = recordTransformer.getValueOutputSchema();
+      Schema outputValueSchema = recordTransformer.getOutputValueSchema();
       outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
     }
     return outputValueDeserializer;
@@ -113,7 +113,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
 
   public AvroSerializer<O> getOutputValueSerializer() {
     if (outputValueSerializer == null) {
-      Schema outputValueSchema = recordTransformer.getValueOutputSchema();
+      Schema outputValueSchema = recordTransformer.getOutputValueSchema();
       outputValueSerializer = new AvroSerializer<>(outputValueSchema);
     }
     return outputValueSerializer;

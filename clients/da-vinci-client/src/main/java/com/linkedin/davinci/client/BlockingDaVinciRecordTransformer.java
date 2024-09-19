@@ -24,12 +24,12 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer = recordTransformer;
   }
 
-  public Schema getKeyOutputSchema() {
-    return this.recordTransformer.getKeyOutputSchema();
+  public Schema getKeySchema() {
+    return this.recordTransformer.getKeySchema();
   }
 
-  public Schema getValueOutputSchema() {
-    return this.recordTransformer.getValueOutputSchema();
+  public Schema getOutputValueSchema() {
+    return this.recordTransformer.getOutputValueSchema();
   }
 
   public O transform(Lazy<K> key, Lazy<V> value) {

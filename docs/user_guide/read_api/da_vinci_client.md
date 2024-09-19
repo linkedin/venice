@@ -16,10 +16,12 @@ or a custom storage of your choice.
 It's capable of handling records that are compressed and/or chunked.
 
 ### Usage
-To use the record transformer, you will need to implement the 
+Steps to use the record transformer:
+1. Implement the 
 [DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) 
-abstract class, then pass in a functional interface into 
-[setRecordTransformerFunction()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerFunction(com.linkedin.davinci.client.DaVinciRecordTransformer)). 
+abstract class.
+2. Create an instance of [DaVinciRecordTransformerConfig](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformerConfig.html).
+3. Pass the instance of the config into [setRecordTransformerConfig()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerConfig(com.linkedin.davinci.client.DaVinciRecordTransformerConfig)). 
 
 When a message is being consumed, the 
 [DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) will 
@@ -40,11 +42,11 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
     super(storeVersion, storeRecordsInDaVinci);
   }
 
-  public Schema getKeyOutputSchema() {
+  public Schema getKeySchema() {
     return Schema.create(Schema.Type.INT);
   }
 
-  public Schema getValueOutputSchema() {
+  public Schema getOutputValueSchema() {
     return Schema.create(Schema.Type.STRING);
   }
 
@@ -68,8 +70,11 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
 
 ```
 
-Here's an example `setRecordTransformerFunction()` implementation:
+Here's an example `DaVinciRecordTransformerConfig` implementation:
 ```
 DaVinciConfig config = new DaVinciConfig();
+DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+    (storeVersion) -> new StringRecordTransformer(storeVersion, true),
+    String.class, Schema.create(Schema.Type.STRING));
 config.setRecordTransformerFunction((storeVersion) -> new StringRecordTransformer(storeVersion, true));
 ```

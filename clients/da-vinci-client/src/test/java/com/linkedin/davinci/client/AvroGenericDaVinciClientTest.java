@@ -44,7 +44,11 @@ public class AvroGenericDaVinciClientTest {
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(ClientConfig clientConfig)
       throws IllegalAccessException, NoSuchFieldException {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (storeVersion) -> new TestStringRecordTransformer(storeVersion, true),
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     VeniceProperties backendConfig = mock(VeniceProperties.class);
     when(backendConfig.toProperties()).thenReturn(new java.util.Properties());

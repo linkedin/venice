@@ -137,7 +137,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final AbstractAvroChunkingAdapter<V> chunkingAdapter;
   private final Executor readChunkExecutorForLargeRequest;
 
-  private final DaVinciRecordTransformer recordTransformer;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -181,7 +181,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.managedClients = managedClients;
     this.icProvider = icProvider;
     this.chunkingAdapter = chunkingAdapter;
-    this.recordTransformer = daVinciConfig.isRecordTransformerEnabled() ? daVinciConfig.getRecordTransformer(0) : null;
+    this.recordTransformerConfig = daVinciConfig.getRecordTransformerConfig();
     this.readChunkExecutorForLargeRequest =
         readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
     preValidation.run();
@@ -705,7 +705,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(
             RECORD_TRANSFORMER_VALUE_SCHEMA,
-            recordTransformer != null ? recordTransformer.getValueOutputSchema().toString() : "null")
+            daVinciConfig.isRecordTransformerEnabled()
+                ? recordTransformerConfig.getOutputValueSchema().toString()
+                : "null")
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
                                                                                    // in Isolated Process
         .put(backendConfig.toProperties())
@@ -798,15 +800,16 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
           new AvroStoreDeserializerCache(daVinciBackend.get().getSchemaRepository(), getStoreName(), true);
 
       if (clientConfig.isSpecificClient()) {
-        if (recordTransformer != null) {
-          if (recordTransformer.getOutputValueClass() != clientConfig.getSpecificValueClass()) {
+        if (daVinciConfig.isRecordTransformerEnabled()) {
+          if (recordTransformerConfig.getOutputValueClass() != clientConfig.getSpecificValueClass()) {
             throw new VeniceClientException(
                 "Specific value class mismatch between ClientConfig and DaVinciRecordTransformer, expected="
-                    + clientConfig.getSpecificValueClass() + ", actual=" + recordTransformer.getOutputValueClass());
+                    + clientConfig.getSpecificValueClass() + ", actual="
+                    + recordTransformerConfig.getOutputValueClass());
           }
 
           this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
-              recordTransformer.getValueOutputSchema(),
+              recordTransformerConfig.getOutputValueSchema(),
               clientConfig.getSpecificValueClass());
         } else {
           this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(

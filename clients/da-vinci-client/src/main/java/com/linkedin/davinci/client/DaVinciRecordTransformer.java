@@ -6,8 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.apache.avro.Schema;
@@ -59,14 +57,14 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * @return a {@link Schema} corresponding to the type of {@link K}.
    */
-  public abstract Schema getKeyOutputSchema();
+  public abstract Schema getKeySchema();
 
   /**
    * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
    *
    * @return a {@link Schema} corresponding to the type of {@link O}.
    */
-  public abstract Schema getValueOutputSchema();
+  public abstract Schema getOutputValueSchema();
 
   /**
    * Implement this method to transform records before they are stored.
@@ -180,14 +178,6 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   public final boolean getStoreRecordsInDaVinci() {
     return storeRecordsInDaVinci;
-  }
-
-  public final Class<O> getOutputValueClass() {
-    Type superclass = getClass().getGenericSuperclass();
-    if (superclass instanceof ParameterizedType) {
-      return (Class<O>) ((ParameterizedType) superclass).getActualTypeArguments()[2];
-    }
-    throw new VeniceException("Invalid DaVinciRecordTransformer class definition");
   }
 
   public final DaVinciRecordTransformerUtility<K, O> getRecordTransformerUtility() {

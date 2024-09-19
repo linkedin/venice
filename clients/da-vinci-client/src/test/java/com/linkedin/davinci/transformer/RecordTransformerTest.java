@@ -36,11 +36,11 @@ public class RecordTransformerTest {
         new TestStringRecordTransformer(storeVersion, false);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
-    Schema keyOutputSchema = recordTransformer.getKeyOutputSchema();
-    assertEquals(keyOutputSchema.getType(), Schema.Type.INT);
+    Schema keySchema = recordTransformer.getKeySchema();
+    assertEquals(keySchema.getType(), Schema.Type.INT);
 
-    Schema valueOutputSchema = recordTransformer.getValueOutputSchema();
-    assertEquals(valueOutputSchema.getType(), Schema.Type.STRING);
+    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
+    assertEquals(outputValueSchema.getType(), Schema.Type.STRING);
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
@@ -52,8 +52,6 @@ public class RecordTransformerTest {
     recordTransformer.processDelete(lazyKey);
 
     assertFalse(recordTransformer.getStoreRecordsInDaVinci());
-    Class<String> outputValueClass = recordTransformer.getOutputValueClass();
-    assertEquals(outputValueClass, String.class);
 
     int classHash = recordTransformer.getClassHash();
 
@@ -98,11 +96,11 @@ public class RecordTransformerTest {
 
     assertTrue(recordTransformer.getStoreRecordsInDaVinci());
 
-    Schema keyOutputSchema = recordTransformer.getKeyOutputSchema();
-    assertEquals(keyOutputSchema.getType(), Schema.Type.INT);
+    Schema keySchema = recordTransformer.getKeySchema();
+    assertEquals(keySchema.getType(), Schema.Type.INT);
 
-    Schema valueOutputSchema = recordTransformer.getValueOutputSchema();
-    assertEquals(valueOutputSchema.getType(), Schema.Type.STRING);
+    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
+    assertEquals(outputValueSchema.getType(), Schema.Type.STRING);
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
