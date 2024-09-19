@@ -259,9 +259,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
               requestContext.serverClusterName,
               instance,
               requestContext.getRequestType());
-          if (monitor != null) {
-            clusterStats.recordPendingRequestCount(instance, monitor.getPendingRequestCounter(instance));
-          }
 
           if (throwable != null) {
             status = (throwable instanceof VeniceClientHttpException)
