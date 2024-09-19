@@ -408,7 +408,7 @@
     <Or>
       <Class name="com.linkedin.venice.controller.stats.AggPartitionHealthStats"/>
       <Class name="com.linkedin.venice.listener.ReadQuotaEnforcementHandler"/>
-      <Class name="com.linkedin.venice.kafka.input.VeniceKafkaInputReducer"/>
+      <Class name="com.linkedin.venice.hadoop.kafka.input.VeniceKafkaInputReducer"/>
       <Class name="com.linkedin.venice.fastclient.meta.InstanceHealthMonitor"/>
       <Class name="com.linkedin.venice.fastclient.stats.FastClientStats"/>
       <Class name="com.linkedin.venice.helix.HelixReadOnlySchemaRepository"/>
