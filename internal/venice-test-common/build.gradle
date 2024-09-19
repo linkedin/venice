@@ -134,7 +134,8 @@ def integrationTestConfigs = {
 
 def integrationTestBuckets = [
   "A": [
-      "com.linkedin.davinci.*",
+      "com.linkedin.davinci.*"],
+  "A1": [
       "com.linkedin.venice.endToEnd.DaVinciClient*"],
   "B": [
       "com.linkedin.venice.endToEnd.DaVinciCluster*",
@@ -152,8 +153,10 @@ def integrationTestBuckets = [
       "com.linkedin.venice.fastclient.*"],
   "G": [
       "com.linkedin.venice.endToEnd.TestEmptyPush",
-      "com.linkedin.venice.router.*",
       "com.linkedin.venice.ingestionHeartbeat.*"],
+  "G1": [
+      "com.linkedin.venice.router.*"
+        ],
   "H": [
       "com.linkedin.venice.server.*",
       "com.linkedin.venice.storagenode.*",
@@ -176,25 +179,33 @@ def integrationTestBuckets = [
   "M": [
       "com.linkedin.venice.kafka.*",
       "com.linkedin.venice.samza.*",
-      "com.linkedin.venice.writer.*",
+      "com.linkedin.venice.writer.*"],
+  "M1": [
       "com.linkedin.venice.endToEnd.PartialUpdateTest",
+      "com.linkedin.venice.endToEnd.PartialUpdateWithParallelProcessingTest"],
+  "M2": [
       "com.linkedin.venice.endToEnd.TestWritePathComputation",
       "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest"],
   "N": [
       "com.linkedin.venice.endToEnd.StoragePersona*",
       "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
-      "com.linkedin.venice.persona.*",
+      "com.linkedin.venice.persona.*"],
+  "N1": [
       "com.linkedin.venice.pubsub.*"],
   "O": [
       "com.linkedin.venice.endToEnd.TestHybrid*"],
   "P": [
       "com.linkedin.venice.controller.server.*",
       "com.linkedin.venice.controller.kafka.consumer.*",
-      "com.linkedin.venice.controller.migration.*",
+      "com.linkedin.venice.controller.migration.*"],
+  "P1": [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
   "Q": [
-      "com.linkedin.venice.controller.Test*"]
+      "com.linkedin.venice.controller.Test*"],
+  "R": [
+      "com.linkedin.venice.endToEnd.DataRecoveryTest",
+      "com.linkedin.venice.controllerapi.TestControllerClient"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
