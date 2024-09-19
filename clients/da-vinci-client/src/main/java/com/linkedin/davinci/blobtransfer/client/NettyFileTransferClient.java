@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -13,7 +14,6 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.apache.logging.log4j.LogManager;
@@ -45,22 +45,25 @@ public class NettyFileTransferClient {
     });
   }
 
-  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition) {
-    CompletionStage<InputStream> inputStream = new CompletableFuture<>();
+  public CompletionStage<BlobTransferPartitionMetadata> get(String host, String storeName, int version, int partition) {
+    CompletionStage<BlobTransferPartitionMetadata> blobTransferPartitionMetadata = new CompletableFuture<>();
     // Connects to the remote host
     try {
       Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
+      // Request to get the blob file and metadata
       // Attach the file handler to the pipeline
-      ch.pipeline().addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition));
+      ch.pipeline()
+          .addLast(
+              new P2PFileTransferClientHandler(baseDir, blobTransferPartitionMetadata, storeName, version, partition));
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition));
     } catch (Exception e) {
       LOGGER.error("Failed to connect to the host: {}", host, e);
-      if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
-        inputStream.toCompletableFuture().completeExceptionally(e);
+      if (!blobTransferPartitionMetadata.toCompletableFuture().isCompletedExceptionally()) {
+        blobTransferPartitionMetadata.toCompletableFuture().completeExceptionally(e);
       }
     }
-    return inputStream;
+    return blobTransferPartitionMetadata;
   }
 
   public void close() {

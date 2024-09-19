@@ -5,7 +5,6 @@ import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
-import java.io.InputStream;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import org.apache.logging.log4j.LogManager;
@@ -40,9 +39,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public CompletionStage<InputStream> get(String storeName, int version, int partition)
+  public CompletionStage<BlobTransferPartitionMetadata> get(String storeName, int version, int partition)
       throws VenicePeersNotFoundException {
-    CompletionStage<InputStream> inputStream;
+    CompletionStage<BlobTransferPartitionMetadata> blobTransferPartitionMetadata;
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
     if (response == null || response.isError()) {
       throw new VenicePeersNotFoundException("Failed to obtain the peers for the requested blob");
@@ -57,8 +56,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         // instanceName comes as a format of <hostName>_<applicationPort>
         String chosenHost = peer.split("_")[0];
         LOGGER.info("Chosen host: {}", chosenHost);
-        inputStream = nettyClient.get(chosenHost, storeName, version, partition);
-        return inputStream;
+        blobTransferPartitionMetadata = nettyClient.get(chosenHost, storeName, version, partition);
+        return blobTransferPartitionMetadata;
       } catch (Exception e) {
         LOGGER.warn("Failed to connect to peer: {}", peer, e);
       }

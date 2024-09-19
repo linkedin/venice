@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -12,11 +13,12 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -32,6 +34,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class DefaultIngestionBackend implements IngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
+  private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
@@ -85,8 +89,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
         || blobTransferManager == null) {
       runnable.run();
     } else {
-      CompletionStage<Void> bootstrapFuture =
-          bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
+      CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
+          storeAndVersion.getFirst(),
+          storeAndVersion.getSecond().getNumber(),
+          partition,
+          storageService);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();
@@ -99,7 +106,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
-  CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
+  CompletionStage<Void> bootstrapFromBlobs(
+      Store store,
+      int versionNumber,
+      int partitionId,
+      StorageService storageService) {
     // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
     // though
     // Only DVC would create blobTransferManager.
@@ -110,7 +121,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     String storeName = store.getName();
     String baseDir = serverConfig.getRocksDBPath();
     try {
-      CompletableFuture<InputStream> p2pFuture =
+      CompletableFuture<BlobTransferPartitionMetadata> metadataFuture =
           blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
       LOGGER.info(
           "Bootstrapping from blobs for store {}, version {}, partition {}",
@@ -119,7 +130,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
           partitionId);
       return CompletableFuture.runAsync(() -> {
         try {
-          p2pFuture.get(30, TimeUnit.MINUTES);
+          BlobTransferPartitionMetadata metadata = metadataFuture.get(30, TimeUnit.MINUTES);
+          LOGGER.info("metadata from blob transfer is {}", metadata);
+          updateStorePartitionMetadata(storageService, metadata);
         } catch (Exception e) {
           LOGGER.warn(
               "Failed bootstrapping from blobs for store {}, version {}, partition {}",
@@ -128,7 +141,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
               partitionId,
               e);
           RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
-          p2pFuture.cancel(true);
+          metadataFuture.cancel(true);
           // TODO: close channels
         }
       });
@@ -136,6 +149,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
       LOGGER.warn("No peers founds for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
       return CompletableFuture.completedFuture(null);
     }
+  }
+
+  /**
+   * Given the metadata from blob transfer, update the store partition metadata in storage service.
+   * @param storageService
+   * @param metadata
+   */
+  public void updateStorePartitionMetadata(StorageService storageService, BlobTransferPartitionMetadata metadata) {
+    LOGGER.info("Start updating store partition metadata for topic {}. ", metadata.topicName);
+    // update the offset record in storage service
+    getStoreIngestionService()
+        .updatePartitionOffsetRecords(metadata.topicName, metadata.partitionId, metadata.offsetRecord);
+    // update the metadata SVS
+    StoreVersionState storeVersionState =
+        storeVersionStateSerializer.deserialize(metadata.topicName, metadata.storeVersionState.array());
+    storageService.getStoreVersionStateSyncer().accept(metadata.topicName, storeVersionState);
   }
 
   @Override

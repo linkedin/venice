@@ -2,7 +2,6 @@ package com.linkedin.davinci.blobtransfer;
 
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
-import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
 
 
@@ -30,7 +29,7 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * thrown, but it's wrapped inside the CompletionStage.
    */
   @Experimental
-  CompletionStage<? extends InputStream> get(String storeName, int version, int partition)
+  CompletionStage<? extends BlobTransferPartitionMetadata> get(String storeName, int version, int partition)
       throws VenicePeersNotFoundException;
 
   /**

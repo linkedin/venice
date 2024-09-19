@@ -1,12 +1,20 @@
 package com.linkedin.davinci.blobtransfer.server;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.*;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STREAM;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.request.RequestHelper;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -30,6 +38,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -41,11 +50,15 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
+  private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private boolean useZeroCopy = false;
   private final String baseDir;
+  private StorageMetadataService storageMetadataService;
 
-  public P2PFileTransferServerHandler(String baseDir) {
+  public P2PFileTransferServerHandler(String baseDir, StorageMetadataService storageMetadataService) {
     this.baseDir = baseDir;
+    this.storageMetadataService = storageMetadataService;
   }
 
   @Override
@@ -113,6 +126,9 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       sendFile(file, ctx);
     }
 
+    // transfer metadata
+    sendMetadata(blobTransferRequest, ctx);
+
     // end of transfer
     HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
@@ -159,6 +175,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_OCTET_STREAM);
     response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"");
+    response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     ctx.write(response);
 
@@ -187,9 +204,64 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     });
   }
 
+  public void sendMetadata(BlobTransferPayload blobTransferRequest, ChannelHandlerContext ctx)
+      throws JsonProcessingException {
+    ChannelFuture sendMetadataFuture;
+    ChannelFuture lastMetadataFuture;
+    BlobTransferPartitionMetadata metadata = null;
+    try {
+      StoreVersionState storeVersionState =
+          storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());
+      java.nio.ByteBuffer storeVersionStateByte =
+          ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
+
+      OffsetRecord offsetRecord =
+          storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+      java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
+
+      metadata = new BlobTransferPartitionMetadata(
+          blobTransferRequest.getTopicName(),
+          blobTransferRequest.getPartition(),
+          offsetRecordByte,
+          storeVersionStateByte);
+    } catch (Exception e) {
+      byte[] errBody = ("Failed to get metadata for " + blobTransferRequest.getTopicName()).getBytes();
+      setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, errBody, false, ctx);
+    }
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    String jsonMetadata = objectMapper.writeValueAsString(metadata);
+    byte[] metadataBytes = jsonMetadata.getBytes();
+
+    HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
+
+    ctx.write(response);
+    sendMetadataFuture = ctx.writeAndFlush(Unpooled.wrappedBuffer(metadataBytes));
+    lastMetadataFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
+
+    sendMetadataFuture.addListener(future -> {
+      if (future.isSuccess()) {
+        LOGGER.debug("Metadata for {} sent successfully", blobTransferRequest.getTopicName());
+      } else {
+        LOGGER.error("Failed to send metadata for {}", blobTransferRequest.getTopicName());
+      }
+    });
+
+    lastMetadataFuture.addListener(future -> {
+      if (future.isSuccess()) {
+        LOGGER.debug("last Metadata for {} sent successfully", blobTransferRequest.getTopicName());
+      } else {
+        LOGGER.error("Failed to send last metadata content for {}", blobTransferRequest.getTopicName());
+      }
+    });
+  }
+
   /**
    * Parse the URI to locate the blob
-   * @param request
+   * @param uri
    * @return
    */
   private BlobTransferPayload parseBlobTransferPayload(URI uri) throws IllegalArgumentException {

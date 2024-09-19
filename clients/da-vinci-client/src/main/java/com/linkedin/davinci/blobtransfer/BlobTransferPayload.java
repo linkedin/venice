@@ -31,4 +31,12 @@ public class BlobTransferPayload {
   public String getFullResourceName() {
     return Utils.getReplicaId(topicName, partition);
   }
+
+  public String getTopicName() {
+    return topicName;
+  }
+
+  public int getPartition() {
+    return partition;
+  }
 }
