@@ -195,6 +195,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     verifyMetadataInitialized();
+    requestContext.serverClusterName = metadata.getClusterName();
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     if (requestContext.requestUri == null) {
       /**
@@ -425,6 +426,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     long requestId = REQUEST_ID_GENERATOR.getAndIncrement();
 
+    requestContext.serverClusterName = metadata.getClusterName();
     /* Prepare each of the routes needed to query the keys */
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     int currentVersion = requestContext.currentVersion;
