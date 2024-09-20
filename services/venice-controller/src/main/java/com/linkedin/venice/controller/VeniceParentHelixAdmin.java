@@ -2471,6 +2471,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (setStore.incrementalPushEnabled
           && controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()) {
         setStore.separateRealTimeTopicEnabled = true;
+        updatedConfigsList.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
       }
 
       // When turning off hybrid store, we will also turn off incremental store config.
