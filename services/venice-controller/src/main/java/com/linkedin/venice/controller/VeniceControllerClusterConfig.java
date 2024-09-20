@@ -47,6 +47,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENAB
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -223,6 +224,7 @@ public class VeniceControllerClusterConfig {
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
+  private final List<String> controllerInstanceTagList;
   private final boolean multiRegion;
   private final boolean parent;
   private final ParentControllerRegionState parentControllerRegionState;
@@ -635,6 +637,7 @@ public class VeniceControllerClusterConfig {
      */
     this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
+    this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, Collections.emptyList());
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
@@ -1159,6 +1162,10 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerClusterName() {
     return controllerClusterName;
+  }
+
+  public List<String> getControllerInstanceTagList() {
+    return controllerInstanceTagList;
   }
 
   public String getControllerClusterZkAddress() {

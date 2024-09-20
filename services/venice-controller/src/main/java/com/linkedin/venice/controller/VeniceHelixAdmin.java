@@ -671,6 +671,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
+
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
       DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
       disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
@@ -793,6 +794,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     controllerClusterKeyBuilder = new PropertyKey.Builder(tempManager.getClusterName());
     helixManager = tempManager;
+
+    List<String> instanceTagList = multiClusterConfigs.getControllerInstanceTagList();
+    for (String instanceTag: instanceTagList) {
+      helixAdminClient.addInstanceTag(controllerClusterName, helixManager.getInstanceName(), instanceTag);
+    }
+    LOGGER.info("Connected to controller cluster {} with controller {}", controllerClusterName, controllerName);
+
   }
 
   public ZkClient getZkClient() {
