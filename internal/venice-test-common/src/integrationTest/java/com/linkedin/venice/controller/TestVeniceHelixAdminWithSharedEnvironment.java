@@ -2056,7 +2056,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test
   public void testInstanceTagging() {
-    String instanceTag = "GENERAL";
+    List<String> instanceTagList = Arrays.asList("GENERAL", "TEST");
     String controllerClusterName = "venice-controllers";
     int newAdminPort = controllerConfig.getAdminPort() + 1; /* Note: dummy port */
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
@@ -2072,9 +2072,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Start stand by controller
     newHelixAdmin.initStorageCluster(clusterName);
 
-    List<String> instances =
-        newHelixAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
-    Assert.assertEquals(instances.size(), 2);
+    for (String instanceTag: instanceTagList) {
+      List<String> instances =
+          newHelixAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      Assert.assertEquals(instances.size(), 2);
+    }
 
     // resume to the original venice admin
     veniceAdmin.initStorageCluster(clusterName);

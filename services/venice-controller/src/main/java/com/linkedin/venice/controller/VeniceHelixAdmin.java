@@ -796,8 +796,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     helixManager = tempManager;
 
     VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getCommonConfig();
-    String instanceTag = controllerConfig.getControllerInstanceTag();
-    if (!instanceTag.isEmpty()) {
+    List<String> instanceTagList = controllerConfig.getControllerInstanceTagList();
+    for (String instanceTag: instanceTagList) {
       helixAdminClient.addInstanceTag(controllerClusterName, helixManager.getInstanceName(), instanceTag);
     }
     LOGGER.info("Connected to controller cluster {} with controller {}", controllerClusterName, controllerName);
