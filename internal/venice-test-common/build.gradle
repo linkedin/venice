@@ -238,7 +238,7 @@ integrationTestBuckets.each { name, patterns ->
   }
 }
 
-task integrationTest_9999(type: Test) {
+task integrationTests_9999(type: Test) {
   ext {
     suiteStartTime = 0
   }
