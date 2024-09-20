@@ -314,4 +314,12 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   public void close() {
     helixAdmin.close();
   }
+
+  /**
+   * @see HelixAdminClient#addInstanceTag(String, String, String)()
+   */
+  @Override
+  public void addInstanceTag(String clusterName, String instanceName, String tag) {
+    helixAdmin.addInstanceTag(clusterName, instanceName, tag);
+  }
 }

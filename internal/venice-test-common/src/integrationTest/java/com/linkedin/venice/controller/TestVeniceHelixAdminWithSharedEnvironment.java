@@ -2054,4 +2054,16 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     stopParticipant(newNodeId);
   }
 
+  @Test
+  public void testInstanceTagging() {
+    List<String> instanceTagList = Arrays.asList("GENERAL", "TEST");
+    String controllerClusterName = "venice-controllers";
+
+    for (String instanceTag: instanceTagList) {
+      List<String> instances =
+          veniceAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      Assert.assertEquals(instances.size(), 1);
+    }
+  }
+
 }
