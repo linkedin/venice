@@ -2075,7 +2075,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     List<String> instances =
         newHelixAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
     Assert.assertEquals(instances.size(), 2);
-    newHelixAdmin.close();
 
     // resume to the original venice admin
     veniceAdmin.initStorageCluster(clusterName);
