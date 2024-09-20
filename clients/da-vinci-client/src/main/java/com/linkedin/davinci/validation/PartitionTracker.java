@@ -27,7 +27,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.VeniceEnumValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -67,20 +66,20 @@ public class PartitionTracker {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  public static final TopicType VERSION_TOPIC = TopicType.of(TopicType.VERSION_TOPIC_TYPE);
+
   private final Logger logger;
   private final String topicName;
   private final int partition;
-  private final VeniceConcurrentHashMap<GUID, Segment>[] segments =
-      new VeniceConcurrentHashMap[TopicType.values().length];
+  private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
+
+  // rtSegments is a map of source Kafka URL to a map of GUID to Segment.
+  private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
+      new VeniceConcurrentHashMap<>();
 
   public PartitionTracker(String topicName, int partition) {
     this.topicName = topicName;
     this.partition = partition;
-
-    for (TopicType topicType: TopicType.values()) {
-      segments[topicType.getValue()] = new VeniceConcurrentHashMap<>();
-    }
-
     this.logger = LogManager.getLogger(this.toString());
   }
 
@@ -94,7 +93,14 @@ public class PartitionTracker {
 
   /** N.B. Intended for tests */
   Set<GUID> getTrackedGUIDs(TopicType type) {
-    return Collections.unmodifiableSet(this.segments[type.getValue()].keySet());
+    return Collections.unmodifiableSet(getSegments(type).keySet());
+  }
+
+  private VeniceConcurrentHashMap<GUID, Segment> getSegments(TopicType type) {
+    if (TopicType.isVersionTopic(type)) {
+      return vtSegments;
+    }
+    return rtSegments.computeIfAbsent(type.getKafkaUrl(), k -> new VeniceConcurrentHashMap<>());
   }
 
   /**
@@ -102,7 +108,7 @@ public class PartitionTracker {
    * @return a {@link Segment} or null if it's absent
    */
   Segment getSegment(TopicType type, GUID guid) {
-    return this.segments[type.getValue()].get(guid);
+    return getSegments(type).get(guid);
   }
 
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
@@ -125,14 +131,14 @@ public class PartitionTracker {
         setSegment(type, producerGuid, new Segment(partition, producerPartitionState));
       } else {
         // The state is eligible to be cleared.
-        segments[type.getValue()].remove(producerGuid);
+        getSegments(type).remove(producerGuid);
         iterator.remove();
       }
     }
   }
 
   private void setSegment(TopicType type, GUID guid, Segment segment) {
-    Segment previousSegment = this.segments[type.getValue()].put(guid, segment);
+    Segment previousSegment = getSegments(type).put(guid, segment);
     if (previousSegment == null) {
       logger.debug(" set state for partition: {}, New state: {}", partition, segment);
     } else {
@@ -144,9 +150,19 @@ public class PartitionTracker {
     }
   }
 
-  public void cloneProducerStates(TopicType type, PartitionTracker destProducerTracker) {
-    for (Map.Entry<GUID, Segment> entry: this.segments[type.getValue()].entrySet()) {
-      destProducerTracker.setSegment(type, entry.getKey(), new Segment(entry.getValue()));
+  // Clone both vtSegment and rtSegment to the destination PartitionTracker.
+  public void cloneProducerStates(PartitionTracker destProducerTracker) {
+    for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
+      destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
+    }
+
+    for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
+      for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
+        destProducerTracker.setSegment(
+            TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),
+            rtEntry.getKey(),
+            new Segment(rtEntry.getValue()));
+      }
     }
   }
 
@@ -191,19 +207,19 @@ public class PartitionTracker {
   }
 
   private void setProducerState(OffsetRecord offsetRecord, TopicType type, GUID guid, ProducerPartitionState state) {
-    if (type == TopicType.VERSION_TOPIC) {
+    if (TopicType.isVersionTopic(type)) {
       offsetRecord.setProducerPartitionState(guid, state);
       return;
     }
-    if (type == TopicType.REALTIME_TOPIC) {
-      offsetRecord.setRealtimeTopicProducerState(guid, state);
+    if (TopicType.isRealtimeTopic(type)) {
+      offsetRecord.setRealtimeTopicProducerState(type.getKafkaUrl(), guid, state);
       return;
     }
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
   }
 
   public void updateOffsetRecord(TopicType type, OffsetRecord offsetRecord) {
-    for (Map.Entry<GUID, Segment> entry: this.segments[type.getValue()].entrySet()) {
+    for (Map.Entry<GUID, Segment> entry: getSegments(type).entrySet()) {
       updateOffsetRecord(type, entry.getKey(), entry.getValue(), offsetRecord);
     }
   }
@@ -329,7 +345,7 @@ public class PartitionTracker {
         debugInfo,
         aggregates);
     newSegment.setLastRecordProducerTimestamp(consumerRecord.getValue().getProducerMetadata().getMessageTimestamp());
-    this.segments[type.getValue()].put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
+    getSegments(type).put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
 
     if (unregisteredProducer) {
       handleUnregisteredProducer(
@@ -654,7 +670,7 @@ public class PartitionTracker {
   void clearExpiredStateAndUpdateOffsetRecord(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
     int numberOfClearedGUIDs = 0;
-    Iterator<Map.Entry<GUID, Segment>> iterator = this.segments[type.getValue()].entrySet().iterator();
+    Iterator<Map.Entry<GUID, Segment>> iterator = getSegments(type).entrySet().iterator();
     Map.Entry<GUID, Segment> entry;
     Segment segment;
     while (iterator.hasNext()) {
@@ -674,13 +690,13 @@ public class PartitionTracker {
   }
 
   private void removeProducerState(TopicType type, GUID guid, OffsetRecord offsetRecord) {
-    if (type == TopicType.VERSION_TOPIC) {
+    if (TopicType.isVersionTopic(type)) {
       offsetRecord.removeProducerPartitionState(guid);
       return;
     }
 
-    if (type == TopicType.REALTIME_TOPIC) {
-      offsetRecord.removeRealTimeTopicProducerState(guid);
+    if (TopicType.isRealtimeTopic(type)) {
+      offsetRecord.removeRealTimeTopicProducerState(type.getKafkaUrl(), guid);
       return;
     }
 
@@ -824,26 +840,51 @@ public class PartitionTracker {
     void execute(DataValidationException exception);
   }
 
-  public enum TopicType implements VeniceEnumValue {
+  public static class TopicType {
     /**
      * The topic is a version topic.
      */
-    VERSION_TOPIC(0),
+    public static final int VERSION_TOPIC_TYPE = 0;
 
     /**
      * The topic is a realtime topic.
      */
-    REALTIME_TOPIC(1);
+    public static final int REALTIME_TOPIC_TYPE = 1;
 
     private final int val;
+    private final String kafkaUrl;
 
-    TopicType(int val) {
+    private TopicType(int val, String kakfkaUrl) {
       this.val = val;
+      this.kafkaUrl = kakfkaUrl;
     }
 
-    @Override
+    public static TopicType of(int val, String kafkaUrl) {
+      return new TopicType(val, kafkaUrl);
+    }
+
+    public static TopicType of(int val) {
+      return of(val, null);
+    }
+
+    TopicType(int val) {
+      this(val, null);
+    }
+
     public int getValue() {
       return val;
+    }
+
+    public String getKafkaUrl() {
+      return kafkaUrl;
+    }
+
+    public static boolean isRealtimeTopic(TopicType type) {
+      return type.getValue() == VERSION_TOPIC_TYPE;
+    }
+
+    public static boolean isVersionTopic(TopicType type) {
+      return type.getValue() == REALTIME_TOPIC_TYPE;
     }
   }
 }

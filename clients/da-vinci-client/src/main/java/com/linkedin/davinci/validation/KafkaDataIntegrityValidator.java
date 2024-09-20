@@ -109,12 +109,9 @@ public class KafkaDataIntegrityValidator {
     }
   }
 
-  public void cloneProducerStates(
-      PartitionTracker.TopicType type,
-      int partition,
-      KafkaDataIntegrityValidator newValidator) {
+  public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(type, destPartitionTracker);
+    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
   }
 
   /**
@@ -134,7 +131,7 @@ public class KafkaDataIntegrityValidator {
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
     partitionTracker.checkMissingMessage(
-        PartitionTracker.TopicType.VERSION_TOPIC,
+        PartitionTracker.VERSION_TOPIC,
         consumerRecord,
         errorMetricCallback,
         this.kafkaLogCompactionDelayInMs);
@@ -144,7 +141,7 @@ public class KafkaDataIntegrityValidator {
   int getNumberOfTrackedProducerGUIDs() {
     Set<GUID> guids = new HashSet<>();
     for (PartitionTracker partitionTracker: this.partitionTrackers.values()) {
-      guids.addAll(partitionTracker.getTrackedGUIDs(PartitionTracker.TopicType.VERSION_TOPIC));
+      guids.addAll(partitionTracker.getTrackedGUIDs(PartitionTracker.VERSION_TOPIC));
     }
     return guids.size();
   }

@@ -145,8 +145,7 @@ public class TestPartitionTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker
-        .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, controlMessageConsumerRecord, false, Lazy.FALSE);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, controlMessageConsumerRecord, false, Lazy.FALSE);
 
     Put firstPut = getPutMessage("first_message".getBytes());
     KafkaMessageEnvelope firstMessage =
@@ -160,7 +159,7 @@ public class TestPartitionTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker.validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, false, Lazy.FALSE);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, false, Lazy.FALSE);
 
     // Message with gap
     Put secondPut = getPutMessage("second_message".getBytes());
@@ -178,7 +177,7 @@ public class TestPartitionTracker {
     Assert.assertThrows(
         MissingDataException.class,
         () -> partitionTracker
-            .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, secondConsumerRecord, false, Lazy.FALSE));
+            .validateMessage(PartitionTracker.VERSION_TOPIC, secondConsumerRecord, false, Lazy.FALSE));
 
     // Message without gap
     Put thirdPut = getPutMessage("third_message".getBytes());
@@ -194,7 +193,7 @@ public class TestPartitionTracker {
         System.currentTimeMillis() + 1000,
         0);
     // It doesn't matter whether EOP is true/false. The result is same.
-    partitionTracker.validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, thirdConsumerRecord, false, Lazy.FALSE);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, thirdConsumerRecord, false, Lazy.FALSE);
 
     // Message with gap but tolerate messages is allowed
     Put fourthPut = getPutMessage("fourth_message".getBytes());
@@ -209,7 +208,7 @@ public class TestPartitionTracker {
         offset,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker.validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, fourthConsumerRecord, false, Lazy.TRUE);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, fourthConsumerRecord, false, Lazy.TRUE);
   }
 
   // This test is verity that no fault is thrown for receiving a new message from an unknown guid for the first time.
@@ -237,7 +236,7 @@ public class TestPartitionTracker {
         System.currentTimeMillis(),
         0);
     partitionTracker
-        .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
+        .validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
   }
 
   @Test
@@ -265,8 +264,7 @@ public class TestPartitionTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker
-        .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.FALSE);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.FALSE);
 
     // Send the second segment. Notice this segment number has a gap than previous one
     Put firstPut = getPutMessage("message".getBytes());
@@ -286,24 +284,22 @@ public class TestPartitionTracker {
      */
     Assert.assertThrows(
         MissingDataException.class,
-        () -> partitionTracker
-            .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, true, Lazy.FALSE));
+        () -> partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, true, Lazy.FALSE));
     /**
      * The new message with segment number gap will be accepted and tracked if tolerate message flag is true
      */
-    partitionTracker.validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE);
     /**
      * Adding the same message again will be treated as duplicated
      */
     Assert.assertThrows(
         DuplicateDataException.class,
-        () -> partitionTracker
-            .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE));
+        () -> partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE));
     Assert.assertEquals(
-        partitionTracker.getSegment(PartitionTracker.TopicType.VERSION_TOPIC, guid).getSegmentNumber(),
+        partitionTracker.getSegment(PartitionTracker.VERSION_TOPIC, guid).getSegmentNumber(),
         skipSegmentNumber);
     Assert.assertEquals(
-        partitionTracker.getSegment(PartitionTracker.TopicType.VERSION_TOPIC, guid).getSequenceNumber(),
+        partitionTracker.getSegment(PartitionTracker.VERSION_TOPIC, guid).getSequenceNumber(),
         skipSequenceNumber);
   }
 
@@ -328,11 +324,8 @@ public class TestPartitionTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker
-        .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.FALSE);
-    Assert.assertEquals(
-        partitionTracker.getSegment(PartitionTracker.TopicType.VERSION_TOPIC, guid).getSequenceNumber(),
-        0);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.FALSE);
+    Assert.assertEquals(partitionTracker.getSegment(PartitionTracker.VERSION_TOPIC, guid).getSequenceNumber(), 0);
 
     // send EOS
     ControlMessage endOfSegment = getEndOfSegment();
@@ -347,11 +340,8 @@ public class TestPartitionTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker
-        .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.TRUE);
-    Assert.assertEquals(
-        partitionTracker.getSegment(PartitionTracker.TopicType.VERSION_TOPIC, guid).getSequenceNumber(),
-        5);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.TRUE);
+    Assert.assertEquals(partitionTracker.getSegment(PartitionTracker.VERSION_TOPIC, guid).getSequenceNumber(), 5);
 
     // Send a put msg following EOS
     Put firstPut = getPutMessage("first_message".getBytes());
@@ -367,12 +357,9 @@ public class TestPartitionTracker {
         0);
     Assert.assertThrows(
         DuplicateDataException.class,
-        () -> partitionTracker
-            .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE));
+        () -> partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE));
     // The sequence number should not change
-    Assert.assertEquals(
-        partitionTracker.getSegment(PartitionTracker.TopicType.VERSION_TOPIC, guid).getSequenceNumber(),
-        5);
+    Assert.assertEquals(partitionTracker.getSegment(PartitionTracker.VERSION_TOPIC, guid).getSequenceNumber(), 5);
   }
 
   /**
@@ -399,9 +386,8 @@ public class TestPartitionTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker
-        .validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.FALSE);
-    partitionTracker.updateOffsetRecord(PartitionTracker.TopicType.VERSION_TOPIC, record);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, controlMessageConsumerRecord, true, Lazy.FALSE);
+    partitionTracker.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, checkSumType.getValue());
 
     // The msg is a put msg without check sum type
@@ -416,8 +402,8 @@ public class TestPartitionTracker {
         offset,
         System.currentTimeMillis() + 1000,
         0);
-    partitionTracker.validateMessage(PartitionTracker.TopicType.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE);
-    partitionTracker.updateOffsetRecord(PartitionTracker.TopicType.VERSION_TOPIC, record);
+    partitionTracker.validateMessage(PartitionTracker.VERSION_TOPIC, firstConsumerRecord, true, Lazy.TRUE);
+    partitionTracker.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.NONE.getValue());
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumState, ByteBuffer.wrap(new byte[0]));
   }

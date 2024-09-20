@@ -1043,6 +1043,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      String kafkaUrl,
       PubSubTopicPartition topicPartition);
 
   private int handleSingleMessage(
@@ -1142,7 +1143,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
      * the following batch processing logic won't spend useless efforts on duplicate messages.
       */
-    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, topicPartition);
+    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
 
     if ((isActiveActiveReplicationEnabled || isWriteComputationEnabled)
         && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
@@ -1690,10 +1691,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The reason to transform the internal state only during checkpointing is that the intermediate checksum
      * generation is an expensive operation.
      */
-    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(
-        PartitionTracker.TopicType.VERSION_TOPIC,
-        pcs.getPartition(),
-        pcs.getOffsetRecord());
+    this.kafkaDataIntegrityValidator
+        .updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(kafkaVersionTopic, pcs);
@@ -2026,8 +2025,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        kafkaDataIntegrityValidator
-            .setPartitionState(PartitionTracker.TopicType.VERSION_TOPIC, partition, offsetRecord);
+        kafkaDataIntegrityValidator.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
@@ -3041,7 +3039,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
            * the last message of the sequence, which is not a chunk but rather the manifest.
            */
           validateMessage(
-              PartitionTracker.TopicType.VERSION_TOPIC,
+              PartitionTracker.VERSION_TOPIC,
               this.kafkaDataIntegrityValidator,
               consumerRecord,
               endOfPushReceived,
@@ -3263,10 +3261,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
-    this.kafkaDataIntegrityValidator
-        .cloneProducerStates(PartitionTracker.TopicType.VERSION_TOPIC, partition, validator);
-    this.kafkaDataIntegrityValidator
-        .cloneProducerStates(PartitionTracker.TopicType.REALTIME_TOPIC, partition, validator);
+    this.kafkaDataIntegrityValidator.cloneProducerStates(partition, validator);
   }
 
   /**

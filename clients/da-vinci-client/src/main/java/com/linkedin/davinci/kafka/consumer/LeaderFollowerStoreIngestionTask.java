@@ -2157,6 +2157,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      String kafkaUrl,
       PubSubTopicPartition topicPartition) {
     PartitionConsumptionState partitionConsumptionState =
         partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
@@ -2186,14 +2187,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         if (!isGlobalRtDivEnabled) {
           validateMessage(
-              PartitionTracker.TopicType.VERSION_TOPIC,
+              PartitionTracker.VERSION_TOPIC,
               this.kafkaDataIntegrityValidatorForLeaders,
               record,
               isEndOfPushReceived,
               partitionConsumptionState);
         } else {
+          PartitionTracker.TopicType rtTopic =
+              PartitionTracker.TopicType.of(PartitionTracker.TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
           validateMessage(
-              isRealTimeMsg ? PartitionTracker.TopicType.REALTIME_TOPIC : PartitionTracker.TopicType.VERSION_TOPIC,
+              isRealTimeMsg ? rtTopic : PartitionTracker.VERSION_TOPIC,
               this.kafkaDataIntegrityValidatorForLeaders,
               record,
               isEndOfPushReceived,

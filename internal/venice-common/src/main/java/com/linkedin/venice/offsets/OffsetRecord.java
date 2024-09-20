@@ -148,16 +148,27 @@ public class OffsetRecord {
     return this.partitionState.producerStates;
   }
 
-  public synchronized void setRealtimeTopicProducerState(GUID producerGuid, ProducerPartitionState state) {
-    this.partitionState.getRealtimeTopicProducerStates().put(guidToUtf8(producerGuid), state);
+  public synchronized void setRealtimeTopicProducerState(
+      String kafkaUrl,
+      GUID producerGuid,
+      ProducerPartitionState state) {
+    partitionState.getRealtimeTopicProducerStates().putIfAbsent(kafkaUrl, new VeniceConcurrentHashMap<>());
+    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).put(guidToUtf8(producerGuid), state);
   }
 
-  public synchronized void removeRealTimeTopicProducerState(GUID producerGuid) {
-    this.partitionState.getRealtimeTopicProducerStates().remove(guidToUtf8(producerGuid));
+  public synchronized void removeRealTimeTopicProducerState(String kafkaUrl, GUID producerGuid) {
+    if (partitionState.getRealtimeTopicProducerStates().get(kafkaUrl) == null) {
+      return;
+    }
+    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(guidToUtf8(producerGuid));
   }
 
-  public synchronized Map<CharSequence, ProducerPartitionState> getRealTimeProducerState() {
-    return this.partitionState.getRealtimeTopicProducerStates();
+  public synchronized Map<CharSequence, ProducerPartitionState> getRealTimeProducerState(String kafkaUrl) {
+    return partitionState.getRealtimeTopicProducerStates().get(kafkaUrl);
+  }
+
+  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
+    return partitionState.getRealtimeTopicProducerStates();
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
@@ -296,7 +307,7 @@ public class OffsetRecord {
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
   }
 
   /**

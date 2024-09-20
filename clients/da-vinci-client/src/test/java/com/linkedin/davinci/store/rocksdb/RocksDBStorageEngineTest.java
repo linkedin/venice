@@ -128,14 +128,17 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
 
     int segment = 0;
     int sequence = 10;
+    String kafkaUrl = "kafkaUrl";
     ProducerPartitionState ppState = createProducerPartitionState(segment, sequence);
     GUID guid = new GUID();
-    offsetRecord.setRealtimeTopicProducerState(guid, ppState);
+    offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, ppState);
     offsetRecord.setCheckpointLocalVersionTopicOffset(666L);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
     Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), 666L);
-    ProducerPartitionState ppStateFromRocksDB =
-        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getRealTimeProducerState().get(guidToUtf8(guid));
+    ProducerPartitionState ppStateFromRocksDB = rocksDBStorageEngine.getPartitionOffset(PARTITION_ID)
+        .get()
+        .getRealTimeProducerState(kafkaUrl)
+        .get(guidToUtf8(guid));
     Assert.assertEquals(ppStateFromRocksDB.getSegmentNumber(), segment);
     Assert.assertEquals(ppStateFromRocksDB.getMessageSequenceNumber(), sequence);
     rocksDBStorageEngine.clearPartitionOffset(PARTITION_ID);

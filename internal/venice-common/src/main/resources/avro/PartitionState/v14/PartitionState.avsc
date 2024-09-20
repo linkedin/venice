@@ -175,10 +175,15 @@
       "default": []
     }, {
       "name": "realtimeTopicProducerStates",
-      "doc": "A map of producer GUID -> producer state for real-time data.",
+      "doc": "A map that maps upstream Kafka bootstrap server url -> to a map of producer GUID -> producer state for real-time data.",
       "type": {
         "type": "map",
-        "values": "com.linkedin.venice.kafka.protocol.state.ProducerPartitionState"
+        "values": {
+          "type": "map",
+          "values": "com.linkedin.venice.kafka.protocol.state.ProducerPartitionState"
+        },
+        "java-key-class": "java.lang.String",
+        "avro.java.string": "String"
       },
       "default": {}
     }
