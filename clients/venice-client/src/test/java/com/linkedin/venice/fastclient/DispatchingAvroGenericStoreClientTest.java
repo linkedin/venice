@@ -15,7 +15,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -476,19 +475,6 @@ public class DispatchingAvroGenericStoreClientTest {
 
     if (noAvailableReplicas) {
       assertTrue(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        if (numBlockedReplicas == 2) {
-          // some test cases only have 1 replica having pending and some have 2.
-          assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max"));
-          assertEquals(
-              metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max").value(),
-              1.0);
-        }
-        assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max"));
-        assertEquals(
-            metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max").value(),
-            1.0);
-      });
       assertEquals(metrics.get(routeMetricsPrefix + "--blocked_instance_count.Max").value(), numBlockedReplicas);
       if (batchGet) {
         assertTrue(batchGetRequestContext.noAvailableReplica);

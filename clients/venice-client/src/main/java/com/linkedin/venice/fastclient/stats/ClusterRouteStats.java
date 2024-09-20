@@ -39,7 +39,7 @@ public class ClusterRouteStats {
       String instanceName = instanceUrl;
       try {
         URL url = new URL(instanceUrl);
-        instanceName = url.getHost() + "_" + url.getPort();
+        instanceName = url.getHost();
       } catch (MalformedURLException e) {
         LOGGER.error("Invalid instance url: {}", instanceUrl);
       }
