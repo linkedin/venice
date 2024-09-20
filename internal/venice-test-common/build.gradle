@@ -231,7 +231,9 @@ integrationTestBuckets.each { name, patterns ->
       suiteStartTime = System.currentTimeMillis()
     }
     afterSuite { descriptor, result ->
-      println "Test Suite ${descriptor.name} completed in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+      if (descriptor.name.startsWith("com.linkedin")) {
+        println "Test Suite ${descriptor.name} completed in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+      }
     }
   }
 }
