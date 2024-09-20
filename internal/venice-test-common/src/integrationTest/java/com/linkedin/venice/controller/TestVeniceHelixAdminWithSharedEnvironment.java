@@ -2058,30 +2058,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testInstanceTagging() {
     List<String> instanceTagList = Arrays.asList("GENERAL", "TEST");
     String controllerClusterName = "venice-controllers";
-    int newAdminPort = controllerConfig.getAdminPort() + 1; /* Note: dummy port */
-    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
-
-    VeniceProperties newControllerProps = builder.build();
-    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
-    VeniceHelixAdmin newHelixAdmin = new VeniceHelixAdmin(
-        TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
-        new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress),
-        pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
-    // Start stand by controller
-    newHelixAdmin.initStorageCluster(clusterName);
 
     for (String instanceTag: instanceTagList) {
       List<String> instances =
-          newHelixAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
-      Assert.assertEquals(instances.size(), 2);
+          veniceAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      Assert.assertEquals(instances.size(), 1);
     }
-
-    // resume to the original venice admin
-    veniceAdmin.initStorageCluster(clusterName);
-    newHelixAdmin.close();
-    waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
   }
 
 }

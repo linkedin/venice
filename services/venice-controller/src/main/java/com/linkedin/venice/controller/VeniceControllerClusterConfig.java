@@ -637,7 +637,7 @@ public class VeniceControllerClusterConfig {
      */
     this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
-    this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, new ArrayList<>());
+    this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, Collections.emptyList());
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
