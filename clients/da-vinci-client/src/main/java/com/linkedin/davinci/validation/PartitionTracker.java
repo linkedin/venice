@@ -880,11 +880,11 @@ public class PartitionTracker {
     }
 
     public static boolean isRealtimeTopic(TopicType type) {
-      return type.getValue() == VERSION_TOPIC_TYPE;
+      return type.getValue() == REALTIME_TOPIC_TYPE;
     }
 
     public static boolean isVersionTopic(TopicType type) {
-      return type.getValue() == REALTIME_TOPIC_TYPE;
+      return type.getValue() == VERSION_TOPIC_TYPE;
     }
   }
 }
