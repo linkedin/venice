@@ -172,10 +172,11 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
       "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience",
       "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"],
-  "1210": [
-      "com.linkedin.venice.hadoop.*",
+  "1200":[
       "com.linkedin.venice.endToEnd.TestVson*",
       "com.linkedin.venice.endToEnd.Push*"],
+  "1210": [
+      "com.linkedin.venice.hadoop.*"],
   "1220": [
       "com.linkedin.venice.endToEnd.TestPushJob*"],
   "1230": [
@@ -209,7 +210,20 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controller.Test*"],
   "1440": [
       "com.linkedin.venice.endToEnd.DataRecoveryTest",
-      "com.linkedin.venice.controllerapi.TestControllerClient"]
+      "com.linkedin.venice.controllerapi.TestControllerClient"],
+  "1500":[
+      "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
+      "com.linkedin.venice.endToEnd.MetaSystemStoreTest",
+      "com.linkedin.venice.zk.TestMigrateVeniceZKPaths",
+      "com.linkedin.venice.throttle.TestRouterReadQuotaThrottler"],
+  "1550": [
+        "com.linkedin.venice.stats.TestZkClientStatusStats",
+        "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
+        "com.linkedin.venice.integration.utils.SystemExitPrevention",
+        "com.linkedin.venice.integration.StorageNodeServiceTest",
+        "com.linkedin.venice.endToEnd.TestStoreGraveyardCleanupService",
+        "com.linkedin.venice.endToEnd.TestStoreBackupVersionDeletion",
+        "com.linkedin.venice.endToEnd.TestStaleDataVisibility"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
