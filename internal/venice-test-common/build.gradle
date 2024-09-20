@@ -214,6 +214,9 @@ def integrationTestBuckets = [
 
 integrationTestBuckets.each { name, patterns ->
   task "integrationTests_${name}" (type: Test) {
+    ext {
+      suiteStartTime = 0
+    }
     filter {
       patterns.each { pattern ->
         includeTestsMatching pattern
@@ -224,7 +227,7 @@ integrationTestBuckets.each { name, patterns ->
       excludeGroups 'flaky'
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
     }
-    beforeSuite {
+    doFirst {
       suiteStartTime = System.currentTimeMillis()
     }
     afterSuite { descriptor, result ->
