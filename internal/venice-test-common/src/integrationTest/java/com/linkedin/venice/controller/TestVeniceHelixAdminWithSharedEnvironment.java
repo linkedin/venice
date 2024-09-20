@@ -2063,19 +2063,24 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
-    VeniceHelixAdmin helixAdmin = new VeniceHelixAdmin(
+    VeniceHelixAdmin newHelixAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory());
     // Start stand by controller
-    helixAdmin.initStorageCluster(clusterName);
+    newHelixAdmin.initStorageCluster(clusterName);
 
     List<String> instances =
-        helixAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+        newHelixAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
     Assert.assertEquals(instances.size(), 2);
-    helixAdmin.close();
+    newHelixAdmin.close();
+
+    // resume to the original venice admin
+    veniceAdmin.initStorageCluster(clusterName);
+    newHelixAdmin.close();
+    waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
   }
 
 }
