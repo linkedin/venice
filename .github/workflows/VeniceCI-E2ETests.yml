@@ -1172,7 +1172,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests__9999"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9999"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash

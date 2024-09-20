@@ -295,7 +295,7 @@ task generateGHCI() {
     appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
   }
   def otherTest = "IntegrationTests_9999"
-  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "_9999")
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "9999")
   jobs << otherTest
 
   // define a job that depends others to manage the status check
