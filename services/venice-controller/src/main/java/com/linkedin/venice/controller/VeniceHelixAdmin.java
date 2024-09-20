@@ -671,8 +671,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
-      String instanceTag = commonConfig.getControllerInstanceTag();
-      VeniceControllerClusterConfig test = multiClusterConfigs.getControllerConfig(clusterName);
 
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
       DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
@@ -697,18 +695,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               "Enabling disabled replicas for instances {} took {} ms",
               newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
               LatencyUtils.getElapsedTimeFromMsToMs(startTime));
-
-          for (Instance instance: newInstances) {
-            String instanceTag = commonConfig.getControllerInstanceTag();
-            if (!instanceTag.isEmpty()) {
-              helixAdminClient.addInstanceTag(clusterName, instance.getNodeId(), instanceTag);
-              LOGGER.info(
-                  "Added instance tag {} to instance {} in cluster {}",
-                  instanceTag,
-                  instance.getNodeId(),
-                  clusterName);
-            }
-          }
         }
 
         @Override
@@ -808,6 +794,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     controllerClusterKeyBuilder = new PropertyKey.Builder(tempManager.getClusterName());
     helixManager = tempManager;
+
+    VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getCommonConfig();
+    String instanceTag = controllerConfig.getControllerInstanceTag();
+    if (!instanceTag.isEmpty()) {
+      helixAdminClient.addInstanceTag(controllerClusterName, helixManager.getInstanceName(), instanceTag);
+    }
+    LOGGER.info("Connected to controller cluster {} with controller {}", controllerClusterName, controllerName);
+
   }
 
   public ZkClient getZkClient() {

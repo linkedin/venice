@@ -1,19 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -92,6 +79,7 @@ class AbstractTestVeniceHelixAdmin {
       properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
     }
     properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
+    properties.put(CONTROLLER_INSTANCE_TAG, "GENERAL");
     controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerClusterConfig(controllerProps);
