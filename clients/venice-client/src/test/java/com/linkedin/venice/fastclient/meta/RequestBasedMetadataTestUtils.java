@@ -54,6 +54,7 @@ public class RequestBasedMetadataTestUtils {
   public static final String NEW_REPLICA_NAME = "host3";
   public static final String KEY_SCHEMA = "\"string\"";
   public static final String VALUE_SCHEMA = "\"string\"";
+  public static final String SERVER_D2_SERVICE = "test-d2-service";
   private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
 
   public static ClientConfig getMockClientConfig(String storeName) {
@@ -192,8 +193,8 @@ public class RequestBasedMetadataTestUtils {
 
   public static D2ServiceDiscovery getMockD2ServiceDiscovery(D2TransportClient d2TransportClient, String storeName) {
     D2ServiceDiscovery d2ServiceDiscovery = mock(D2ServiceDiscovery.class);
-
     D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = new D2ServiceDiscoveryResponse();
+    d2ServiceDiscoveryResponse.setServerD2Service(SERVER_D2_SERVICE);
 
     doReturn(d2ServiceDiscoveryResponse).when(d2ServiceDiscovery)
         .find(eq(d2TransportClient), eq(storeName), anyBoolean());
