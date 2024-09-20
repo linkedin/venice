@@ -238,7 +238,10 @@ integrationTestBuckets.each { name, patterns ->
   }
 }
 
-task integrationTestZ(type: Test) {
+task integrationTest_9999(type: Test) {
+  ext {
+    suiteStartTime = 0
+  }
   filter {
     integrationTestBuckets.each { name, patterns ->
       patterns.each { pattern ->
@@ -246,11 +249,18 @@ task integrationTestZ(type: Test) {
       }
     }
   }
-
+  doFirst {
+    suiteStartTime = System.currentTimeMillis()
+  }
   configure integrationTestConfigs
   useTestNG {
     excludeGroups 'flaky'
     listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
+  }
+  afterSuite { descriptor, result ->
+    if (descriptor.name.startsWith("com.linkedin")) {
+      println "Test Suite ${descriptor.name} completed in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+    }
   }
 }
 
@@ -284,8 +294,8 @@ task generateGHCI() {
     jobs << flowName
     appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
   }
-  def otherTest = "IntegrationTestsZ"
-  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
+  def otherTest = "IntegrationTests_9999"
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "_9999")
   jobs << otherTest
 
   // define a job that depends others to manage the status check
