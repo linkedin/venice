@@ -1,5 +1,8 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.venice.read.RequestType;
+
+
 public class GetRequestContext extends RequestContext {
   int partitionId;
   /**
@@ -12,6 +15,11 @@ public class GetRequestContext extends RequestContext {
     partitionId = -1;
     requestUri = null;
     retryContext = null;
+  }
+
+  @Override
+  public RequestType getRequestType() {
+    return RequestType.SINGLE_GET;
   }
 
   static class RetryContext {

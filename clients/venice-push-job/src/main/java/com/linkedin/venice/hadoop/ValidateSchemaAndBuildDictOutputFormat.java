@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static org.apache.hadoop.mapreduce.MRJobConfig.ID;
 
 import java.io.IOException;
