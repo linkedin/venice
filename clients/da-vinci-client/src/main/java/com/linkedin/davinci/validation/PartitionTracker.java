@@ -206,7 +206,7 @@ public class PartitionTracker {
     setProducerState(offsetRecord, type, guid, state);
   }
 
-  private void setProducerState(OffsetRecord offsetRecord, TopicType type, GUID guid, ProducerPartitionState state) {
+  public void setProducerState(OffsetRecord offsetRecord, TopicType type, GUID guid, ProducerPartitionState state) {
     if (TopicType.isVersionTopic(type)) {
       offsetRecord.setProducerPartitionState(guid, state);
       return;
@@ -689,7 +689,7 @@ public class PartitionTracker {
     }
   }
 
-  private void removeProducerState(TopicType type, GUID guid, OffsetRecord offsetRecord) {
+  public void removeProducerState(TopicType type, GUID guid, OffsetRecord offsetRecord) {
     if (TopicType.isVersionTopic(type)) {
       offsetRecord.removeProducerPartitionState(guid);
       return;
