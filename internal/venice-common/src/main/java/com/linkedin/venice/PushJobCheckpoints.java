@@ -2,7 +2,10 @@ package com.linkedin.venice;
 
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -23,8 +26,26 @@ public enum PushJobCheckpoints implements VeniceEnumValue {
 
   private final int value;
 
+  private static final Set<PushJobCheckpoints> DEFAULT_USER_ERROR_CHECKPOINTS = new HashSet<>(
+      Arrays.asList(
+          QUOTA_EXCEEDED,
+          WRITE_ACL_FAILED,
+          DUP_KEY_WITH_DIFF_VALUE,
+          INPUT_DATA_SCHEMA_VALIDATION_FAILED,
+          EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED,
+          RECORD_TOO_LARGE_FAILED,
+          CONCURRENT_BATCH_PUSH,
+          DATASET_CHANGED,
+          INVALID_INPUT_FILE,
+          DVC_INGESTION_ERROR_DISK_FULL,
+          DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED));
+
+  public static boolean isUserError(PushJobCheckpoints checkpoint) {
+    return DEFAULT_USER_ERROR_CHECKPOINTS.contains(checkpoint);
+  }
+
   private static final Map<Integer, PushJobCheckpoints> TYPES =
-      EnumUtils.getEnumValuesListRelaxed(PushJobCheckpoints.class);
+      EnumUtils.getEnumValuesSparseList(PushJobCheckpoints.class);
 
   PushJobCheckpoints(int value) {
     this.value = value;

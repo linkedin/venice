@@ -1182,48 +1182,57 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return response.getId();
   }
 
-  static boolean isPushJobFailedUserError(PushJobDetailsStatus status, PushJobCheckpoints pushJobCheckpoint) {
+  static boolean isPushJobFailedDueToUserError(PushJobDetailsStatus status, PushJobDetails pushJobDetails) {
     if (PushJobDetailsStatus.isFailed(status)) {
-      if (pushJobCheckpoint != null) {
-        switch (pushJobCheckpoint) {
-          case QUOTA_EXCEEDED:
-          case WRITE_ACL_FAILED:
-          case DUP_KEY_WITH_DIFF_VALUE:
-          case INPUT_DATA_SCHEMA_VALIDATION_FAILED:
-          case EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED:
-          case RECORD_TOO_LARGE_FAILED:
-          case CONCURRENT_BATCH_PUSH:
-          case DATASET_CHANGED:
-          case INVALID_INPUT_FILE:
-          case DVC_INGESTION_ERROR_DISK_FULL:
-          case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
-            return true;
-
-          default:
-            return false;
+      PushJobCheckpoints checkpoint = PushJobCheckpoints.valueOf(pushJobDetails.getPushJobLatestCheckpoint());
+      if (checkpoint != null) {
+        Map<CharSequence, CharSequence> pushJobConfigs = pushJobDetails.getPushJobConfigs();
+        Utf8 userErrorCheckpointsKey = new Utf8("push.job.failure.checkpoints.to.define.user.error");
+        Set<PushJobCheckpoints> userErrorCheckpoints = new HashSet<>();
+        if (pushJobConfigs.containsKey(userErrorCheckpointsKey)) {
+          String userErrorCheckpointsStr = pushJobConfigs.get(userErrorCheckpointsKey).toString();
+          // extract individual checkpoints from the string
+          for (String checkpointStr: userErrorCheckpointsStr.split(",")) {
+            checkpointStr = checkpointStr.trim();
+            try {
+              userErrorCheckpoints.add(PushJobCheckpoints.valueOf(checkpointStr));
+            } catch (Exception e) {
+              LOGGER.error(
+                  "Invalid checkpoint {} in the input to define user error. Using the default error checkpoints",
+                  checkpointStr);
+              userErrorCheckpoints.clear();
+              break;
+            }
+          }
+        }
+        if (!userErrorCheckpoints.isEmpty()) {
+          return userErrorCheckpoints.contains(checkpoint);
+        } else {
+          return PushJobCheckpoints.isUserError(checkpoint);
         }
       }
     }
     return false;
   }
 
-  static void emitPushJobDetailsMetrics(Map<String, PushJobStatusStats> pushJobStatusStatsMap, PushJobDetails value) {
-    List<PushJobDetailsStatusTuple> overallStatuses = value.getOverallStatus();
+  static void emitPushJobDetailsMetrics(
+      Map<String, PushJobStatusStats> pushJobStatusStatsMap,
+      PushJobDetails pushJobDetails) {
+    List<PushJobDetailsStatusTuple> overallStatuses = pushJobDetails.getOverallStatus();
     if (overallStatuses.isEmpty()) {
       return;
     }
     boolean isIncrementalPush = false;
-    String cluster = value.getClusterName().toString();
+    String cluster = pushJobDetails.getClusterName().toString();
     PushJobStatusStats pushJobStatusStats = pushJobStatusStatsMap.get(cluster);
     Utf8 incPushKey = new Utf8("incremental.push");
-    if (value.getPushJobConfigs().containsKey(incPushKey)) {
-      isIncrementalPush = Boolean.parseBoolean(value.getPushJobConfigs().get(incPushKey).toString());
+    if (pushJobDetails.getPushJobConfigs().containsKey(incPushKey)) {
+      isIncrementalPush = Boolean.parseBoolean(pushJobDetails.getPushJobConfigs().get(incPushKey).toString());
     }
     PushJobDetailsStatus overallStatus =
         PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
-    PushJobCheckpoints checkpoint = PushJobCheckpoints.valueOf(value.getPushJobLatestCheckpoint());
     if (PushJobDetailsStatus.isFailed(overallStatus)) {
-      if (isPushJobFailedUserError(overallStatus, checkpoint)) {
+      if (isPushJobFailedDueToUserError(overallStatus, pushJobDetails)) {
         if (isIncrementalPush) {
           pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
         } else {
@@ -5828,10 +5837,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public DisabledPartitionStats getDisabledPartitionStats(String clusterName) {
     return disabledPartitionStatMap.get(clusterName);
-  }
-
-  public PushJobStatusStats getPushJobStatusStats(String clusterName) {
-    return pushJobStatusStatsMap.get(clusterName);
   }
 
   /**

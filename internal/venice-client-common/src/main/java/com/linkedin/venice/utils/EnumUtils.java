@@ -62,7 +62,7 @@ public class EnumUtils {
    * This is a relaxed version of {@link #getEnumValuesList(Class)} which returns a map instead of a list.
    * This is useful when the values are not contiguous, or when the values are not starting from 0.
    */
-  public static <V extends VeniceEnumValue> Map<Integer, V> getEnumValuesListRelaxed(Class<V> enumToProvideArrayOf) {
+  public static <V extends VeniceEnumValue> Map<Integer, V> getEnumValuesSparseList(Class<V> enumToProvideArrayOf) {
     String name = enumToProvideArrayOf.getSimpleName();
     Map<Integer, V> map = new HashMap<>();
     for (V type: enumToProvideArrayOf.getEnumConstants()) {
@@ -77,28 +77,30 @@ public class EnumUtils {
     return valueOf(valuesList, value, enumClass, VeniceException::new);
   }
 
+  public static <V extends VeniceEnumValue> V valueOf(
+      List<V> valuesList,
+      int value,
+      Class<V> enumClass,
+      Function<String, VeniceException> exceptionConstructor) {
+    try {
+      return valuesList.get(value);
+    } catch (IndexOutOfBoundsException e) {
+      throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
+    }
+  }
+
   public static <V extends VeniceEnumValue> V valueOf(Map<Integer, V> valuesMap, int value, Class<V> enumClass) {
     return valueOf(valuesMap, value, enumClass, VeniceException::new);
   }
 
   public static <V extends VeniceEnumValue> V valueOf(
-      Object values,
+      Map<Integer, V> valuesMap,
       int value,
       Class<V> enumClass,
       Function<String, VeniceException> exceptionConstructor) {
-    if (values instanceof List) {
-      try {
-        return ((List<V>) values).get(value);
-      } catch (IndexOutOfBoundsException e) {
-        throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
-      }
-    } else if (values instanceof Map) {
-      if (!((Map<Integer, V>) values).containsKey(value)) {
-        throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
-      }
-      return ((Map<Integer, V>) values).get(value);
-    } else {
-      throw new IllegalArgumentException("Invalid values type: " + values.getClass().getSimpleName());
+    if (!valuesMap.containsKey(value)) {
+      throw exceptionConstructor.apply("Invalid enum value for " + enumClass.getSimpleName() + ": " + value);
     }
+    return valuesMap.get(value);
   }
 }

@@ -4,6 +4,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE;
+import static com.linkedin.venice.PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED;
 import static com.linkedin.venice.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED;
 import static com.linkedin.venice.PushJobCheckpoints.START_DATA_WRITER_JOB;
 import static com.linkedin.venice.status.PushJobDetailsStatus.COMPLETED;
@@ -14,6 +15,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -375,7 +377,7 @@ public class PushJobDetailsTest {
     }
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testPushJobDetails() throws IOException {
     // case 1: successful batch push job
     String testStoreName = "test-push-store";
@@ -501,5 +503,23 @@ public class PushJobDetailsTest {
         false,
         "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
     validatePushJobMetrics(false, true, true);
+
+    // case 7: same as case 6 but overriding the user error checkpoints: The failure should not be
+    // considered as user error
+    pushJobPropsInc
+        .setProperty(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, INPUT_DATA_SCHEMA_VALIDATION_FAILED.toString());
+    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push-v4", pushJobPropsInc)) {
+      assertThrows(VeniceException.class, testPushJob::run);
+    }
+
+    validatePushJobDetailsStatus(
+        true,
+        testStoreName,
+        3,
+        expectedStatuses,
+        DUP_KEY_WITH_DIFF_VALUE,
+        false,
+        "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
+    validatePushJobMetrics(false, false, true);
   }
 }
