@@ -9,7 +9,6 @@ import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -26,7 +25,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Set;
-import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -154,10 +152,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     ppState.aggregates = new HashMap<>();
     ppState.debugInfo = new HashMap<>();
     return ppState;
-  }
-
-  private CharSequence guidToUtf8(GUID guid) {
-    return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
   @Test
