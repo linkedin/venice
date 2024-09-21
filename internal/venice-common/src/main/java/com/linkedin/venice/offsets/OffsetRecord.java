@@ -163,8 +163,12 @@ public class OffsetRecord {
     partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(guidToUtf8(producerGuid));
   }
 
-  public synchronized Map<CharSequence, ProducerPartitionState> getRealTimeProducerState(String kafkaUrl) {
-    return partitionState.getRealtimeTopicProducerStates().get(kafkaUrl);
+  public synchronized ProducerPartitionState getRealTimeProducerState(String kafkaUrl, GUID producerGuid) {
+    Map<CharSequence, ProducerPartitionState> map = partitionState.getRealtimeTopicProducerStates().get(kafkaUrl);
+    if (map == null) {
+      return null;
+    }
+    return map.get(guidToUtf8(producerGuid));
   }
 
   private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {

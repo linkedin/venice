@@ -1,7 +1,6 @@
 package com.linkedin.venice.offsets;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -73,22 +72,8 @@ public class TestOffsetRecord {
     offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, state);
 
     // Verify that the state was set correctly
-    Map<CharSequence, ProducerPartitionState> result = offsetRecord.getRealTimeProducerState(kafkaUrl);
-    assertNotNull(result, "The result should not be null");
-    assertEquals(result.get(offsetRecord.guidToUtf8(guid)), state, "The state should match the expected value");
-  }
-
-  @Test
-  public void testGetRealTimeProducerState() {
-    // Set up the state
-    offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, state);
-
-    // Call the method
-    Map<CharSequence, ProducerPartitionState> result = offsetRecord.getRealTimeProducerState(kafkaUrl);
-
-    // Verify the result
-    assertNotNull(result, "The result should not be null");
-    assertEquals(result.get(offsetRecord.guidToUtf8(guid)), state, "The state should match the expected value");
+    ProducerPartitionState result = offsetRecord.getRealTimeProducerState(kafkaUrl, guid);
+    assertEquals(result, state, "The state should match the expected value");
   }
 
   @Test
@@ -100,7 +85,7 @@ public class TestOffsetRecord {
     offsetRecord.removeRealTimeTopicProducerState(kafkaUrl, guid);
 
     // Verify that the state was removed correctly
-    Map<CharSequence, ProducerPartitionState> result = offsetRecord.getRealTimeProducerState(kafkaUrl);
-    assertNull(result.get(guid.toString()), "The state should be null after removal");
+    ProducerPartitionState result = offsetRecord.getRealTimeProducerState(kafkaUrl, guid);
+    assertNull(result, "The state should be null after removal");
   }
 }

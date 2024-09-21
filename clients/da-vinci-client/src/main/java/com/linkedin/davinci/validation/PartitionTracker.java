@@ -171,7 +171,13 @@ public class PartitionTracker {
       // This producer didn't write anything to this GUID
       return;
     }
-    ProducerPartitionState state = offsetRecord.getProducerPartitionState(guid);
+    ProducerPartitionState state;
+    if (TopicType.isVersionTopic(type)) {
+      state = offsetRecord.getProducerPartitionState(guid);
+    } else {
+      state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
+    }
+
     if (state == null) {
       state = new ProducerPartitionState();
 
@@ -865,10 +871,6 @@ public class PartitionTracker {
 
     public static TopicType of(int val) {
       return of(val, null);
-    }
-
-    TopicType(int val) {
-      this(val, null);
     }
 
     public int getValue() {

@@ -135,10 +135,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     offsetRecord.setCheckpointLocalVersionTopicOffset(666L);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
     Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), 666L);
-    ProducerPartitionState ppStateFromRocksDB = rocksDBStorageEngine.getPartitionOffset(PARTITION_ID)
-        .get()
-        .getRealTimeProducerState(kafkaUrl)
-        .get(guidToUtf8(guid));
+    ProducerPartitionState ppStateFromRocksDB =
+        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getRealTimeProducerState(kafkaUrl, guid);
     Assert.assertEquals(ppStateFromRocksDB.getSegmentNumber(), segment);
     Assert.assertEquals(ppStateFromRocksDB.getMessageSequenceNumber(), sequence);
     rocksDBStorageEngine.clearPartitionOffset(PARTITION_ID);
