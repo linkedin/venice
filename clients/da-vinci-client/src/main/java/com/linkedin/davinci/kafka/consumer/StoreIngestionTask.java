@@ -1691,6 +1691,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      *
      * The reason to transform the internal state only during checkpointing is that the intermediate checksum
      * generation is an expensive operation.
+     *
+     * TODO:
+     * 'kafkaDataIntegrityValidator' is used by drainer threads and we need to transfer its full responsibility to the
+     * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+     * Keep drainer DIV the way as is today (containing both rt and vt messages).
      */
     this.kafkaDataIntegrityValidator
         .updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
@@ -2026,6 +2031,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
+
+        /**
+         * TODO:
+         * 'kafkaDataIntegrityValidator' is used by drainer threads and we need to transfer its full responsibility to the
+         * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+         * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
+         * VERSION_TOPIC to contain both rt and vt messages.
+         */
         kafkaDataIntegrityValidator.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
@@ -3049,6 +3062,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
            * N.B.: If a leader server is processing a chunk, then the {@link consumerRecord} is going to be the same for
            * every chunk, and we don't want to treat them as dupes, hence we skip DIV. The DIV state will get updated on
            * the last message of the sequence, which is not a chunk but rather the manifest.
+           *
+           * TODO:
+           * This function is called by drainer threads and we need to transfer its full responsibility to the
+           * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+           * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
+           * VERSION_TOPIC to contain both rt and vt messages.
            */
           validateMessage(
               PartitionTracker.VERSION_TOPIC,
