@@ -19,6 +19,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
@@ -34,6 +35,7 @@ import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -42,10 +44,7 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.ServerReadMetadataRepository;
 import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
-import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -64,13 +63,13 @@ import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -310,6 +309,9 @@ public class VeniceServer {
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
+    boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
+        || veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+
     // Create and add StorageService. storeRepository will be populated by StorageService
     storageService = new StorageService(
         veniceConfigLoader,
@@ -317,7 +319,10 @@ public class VeniceServer {
         rocksDBMemoryStats,
         storeVersionStateSerializer,
         partitionStateSerializer,
-        metadataRepo);
+        metadataRepo,
+        whetherToRestoreDataPartitions,
+        true,
+        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -690,6 +695,37 @@ public class VeniceServer {
 
   protected VeniceConfigLoader getConfigLoader() {
     return veniceConfigLoader;
+  }
+
+  protected final boolean isIsolatedIngestion() {
+    return veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
+  }
+
+  private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
+    return storageEngineName -> {
+      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+
+      AbstractStorageEngine storageEngine = storageService.getStorageEngine(storageEngineName);
+
+      PropertyKey.Builder propertyKeyBuilder =
+          new PropertyKey.Builder(this.veniceConfigLoader.getVeniceClusterConfig().getClusterName());
+      IdealState idealState = SafeHelixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
+
+      Set<Integer> idealStatePartitionIds = new HashSet<>();
+      idealState.getPartitionSet().stream().forEach(partitionId -> {
+        idealStatePartitionIds.add(Integer.parseInt(partitionId));
+      });
+      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
+
+      for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
+        if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
+          continue;
+        }
+        storageEngine.dropPartition(storageEnginePartitionId);
+      }
+
+      return true;
+    };
   }
 
   public MetricsRepository getMetricsRepository() {

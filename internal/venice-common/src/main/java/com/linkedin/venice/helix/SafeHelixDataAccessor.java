@@ -82,7 +82,7 @@ public class SafeHelixDataAccessor {
     return helixDataAccessor.updateProperty(key, updater, value);
   }
 
-  public <T extends HelixProperty> T getProperty(PropertyKey key) {
+  public static <T extends HelixProperty> T getProperty(PropertyKey key) {
     return helixDataAccessor.getProperty(key);
   }
 
