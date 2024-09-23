@@ -45,7 +45,7 @@ import org.testng.annotations.Test;
 public class TestHAASController {
   private Properties enableControllerClusterHAASProperties;
   private Properties enableControllerAndStorageClusterHAASProperties;
-  private final String instanceTag = "GENERAL";
+  private final static String instanceTag = "GENERAL";
 
   @BeforeClass
   public void setUp() {
