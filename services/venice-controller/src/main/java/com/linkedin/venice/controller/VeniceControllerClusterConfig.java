@@ -59,6 +59,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
@@ -224,6 +225,7 @@ public class VeniceControllerClusterConfig {
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
+  private final String controllerResourceInstanceGroupTag;
   private final List<String> controllerInstanceTagList;
   private final boolean multiRegion;
   private final boolean parent;
@@ -637,6 +639,7 @@ public class VeniceControllerClusterConfig {
      */
     this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
+    this.controllerResourceInstanceGroupTag = props.getString(CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, "");
     this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, Collections.emptyList());
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
@@ -1162,6 +1165,10 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerClusterName() {
     return controllerClusterName;
+  }
+
+  public String getControllerResourceInstanceGroupTag() {
+    return controllerResourceInstanceGroupTag;
   }
 
   public List<String> getControllerInstanceTagList() {

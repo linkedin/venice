@@ -283,6 +283,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getServiceDiscoveryRegistrationRetryMS();
   }
 
+  public String getControllerResourceInstanceGroupTag() {
+    return getCommonConfig().getControllerResourceInstanceGroupTag();
+  }
+
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
   }

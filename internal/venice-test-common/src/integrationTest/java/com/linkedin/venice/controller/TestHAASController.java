@@ -35,6 +35,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.LiveInstance;
 import org.testng.annotations.BeforeClass;
@@ -44,6 +45,7 @@ import org.testng.annotations.Test;
 public class TestHAASController {
   private Properties enableControllerClusterHAASProperties;
   private Properties enableControllerAndStorageClusterHAASProperties;
+  private final String instanceTag = "GENERAL";
 
   @BeforeClass
   public void setUp() {
@@ -51,9 +53,28 @@ public class TestHAASController {
     enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS, String.valueOf(true));
     enableControllerClusterHAASProperties
         .put(ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME, HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME);
+    enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, instanceTag);
+    enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST, instanceTag);
+
     enableControllerAndStorageClusterHAASProperties = (Properties) enableControllerClusterHAASProperties.clone();
     enableControllerAndStorageClusterHAASProperties
         .put(ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS, String.valueOf(true));
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testClusterResourceInstanceTag() {
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VeniceControllerWrapper controllerWrapper =
+          venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
+
+      String controllerClusterName = "venice-controllers";
+      HelixAdmin helixAdmin = controllerWrapper.getVeniceHelixAdmin().getHelixAdmin();
+      List<String> resources = helixAdmin.getResourcesInClusterWithTag(controllerClusterName, instanceTag);
+      assertEquals(resources.size(), 1);
+      List<String> instances = helixAdmin.getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      assertEquals(instances.size(), 1);
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

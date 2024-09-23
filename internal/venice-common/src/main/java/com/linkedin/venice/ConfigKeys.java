@@ -214,6 +214,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+  // What instance group tag to assign to a cluster resource
+  public static final String CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG = "controller.resource.instance.group.tag";
   // What tags to assign to a controller instance
   public static final String CONTROLLER_INSTANCE_TAG_LIST = "controller.instance.tag.list";
 
