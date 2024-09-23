@@ -1,13 +1,13 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;

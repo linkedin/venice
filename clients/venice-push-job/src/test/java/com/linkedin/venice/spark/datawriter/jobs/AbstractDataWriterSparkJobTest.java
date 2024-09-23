@@ -1,14 +1,14 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.meta.Store.UNLIMITED_STORAGE_QUOTA;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_APP_NAME_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
 
@@ -16,7 +16,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
-import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
+import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;

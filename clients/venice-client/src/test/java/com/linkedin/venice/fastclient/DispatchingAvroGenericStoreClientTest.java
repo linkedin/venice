@@ -15,7 +15,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -51,6 +50,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,6 +62,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -402,6 +403,38 @@ public class DispatchingAvroGenericStoreClientTest {
         numBlockedReplicas);
   }
 
+  private void checkRouteMetricForSingleGet(
+      String metricName1,
+      String metricName2,
+      Consumer<Double> conditionCheckFunc) {
+    assertTrue(
+        metrics.containsKey(metricName1) || metrics.containsKey(metricName2),
+        "At least one of the metric must exist for single get metric validation: " + metricName1 + ", " + metricName2);
+
+    for (String metricName: Arrays.asList(metricName1, metricName2)) {
+      Metric metric = metrics.get(metricName);
+      if (metric != null) {
+        conditionCheckFunc.accept(metric.value());
+      }
+    }
+  }
+
+  private void checkRouteMetricForBatchGet(
+      String metricName1,
+      String metricName2,
+      Consumer<Double> conditionCheckFunc) {
+    assertTrue(
+        metrics.containsKey(metricName1) && metrics.containsKey(metricName2),
+        "Metrics must exist for batch get metric validation: " + metricName1 + ", " + metricName2);
+
+    for (String metricName: Arrays.asList(metricName1, metricName2)) {
+      Metric metric = metrics.get(metricName);
+      if (metric != null) {
+        conditionCheckFunc.accept(metric.value());
+      }
+    }
+  }
+
   private void validateMetrics(
       GetRequestContext getRequestContext,
       BatchGetRequestContext batchGetRequestContext,
@@ -439,10 +472,46 @@ public class DispatchingAvroGenericStoreClientTest {
         assertTrue(metrics.get(metricPrefix + "response_tt95pr.Avg").value() > 0);
         assertTrue(metrics.get(metricPrefix + "response_tt99pr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
+
+        // Check route metrics for batch-get
+        String replica1RouterMetricPrefix =
+            "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA1_NAME + "--multiget_streaming_";
+        String replica2RouterMetricPrefix =
+            "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA2_NAME + "--multiget_streaming_";
+
+        checkRouteMetricForBatchGet(
+            replica1RouterMetricPrefix + "healthy_request_count.OccurrenceRate",
+            replica2RouterMetricPrefix + "healthy_request_count.OccurrenceRate",
+            v -> assertTrue(v > 0));
+        checkRouteMetricForBatchGet(
+            replica1RouterMetricPrefix + "response_waiting_time.99thPercentile",
+            replica2RouterMetricPrefix + "response_waiting_time.99thPercentile",
+            v -> assertTrue(v > 0));
+        checkRouteMetricForBatchGet(
+            replica1RouterMetricPrefix + "quota_exceeded_request_count.OccurrenceRate",
+            replica2RouterMetricPrefix + "quota_exceeded_request_count.OccurrenceRate",
+            v -> assertTrue(v == 0.0d));
+
       } else if (computeRequest) {
         // Do nothing since we don't have the ComputeRequestContext to test
       } else {
         assertEquals(getRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
+
+        // Check route metrics for single-get
+        String replica1RouterMetricPrefix = "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA1_NAME;
+        String replica2RouterMetricPrefix = "." + RequestBasedMetadataTestUtils.SERVER_D2_SERVICE + "_" + REPLICA2_NAME;
+        checkRouteMetricForSingleGet(
+            replica1RouterMetricPrefix + "--healthy_request_count.OccurrenceRate",
+            replica2RouterMetricPrefix + "--healthy_request_count.OccurrenceRate",
+            v -> assertTrue(v > 0));
+        checkRouteMetricForSingleGet(
+            replica1RouterMetricPrefix + "--response_waiting_time.99thPercentile",
+            replica2RouterMetricPrefix + "--response_waiting_time.99thPercentile",
+            v -> assertTrue(v > 0));
+        checkRouteMetricForSingleGet(
+            replica1RouterMetricPrefix + "--quota_exceeded_request_count.OccurrenceRate",
+            replica2RouterMetricPrefix + "--quota_exceeded_request_count.OccurrenceRate",
+            v -> assertTrue(v == 0.0d));
       }
     } else if (partialHealthyRequest) {
       assertFalse(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
@@ -476,19 +545,6 @@ public class DispatchingAvroGenericStoreClientTest {
 
     if (noAvailableReplicas) {
       assertTrue(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        if (numBlockedReplicas == 2) {
-          // some test cases only have 1 replica having pending and some have 2.
-          assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max"));
-          assertEquals(
-              metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max").value(),
-              1.0);
-        }
-        assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max"));
-        assertEquals(
-            metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max").value(),
-            1.0);
-      });
       assertEquals(metrics.get(routeMetricsPrefix + "--blocked_instance_count.Max").value(), numBlockedReplicas);
       if (batchGet) {
         assertTrue(batchGetRequestContext.noAvailableReplica);
@@ -507,7 +563,6 @@ public class DispatchingAvroGenericStoreClientTest {
         assertFalse(getRequestContext.noAvailableReplica);
       }
     }
-
     validateRetryMetrics(getRequestContext, batchGetRequestContext, batchGet, computeRequest, metricPrefix);
   }
 

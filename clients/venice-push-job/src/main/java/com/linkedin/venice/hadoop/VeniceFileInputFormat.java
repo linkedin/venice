@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 
 import java.io.IOException;
 import org.apache.hadoop.io.IntWritable;

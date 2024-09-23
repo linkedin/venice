@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.heartbeat;
+package com.linkedin.venice.heartbeat;
 
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;

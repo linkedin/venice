@@ -1,6 +1,6 @@
 package com.linkedin.venice.spark.input.hdfs;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;

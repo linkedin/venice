@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJobConstants;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
@@ -11,6 +10,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Optional;

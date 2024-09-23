@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.jobs;
+package com.linkedin.venice.jobs;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;

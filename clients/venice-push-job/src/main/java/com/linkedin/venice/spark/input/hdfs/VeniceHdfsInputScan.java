@@ -1,7 +1,7 @@
 package com.linkedin.venice.spark.input.hdfs;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.spark.SparkConstants;

@@ -2,15 +2,15 @@ package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TOPIC_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;

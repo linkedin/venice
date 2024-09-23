@@ -1,11 +1,13 @@
-package com.linkedin.venice.hadoop;
+package com.linkedin.venice.vpj;
 
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
+import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractVeniceMapper;
+import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Time;
 import org.apache.hadoop.fs.PathFilter;

@@ -1,6 +1,6 @@
-package com.linkedin.venice.hadoop.jobs;
+package com.linkedin.venice.jobs;
 
-import static com.linkedin.venice.hadoop.jobs.DataWriterComputeJob.PASS_THROUGH_CONFIG_PREFIXES;
+import static com.linkedin.venice.jobs.DataWriterComputeJob.PASS_THROUGH_CONFIG_PREFIXES;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import org.testng.annotations.Test;
