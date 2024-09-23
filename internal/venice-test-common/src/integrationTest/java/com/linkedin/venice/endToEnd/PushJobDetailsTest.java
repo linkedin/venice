@@ -1,10 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE;
-import static com.linkedin.venice.PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED;
 import static com.linkedin.venice.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED;
 import static com.linkedin.venice.PushJobCheckpoints.START_DATA_WRITER_JOB;
 import static com.linkedin.venice.status.PushJobDetailsStatus.COMPLETED;
@@ -15,7 +16,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -44,6 +44,7 @@ import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -60,8 +61,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
@@ -75,23 +74,35 @@ public class PushJobDetailsTest {
   private Schema recordSchema;
   private String inputDirPathForFullPush;
   private String inputDirPathForIncPush;
+  private String inputDirPathWithDupKeys;
   private MetricsRepository metricsRepository;
 
-  private double batchJobSuccessExpected = 0.0;
-  private double incrementalJobSuccessExpected = 0.0;
-  private double batchJobFailedUserErrorExpected = 0.0;
-  private double batchJobFailedNonUserErrorExpected = 0.0;
-  private double incrementalJobFailedUserErrorExpected = 0.0;
-  private double incrementalJobFailedNonUserErrorExpected = 0.0;
+  private double batchJobSuccessExpected;
+  private double incrementalJobSuccessExpected;
+  private double batchJobFailedUserErrorExpected;
+  private double batchJobFailedNonUserErrorExpected;
+  private double incrementalJobFailedUserErrorExpected;
+  private double incrementalJobFailedNonUserErrorExpected;
 
-  @BeforeClass()
-  public void setUp() throws IOException {
+  public void setUp(boolean useCustomCheckpoints) throws IOException {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
 
     Properties parentControllerProperties = new Properties();
+    if (useCustomCheckpoints) {
+      StringBuilder customUserErrorCheckpoints = new StringBuilder();
+      for (PushJobCheckpoints checkpoint: DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS) {
+        if (checkpoint != DUP_KEY_WITH_DIFF_VALUE) {
+          // Skip DUP_KEY_WITH_DIFF_VALUE as it is tested to see that it is not an user error
+          customUserErrorCheckpoints.append(checkpoint.toString()).append(",");
+        }
+      }
+      parentControllerProperties
+          .put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, customUserErrorCheckpoints.toString());
+    }
+
     // Need to add this in controller props when creating venice system for tests
     parentControllerProperties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "venice-cluster0");
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -125,12 +136,24 @@ public class PushJobDetailsTest {
     for (int i = 1; i <= latestSchemaId; i++) {
       schemaVersionMap.put(i, Utils.getSchemaFromResource("avro/PushJobDetails/v" + i + "/PushJobDetails.avsc"));
     }
-    inputDir = getTempDataDirectory();
-    inputDirPathForIncPush = "file://" + inputDir.getAbsolutePath();
-    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDir);
+
+    File inputDirForIncPush = getTempDataDirectory();
+    inputDirPathForIncPush = "file://" + inputDirForIncPush.getAbsolutePath();
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirForIncPush);
+
+    // input dir with dup keys
+    File inputDirWithDupKeys = getTempDataDirectory();
+    inputDirPathWithDupKeys = "file://" + inputDirWithDupKeys.getAbsolutePath();
+    TestWriteUtils.writeSimpleAvroFileWithDuplicateKey(inputDirWithDupKeys);
+
+    batchJobSuccessExpected = 0.0;
+    incrementalJobSuccessExpected = 0.0;
+    batchJobFailedUserErrorExpected = 0.0;
+    batchJobFailedNonUserErrorExpected = 0.0;
+    incrementalJobFailedUserErrorExpected = 0.0;
+    incrementalJobFailedNonUserErrorExpected = 0.0;
   }
 
-  @AfterClass
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
@@ -377,149 +400,136 @@ public class PushJobDetailsTest {
     }
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testPushJobDetails() throws IOException {
-    // case 1: successful batch push job
-    String testStoreName = "test-push-store";
-    parentControllerClient.createNewStore(
-        testStoreName,
-        "test-user",
-        recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
-        recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
-    // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException because
-    // hadoop job client cannot fetch counters properly.
-    parentControllerClient.updateStore(
-        testStoreName,
-        new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2).setIncrementalPushEnabled(true));
-    Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
-    pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
-      testPushJob.run();
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180
+      * Time.MS_PER_SECOND)
+  public void testPushJobDetails(boolean useCustomCheckpoints) throws IOException {
+    try {
+      setUp(useCustomCheckpoints);
+      // case 1: successful batch push job
+      String testStoreName = "test-push-store" + useCustomCheckpoints;
+      parentControllerClient.createNewStore(
+          testStoreName,
+          "test-user",
+          recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
+          recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
+      // Set store quota to unlimited else local VPJ jobs will fail due to quota enforcement NullPointerException
+      // because hadoop job client cannot fetch counters properly.
+      parentControllerClient.updateStore(
+          testStoreName,
+          new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2).setIncrementalPushEnabled(true));
+      Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
+      pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+      try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
+        testPushJob.run();
+      }
+
+      validatePushJobData(testStoreName, 1, 100, false);
+      List<Integer> expectedStatuses = Arrays.asList(
+          PushJobDetailsStatus.STARTED.getValue(),
+          PushJobDetailsStatus.TOPIC_CREATED.getValue(),
+          PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
+          COMPLETED.getValue());
+      validatePushJobDetailsStatus(false, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
+      validatePushJobMetrics(true, false, false);
+
+      // case 2: successful incremental push job
+      Properties pushJobPropsInc =
+          defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
+      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+      pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
+      try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push", pushJobPropsInc)) {
+        testPushJob.run();
+      }
+
+      validatePushJobData(testStoreName, 51, 150, true);
+      expectedStatuses = Arrays.asList(
+          PushJobDetailsStatus.STARTED.getValue(),
+          PushJobDetailsStatus.TOPIC_CREATED.getValue(),
+          PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
+          COMPLETED.getValue());
+      validatePushJobDetailsStatus(true, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
+      validatePushJobMetrics(true, false, true);
+
+      // case 3: failed batch push job, non-user error:
+      // setting the quota to be 0, hadoop job client cannot fetch counters properly and should fail the job
+      parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
+      try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v2", pushJobProps)) {
+        assertThrows(VeniceException.class, testPushJob::run);
+      }
+
+      expectedStatuses = Arrays.asList(
+          PushJobDetailsStatus.STARTED.getValue(),
+          PushJobDetailsStatus.TOPIC_CREATED.getValue(),
+          PushJobDetailsStatus.ERROR.getValue());
+      validatePushJobDetailsStatus(
+          false,
+          testStoreName,
+          2,
+          expectedStatuses,
+          START_DATA_WRITER_JOB,
+          false,
+          "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
+      validatePushJobMetrics(false, false, false);
+
+      // case 4: failed incremental push job, non-user error
+      pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
+      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+      pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
+      try (VenicePushJob testPushJob =
+          new VenicePushJob("test-push-job-details-job-with-inc-push-v2", pushJobPropsInc)) {
+        assertThrows(VeniceException.class, testPushJob::run);
+      }
+
+      validatePushJobDetailsStatus(
+          true,
+          testStoreName,
+          2,
+          expectedStatuses,
+          START_DATA_WRITER_JOB,
+          false,
+          "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
+      validatePushJobMetrics(false, false, true);
+
+      // case 5: failed batch push job, user error: data with duplicate keys
+      UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1);
+      parentControllerClient.updateStore(testStoreName, queryParams);
+
+      pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
+      pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+      try (final VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v3", pushJobProps)) {
+        assertThrows(VeniceException.class, testPushJob::run); // Push job should fail
+      }
+
+      validatePushJobDetailsStatus(
+          false,
+          testStoreName,
+          3,
+          expectedStatuses,
+          DUP_KEY_WITH_DIFF_VALUE,
+          false,
+          "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
+      validatePushJobMetrics(false, !useCustomCheckpoints, false);
+
+      // case 6: failed incremental push job, user error
+      pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
+      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+      pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
+      try (VenicePushJob testPushJob =
+          new VenicePushJob("test-push-job-details-job-with-inc-push-v3", pushJobPropsInc)) {
+        assertThrows(VeniceException.class, testPushJob::run);
+      }
+
+      validatePushJobDetailsStatus(
+          true,
+          testStoreName,
+          3,
+          expectedStatuses,
+          DUP_KEY_WITH_DIFF_VALUE,
+          false,
+          "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
+      validatePushJobMetrics(false, !useCustomCheckpoints, true);
+    } finally {
+      cleanUp();
     }
-
-    validatePushJobData(testStoreName, 1, 100, false);
-    List<Integer> expectedStatuses = Arrays.asList(
-        PushJobDetailsStatus.STARTED.getValue(),
-        PushJobDetailsStatus.TOPIC_CREATED.getValue(),
-        PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
-        COMPLETED.getValue());
-    validatePushJobDetailsStatus(false, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
-    validatePushJobMetrics(true, false, false);
-
-    // case 2: successful incremental push job
-    Properties pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
-    pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
-    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push", pushJobPropsInc)) {
-      testPushJob.run();
-    }
-
-    validatePushJobData(testStoreName, 51, 150, true);
-    expectedStatuses = Arrays.asList(
-        PushJobDetailsStatus.STARTED.getValue(),
-        PushJobDetailsStatus.TOPIC_CREATED.getValue(),
-        PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
-        COMPLETED.getValue());
-    validatePushJobDetailsStatus(true, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
-    validatePushJobMetrics(true, false, true);
-
-    // case 3: failed batch push job, non-user error:
-    // setting the quota to be 0, hadoop job client cannot fetch counters properly and should fail the job
-    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
-    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v2", pushJobProps)) {
-      assertThrows(VeniceException.class, testPushJob::run);
-    }
-
-    expectedStatuses = Arrays.asList(
-        PushJobDetailsStatus.STARTED.getValue(),
-        PushJobDetailsStatus.TOPIC_CREATED.getValue(),
-        PushJobDetailsStatus.ERROR.getValue());
-    validatePushJobDetailsStatus(
-        false,
-        testStoreName,
-        2,
-        expectedStatuses,
-        START_DATA_WRITER_JOB,
-        false,
-        "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
-    validatePushJobMetrics(false, false, false);
-
-    // case 4: failed incremental push job, non-user error
-    pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
-    pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
-    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push-v2", pushJobPropsInc)) {
-      assertThrows(VeniceException.class, testPushJob::run);
-    }
-
-    validatePushJobDetailsStatus(
-        true,
-        testStoreName,
-        2,
-        expectedStatuses,
-        START_DATA_WRITER_JOB,
-        false,
-        "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
-    validatePushJobMetrics(false, false, true);
-
-    // case 5: failed batch push job, user error: data with duplicate keys
-    final UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1);
-    parentControllerClient.updateStore(testStoreName, queryParams);
-
-    File inputDir = getTempDataDirectory();
-    String inputDirPathWithDupKeys = "file://" + inputDir.getAbsolutePath();
-    TestWriteUtils.writeSimpleAvroFileWithDuplicateKey(inputDir);
-
-    pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
-    pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    try (final VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v3", pushJobProps)) {
-      assertThrows(VeniceException.class, testPushJob::run); // Push job should fail
-    }
-
-    validatePushJobDetailsStatus(
-        false,
-        testStoreName,
-        3,
-        expectedStatuses,
-        DUP_KEY_WITH_DIFF_VALUE,
-        false,
-        "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-    validatePushJobMetrics(false, true, false);
-
-    // case 6: failed incremental push job, user error
-    pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
-    pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
-    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push-v3", pushJobPropsInc)) {
-      assertThrows(VeniceException.class, testPushJob::run);
-    }
-
-    validatePushJobDetailsStatus(
-        true,
-        testStoreName,
-        3,
-        expectedStatuses,
-        DUP_KEY_WITH_DIFF_VALUE,
-        false,
-        "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-    validatePushJobMetrics(false, true, true);
-
-    // case 7: same as case 6 but overriding the user error checkpoints: The failure should not be
-    // considered as user error
-    pushJobPropsInc
-        .setProperty(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, INPUT_DATA_SCHEMA_VALIDATION_FAILED.toString());
-    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push-v4", pushJobPropsInc)) {
-      assertThrows(VeniceException.class, testPushJob::run);
-    }
-
-    validatePushJobDetailsStatus(
-        true,
-        testStoreName,
-        3,
-        expectedStatuses,
-        DUP_KEY_WITH_DIFF_VALUE,
-        false,
-        "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-    validatePushJobMetrics(false, false, true);
   }
 }

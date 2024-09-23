@@ -345,23 +345,6 @@ public final class VenicePushJobConstants {
   /** Maximum final dictionary size TODO add more details about the current limits */
   public static final String COMPRESSION_DICTIONARY_SIZE_LIMIT = "compression.dictionary.size.limit";
 
-  /**
-   * Override the default checkpoint list PushJobCheckpoints#DEFAULT_USER_ERROR_CHECKPOINTS based on the
-   * user's requirement. This is useful to emit the push job failure metrics due to user errors or not due to
-   * user errors based on the user's custom checkpoint list.
-   *
-   * List of supported ERROR checkpoints: Config should contain one or more of the following checkpoints separated by comma.
-   * QUOTA_EXCEEDED, WRITE_ACL_FAILED, DUP_KEY_WITH_DIFF_VALUE, INPUT_DATA_SCHEMA_VALIDATION_FAILED,
-   * EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED, RECORD_TOO_LARGE_FAILED, CONCURRENT_BATCH_PUSH,
-   * DATASET_CHANGED, INVALID_INPUT_FILE, ZSTD_DICTIONARY_CREATION_FAILED, DVC_INGESTION_ERROR_DISK_FULL,
-   * DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
-   * DVC_INGESTION_ERROR_OTHER
-   *
-   * In case of invalid config, the default list of checkpoints will be used.
-   */
-  public static final String PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR =
-      "push.job.failure.checkpoints.to.define.user.error";
-
   // Compute engine abstraction
   /**
    * Config to set the class for the DataWriter job. When using KIF, we currently will continue to fall back to MR mode.

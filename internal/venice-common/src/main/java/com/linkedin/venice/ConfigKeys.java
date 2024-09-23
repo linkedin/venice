@@ -2171,6 +2171,25 @@ public class ConfigKeys {
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
 
   /**
+   * Configure in parent controllers to provide a custom list of checkpoints to define user errors and to
+   * override the default checkpoint list {@link PushJobCheckpoints#DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS}.
+   * This is useful to emit the push job failure metrics due to user errors or not due
+   * to user errors based on the custom checkpoint list.
+   *
+   * List of supported ERROR checkpoints: Config should contain one or more of the following checkpoints strings
+   * separated by comma.
+   * QUOTA_EXCEEDED, WRITE_ACL_FAILED, DUP_KEY_WITH_DIFF_VALUE, INPUT_DATA_SCHEMA_VALIDATION_FAILED,
+   * EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED, RECORD_TOO_LARGE_FAILED, CONCURRENT_BATCH_PUSH,
+   * DATASET_CHANGED, INVALID_INPUT_FILE, ZSTD_DICTIONARY_CREATION_FAILED, DVC_INGESTION_ERROR_DISK_FULL,
+   * DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
+   * DVC_INGESTION_ERROR_OTHER
+   *
+   * In case of invalid config, the default list of checkpoints will be used.
+   */
+  public static final String PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR =
+      "push.job.failure.checkpoints.to.define.user.error";
+
+  /**
    * Config for the default value which is filled in when the store-level config
    * {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} is left unset. Used as a controller config for
    * batch push jobs. Used as a server config for nearline jobs / partial updates.

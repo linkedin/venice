@@ -1,8 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
-import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
-import static com.linkedin.venice.PushJobCheckpoints.WRITE_ACL_FAILED;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.emitPushJobDetailsMetrics;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.isPushJobFailedDueToUserError;
 import static com.linkedin.venice.status.PushJobDetailsStatus.isFailed;
@@ -21,7 +20,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -33,25 +32,15 @@ import org.testng.annotations.Test;
 
 public class TestPushJobStatusStats {
   private static final Set<PushJobCheckpoints> CUSTOM_USER_ERROR_CHECKPOINTS =
-      new HashSet<>(Arrays.asList(QUOTA_EXCEEDED, WRITE_ACL_FAILED, DVC_INGESTION_ERROR_OTHER));
-
-  private static boolean isCustomUserError(PushJobCheckpoints checkpoint) {
-    return CUSTOM_USER_ERROR_CHECKPOINTS.contains(checkpoint);
-  }
+      new HashSet<>(Collections.singletonList(DVC_INGESTION_ERROR_OTHER));
 
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testEmitPushJobDetailsMetrics(boolean isIncrementalPush, boolean useUserProvidedUserErrorCheckpoints) {
+    Set<PushJobCheckpoints> userErrorCheckpoints =
+        useUserProvidedUserErrorCheckpoints ? CUSTOM_USER_ERROR_CHECKPOINTS : DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
     PushJobDetails pushJobDetails = mock(PushJobDetails.class);
     Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
     pushJobConfigs.put(new Utf8("incremental.push"), String.valueOf(isIncrementalPush));
-    if (useUserProvidedUserErrorCheckpoints) {
-      StringBuilder customUserErrorCheckpoints = new StringBuilder();
-      for (PushJobCheckpoints checkpoint: CUSTOM_USER_ERROR_CHECKPOINTS) {
-        customUserErrorCheckpoints.append(checkpoint).append(",");
-      }
-      pushJobConfigs
-          .put(new Utf8("push.job.failure.checkpoints.to.define.user.error"), customUserErrorCheckpoints.toString());
-    }
     when(pushJobDetails.getPushJobConfigs()).thenReturn(pushJobConfigs);
 
     when(pushJobDetails.getClusterName()).thenReturn(new Utf8("cluster1"));
@@ -76,17 +65,13 @@ public class TestPushJobStatusStats {
 
       for (PushJobCheckpoints checkpoint: PushJobCheckpoints.values()) {
         when(pushJobDetails.getPushJobLatestCheckpoint()).thenReturn(checkpoint.getValue());
-        emitPushJobDetailsMetrics(pushJobStatusStatsMap, pushJobDetails);
-        boolean isUserError;
-        if (useUserProvidedUserErrorCheckpoints) {
-          isUserError = isCustomUserError(checkpoint);
-        } else {
-          isUserError = PushJobCheckpoints.isUserError(checkpoint);
-        }
+        emitPushJobDetailsMetrics(pushJobStatusStatsMap, pushJobDetails, userErrorCheckpoints);
+        boolean isUserError = userErrorCheckpoints.contains(checkpoint);
+
         if (isUserError) {
           if (recordMetrics) {
             if (isFailed(status)) {
-              assertTrue(isPushJobFailedDueToUserError(status, pushJobDetails));
+              assertTrue(isPushJobFailedDueToUserError(status, pushJobDetails, userErrorCheckpoints));
               numberUserErrors++;
               if (isIncrementalPush) {
                 verify(stats, times(numberUserErrors)).recordIncrementalPushFailureDueToUserErrorSensor();
@@ -104,7 +89,7 @@ public class TestPushJobStatusStats {
           }
         } else {
           if (recordMetrics) {
-            assertFalse(isPushJobFailedDueToUserError(status, pushJobDetails));
+            assertFalse(isPushJobFailedDueToUserError(status, pushJobDetails, userErrorCheckpoints));
             if (isFailed(status)) {
               numberNonUserErrors++;
               if (isIncrementalPush) {
@@ -124,51 +109,5 @@ public class TestPushJobStatusStats {
         }
       }
     }
-  }
-
-  @Test
-  public void testIsPushJobFailedDueToUserErrorWithCustomInput() {
-    PushJobDetails pushJobDetails = mock(PushJobDetails.class);
-    Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
-    when(pushJobDetails.getPushJobConfigs()).thenReturn(pushJobConfigs);
-    when(pushJobDetails.getPushJobLatestCheckpoint()).thenReturn(DVC_INGESTION_ERROR_OTHER.getValue());
-
-    // valid
-    StringBuilder customUserErrorCheckpoints = new StringBuilder();
-    for (PushJobCheckpoints checkpoint: CUSTOM_USER_ERROR_CHECKPOINTS) {
-      customUserErrorCheckpoints.append(checkpoint).append(",");
-    }
-    customUserErrorCheckpoints.append("DVC_INGESTION_ERROR_OTHER");
-    pushJobConfigs
-        .put(new Utf8("push.job.failure.checkpoints.to.define.user.error"), customUserErrorCheckpoints.toString());
-    assertTrue(isPushJobFailedDueToUserError(PushJobDetailsStatus.ERROR, pushJobDetails));
-
-    // invalid case 1
-    customUserErrorCheckpoints.delete(0, customUserErrorCheckpoints.length());
-    customUserErrorCheckpoints.append("INVALID_CHECKPOINT");
-    pushJobConfigs
-        .put(new Utf8("push.job.failure.checkpoints.to.define.user.error"), customUserErrorCheckpoints.toString());
-    assertFalse(isPushJobFailedDueToUserError(PushJobDetailsStatus.ERROR, pushJobDetails));
-
-    // invalid case 2
-    customUserErrorCheckpoints.delete(0, customUserErrorCheckpoints.length());
-    customUserErrorCheckpoints.append("");
-    pushJobConfigs
-        .put(new Utf8("push.job.failure.checkpoints.to.define.user.error"), customUserErrorCheckpoints.toString());
-    assertFalse(isPushJobFailedDueToUserError(PushJobDetailsStatus.ERROR, pushJobDetails));
-
-    // invalid case 3
-    customUserErrorCheckpoints.delete(0, customUserErrorCheckpoints.length());
-    customUserErrorCheckpoints.append("[DVC_INGESTION_ERROR_OTHER");
-    pushJobConfigs
-        .put(new Utf8("push.job.failure.checkpoints.to.define.user.error"), customUserErrorCheckpoints.toString());
-    assertFalse(isPushJobFailedDueToUserError(PushJobDetailsStatus.ERROR, pushJobDetails));
-
-    // invalid case 4
-    customUserErrorCheckpoints.delete(0, customUserErrorCheckpoints.length());
-    customUserErrorCheckpoints.append("-14");
-    pushJobConfigs
-        .put(new Utf8("push.job.failure.checkpoints.to.define.user.error"), customUserErrorCheckpoints.toString());
-    assertFalse(isPushJobFailedDueToUserError(PushJobDetailsStatus.ERROR, pushJobDetails));
   }
 }

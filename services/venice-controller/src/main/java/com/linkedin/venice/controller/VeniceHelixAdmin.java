@@ -434,6 +434,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
+  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -711,6 +713,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     emptyPushZSTDDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
+
+    pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
@@ -1182,42 +1186,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return response.getId();
   }
 
-  static boolean isPushJobFailedDueToUserError(PushJobDetailsStatus status, PushJobDetails pushJobDetails) {
+  static boolean isPushJobFailedDueToUserError(
+      PushJobDetailsStatus status,
+      PushJobDetails pushJobDetails,
+      Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
     if (PushJobDetailsStatus.isFailed(status)) {
       PushJobCheckpoints checkpoint = PushJobCheckpoints.valueOf(pushJobDetails.getPushJobLatestCheckpoint());
-      if (checkpoint != null) {
-        Map<CharSequence, CharSequence> pushJobConfigs = pushJobDetails.getPushJobConfigs();
-        Utf8 userErrorCheckpointsKey = new Utf8("push.job.failure.checkpoints.to.define.user.error");
-        Set<PushJobCheckpoints> userErrorCheckpoints = new HashSet<>();
-        if (pushJobConfigs.containsKey(userErrorCheckpointsKey)) {
-          String userErrorCheckpointsStr = pushJobConfigs.get(userErrorCheckpointsKey).toString();
-          // extract individual checkpoints from the string
-          for (String checkpointStr: userErrorCheckpointsStr.split(",")) {
-            checkpointStr = checkpointStr.trim();
-            try {
-              userErrorCheckpoints.add(PushJobCheckpoints.valueOf(checkpointStr));
-            } catch (Exception e) {
-              LOGGER.error(
-                  "Invalid checkpoint {} in the input to define user error. Using the default error checkpoints",
-                  checkpointStr);
-              userErrorCheckpoints.clear();
-              break;
-            }
-          }
-        }
-        if (!userErrorCheckpoints.isEmpty()) {
-          return userErrorCheckpoints.contains(checkpoint);
-        } else {
-          return PushJobCheckpoints.isUserError(checkpoint);
-        }
-      }
+      return (checkpoint != null && pushJobUserErrorCheckpoints.contains(checkpoint));
     }
     return false;
   }
 
   static void emitPushJobDetailsMetrics(
       Map<String, PushJobStatusStats> pushJobStatusStatsMap,
-      PushJobDetails pushJobDetails) {
+      PushJobDetails pushJobDetails,
+      Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
     List<PushJobDetailsStatusTuple> overallStatuses = pushJobDetails.getOverallStatus();
     if (overallStatuses.isEmpty()) {
       return;
@@ -1232,7 +1215,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     PushJobDetailsStatus overallStatus =
         PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
     if (PushJobDetailsStatus.isFailed(overallStatus)) {
-      if (isPushJobFailedDueToUserError(overallStatus, pushJobDetails)) {
+      if (isPushJobFailedDueToUserError(overallStatus, pushJobDetails, pushJobUserErrorCheckpoints)) {
         if (isIncrementalPush) {
           pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
         } else {
@@ -1264,7 +1247,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
-    emitPushJobDetailsMetrics(pushJobStatusStatsMap, value);
+    emitPushJobDetailsMetrics(pushJobStatusStatsMap, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
     if (pushJobStatusStoreClusterName.isEmpty()) {
       throw new VeniceException(

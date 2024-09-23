@@ -57,7 +57,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
         case INVALID_INPUT_FILE:
         case DVC_INGESTION_ERROR_DISK_FULL:
         case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
-          assertTrue(PushJobCheckpoints.isUserError(checkpoint));
+          assertTrue(PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS.contains(checkpoint));
           break;
 
         case INITIALIZE_PUSH_JOB:
@@ -71,7 +71,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
         case ZSTD_DICTIONARY_CREATION_FAILED:
         case DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES:
         case DVC_INGESTION_ERROR_OTHER:
-          assertFalse(PushJobCheckpoints.isUserError(checkpoint));
+          assertFalse(PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS.contains(checkpoint));
           break;
 
         default:
