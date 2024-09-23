@@ -135,7 +135,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(
         httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
         "attachment; filename=\"file1\"");
-    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE).toString(), BlobTransferType.FILE.toString());
+    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
     // send the content in one chunk
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
