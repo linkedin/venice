@@ -1197,7 +1197,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return false;
   }
 
-  static void emitPushJobDetailsMetrics(
+  static void emitPushJobStatusMetrics(
       Map<String, PushJobStatusStats> pushJobStatusStatsMap,
       PushJobDetails pushJobDetails,
       Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
@@ -1205,36 +1205,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (overallStatuses.isEmpty()) {
       return;
     }
-    boolean isIncrementalPush = false;
-    String cluster = pushJobDetails.getClusterName().toString();
-    PushJobStatusStats pushJobStatusStats = pushJobStatusStatsMap.get(cluster);
-    Utf8 incPushKey = new Utf8("incremental.push");
-    if (pushJobDetails.getPushJobConfigs().containsKey(incPushKey)) {
-      isIncrementalPush = Boolean.parseBoolean(pushJobDetails.getPushJobConfigs().get(incPushKey).toString());
-    }
-    PushJobDetailsStatus overallStatus =
-        PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
-    if (PushJobDetailsStatus.isFailed(overallStatus)) {
-      if (isPushJobFailedDueToUserError(overallStatus, pushJobDetails, pushJobUserErrorCheckpoints)) {
-        if (isIncrementalPush) {
-          pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
-        } else {
-          pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor();
+    try {
+      PushJobDetailsStatus overallStatus =
+          PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
+      if (PushJobDetailsStatus.isTerminal(overallStatus.getValue())) {
+        String cluster = pushJobDetails.getClusterName().toString();
+        PushJobStatusStats pushJobStatusStats = pushJobStatusStatsMap.get(cluster);
+        Utf8 incPushKey = new Utf8("incremental.push");
+        boolean isIncrementalPush = false;
+        if (pushJobDetails.getPushJobConfigs().containsKey(incPushKey)) {
+          isIncrementalPush = Boolean.parseBoolean(pushJobDetails.getPushJobConfigs().get(incPushKey).toString());
         }
-      } else {
-        if (isIncrementalPush) {
-          pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor();
-        } else {
-          pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor();
+        if (PushJobDetailsStatus.isFailed(overallStatus)) {
+          if (isPushJobFailedDueToUserError(overallStatus, pushJobDetails, pushJobUserErrorCheckpoints)) {
+            if (isIncrementalPush) {
+              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
+            } else {
+              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor();
+            }
+          } else {
+            if (isIncrementalPush) {
+              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor();
+            } else {
+              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor();
+            }
+          }
+        } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
+          // Emit metrics for successful push jobs
+          if (isIncrementalPush) {
+            pushJobStatusStats.recordIncrementalPushSuccessSensor();
+          } else {
+            pushJobStatusStats.recordBatchPushSuccessSensor();
+          }
         }
       }
-    } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
-      // Emit metrics for successful push jobs
-      if (isIncrementalPush) {
-        pushJobStatusStats.recordIncrementalPushSuccessSensor();
-      } else {
-        pushJobStatusStats.recordBatchPushSuccessSensor();
-      }
+    } catch (Exception e) {
+      LOGGER.error("Failed to emit push job status metrics with pushJobDetails: {}", pushJobDetails.toString(), e);
     }
   }
 
@@ -1247,7 +1253,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
-    emitPushJobDetailsMetrics(pushJobStatusStatsMap, value, pushJobUserErrorCheckpoints);
+    emitPushJobStatusMetrics(pushJobStatusStatsMap, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
     if (pushJobStatusStoreClusterName.isEmpty()) {
       throw new VeniceException(

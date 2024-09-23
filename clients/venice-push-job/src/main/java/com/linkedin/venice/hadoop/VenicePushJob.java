@@ -260,6 +260,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
+  private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
 
   /**
@@ -649,7 +650,6 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
-    PushJobHeartbeatSender pushJobHeartbeatSender = null;
     try {
       Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
           pushJobSetting.enableSSL,
@@ -848,8 +848,6 @@ public class VenicePushJob implements AutoCloseable {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-      updatePushJobDetailsWithConfigs();
-      updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
@@ -877,8 +875,6 @@ public class VenicePushJob implements AutoCloseable {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
         pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-        updatePushJobDetailsWithConfigs();
-        updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
@@ -898,6 +894,7 @@ public class VenicePushJob implements AutoCloseable {
       Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
       if (pushJobHeartbeatSender != null) {
         pushJobHeartbeatSender.stop();
+        pushJobHeartbeatSender = null;
       }
       inputDataInfoProvider = null;
       if (pushJobSetting.rmdSchemaDir != null) {
@@ -992,7 +989,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void updatePushJobDetailsWithLivenessHeartbeatException(PushJobHeartbeatSender pushJobHeartbeatSender) {
+  private void updatePushJobDetailsWithLivenessHeartbeatException() {
     if (pushJobHeartbeatSender == null || this.pushJobDetails == null) {
       return;
     }
@@ -1814,6 +1811,12 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
       return;
     }
+
+    // update push job details with more info if needed
+    updatePushJobDetailsWithConfigs();
+    updatePushJobDetailsWithLivenessHeartbeatException();
+
+    // send push job details to controller
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
       int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
@@ -2753,7 +2756,6 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
     pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-    updatePushJobDetailsWithConfigs();
     sendPushJobDetailsToController();
   }
 

@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
-import static com.linkedin.venice.controller.VeniceHelixAdmin.emitPushJobDetailsMetrics;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.emitPushJobStatusMetrics;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.isPushJobFailedDueToUserError;
 import static com.linkedin.venice.status.PushJobDetailsStatus.isFailed;
 import static com.linkedin.venice.status.PushJobDetailsStatus.isSucceeded;
@@ -35,7 +35,7 @@ public class TestPushJobStatusStats {
       new HashSet<>(Collections.singletonList(DVC_INGESTION_ERROR_OTHER));
 
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testEmitPushJobDetailsMetrics(boolean isIncrementalPush, boolean useUserProvidedUserErrorCheckpoints) {
+  public void testEmitPushJobStatusMetrics(boolean isIncrementalPush, boolean useUserProvidedUserErrorCheckpoints) {
     Set<PushJobCheckpoints> userErrorCheckpoints =
         useUserProvidedUserErrorCheckpoints ? CUSTOM_USER_ERROR_CHECKPOINTS : DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
     PushJobDetails pushJobDetails = mock(PushJobDetails.class);
@@ -65,7 +65,7 @@ public class TestPushJobStatusStats {
 
       for (PushJobCheckpoints checkpoint: PushJobCheckpoints.values()) {
         when(pushJobDetails.getPushJobLatestCheckpoint()).thenReturn(checkpoint.getValue());
-        emitPushJobDetailsMetrics(pushJobStatusStatsMap, pushJobDetails, userErrorCheckpoints);
+        emitPushJobStatusMetrics(pushJobStatusStatsMap, pushJobDetails, userErrorCheckpoints);
         boolean isUserError = userErrorCheckpoints.contains(checkpoint);
 
         if (isUserError) {
