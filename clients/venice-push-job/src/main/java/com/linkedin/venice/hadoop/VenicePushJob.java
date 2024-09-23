@@ -1036,7 +1036,8 @@ public class VenicePushJob implements AutoCloseable {
     } catch (Exception e) {
       if (pushJobSetting.extendedSchemaValidityCheckEnabled) {
         LOGGER.error(
-            "The schema of the input data failed strict Avro schema validation. Verify if the schema is a valid Avro schema.");
+            "The schema of the input data failed strict Avro schema validation. Verify if the schema is a valid Avro schema.",
+            e);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(e);
       }
@@ -1046,7 +1047,8 @@ public class VenicePushJob implements AutoCloseable {
         AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(inputDataSchemaString);
       } catch (Exception looseValidationException) {
         LOGGER.error(
-            "The schema of the input data failed loose Avro schema validation. Verify if the schema is a valid Avro schema.");
+            "The schema of the input data failed loose Avro schema validation. Verify if the schema is a valid Avro schema.",
+            looseValidationException);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(looseValidationException);
       }
@@ -2031,7 +2033,7 @@ public class VenicePushJob implements AutoCloseable {
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
       MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
       if (response.isError()) {
-        LOGGER.error("Failed to fetch all value schemas, so they will not be printed.");
+        LOGGER.error("Failed to fetch all value schemas, so they will not be printed. " + response.getError());
       } else {
         LOGGER.info("All currently registered value schemas:");
         for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
