@@ -34,6 +34,6 @@ public class TestZkHelixAdminClient {
     String clusterName = "test-cluster";
     zkHelixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName);
 
-    verify(mockIdealState, times(1)).setInstanceGroupTag("GENERAL");
+    verify(mockIdealState).setInstanceGroupTag("GENERAL");
   }
 }
