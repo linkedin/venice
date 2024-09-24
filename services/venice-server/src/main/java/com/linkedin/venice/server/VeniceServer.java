@@ -35,7 +35,6 @@ import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -708,7 +707,9 @@ public class VeniceServer {
 
       PropertyKey.Builder propertyKeyBuilder =
           new PropertyKey.Builder(this.veniceConfigLoader.getVeniceClusterConfig().getClusterName());
-      IdealState idealState = SafeHelixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
+      IdealState idealState = getHelixParticipationService().getHelixManager()
+          .getHelixDataAccessor()
+          .getProperty(propertyKeyBuilder.idealStates(storeName));
 
       Set<Integer> idealStatePartitionIds = new HashSet<>();
       idealState.getPartitionSet().stream().forEach(partitionId -> {

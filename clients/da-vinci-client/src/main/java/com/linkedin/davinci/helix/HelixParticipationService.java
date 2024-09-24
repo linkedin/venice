@@ -427,6 +427,10 @@ public class HelixParticipationService extends AbstractVeniceService
     return instance;
   }
 
+  public SafeHelixManager getHelixManager() {
+    return helixManager;
+  }
+
   public VeniceOfflinePushMonitorAccessor getVeniceOfflinePushMonitorAccessor() {
     return veniceOfflinePushMonitorAccessor;
   }
