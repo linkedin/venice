@@ -85,11 +85,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
         || blobTransferManager == null) {
       runnable.run();
     } else {
-      CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
-          storeAndVersion.getFirst(),
-          storeAndVersion.getSecond().getNumber(),
-          partition,
-          storageService);
+      CompletionStage<Void> bootstrapFuture =
+          bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();
@@ -102,11 +99,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
-  CompletionStage<Void> bootstrapFromBlobs(
-      Store store,
-      int versionNumber,
-      int partitionId,
-      StorageService storageService) {
+  CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
     // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
     // though
     // Only DVC would create blobTransferManager.
@@ -118,8 +111,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     String baseDir = serverConfig.getRocksDBPath();
     try {
       CompletableFuture<InputStream> p2pFuture =
-          blobTransferManager.get(getStoreIngestionService(), storageService, storeName, versionNumber, partitionId)
-              .toCompletableFuture();
+          blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
       LOGGER.info(
           "Bootstrapping from blobs for store {}, version {}, partition {}",
           storeName,

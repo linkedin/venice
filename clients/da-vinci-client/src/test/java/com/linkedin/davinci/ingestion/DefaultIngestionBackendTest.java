@@ -93,15 +93,12 @@ public class DefaultIngestionBackendTest {
   public void testStartConsumptionWithBlobTransfer() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
-    when(
-        blobTransferManager
-            .get(eq(storeIngestionService), eq(storageService), eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
-                .thenReturn(CompletableFuture.completedFuture(null));
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
+        .thenReturn(CompletableFuture.completedFuture(null));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
 
     ingestionBackend.startConsumption(storeConfig, PARTITION);
-    verify(blobTransferManager)
-        .get(eq(storeIngestionService), eq(storageService), eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
   }
 
   @Test
@@ -109,10 +106,10 @@ public class DefaultIngestionBackendTest {
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
     doThrow(new VenicePeersNotFoundException("no peers")).when(blobTransferManager)
-        .get(eq(storeIngestionService), eq(storageService), eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+        .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
 
     CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, storageService).toCompletableFuture();
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION).toCompletableFuture();
     Assert.assertTrue(future.isDone());
   }
 }

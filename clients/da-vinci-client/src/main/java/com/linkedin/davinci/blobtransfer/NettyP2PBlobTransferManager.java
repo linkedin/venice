@@ -2,8 +2,6 @@ package com.linkedin.davinci.blobtransfer;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
-import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
@@ -42,12 +40,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public CompletionStage<InputStream> get(
-      KafkaStoreIngestionService kafkaStoreIngestionService,
-      StorageService storageService,
-      String storeName,
-      int version,
-      int partition) throws VenicePeersNotFoundException {
+  public CompletionStage<InputStream> get(String storeName, int version, int partition)
+      throws VenicePeersNotFoundException {
     CompletionStage<InputStream> inputStream;
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
     if (response == null || response.isError()) {
@@ -63,8 +57,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         // instanceName comes as a format of <hostName>_<applicationPort>
         String chosenHost = peer.split("_")[0];
         LOGGER.info("Chosen host: {}", chosenHost);
-        inputStream =
-            nettyClient.get(kafkaStoreIngestionService, storageService, chosenHost, storeName, version, partition);
+        inputStream = nettyClient.get(chosenHost, storeName, version, partition);
         return inputStream;
       } catch (Exception e) {
         LOGGER.warn("Failed to connect to peer: {}", peer, e);

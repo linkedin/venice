@@ -52,7 +52,7 @@ public class BlobTransferUtil {
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService),
-          new NettyFileTransferClient(p2pTransferClientPort, baseDir),
+          new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient));
       manager.start();
       return manager;
@@ -80,7 +80,7 @@ public class BlobTransferUtil {
     try {
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService),
-          new NettyFileTransferClient(p2pTransferClientPort, baseDir),
+          new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture));
       manager.start();
       return manager;

@@ -4,13 +4,13 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
-import static org.mockito.Mockito.spy;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.blobtransfer.client.ConditionalHttpObjectAggregator;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
-import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -54,30 +54,39 @@ public class TestP2PFileTransferClientHandler {
   int TEST_VERSION = 1;
   int TEST_PARTITION = 0;
   CompletionStage<InputStream> inputStreamFuture;
-  KafkaStoreIngestionService kafkaStoreIngestionService;
-  StorageService storageService;
+  StorageMetadataService storageMetadataService;
 
-  P2PFileTransferClientHandler clientHandler;
+  P2PFileTransferClientHandler clientFileHandler;
+  P2PMetadataTransferHandler clientMetadataHandler;
 
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
     inputStreamFuture = new CompletableFuture<>();
-    kafkaStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
-    storageService = Mockito.mock(StorageService.class);
+    storageMetadataService = Mockito.mock(StorageMetadataService.class);
 
-    clientHandler = spy(
+    clientFileHandler = Mockito.spy(
         new P2PFileTransferClientHandler(
-            kafkaStoreIngestionService,
-            storageService,
             baseDir.toString(),
             inputStreamFuture,
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION));
-    Mockito.doNothing().when(clientHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any(), Mockito.any());
 
-    ch = new EmbeddedChannel(clientHandler);
+    clientMetadataHandler = Mockito.spy(
+        new P2PMetadataTransferHandler(
+            storageMetadataService,
+            baseDir.toString(),
+            TEST_STORE,
+            TEST_VERSION,
+            TEST_PARTITION));
+
+    Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
+
+    ch = new EmbeddedChannel(
+        new ConditionalHttpObjectAggregator(1024 * 1024 * 100),
+        clientFileHandler,
+        clientMetadataHandler);
   }
 
   @AfterMethod
@@ -270,7 +279,7 @@ public class TestP2PFileTransferClientHandler {
     inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify that the metadata was correctly parsed and handled
-    BlobTransferPartitionMetadata actualMetadata = clientHandler.getMetadata();
+    BlobTransferPartitionMetadata actualMetadata = clientMetadataHandler.getMetadata();
     Assert.assertNotNull(actualMetadata);
     Assert.assertEquals(actualMetadata.getTopicName(), expectedMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectedMetadata.getPartitionId());
@@ -323,7 +332,7 @@ public class TestP2PFileTransferClientHandler {
     inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify that the metadata was correctly parsed and handled
-    BlobTransferPartitionMetadata actualMetadata = clientHandler.getMetadata();
+    BlobTransferPartitionMetadata actualMetadata = clientMetadataHandler.getMetadata();
     Assert.assertNotNull(actualMetadata);
     Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
@@ -412,7 +421,7 @@ public class TestP2PFileTransferClientHandler {
     Assert.assertEquals(Files.size(file2), 10);
 
     // Verify the metadata was correctly parsed and handled
-    BlobTransferPartitionMetadata actualMetadata = clientHandler.getMetadata();
+    BlobTransferPartitionMetadata actualMetadata = clientMetadataHandler.getMetadata();
     Assert.assertNotNull(actualMetadata);
     Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());

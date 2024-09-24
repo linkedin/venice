@@ -1,7 +1,11 @@
 package com.linkedin.davinci.blobtransfer.server;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.*;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
+import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STREAM;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -14,6 +18,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
@@ -23,6 +28,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpChunkedInput;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
@@ -228,15 +234,15 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, errBody, false, ctx);
     }
 
-    ObjectMapper objectMapper = new ObjectMapper();
+    ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
     String jsonMetadata = objectMapper.writeValueAsString(metadata);
     byte[] metadataBytes = jsonMetadata.getBytes();
 
     // send metadata
-    DefaultFullHttpResponse metadataResponse =
+    FullHttpResponse metadataResponse =
         new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.wrappedBuffer(metadataBytes));
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
-    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_JSON);
     metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
 
     ctx.writeAndFlush(metadataResponse).addListener(future -> {

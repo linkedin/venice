@@ -1,7 +1,11 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.*;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -10,6 +14,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -23,6 +28,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.IdleStateEvent;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -206,9 +212,25 @@ public class TestP2PFileTransferServerHandler {
 
     // start of metadata
     response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultHttpResponse);
-    DefaultHttpResponse metadataResponse = (DefaultHttpResponse) response;
+    Assert.assertTrue(response instanceof FullHttpResponse);
+    FullHttpResponse metadataResponse = (FullHttpResponse) response;
     Assert.assertEquals(metadataResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.METADATA.toString());
+
+    ByteBuf content = metadataResponse.content();
+    byte[] metadataBytes = new byte[content.readableBytes()];
+    content.readBytes(metadataBytes);
+    ObjectMapper objectMapper = new ObjectMapper();
+    BlobTransferPartitionMetadata metadata = objectMapper.readValue(metadataBytes, BlobTransferPartitionMetadata.class);
+
+    Assert.assertEquals(metadata.getTopicName(), "myStore_v1");
+    Assert.assertEquals(metadata.getPartitionId(), 10);
+    Assert.assertEquals(metadata.getOffsetRecord(), ByteBuffer.wrap(offsetRecord.toBytes()));
+
+    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    java.nio.ByteBuffer storeVersionStateByte =
+        ByteBuffer.wrap(storeVersionStateSerializer.serialize(metadata.getTopicName(), storeVersionState));
+    Assert.assertEquals(metadata.getStoreVersionState(), storeVersionStateByte);
     // end of metadata
 
     // start of STATUS response
