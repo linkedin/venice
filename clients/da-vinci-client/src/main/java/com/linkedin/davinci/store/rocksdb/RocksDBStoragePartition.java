@@ -813,10 +813,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  /**
-   * Note: POI for removing folders for partitions not assigned, for given store_version.
-   */
-
   @Override
   public synchronized void drop() {
     close();
