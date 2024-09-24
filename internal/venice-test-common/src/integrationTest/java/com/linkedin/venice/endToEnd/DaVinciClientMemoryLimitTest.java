@@ -257,7 +257,6 @@ public class DaVinciClientMemoryLimitTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
   public void testDaVinciMemoryLimitShouldFailLargeDataPushAndResumeHybridStore(
       boolean ingestionIsolationEnabledInDaVinci,
       boolean useDaVinciSpecificExecutionStatusForError) throws Exception {

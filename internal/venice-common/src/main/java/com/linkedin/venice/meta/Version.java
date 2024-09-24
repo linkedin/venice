@@ -25,7 +25,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String VERSION_SEPARATOR = "_v";
   String REAL_TIME_TOPIC_SUFFIX = "_rt";
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
-  String INCREMENTAL_PUSH_REAL_TIME_TOPIC_SUFFIX = "_rt_sep";
+  String SEPARATE_REAL_TIME_TOPIC_SUFFIX = "_rt_sep";
   /**
    * Special number indicating no replication metadata version is set.
    */
@@ -294,7 +294,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static String composeSeparateRealTimeTopic(String storeName) {
-    return storeName + INCREMENTAL_PUSH_REAL_TIME_TOPIC_SUFFIX;
+    return storeName + SEPARATE_REAL_TIME_TOPIC_SUFFIX;
   }
 
   static String composeStreamReprocessingTopic(String storeName, int versionNumber) {
@@ -319,7 +319,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
       return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
     }
-    return kafkaTopic.substring(0, kafkaTopic.length() - INCREMENTAL_PUSH_REAL_TIME_TOPIC_SUFFIX.length());
+    return kafkaTopic.substring(0, kafkaTopic.length() - SEPARATE_REAL_TIME_TOPIC_SUFFIX.length());
   }
 
   static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {
@@ -348,7 +348,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static boolean isRealTimeTopic(String kafkaTopic) {
-    return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX) || kafkaTopic.endsWith(INCREMENTAL_PUSH_REAL_TIME_TOPIC_SUFFIX);
+    return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX) || kafkaTopic.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
   }
 
   static boolean isStreamReprocessingTopic(String kafkaTopic) {

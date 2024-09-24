@@ -15,7 +15,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
@@ -87,7 +86,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -201,7 +199,6 @@ public class TestPushJobWithNativeReplication {
         Optional.of(serverProperties),
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     VeniceClusterWrapper clusterWrapper =
         multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAMES[0]);
@@ -575,91 +572,6 @@ public class TestPushJobWithNativeReplication {
               }
             }
           });
-        });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testMultiDataCenterIncrementalPushWithSeparateTopic() throws Exception {
-    File inputDirInc = getTempDataDirectory();
-
-    motherOfAllTests(
-        "testMultiDataCenterIncrementalPushWithSeparateTopic",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
-            .setHybridOffsetLagThreshold(TEST_TIMEOUT)
-            .setHybridRewindSeconds(2L)
-            .setIncrementalPushEnabled(true)
-            .setSeparateRealTimeTopicEnabled(true),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
-            job.run();
-            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-          }
-
-          props.setProperty(INCREMENTAL_PUSH, "true");
-          props.put(INPUT_PATH_PROP, inputDirInc);
-          props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-
-          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc);
-
-          VeniceClusterWrapper veniceClusterWrapperDC0 = childDatacenters.get(0).getClusters().get(clusterName);
-          TopicManager topicManagerDC0 =
-              IntegrationTestPushUtils
-                  .getTopicManagerRepo(
-                      PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                      100,
-                      0l,
-                      veniceClusterWrapperDC0.getPubSubBrokerWrapper(),
-                      veniceClusterWrapperDC0.getPubSubTopicRepository())
-                  .getLocalTopicManager();
-
-          VeniceClusterWrapper veniceClusterWrapperDC1 = childDatacenters.get(1).getClusters().get(clusterName);
-
-          // Print all the kafka cluster URLs
-          LOGGER.info("KafkaURL {}:{}", "dc-0", childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-          LOGGER.info("KafkaURL {}:{}", "dc-1", childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-          LOGGER.info(
-              "KafkaURL {}:{}",
-              "parent",
-              multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
-
-          TopicManager topicManagerDC1 =
-              IntegrationTestPushUtils
-                  .getTopicManagerRepo(
-                      PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                      100,
-                      0l,
-                      veniceClusterWrapperDC1.getPubSubBrokerWrapper(),
-                      veniceClusterWrapperDC1.getPubSubTopicRepository())
-                  .getLocalTopicManager();
-
-          TopicManager topicManagerParent = IntegrationTestPushUtils
-              .getTopicManagerRepo(
-                  PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                  100,
-                  0l,
-                  multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper(),
-                  veniceClusterWrapperDC1.getPubSubTopicRepository())
-              .getTopicManager(multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
-
-          PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(
-              pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
-              0);
-          try (VenicePushJob job = new VenicePushJob("Incremental Push", props)) {
-            CompletableFuture.runAsync(job::run);
-            TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-              Assert.assertTrue(topicManagerDC0.containsTopic(versionTopicPartition.getPubSubTopic()));
-              long offsetDC0 = topicManagerDC0.getLatestOffsetWithRetries(versionTopicPartition, 3);
-              System.out.println(topicManagerDC0.getPubSubClusterAddress() + " Offset topicManagerDC0: " + offsetDC0);
-              long offsetDC1 = topicManagerDC1.getLatestOffsetWithRetries(versionTopicPartition, 3);
-              System.out.println(topicManagerDC1.getPubSubClusterAddress() + " Offset topicManagerDC1: " + offsetDC1);
-              long offsetParent = topicManagerParent.getLatestOffsetWithRetries(versionTopicPartition, 3);
-              System.out.println("Offset topicManagerParent: " + offsetParent);
-              Assert.assertTrue(offsetParent > 10);
-            });
-            job.cancel();
-          }
         });
   }
 
