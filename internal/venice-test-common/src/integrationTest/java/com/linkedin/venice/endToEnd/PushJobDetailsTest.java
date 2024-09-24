@@ -77,14 +77,7 @@ public class PushJobDetailsTest {
   private String inputDirPathWithDupKeys;
   private MetricsRepository metricsRepository;
 
-  private double batchJobSuccessExpected;
-  private double incrementalJobSuccessExpected;
-  private double batchJobFailedUserErrorExpected;
-  private double batchJobFailedNonUserErrorExpected;
-  private double incrementalJobFailedUserErrorExpected;
-  private double incrementalJobFailedNonUserErrorExpected;
-
-  public void setUp(boolean useCustomCheckpoints) throws IOException {
+  private void setUp(boolean useCustomCheckpoints) throws IOException {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
@@ -145,166 +138,92 @@ public class PushJobDetailsTest {
     File inputDirWithDupKeys = getTempDataDirectory();
     inputDirPathWithDupKeys = "file://" + inputDirWithDupKeys.getAbsolutePath();
     TestWriteUtils.writeSimpleAvroFileWithDuplicateKey(inputDirWithDupKeys);
-
-    batchJobSuccessExpected = 0.0;
-    incrementalJobSuccessExpected = 0.0;
-    batchJobFailedUserErrorExpected = 0.0;
-    batchJobFailedNonUserErrorExpected = 0.0;
-    incrementalJobFailedUserErrorExpected = 0.0;
-    incrementalJobFailedNonUserErrorExpected = 0.0;
   }
 
-  public void cleanUp() {
+  private void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  private void validatePushJobMetrics(boolean isSucceeded, boolean isUserError, boolean isIncrementalPush) {
-    double batchJobSuccessExpectedCountSinceLastMeasurement = 0.0;
-    double incrementalJobSuccessExpectedCountSinceLastMeasurement = 0.0;
-    double batchJobFailedUserErrorExpectedCountSinceLastMeasurement = 0.0;
-    double batchJobFailedNonUserErrorExpectedCountSinceLastMeasurement = 0.0;
-    double incrementalJobFailedUserErrorExpectedCountSinceLastMeasurement = 0.0;
-    double incrementalJobFailedNonUserErrorExpectedCountSinceLastMeasurement = 0.0;
-
+  private void verifyMetric(
+      String metricName,
+      HashMap<String, Double> metricsExpectedCount,
+      HashMap<String, Double> metricsExpectedCountSinceLastMeasurement) {
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+    double metricValueCount = metrics.containsKey(".venice-cluster0--" + metricName + ".Count")
+        ? metrics.get(".venice-cluster0--" + metricName + ".Count").value()
+        : 0.0;
+    double metricValueCountSinceLastMeasurement =
+        metrics.containsKey(".venice-cluster0--" + metricName + ".CountSinceLastMeasurement")
+            ? metrics.get(".venice-cluster0--" + metricName + ".CountSinceLastMeasurement").value()
+            : 0.0;
+    assertEquals(
+        metricValueCount,
+        metricsExpectedCount.getOrDefault(metricName, 0.0),
+        "Metric " + metricName + ".Count is incorrect");
+    assertEquals(
+        metricValueCountSinceLastMeasurement,
+        metricsExpectedCountSinceLastMeasurement.getOrDefault(metricName, 0.0),
+        "Metric " + metricName + ".CountSinceLastMeasurement is incorrect");
+  }
+
+  private void validatePushJobMetrics(
+      boolean isSucceeded,
+      boolean isUserError,
+      boolean isIncrementalPush,
+      HashMap<String, Double> metricsExpectedCount) {
+    // create a map for expected metrics for CountSinceLastMeasurement type which will be reset after each measurement
+    HashMap<String, Double> metricsExpectedCountSinceLastMeasurement = new HashMap<>();
+
     if (isSucceeded) {
       if (isIncrementalPush) {
-        incrementalJobSuccessExpected += 1.0;
-        incrementalJobSuccessExpectedCountSinceLastMeasurement = 1.0;
+        metricsExpectedCount.compute("incremental_push_job_success", (key, value) -> (value == null) ? 1.0 : value + 1);
+        metricsExpectedCountSinceLastMeasurement.computeIfAbsent("incremental_push_job_success", k -> 1.0);
       } else {
-        batchJobSuccessExpected += 1.0;
-        batchJobSuccessExpectedCountSinceLastMeasurement = 1.0;
+        metricsExpectedCount.compute("batch_push_job_success", (key, value) -> (value == null) ? 1.0 : value + 1);
+        metricsExpectedCountSinceLastMeasurement.computeIfAbsent("batch_push_job_success", k -> 1.0);
       }
     } else {
       if (isUserError) {
         if (isIncrementalPush) {
-          incrementalJobFailedUserErrorExpected += 1.0;
-          incrementalJobFailedUserErrorExpectedCountSinceLastMeasurement = 1.0;
+          metricsExpectedCount
+              .compute("incremental_push_job_failed_user_error", (key, value) -> (value == null) ? 1.0 : value + 1);
+          metricsExpectedCountSinceLastMeasurement.computeIfAbsent("incremental_push_job_failed_user_error", k -> 1.0);
         } else {
-          batchJobFailedUserErrorExpected += 1.0;
-          batchJobFailedUserErrorExpectedCountSinceLastMeasurement = 1.0;
+          metricsExpectedCount
+              .compute("batch_push_job_failed_user_error", (key, value) -> (value == null) ? 1.0 : value + 1);
+          metricsExpectedCountSinceLastMeasurement.computeIfAbsent("batch_push_job_failed_user_error", k -> 1.0);
         }
       } else {
         if (isIncrementalPush) {
-          incrementalJobFailedNonUserErrorExpected += 1.0;
-          incrementalJobFailedNonUserErrorExpectedCountSinceLastMeasurement = 1.0;
+          metricsExpectedCount
+              .compute("incremental_push_job_failed_non_user_error", (key, value) -> (value == null) ? 1.0 : value + 1);
+          metricsExpectedCountSinceLastMeasurement
+              .computeIfAbsent("incremental_push_job_failed_non_user_error", k -> 1.0);
         } else {
-          batchJobFailedNonUserErrorExpected += 1.0;
-          batchJobFailedNonUserErrorExpectedCountSinceLastMeasurement = 1.0;
+          metricsExpectedCount
+              .compute("batch_push_job_failed_non_user_error", (key, value) -> (value == null) ? 1.0 : value + 1);
+          metricsExpectedCountSinceLastMeasurement.computeIfAbsent("batch_push_job_failed_non_user_error", k -> 1.0);
         }
       }
     }
-    double finalIncrementalJobSuccessExpectedCountSinceLastMeasurement =
-        incrementalJobSuccessExpectedCountSinceLastMeasurement;
-    double finalBatchJobSuccessExpectedCountSinceLastMeasurement = batchJobSuccessExpectedCountSinceLastMeasurement;
-    double finalBatchJobFailedUserErrorExpectedCountSinceLastMeasurement =
-        batchJobFailedUserErrorExpectedCountSinceLastMeasurement;
-    double finalBatchJobFailedNonUserErrorExpectedCountSinceLastMeasurement =
-        batchJobFailedNonUserErrorExpectedCountSinceLastMeasurement;
-    double finalIncrementalJobFailedUserErrorExpectedCountSinceLastMeasurement =
-        incrementalJobFailedUserErrorExpectedCountSinceLastMeasurement;
-    double finalIncrementalJobFailedNonUserErrorExpectedCountSinceLastMeasurement =
-        incrementalJobFailedNonUserErrorExpectedCountSinceLastMeasurement;
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      try {
-        double batchJobSuccess = metrics.containsKey(".venice-cluster0--batch_push_job_success.Count")
-            ? metrics.get(".venice-cluster0--batch_push_job_success.Count").value()
-            : 0.0;
-        double batchJobSuccessCountSinceLastMeasurement =
-            metrics.containsKey(".venice-cluster0--batch_push_job_success.CountSinceLastMeasurement")
-                ? metrics.get(".venice-cluster0--batch_push_job_success.CountSinceLastMeasurement").value()
-                : 0.0;
-        double incrementalJobSuccess = metrics.containsKey(".venice-cluster0--incremental_push_job_success.Count")
-            ? metrics.get(".venice-cluster0--incremental_push_job_success.Count").value()
-            : 0.0;
-        double incrementalJobSuccessCountSinceLastMeasurement =
-            metrics.containsKey(".venice-cluster0--incremental_push_job_success.CountSinceLastMeasurement")
-                ? metrics.get(".venice-cluster0--incremental_push_job_success.CountSinceLastMeasurement").value()
-                : 0.0;
-        double batchJobFailedUserError = metrics.containsKey(".venice-cluster0--batch_push_job_failed_user_error.Count")
-            ? metrics.get(".venice-cluster0--batch_push_job_failed_user_error.Count").value()
-            : 0.0;
-        double batchJobFailedUserErrorCountSinceLastMeasurement =
-            metrics.containsKey(".venice-cluster0--batch_push_job_failed_user_error.CountSinceLastMeasurement")
-                ? metrics.get(".venice-cluster0--batch_push_job_failed_user_error.CountSinceLastMeasurement").value()
-                : 0.0;
-        double batchJobFailedNonUserError =
-            metrics.containsKey(".venice-cluster0--batch_push_job_failed_non_user_error.Count")
-                ? metrics.get(".venice-cluster0--batch_push_job_failed_non_user_error.Count").value()
-                : 0.0;
-        double batchJobFailedNonUserErrorCountSinceLastMeasurement =
-            metrics.containsKey(".venice-cluster0--batch_push_job_failed_non_user_error.CountSinceLastMeasurement")
-                ? metrics.get(".venice-cluster0--batch_push_job_failed_non_user_error.CountSinceLastMeasurement")
-                    .value()
-                : 0.0;
-        double incrementalJobFailedUserError =
-            metrics.containsKey(".venice-cluster0--incremental_push_job_failed_user_error.Count")
-                ? metrics.get(".venice-cluster0--incremental_push_job_failed_user_error.Count").value()
-                : 0.0;
-        double incrementalJobFailedUserCountSinceLastMeasurement =
-            metrics.containsKey(".venice-cluster0--incremental_push_job_failed_user_error.CountSinceLastMeasurement")
-                ? metrics.get(".venice-cluster0--incremental_push_job_failed_user_error.CountSinceLastMeasurement")
-                    .value()
-                : 0.0;
-        double incrementalJobFailedNonUserError =
-            metrics.containsKey(".venice-cluster0--incremental_push_job_failed_non_user_error.Count")
-                ? metrics.get(".venice-cluster0--incremental_push_job_failed_non_user_error.Count").value()
-                : 0.0;
-        double incrementalJobFailedNonUserCountSinceLastMeasurement = metrics
-            .containsKey(".venice-cluster0--incremental_push_job_failed_non_user_error.CountSinceLastMeasurement")
-                ? metrics.get(".venice-cluster0--incremental_push_job_failed_non_user_error.CountSinceLastMeasurement")
-                    .value()
-                : 0.0;
-        assertEquals(
-            incrementalJobSuccess,
-            incrementalJobSuccessExpected,
-            "Incremental push job success metric is incorrect");
-        assertEquals(
-            incrementalJobSuccessCountSinceLastMeasurement,
-            finalIncrementalJobSuccessExpectedCountSinceLastMeasurement,
-            "Incremental push job success metric is incorrect");
-        assertEquals(batchJobSuccess, batchJobSuccessExpected, "Batch push job success metric is incorrect");
-        assertEquals(
-            batchJobSuccessCountSinceLastMeasurement,
-            finalBatchJobSuccessExpectedCountSinceLastMeasurement,
-            "Batch push job success metric is incorrect");
-        assertEquals(
-            batchJobFailedUserError,
-            batchJobFailedUserErrorExpected,
-            "Batch push job failed user error metric is incorrect");
-        assertEquals(
-            batchJobFailedUserErrorCountSinceLastMeasurement,
-            finalBatchJobFailedUserErrorExpectedCountSinceLastMeasurement,
-            "Batch push job failed user error metric is incorrect");
-        assertEquals(
-            batchJobFailedNonUserError,
-            batchJobFailedNonUserErrorExpected,
-            "Batch push job failed non user error metric is incorrect");
-        assertEquals(
-            batchJobFailedNonUserErrorCountSinceLastMeasurement,
-            finalBatchJobFailedNonUserErrorExpectedCountSinceLastMeasurement,
-            "Batch push job failed non user error metric is incorrect");
-        assertEquals(
-            incrementalJobFailedUserError,
-            incrementalJobFailedUserErrorExpected,
-            "Incremental push job failed user error metric is incorrect");
-        assertEquals(
-            incrementalJobFailedUserCountSinceLastMeasurement,
-            finalIncrementalJobFailedUserErrorExpectedCountSinceLastMeasurement,
-            "Incremental push job failed user error metric is incorrect");
-        assertEquals(
-            incrementalJobFailedNonUserError,
-            incrementalJobFailedNonUserErrorExpected,
-            "Incremental push job failed non user error metric is incorrect");
-        assertEquals(
-            incrementalJobFailedNonUserCountSinceLastMeasurement,
-            finalIncrementalJobFailedNonUserErrorExpectedCountSinceLastMeasurement,
-            "Incremental push job failed non user error metric is incorrect");
-      } catch (Exception e) {
-        throw new VeniceException(e);
-      }
+      verifyMetric("batch_push_job_success", metricsExpectedCount, metricsExpectedCountSinceLastMeasurement);
+      verifyMetric("incremental_push_job_success", metricsExpectedCount, metricsExpectedCountSinceLastMeasurement);
+      verifyMetric("batch_push_job_failed_user_error", metricsExpectedCount, metricsExpectedCountSinceLastMeasurement);
+      verifyMetric(
+          "batch_push_job_failed_non_user_error",
+          metricsExpectedCount,
+          metricsExpectedCountSinceLastMeasurement);
+      verifyMetric(
+          "incremental_push_job_failed_user_error",
+          metricsExpectedCount,
+          metricsExpectedCountSinceLastMeasurement);
+      verifyMetric(
+          "incremental_push_job_failed_non_user_error",
+          metricsExpectedCount,
+          metricsExpectedCountSinceLastMeasurement);
     });
   }
 
@@ -405,6 +324,9 @@ public class PushJobDetailsTest {
   public void testPushJobDetails(boolean useCustomCheckpoints) throws IOException {
     try {
       setUp(useCustomCheckpoints);
+      // create a map for expected metrics for Count type which will be incremented through the test
+      HashMap<String, Double> metricsExpectedCount = new HashMap<>();
+
       // case 1: successful batch push job
       String testStoreName = "test-push-store" + useCustomCheckpoints;
       parentControllerClient.createNewStore(
@@ -430,7 +352,7 @@ public class PushJobDetailsTest {
           PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
           COMPLETED.getValue());
       validatePushJobDetailsStatus(false, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
-      validatePushJobMetrics(true, false, false);
+      validatePushJobMetrics(true, false, false, metricsExpectedCount);
 
       // case 2: successful incremental push job
       Properties pushJobPropsInc =
@@ -448,7 +370,7 @@ public class PushJobDetailsTest {
           PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
           COMPLETED.getValue());
       validatePushJobDetailsStatus(true, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
-      validatePushJobMetrics(true, false, true);
+      validatePushJobMetrics(true, false, true, metricsExpectedCount);
 
       // case 3: failed batch push job, non-user error:
       // setting the quota to be 0, hadoop job client cannot fetch counters properly and should fail the job
@@ -469,7 +391,7 @@ public class PushJobDetailsTest {
           START_DATA_WRITER_JOB,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
-      validatePushJobMetrics(false, false, false);
+      validatePushJobMetrics(false, false, false, metricsExpectedCount);
 
       // case 4: failed incremental push job, non-user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
@@ -488,7 +410,7 @@ public class PushJobDetailsTest {
           START_DATA_WRITER_JOB,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
-      validatePushJobMetrics(false, false, true);
+      validatePushJobMetrics(false, false, true, metricsExpectedCount);
 
       // case 5: failed batch push job, user error: data with duplicate keys
       UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1);
@@ -508,7 +430,7 @@ public class PushJobDetailsTest {
           DUP_KEY_WITH_DIFF_VALUE,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-      validatePushJobMetrics(false, !useCustomCheckpoints, false);
+      validatePushJobMetrics(false, !useCustomCheckpoints, false, metricsExpectedCount);
 
       // case 6: failed incremental push job, user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
@@ -527,7 +449,7 @@ public class PushJobDetailsTest {
           DUP_KEY_WITH_DIFF_VALUE,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-      validatePushJobMetrics(false, !useCustomCheckpoints, true);
+      validatePushJobMetrics(false, !useCustomCheckpoints, true, metricsExpectedCount);
     } finally {
       cleanUp();
     }

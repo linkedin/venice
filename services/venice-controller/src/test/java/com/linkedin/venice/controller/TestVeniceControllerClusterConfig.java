@@ -22,13 +22,13 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
 import static com.linkedin.venice.controller.VeniceControllerClusterConfig.parsePushJobUserErrorCheckpoints;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -211,37 +211,18 @@ public class TestVeniceControllerClusterConfig {
         new HashSet<>(Arrays.asList(QUOTA_EXCEEDED, DVC_INGESTION_ERROR_OTHER));
     assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
 
-    // invalid cases: Should return the default checkpoints for all the below cases
-    // invalid case 1
-    properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "INVALID_CHECKPOINT");
-    ControllerProps = new VeniceProperties(properties);
-    expectedCustomUserErrorCheckpoints = DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
-
-    // invalid case 2
-    properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "");
-    ControllerProps = new VeniceProperties(properties);
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
-
-    // invalid case 3
-    properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "[DVC_INGESTION_ERROR_OTHER");
-    ControllerProps = new VeniceProperties(properties);
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
-
-    // invalid case 4
-    properties
-        .put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "DVC_INGESTION_ERROR_OTHER, RECORD_TOO_LARGE_FAILED]");
-    ControllerProps = new VeniceProperties(properties);
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
-
-    // invalid case 5
-    properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "DVC_INGESTION_ERROR_OTHER, TEST");
-    ControllerProps = new VeniceProperties(properties);
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
-
-    // invalid case 6
-    properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "-14");
-    ControllerProps = new VeniceProperties(properties);
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
+    // invalid cases: Should throw IllegalArgumentException
+    Set<String> invalidCheckpointConfigs = new HashSet<>(
+        Arrays.asList(
+            "INVALID_CHECKPOINT",
+            "[DVC_INGESTION_ERROR_OTHER",
+            "DVC_INGESTION_ERROR_OTHER, RECORD_TOO_LARGE_FAILED]",
+            "DVC_INGESTION_ERROR_OTHER, TEST",
+            "-14"));
+    for (String invalidCheckpointConfig: invalidCheckpointConfigs) {
+      properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, invalidCheckpointConfig);
+      VeniceProperties ControllerPropsInvalid = new VeniceProperties(properties);
+      assertThrows(IllegalArgumentException.class, () -> parsePushJobUserErrorCheckpoints(ControllerPropsInvalid));
+    }
   }
 }

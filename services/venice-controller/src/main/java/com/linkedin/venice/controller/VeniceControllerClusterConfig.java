@@ -194,7 +194,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1689,29 +1688,16 @@ public class VeniceControllerClusterConfig {
    * Parse the input to get the custom user error checkpoints for push jobs or use the default checkpoints.
    */
   static Set<PushJobCheckpoints> parsePushJobUserErrorCheckpoints(VeniceProperties props) {
-    Set<PushJobCheckpoints> pushJobUserErrorCheckpoints = new HashSet<>();
     if (props.containsKey(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR)) {
-      String userErrorCheckpointsStr = props.getString(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR);
-      for (String checkpointStr: userErrorCheckpointsStr.split(",")) {
-        checkpointStr = checkpointStr.trim();
-        try {
-          pushJobUserErrorCheckpoints.add(PushJobCheckpoints.valueOf(checkpointStr));
-        } catch (Exception e) {
-          LOGGER.error(
-              "Invalid checkpoint {} in input for config {}. Using the default error checkpoints",
-              PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR,
-              checkpointStr);
-          pushJobUserErrorCheckpoints.clear();
-          break;
-        }
-      }
-    }
-    if (pushJobUserErrorCheckpoints.isEmpty()) {
+      String pushJobUserErrorCheckpoints = props.getString(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR);
+      LOGGER.info("Using configured Push job user error checkpoints: {}", pushJobUserErrorCheckpoints);
+      return Utils.parseCommaSeparatedStringToSet(pushJobUserErrorCheckpoints)
+          .stream()
+          .map(checkpointStr -> PushJobCheckpoints.valueOf(checkpointStr))
+          .collect(Collectors.toSet());
+    } else {
       LOGGER.info("Using default Push job user error checkpoints: {}", DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS);
       return DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
-    } else {
-      LOGGER.info("Using configured Push job user error checkpoints: {}", pushJobUserErrorCheckpoints);
-      return pushJobUserErrorCheckpoints;
     }
   }
 

@@ -43,7 +43,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
   }
 
   @Test
-  public void testIsUserError() {
+  public void testDefaultPushJobUserErrorCheckpoints() {
     for (PushJobCheckpoints checkpoint: PushJobCheckpoints.values()) {
       switch (checkpoint) {
         case QUOTA_EXCEEDED:
