@@ -47,6 +47,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
@@ -769,7 +770,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA);
@@ -796,7 +797,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithoutNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithoutNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithoutNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA);
@@ -895,6 +896,7 @@ public abstract class TestBatch {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     extraProps.accept(props);
 
     if (StringUtils.isEmpty(existingStore)) {
@@ -1419,7 +1421,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
+  public void testBatchJobSnapshots(Boolean isKafkaPush) throws Exception {
 
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 1; i <= 100; i++) {
@@ -1437,7 +1439,7 @@ public abstract class TestBatch {
     deleteDirectory(Paths.get(BASE_DATA_PATH_1).toFile());
     deleteDirectory(Paths.get(BASE_DATA_PATH_2).toFile());
 
-    if (isKakfaPush) {
+    if (isKafkaPush) {
       testRepush(storeName, validator);
     } else {
       testBatchStore(
