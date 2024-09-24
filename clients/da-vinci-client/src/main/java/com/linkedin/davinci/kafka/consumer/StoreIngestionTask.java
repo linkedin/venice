@@ -587,19 +587,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Removes partitions that are not subscribed / not assigned.
-   */
-
-  public synchronized void removeUnsubscribedPartitions() {
-    throwIfNotRunning();
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
-      if (!partitionConsumptionState.isSubscribed()) {
-        partitionConsumptionStateMap.remove(partitionConsumptionState.getPartition(), partitionConsumptionState);
-      }
-    }
-  }
-
-  /**
    * Adds an asynchronous partition subscription request for the task.
    */
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {

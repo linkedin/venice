@@ -184,11 +184,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @Test
-  public void testRemovingPartition() throws Exception {
-    super.testRemovingPartition();
-  }
-
-  @Test
   public void testRemovingPartitionTwice() throws Exception {
     super.testRemovingPartitionTwice();
   }
