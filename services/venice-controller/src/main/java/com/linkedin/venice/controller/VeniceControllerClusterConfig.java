@@ -136,6 +136,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
@@ -158,6 +159,7 @@ import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STA
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
@@ -167,6 +169,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -509,6 +512,8 @@ public class VeniceControllerClusterConfig {
 
   private final Set<String> childDatacenters;
   private final long serviceDiscoveryRegistrationRetryMS;
+
+  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -908,6 +913,7 @@ public class VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
+    this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
   }
 
   public VeniceProperties getProps() {
@@ -1683,5 +1689,26 @@ public class VeniceControllerClusterConfig {
   @FunctionalInterface
   interface PutToMap {
     void apply(Map<String, String> map, String key, String value, String errorMessage);
+  }
+
+  /**
+   * Parse the input to get the custom user error checkpoints for push jobs or use the default checkpoints.
+   */
+  static Set<PushJobCheckpoints> parsePushJobUserErrorCheckpoints(VeniceProperties props) {
+    if (props.containsKey(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR)) {
+      String pushJobUserErrorCheckpoints = props.getString(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR);
+      LOGGER.info("Using configured Push job user error checkpoints: {}", pushJobUserErrorCheckpoints);
+      return Utils.parseCommaSeparatedStringToSet(pushJobUserErrorCheckpoints)
+          .stream()
+          .map(checkpointStr -> PushJobCheckpoints.valueOf(checkpointStr))
+          .collect(Collectors.toSet());
+    } else {
+      LOGGER.info("Using default Push job user error checkpoints: {}", DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS);
+      return DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
+    }
+  }
+
+  public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
+    return pushJobUserErrorCheckpoints;
   }
 }

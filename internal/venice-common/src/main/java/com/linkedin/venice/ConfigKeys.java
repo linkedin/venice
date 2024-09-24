@@ -2173,6 +2173,19 @@ public class ConfigKeys {
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
 
   /**
+   * Configure in controllers to provide a custom list of checkpoints to define user errors and to
+   * override the default checkpoint list {@link PushJobCheckpoints#DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS}.
+   * This is useful to emit the push job failure metrics due to user errors or not due
+   * to user errors based on the custom checkpoint list.
+   *
+   * Check {@link PushJobCheckpoints} for the list of supported checkpoints: Config should contain one or more
+   * of the checkpoints strings separated by comma. In case of invalid config, the default list of checkpoints
+   * will be used.
+   */
+  public static final String PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR =
+      "push.job.failure.checkpoints.to.define.user.error";
+
+  /**
    * Config for the default value which is filled in when the store-level config
    * {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} is left unset. Used as a controller config for
    * batch push jobs. Used as a server config for nearline jobs / partial updates.
