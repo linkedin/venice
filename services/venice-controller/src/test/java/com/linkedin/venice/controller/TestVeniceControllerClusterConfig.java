@@ -206,10 +206,10 @@ public class TestVeniceControllerClusterConfig {
     // valid
     Properties properties = new Properties();
     properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "QUOTA_EXCEEDED,DVC_INGESTION_ERROR_OTHER");
-    VeniceProperties ControllerProps = new VeniceProperties(properties);
+    VeniceProperties controllerProps = new VeniceProperties(properties);
     Set<PushJobCheckpoints> expectedCustomUserErrorCheckpoints =
         new HashSet<>(Arrays.asList(QUOTA_EXCEEDED, DVC_INGESTION_ERROR_OTHER));
-    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(ControllerProps));
+    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(controllerProps));
 
     // invalid cases: Should throw IllegalArgumentException
     Set<String> invalidCheckpointConfigs = new HashSet<>(
@@ -221,8 +221,8 @@ public class TestVeniceControllerClusterConfig {
             "-14"));
     for (String invalidCheckpointConfig: invalidCheckpointConfigs) {
       properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, invalidCheckpointConfig);
-      VeniceProperties ControllerPropsInvalid = new VeniceProperties(properties);
-      assertThrows(IllegalArgumentException.class, () -> parsePushJobUserErrorCheckpoints(ControllerPropsInvalid));
+      VeniceProperties controllerPropsInvalid = new VeniceProperties(properties);
+      assertThrows(IllegalArgumentException.class, () -> parsePushJobUserErrorCheckpoints(controllerPropsInvalid));
     }
   }
 }
