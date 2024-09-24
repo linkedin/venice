@@ -53,9 +53,6 @@ public class TestHAASController {
     enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS, String.valueOf(true));
     enableControllerClusterHAASProperties
         .put(ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME, HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME);
-    enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, instanceTag);
-    enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST, instanceTag);
-
     enableControllerAndStorageClusterHAASProperties = (Properties) enableControllerClusterHAASProperties.clone();
     enableControllerAndStorageClusterHAASProperties
         .put(ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS, String.valueOf(true));
@@ -65,10 +62,15 @@ public class TestHAASController {
   public void testClusterResourceInstanceTag() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
-      VeniceControllerWrapper controllerWrapper =
-          venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
-
+      String instanceTag = "GENERAL";
       String controllerClusterName = "venice-controllers";
+
+      Properties clusterProperties = (Properties) enableControllerAndStorageClusterHAASProperties.clone();
+      clusterProperties.put(ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, instanceTag);
+      clusterProperties.put(ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST, instanceTag);
+
+      VeniceControllerWrapper controllerWrapper = venice.addVeniceController(clusterProperties);
+
       HelixAdmin helixAdmin = controllerWrapper.getVeniceHelixAdmin().getHelixAdmin();
       List<String> resources = helixAdmin.getResourcesInClusterWithTag(controllerClusterName, instanceTag);
       assertEquals(resources.size(), 1);
