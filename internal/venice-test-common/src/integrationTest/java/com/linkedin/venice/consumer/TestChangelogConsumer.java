@@ -118,7 +118,7 @@ public class TestChangelogConsumer {
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
-    serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, true); // isAAWCParallelProcessingEnabled());
+    serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         1,
@@ -630,14 +630,6 @@ public class TestChangelogConsumer {
         MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
         Assert.assertFalse(storeTopicsResponse.isError());
         Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
-      });
-
-      MetricsRepository repo = clusterWrapper.getVeniceServers().get(0).getMetricsRepository();
-      repo.metrics().forEach((mName, metric) -> {
-        if (mName.contains("batch_processing") || mName.contains("leader_produce_latency")
-            || mName.contains("leader_send_message_latency")) {
-          System.out.println(mName + " => " + metric.value());
-        }
       });
     }
   }
