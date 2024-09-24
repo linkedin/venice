@@ -164,10 +164,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           LeaderStandbySMD.name,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
+      VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
       idealState.setMinActiveReplicas(controllerClusterReplicaCount);
       idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
       idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
+
+      String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
+      if (!instanceGroupTag.isEmpty()) {
+        idealState.setInstanceGroupTag(instanceGroupTag);
+      }
+
       helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
       helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
     } catch (Exception e) {
