@@ -309,9 +309,6 @@ public class VeniceServer {
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
-    boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
-        || veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
-
     // Create and add StorageService. storeRepository will be populated by StorageService
     storageService = new StorageService(
         veniceConfigLoader,
@@ -319,10 +316,7 @@ public class VeniceServer {
         rocksDBMemoryStats,
         storeVersionStateSerializer,
         partitionStateSerializer,
-        metadataRepo,
-        whetherToRestoreDataPartitions,
-        true,
-        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
+        metadataRepo);
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -695,10 +689,6 @@ public class VeniceServer {
 
   protected VeniceConfigLoader getConfigLoader() {
     return veniceConfigLoader;
-  }
-
-  protected final boolean isIsolatedIngestion() {
-    return veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
