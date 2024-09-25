@@ -102,11 +102,11 @@ public class AvroSupersetSchemaUtils {
     Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(Schema::getName, s -> s));
     for (Schema subSchemaInS1: s1.getTypes()) {
       final String fieldName = subSchemaInS1.getName();
-      final Schema subSchemaWithSameNameInS2 = s2Schema.get(fieldName);
-      if (subSchemaWithSameNameInS2 == null) {
+      final Schema subSchemaInS2 = s2Schema.get(fieldName);
+      if (subSchemaInS2 == null) {
         combinedSchema.add(subSchemaInS1);
       } else {
-        combinedSchema.add(generateSuperSetSchema(subSchemaInS1, subSchemaWithSameNameInS2));
+        combinedSchema.add(generateSuperSetSchema(subSchemaInS2, subSchemaInS1));
         s2Schema.remove(fieldName);
       }
     }
