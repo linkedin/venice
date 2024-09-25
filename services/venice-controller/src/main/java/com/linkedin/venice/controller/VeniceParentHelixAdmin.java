@@ -2738,7 +2738,6 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
-      LOGGER.info("DEBUGGING: MESSAGE: {}", message);
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       if (needToGenerateSupersetSchema) {
@@ -3041,7 +3040,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     if (doUpdateSupersetSchemaID) {
-      LOGGER.info("DEBUGGING PERFORMING UPDATE SUPERSET SCHEMA: {} {}", doUpdateSupersetSchemaID, newValueSchemaId);
       updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(newValueSchemaId));
     }
 
@@ -3126,7 +3124,6 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         doUpdateSupersetSchemaID = false;
       }
-      LOGGER.info("DEBUGGING: doUpdate: {}", doUpdateSupersetSchemaID);
       SchemaEntry addedSchemaEntry =
           addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId, doUpdateSupersetSchemaID);
 

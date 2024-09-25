@@ -35,63 +35,71 @@ public class AvroSupersetSchemaUtils {
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
    * schemas and the generated schema will pick the default value from new value schema.
-   * @param newSchema schema existing in the repo
-   * @param oldSchema schema to be added.
+   * @param existingSchema schema existing in the repo
+   * @param newSchema schema to be added.
    * @return super-set schema of existingSchema abd newSchema
    */
-  public static Schema generateSuperSetSchema(Schema newSchema, Schema oldSchema) {
-    if (newSchema.getType() != oldSchema.getType()) {
+  public static Schema generateSuperSetSchema(Schema existingSchema, Schema newSchema) {
+    if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
-    if (Objects.equals(newSchema, oldSchema)) {
-      return newSchema;
+    if (Objects.equals(existingSchema, newSchema)) {
+      return existingSchema;
     }
 
     // Special handling for String vs Avro string comparison,
     // return the schema with avro.java.string property for string type
-    if (newSchema.getType() == Schema.Type.STRING) {
-      return AvroCompatibilityHelper.getSchemaPropAsJsonString(newSchema, "avro.java.string") == null
-          ? oldSchema
-          : newSchema;
+    if (existingSchema.getType() == Schema.Type.STRING) {
+      return AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, "avro.java.string") == null
+          ? newSchema
+          : existingSchema;
     }
 
-    switch (newSchema.getType()) {
+    switch (existingSchema.getType()) {
       case RECORD:
-        if (!StringUtils.equals(newSchema.getNamespace(), oldSchema.getNamespace())) {
+        if (!StringUtils.equals(existingSchema.getNamespace(), newSchema.getNamespace())) {
           throw new VeniceException(
               String.format(
                   "Trying to merge record schemas with different namespace. "
                       + "Got existing schema namespace: %s and new schema namespace: %s",
-                  newSchema.getNamespace(),
-                  oldSchema.getNamespace()));
+                  existingSchema.getNamespace(),
+                  newSchema.getNamespace()));
         }
-        if (!StringUtils.equals(newSchema.getName(), oldSchema.getName())) {
+        if (!StringUtils.equals(existingSchema.getName(), newSchema.getName())) {
           throw new VeniceException(
               String.format(
                   "Trying to merge record schemas with different name. "
                       + "Got existing schema name: %s and new schema name: %s",
-                  newSchema.getName(),
-                  oldSchema.getName()));
+                  existingSchema.getName(),
+                  newSchema.getName()));
         }
 
-        Schema superSetSchema =
-            Schema.createRecord(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), false);
-        superSetSchema.setFields(mergeFieldSchemas(newSchema, oldSchema));
+        Schema superSetSchema = Schema
+            .createRecord(existingSchema.getName(), existingSchema.getDoc(), existingSchema.getNamespace(), false);
+        superSetSchema.setFields(mergeFieldSchemas(newSchema, existingSchema));
         return superSetSchema;
       case ARRAY:
-        return Schema.createArray(generateSuperSetSchema(newSchema.getElementType(), oldSchema.getElementType()));
+        return Schema.createArray(generateSuperSetSchema(existingSchema.getElementType(), newSchema.getElementType()));
       case MAP:
-        return Schema.createMap(generateSuperSetSchema(newSchema.getValueType(), oldSchema.getValueType()));
+        return Schema.createMap(generateSuperSetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
-        return unionSchema(newSchema, oldSchema);
+        return unionSchema(existingSchema, newSchema);
       default:
         throw new VeniceException("Super set schema not supported");
     }
   }
 
+  /**
+   * Merge union schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
+   * generate the superset schema of these two versions of the same field, with new schema's information taking higher
+   * priority.
+   * @param s1 old union schema
+   * @param s2 new union schema
+   * @return merged schema field
+   */
   private static Schema unionSchema(Schema s1, Schema s2) {
     List<Schema> combinedSchema = new ArrayList<>();
-    Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(Schema::getName, s -> s));
     for (Schema subSchemaInS1: s1.getTypes()) {
       final String fieldName = subSchemaInS1.getName();
       final Schema subSchemaWithSameNameInS2 = s2Schema.get(fieldName);
@@ -135,6 +143,14 @@ public class AvroSupersetSchemaUtils {
     return fieldBuilder;
   }
 
+  /**
+   * Merge field schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
+   * generate the superset schema of these two versions of the same field, with new schema's information taking higher
+   * priority.
+   * @param s1 new schema
+   * @param s2 old schema
+   * @return merged schema field
+   */
   private static List<Schema.Field> mergeFieldSchemas(Schema s1, Schema s2) {
     List<Schema.Field> fields = new ArrayList<>();
 
@@ -143,7 +159,7 @@ public class AvroSupersetSchemaUtils {
 
       FieldBuilder fieldBuilder = deepCopySchemaField(f1);
       if (f2 != null) {
-        fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
+        fieldBuilder.setSchema(generateSuperSetSchema(f2.schema(), f1.schema()))
             .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
       }
       fields.add(fieldBuilder.build());

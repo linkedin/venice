@@ -265,7 +265,7 @@ public class AvroSchemaUtils {
        * Note that superset schema should be the second parameter. For the reason, please refer to the Javadoc of the
        * {@link AvroSchemaUtils#generateSuperSetSchema} method.
        */
-      tmpSupersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(valueSchema, tmpSupersetSchema);
+      tmpSupersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(tmpSupersetSchema, valueSchema);
     }
     final Schema supersetSchema = tmpSupersetSchema;
 
