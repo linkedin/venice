@@ -25,8 +25,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
-import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,7 +35,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -82,8 +79,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private RandomAccessDaemonThreadFactory threadFactory;
   private final Logger LOGGER;
   private final ExecutorService consumerExecutor;
-  private final ResourceAutoClosableLockManager<PubSubTopicPartition> topicPartitionLockManager =
-      new ResourceAutoClosableLockManager<>(ReentrantLock::new);
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -227,7 +222,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
       if (topicPartitionToConsumerMap != null) {
         topicPartitionToConsumerMap.forEach((topicPartition, sharedConsumer) -> {
-          try (AutoCloseableLock ignored = topicPartitionLockManager.getLockForResource(topicPartition)) {
+          synchronized (sharedConsumer) {
             sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
           }
@@ -242,9 +237,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    */
   @Override
   public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    try (AutoCloseableLock ignored = topicPartitionLockManager.getLockForResource(pubSubTopicPartition)) {
-      PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
-      if (consumer != null) {
+    PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    if (consumer != null) {
+      synchronized (consumer) {
         consumer.unSubscribe(pubSubTopicPartition);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
         versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
@@ -395,13 +390,13 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
-    try (AutoCloseableLock ignored = topicPartitionLockManager.getLockForResource(topicPartition)) {
-      SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
-      if (consumer == null) {
-        // Defensive code. Shouldn't happen except in case of a regression.
-        throw new VeniceException(
-            "Shared consumer must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaUrl);
-      }
+    SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
+    if (consumer == null) {
+      // Defensive code. Shouldn't happen except in case of a regression.
+      throw new VeniceException(
+          "Shared consumer must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaUrl);
+    }
+    synchronized (consumer) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       if (consumptionTask == null) {
         // Defensive coding. Should never happen except in case of a regression.
@@ -561,11 +556,5 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   // For testing only
   public void setThreadFactory(RandomAccessDaemonThreadFactory threadFactory) {
     this.threadFactory = threadFactory;
-  }
-
-  @Override
-  public synchronized void stop() throws Exception {
-    topicPartitionLockManager.removeAllLocks();
-    super.stop();
   }
 }

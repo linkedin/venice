@@ -33,8 +33,10 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -493,7 +495,8 @@ public class KafkaConsumerServiceDelegatorTest {
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
-    int consumerNum = 6;
+
+    int versionNum = 5;
 
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
@@ -504,7 +507,7 @@ public class KafkaConsumerServiceDelegatorTest {
         factory,
         properties,
         1000l,
-        consumerNum,
+        versionNum + 1,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
@@ -534,7 +537,8 @@ public class KafkaConsumerServiceDelegatorTest {
         new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName)), 0);
 
     CountDownLatch countDownLatch = new CountDownLatch(1);
-    for (int i = 0; i < consumerNum; i++) {
+    List<Thread> infiniteSubUnSubThreads = new ArrayList<>();
+    for (int i = 0; i < versionNum; i++) {
       PubSubTopic topicV1ForStoreName3 = TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, i));
       StoreIngestionTask task = mock(StoreIngestionTask.class);
       when(task.getVersionTopic()).thenReturn(topicV1ForStoreName3);
@@ -555,11 +559,15 @@ public class KafkaConsumerServiceDelegatorTest {
           countDownLatch);
       Thread infiniteSubUnSubThread = new Thread(infiniteSubUnSub, "infiniteResubscribe: " + topicV1ForStoreName3);
       infiniteSubUnSubThread.start();
+      infiniteSubUnSubThreads.add(infiniteSubUnSubThread);
     }
 
     long currentTime = System.currentTimeMillis();
     Boolean raceConditionFound = countDownLatch.await(30, TimeUnit.SECONDS);
     long elapsedTime = System.currentTimeMillis() - currentTime;
+    for (Thread infiniteSubUnSubThread: infiniteSubUnSubThreads) {
+      infiniteSubUnSubThread.stop();
+    }
     Assert.assertFalse(
         raceConditionFound,
         "Found race condition in KafkaConsumerService with time passed in milliseconds: " + elapsedTime);
