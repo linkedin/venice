@@ -20,16 +20,29 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
+import static com.linkedin.venice.controller.VeniceControllerClusterConfig.parsePushJobUserErrorCheckpoints;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -50,13 +63,13 @@ public class TestVeniceControllerClusterConfig {
 
     Map<String, String> map = VeniceControllerClusterConfig.parseClusterMap(builder.build(), REGION_ALLOW_LIST);
 
-    Assert.assertEquals(map.size(), 2);
+    assertEquals(map.size(), 2);
     Assert.assertTrue(map.containsKey("dc1"));
     Assert.assertTrue(map.containsKey("dc2"));
 
     String[] uris = map.get("dc1").split(DELIMITER);
-    Assert.assertEquals(uris[0], "http://host:1234");
-    Assert.assertEquals(uris[1], "http://host:5678");
+    assertEquals(uris[0], "http://host:1234");
+    assertEquals(uris[1], "http://host:5678");
   }
 
   @Test
@@ -65,8 +78,8 @@ public class TestVeniceControllerClusterConfig {
     builder.put("child.cluster.d2.zkHost.dc1", "zkAddress1").put("child.cluster.d2.zkHost.dc2", "zkAddress2");
 
     Map<String, String> map = VeniceControllerClusterConfig.parseClusterMap(builder.build(), REGION_ALLOW_LIST, true);
-    Assert.assertEquals(map.get("dc1").split(DELIMITER).length, 1);
-    Assert.assertEquals(map.get("dc2").split(DELIMITER)[0], "zkAddress2");
+    assertEquals(map.get("dc1").split(DELIMITER).length, 1);
+    assertEquals(map.get("dc2").split(DELIMITER)[0], "zkAddress2");
   }
 
   @Test
@@ -81,7 +94,7 @@ public class TestVeniceControllerClusterConfig {
         .parseControllerRoutes(builder.build(), CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
 
     // Make sure it looks right.
-    Assert.assertEquals(parsedRoutes.size(), 2);
+    assertEquals(parsedRoutes.size(), 2);
     Assert.assertTrue(parsedRoutes.contains(ControllerRoute.REQUEST_TOPIC));
     Assert.assertTrue(parsedRoutes.contains(ControllerRoute.CLUSTER_DISCOVERY));
   }
@@ -181,5 +194,35 @@ public class TestVeniceControllerClusterConfig {
     VeniceControllerClusterConfig parentControllerConfig =
         new VeniceControllerClusterConfig(new VeniceProperties(parentControllerProps));
     Assert.assertTrue(parentControllerConfig.isMultiRegion());
+  }
+
+  @Test
+  public void testParsePushJobUserErrorCheckpoints() {
+    PushJobDetails pushJobDetails = mock(PushJobDetails.class);
+    Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
+    when(pushJobDetails.getPushJobConfigs()).thenReturn(pushJobConfigs);
+    when(pushJobDetails.getPushJobLatestCheckpoint()).thenReturn(DVC_INGESTION_ERROR_OTHER.getValue());
+
+    // valid
+    Properties properties = new Properties();
+    properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, "QUOTA_EXCEEDED,DVC_INGESTION_ERROR_OTHER");
+    VeniceProperties controllerProps = new VeniceProperties(properties);
+    Set<PushJobCheckpoints> expectedCustomUserErrorCheckpoints =
+        new HashSet<>(Arrays.asList(QUOTA_EXCEEDED, DVC_INGESTION_ERROR_OTHER));
+    assertEquals(expectedCustomUserErrorCheckpoints, parsePushJobUserErrorCheckpoints(controllerProps));
+
+    // invalid cases: Should throw IllegalArgumentException
+    Set<String> invalidCheckpointConfigs = new HashSet<>(
+        Arrays.asList(
+            "INVALID_CHECKPOINT",
+            "[DVC_INGESTION_ERROR_OTHER",
+            "DVC_INGESTION_ERROR_OTHER, RECORD_TOO_LARGE_FAILED]",
+            "DVC_INGESTION_ERROR_OTHER, TEST",
+            "-14"));
+    for (String invalidCheckpointConfig: invalidCheckpointConfigs) {
+      properties.put(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR, invalidCheckpointConfig);
+      VeniceProperties controllerPropsInvalid = new VeniceProperties(properties);
+      assertThrows(IllegalArgumentException.class, () -> parsePushJobUserErrorCheckpoints(controllerPropsInvalid));
+    }
   }
 }

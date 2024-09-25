@@ -16,7 +16,7 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
-import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
+import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
@@ -164,10 +164,16 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           LeaderStandbySMD.name,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
+      VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
       idealState.setMinActiveReplicas(controllerClusterReplicaCount);
-      idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-      idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
+      idealState.setRebalancerClassName(WagedRebalancer.class.getName());
+
+      String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
+      if (!instanceGroupTag.isEmpty()) {
+        idealState.setInstanceGroupTag(instanceGroupTag);
+      }
+
       helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
       helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
     } catch (Exception e) {

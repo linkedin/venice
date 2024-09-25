@@ -8,9 +8,11 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.testng.annotations.Test;
@@ -39,13 +41,22 @@ public abstract class VeniceEnumValueTest<T extends VeniceEnumValue> {
 
   @Test
   public void test() {
-    int highestValue = INVALID_NEGATIVE_VALUE;
-
     // Check that there is a valueOf function which respects the expected contract
     Method valueOfMethod = getPublicStaticFunction(this.enumClass, VALUE_OF_METHOD_NAME, int.class);
 
     assertTrue(Modifier.isStatic(valueOfMethod.getModifiers()), "The " + VALUE_OF_METHOD_NAME + " should be static!");
     assertTrue(Modifier.isPublic(valueOfMethod.getModifiers()), "The " + VALUE_OF_METHOD_NAME + " should be public!");
+
+    // check if there is a TYPES field which is either a List or a Map
+    Field typesField = getPrivateStaticField(this.enumClass, "TYPES");
+    boolean isStrictCheck = true;
+    if (List.class.isAssignableFrom(typesField.getType())) {
+      isStrictCheck = true;
+    } else if (Map.class.isAssignableFrom(typesField.getType())) {
+      isStrictCheck = false;
+    } else {
+      fail("The TYPES field should be a List or a Map!");
+    }
 
     Function<Integer, T> valueOfFunction = value -> {
       try {
@@ -66,19 +77,20 @@ public abstract class VeniceEnumValueTest<T extends VeniceEnumValue> {
     assertFalse(expectedMapping.isEmpty());
 
     // Check that all mappings are as expected
+    int highestValue = INVALID_NEGATIVE_VALUE;
     for (Map.Entry<Integer, T> entry: expectedMapping.entrySet()) {
       assertEquals(valueOfFunction.apply(entry.getKey()), entry.getValue(), ASSERTION_ERROR_MESSAGE);
       assertEquals(entry.getValue().getValue(), entry.getKey().intValue(), ASSERTION_ERROR_MESSAGE);
       highestValue = Math.max(entry.getKey(), highestValue);
     }
 
-    // Check that out of bound IDs throw exceptions
-    assertNotEquals(highestValue, INVALID_NEGATIVE_VALUE, "There are no values at all in the enum!");
-
-    assertThrows(VeniceException.class, () -> valueOfFunction.apply(INVALID_NEGATIVE_VALUE));
-
-    final int tooHighValue = highestValue + 1;
-    assertThrows(VeniceException.class, () -> valueOfFunction.apply(tooHighValue));
+    if (isStrictCheck) {
+      // Check that out of bound IDs throw exceptions
+      assertNotEquals(highestValue, INVALID_NEGATIVE_VALUE, "There are no values at all in the enum!");
+      assertThrows(VeniceException.class, () -> valueOfFunction.apply(INVALID_NEGATIVE_VALUE));
+      final int tooHighValue = highestValue + 1;
+      assertThrows(VeniceException.class, () -> valueOfFunction.apply(tooHighValue));
+    }
 
     // Check that no other enum values exist besides those that are expected
     Method valuesFunction = getPublicStaticFunction(this.enumClass, VALUES_METHOD_NAME, new Class[0]);
@@ -106,6 +118,24 @@ public abstract class VeniceEnumValueTest<T extends VeniceEnumValue> {
       return function;
     } catch (NoSuchMethodException e) {
       fail("Class " + klass.getSimpleName() + " should have a " + functionName + " method!", e);
+      // N.B.: Although the return statement below is unreachable, since fail will throw, the compiler does not know
+      // that.
+      return null;
+    }
+  }
+
+  private static Field getPrivateStaticField(Class klass, String fieldName) {
+    try {
+      Field field = klass.getDeclaredField(fieldName);
+      assertTrue(
+          Modifier.isStatic(field.getModifiers()),
+          "Class " + klass.getSimpleName() + " should have a static " + fieldName + " field!");
+      assertTrue(
+          Modifier.isPrivate(field.getModifiers()),
+          "Class " + klass.getSimpleName() + " should have a private " + fieldName + " field!");
+      return field;
+    } catch (NoSuchFieldException e) {
+      fail("Class " + klass.getSimpleName() + " should have a " + fieldName + " field!", e);
       // N.B.: Although the return statement below is unreachable, since fail will throw, the compiler does not know
       // that.
       return null;

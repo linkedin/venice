@@ -59,6 +59,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
@@ -98,6 +99,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
+import static com.linkedin.venice.ConfigKeys.ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
 import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
@@ -136,6 +138,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
@@ -158,6 +161,7 @@ import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STA
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
@@ -167,6 +171,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -224,6 +229,7 @@ public class VeniceControllerClusterConfig {
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
+  private final String controllerResourceInstanceGroupTag;
   private final List<String> controllerInstanceTagList;
   private final boolean multiRegion;
   private final boolean parent;
@@ -434,6 +440,12 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean enabledIncrementalPushForHybridActiveActiveUserStores;
 
+  /**
+   * When the following option is enabled, new user hybrid store with incremental push enabled will automatically
+   * have separate real time topic enabled.
+   */
+  private final boolean enabledSeparateRealTimeTopicForStoreWithIncrementalPush;
+
   private final boolean enablePartialUpdateForHybridActiveActiveUserStores;
   private final boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
 
@@ -510,6 +522,8 @@ public class VeniceControllerClusterConfig {
   private final Set<String> childDatacenters;
   private final long serviceDiscoveryRegistrationRetryMS;
 
+  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -564,6 +578,8 @@ public class VeniceControllerClusterConfig {
     this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
     this.enabledIncrementalPushForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    this.enabledSeparateRealTimeTopicForStoreWithIncrementalPush =
+        props.getBoolean(ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH, false);
     this.enablePartialUpdateForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
     this.enablePartialUpdateForHybridNonActiveActiveUserStores =
@@ -637,6 +653,7 @@ public class VeniceControllerClusterConfig {
      */
     this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
+    this.controllerResourceInstanceGroupTag = props.getString(CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, "");
     this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, Collections.emptyList());
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
@@ -908,6 +925,7 @@ public class VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
+    this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
   }
 
   public VeniceProperties getProps() {
@@ -1132,6 +1150,10 @@ public class VeniceControllerClusterConfig {
     return enabledIncrementalPushForHybridActiveActiveUserStores;
   }
 
+  public boolean enabledSeparateRealTimeTopicForStoreWithIncrementalPush() {
+    return enabledSeparateRealTimeTopicForStoreWithIncrementalPush;
+  }
+
   public boolean isEnablePartialUpdateForHybridActiveActiveUserStores() {
     return enablePartialUpdateForHybridActiveActiveUserStores;
   }
@@ -1162,6 +1184,10 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerClusterName() {
     return controllerClusterName;
+  }
+
+  public String getControllerResourceInstanceGroupTag() {
+    return controllerResourceInstanceGroupTag;
   }
 
   public List<String> getControllerInstanceTagList() {
@@ -1683,5 +1709,26 @@ public class VeniceControllerClusterConfig {
   @FunctionalInterface
   interface PutToMap {
     void apply(Map<String, String> map, String key, String value, String errorMessage);
+  }
+
+  /**
+   * Parse the input to get the custom user error checkpoints for push jobs or use the default checkpoints.
+   */
+  static Set<PushJobCheckpoints> parsePushJobUserErrorCheckpoints(VeniceProperties props) {
+    if (props.containsKey(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR)) {
+      String pushJobUserErrorCheckpoints = props.getString(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR);
+      LOGGER.info("Using configured Push job user error checkpoints: {}", pushJobUserErrorCheckpoints);
+      return Utils.parseCommaSeparatedStringToSet(pushJobUserErrorCheckpoints)
+          .stream()
+          .map(checkpointStr -> PushJobCheckpoints.valueOf(checkpointStr))
+          .collect(Collectors.toSet());
+    } else {
+      LOGGER.info("Using default Push job user error checkpoints: {}", DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS);
+      return DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
+    }
+  }
+
+  public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
+    return pushJobUserErrorCheckpoints;
   }
 }

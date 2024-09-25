@@ -150,6 +150,10 @@ public interface Store {
 
   void setIncrementalPushEnabled(boolean incrementalPushEnabled);
 
+  boolean isSeparateRealTimeTopicEnabled();
+
+  void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled);
+
   boolean isAccessControlled();
 
   void setAccessControlled(boolean accessControlled);

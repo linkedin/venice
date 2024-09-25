@@ -1,8 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import com.linkedin.venice.utils.EnumUtils;
+import com.linkedin.venice.utils.VeniceEnumValue;
+import java.util.List;
 
 
 /**
@@ -21,7 +21,7 @@ import java.util.Map;
  *
  * TODO: Break this up in JobExecutionStatus and TaskExecutionStatus. It's pretty confusing to mix them ): ...
  */
-public enum ExecutionStatus {
+public enum ExecutionStatus implements VeniceEnumValue {
   /** Job doesn't yet exist */
   NOT_CREATED(true, false, false, false, 0),
 
@@ -139,6 +139,8 @@ public enum ExecutionStatus {
     this.value = value;
   }
 
+  private static final List<ExecutionStatus> TYPES = EnumUtils.getEnumValuesList(ExecutionStatus.class);
+
   /**
    * Some of the statuses are like watermark. These statuses are used in {@link PushMonitor} and
    * {@link com.linkedin.venice.router.api.VeniceVersionFinder} to determine whether a job is finished
@@ -178,24 +180,13 @@ public enum ExecutionStatus {
         || statusVal == END_OF_INCREMENTAL_PUSH_RECEIVED.getValue();
   }
 
+  @Override
   public int getValue() {
     return value;
   }
 
-  /**
-   * Get ExecutionStatus from integer ordinal value in avro.
-   */
-  private static final Map<Integer, ExecutionStatus> idMapping = new HashMap<>();
-  static {
-    Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
-  }
-
-  public static ExecutionStatus fromInt(int v) {
-    ExecutionStatus status = idMapping.get(v);
-    if (status == null) {
-      return ExecutionStatus.UNKNOWN;
-    }
-    return status;
+  public static ExecutionStatus valueOf(int value) {
+    return EnumUtils.valueOf(TYPES, value, ExecutionStatus.class);
   }
 
   public ExecutionStatus getRootStatus() {
