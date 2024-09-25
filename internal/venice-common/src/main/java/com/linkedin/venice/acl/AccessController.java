@@ -49,6 +49,16 @@ public interface AccessController {
   boolean isAllowlistUsers(X509Certificate clientCert, String resource, String method);
 
   /**
+   * Check whether the client is the allowlist admin users for store deletion.
+   *
+   * @param clientCert the X509Certificate submitted by client
+   * @param resource the resource being requested;
+   * @param method the operation (GET, POST, ...) to perform against the resource
+   * @return true if the client is admin
+   */
+  boolean isAllowlistUsersForStoreDeletion(X509Certificate clientCert, String resource, String method);
+
+  /**
    * Get principal Id from client certificate.
    * @param clientCert the X509Certificate submitted by client
    * @return principal Id. (headless account name, service name, LDAP id or group id)

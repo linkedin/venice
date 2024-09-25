@@ -93,6 +93,11 @@ public class ServerStoreAclHandlerTest {
     }
 
     @Override
+    public boolean isAllowlistUsersForStoreDeletion(X509Certificate clientCert, String resource, String method) {
+      return this.isAllowlistUsers(clientCert, resource, method);
+    }
+
+    @Override
     public String getPrincipalId(X509Certificate clientCert) {
       assertNotNull(clientCert, queryAction.toString());
       return "testPrincipalId";

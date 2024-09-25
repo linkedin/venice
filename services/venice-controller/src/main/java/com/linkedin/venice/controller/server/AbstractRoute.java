@@ -151,6 +151,23 @@ public class AbstractRoute {
   }
 
   /**
+   * Check whether the user is within the admin users allowlist.
+   */
+  protected boolean isAllowListUserForStoreDeletion(Request request) {
+    if (!isAclEnabled()) {
+      /**
+       * Grant access if it's not required to check ACL.
+       * {@link accessController} will be empty if ACL is not enabled.
+       */
+      return true;
+    }
+    X509Certificate certificate = getCertificate(request);
+
+    String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
+    return accessController.get().isAllowlistUsersForStoreDeletion(certificate, storeName, HTTP_GET);
+  }
+
+  /**
    * @return whether SSL is enabled
    */
   protected boolean isSslEnabled() {
