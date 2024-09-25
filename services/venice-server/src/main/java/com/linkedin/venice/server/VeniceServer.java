@@ -714,7 +714,13 @@ public class VeniceServer {
     return storageEngineName -> {
       String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
 
-      AbstractStorageEngine storageEngine = storageService.getStorageEngine(storageEngineName);
+      StorageEngineRepository storageEngineRepository = new StorageEngineRepository();
+
+      AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storageEngineName);
+
+      if (storageEngine == null) {
+        return true;
+      }
 
       PropertyKey.Builder propertyKeyBuilder =
           new PropertyKey.Builder(this.veniceConfigLoader.getVeniceClusterConfig().getClusterName());
