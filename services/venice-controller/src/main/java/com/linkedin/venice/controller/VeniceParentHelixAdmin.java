@@ -3787,6 +3787,14 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
+  @Override
+  public InstanceRemovableStatuses getInstanceRemovableStatuses(
+      String cluster,
+      Set<String> instances,
+      List<String> toBeStoppedInstances) {
+    throw new VeniceException("getReplicasOfStorageNode is not supported!");
+  }
+
   /**
    * @see VeniceHelixAdmin#isLeaderControllerFor(String)
    */

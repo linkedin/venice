@@ -25,6 +25,10 @@ public class ControllerApiConstants {
   public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
+
+  public static final String INSTANCES = "INSTANCES";
+  public static final String TO_BE_STOPPED_INSTANCES = "TO_BE_STOPPED_INSTANCES";
+
   public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";

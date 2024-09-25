@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -87,6 +88,9 @@ public class TestInstanceRemovable {
             client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
         Assert.assertTrue(
             client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
+        String a = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
+        String b = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
+        StoppableNodeStatusResponse statuses = client.getStoppableInstanceStatus(clusterName, a + "," + b, "");
 
         /*
          * This is the same scenario as we would do later in the following test steps.
@@ -182,6 +186,10 @@ public class TestInstanceRemovable {
     try (ControllerClient client = new ControllerClient(clusterName, urls)) {
       Assert.assertTrue(
           client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)).isRemovable());
+      String a = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
+      String b = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
+      StoppableNodeStatusResponse statuses = client.getStoppableInstanceStatus(clusterName, a + "," + b, "");
+
       Assert.assertFalse(
           client
               .isNodeRemovable(
