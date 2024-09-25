@@ -425,7 +425,7 @@ public class TestAvroSupersetSchemaUtils {
 
     Schema schema1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr1);
     Schema schema2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr2);
-    Schema supersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(schema2, schema1);
+    Schema supersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(schema1, schema2);
 
     Schema.Field intField = supersetSchema.getField("int_field");
     Schema.Field stringField = supersetSchema.getField("string_field");

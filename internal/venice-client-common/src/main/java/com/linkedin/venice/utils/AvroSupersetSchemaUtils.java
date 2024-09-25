@@ -159,7 +159,7 @@ public class AvroSupersetSchemaUtils {
 
       FieldBuilder fieldBuilder = deepCopySchemaField(f1);
       if (f2 != null) {
-        fieldBuilder.setSchema(generateSuperSetSchema(f2.schema(), f1.schema()))
+        fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
             .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
       }
       fields.add(fieldBuilder.build());
