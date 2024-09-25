@@ -43,6 +43,7 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.ServerReadMetadataRepository;
 import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -317,6 +318,9 @@ public class VeniceServer {
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
+    boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
+        || veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+
     // Create and add StorageService. storeRepository will be populated by StorageService
     storageService = new StorageService(
         veniceConfigLoader,
@@ -324,7 +328,10 @@ public class VeniceServer {
         rocksDBMemoryStats,
         storeVersionStateSerializer,
         partitionStateSerializer,
-        metadataRepo);
+        metadataRepo,
+        whetherToRestoreDataPartitions,
+        true,
+        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -697,6 +704,10 @@ public class VeniceServer {
 
   protected VeniceConfigLoader getConfigLoader() {
     return veniceConfigLoader;
+  }
+
+  protected final boolean isIsolatedIngestion() {
+    return veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
