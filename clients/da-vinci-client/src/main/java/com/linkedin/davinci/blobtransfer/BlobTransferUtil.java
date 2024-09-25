@@ -1,9 +1,12 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 
-import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
+import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -21,27 +24,35 @@ public class BlobTransferUtil {
    * @param p2pTransferPort, the port used by the P2P transfer server and client
    * @param baseDir, the base directory of the underlying storage
    * @param clientConfig, the client config to start up a transport client
+   * @param storageMetadataService, the storage metadata service
    * @return the blob transfer manager
    * @throws Exception
    */
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
       int p2pTransferPort,
       String baseDir,
-      ClientConfig clientConfig) {
-    return getP2PBlobTransferManagerForDVCAndStart(p2pTransferPort, p2pTransferPort, baseDir, clientConfig);
+      ClientConfig clientConfig,
+      StorageMetadataService storageMetadataService) {
+    return getP2PBlobTransferManagerForDVCAndStart(
+        p2pTransferPort,
+        p2pTransferPort,
+        baseDir,
+        clientConfig,
+        storageMetadataService);
   }
 
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
       int p2pTransferServerPort,
       int p2pTransferClientPort,
       String baseDir,
-      ClientConfig clientConfig) {
+      ClientConfig clientConfig,
+      StorageMetadataService storageMetadataService) {
     try {
       AbstractAvroStoreClient storeClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir),
-          new NettyFileTransferClient(p2pTransferClientPort, baseDir),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService),
+          new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient));
       manager.start();
       return manager;
@@ -64,11 +75,12 @@ public class BlobTransferUtil {
       int p2pTransferServerPort,
       int p2pTransferClientPort,
       String baseDir,
-      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture) {
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture,
+      StorageMetadataService storageMetadataService) {
     try {
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir),
-          new NettyFileTransferClient(p2pTransferClientPort, baseDir),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService),
+          new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture));
       manager.start();
       return manager;

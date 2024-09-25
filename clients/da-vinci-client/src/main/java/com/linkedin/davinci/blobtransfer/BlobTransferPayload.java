@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composeSnapshotDir;
@@ -30,5 +30,13 @@ public class BlobTransferPayload {
 
   public String getFullResourceName() {
     return Utils.getReplicaId(topicName, partition);
+  }
+
+  public String getTopicName() {
+    return topicName;
+  }
+
+  public int getPartition() {
+    return partition;
   }
 }

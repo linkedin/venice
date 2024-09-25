@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;

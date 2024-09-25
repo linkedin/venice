@@ -1,9 +1,10 @@
-package com.linkedin.venice.blobtransfer.client;
+package com.linkedin.davinci.blobtransfer.client;
 
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
-import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 
-import com.linkedin.venice.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -15,6 +16,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.ReferenceCountUtil;
 import java.io.InputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -63,6 +65,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       if (!response.status().equals(HttpResponseStatus.OK)) {
         throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
       }
+      // redirect the message to the next handler if it's a metadata transfer
+      boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
+      if (isMetadataMessage) {
+        ReferenceCountUtil.retain(msg);
+        ctx.fireChannelRead(msg);
+        return;
+      }
+
       // Already end of transfer. Close the connection and completes the future
       if (response.headers().get(BLOB_TRANSFER_STATUS) != null
           && response.headers().get(BLOB_TRANSFER_STATUS).equals(BLOB_TRANSFER_COMPLETED)) {
@@ -72,11 +82,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       // Parse the file name
       this.fileName = getFileNameFromHeader(response);
-
       if (this.fileName == null) {
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
-      LOGGER.info("Starting blob transfer for file: {}", fileName);
+      LOGGER.debug("Starting blob transfer for file: {}", fileName);
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
       // Create the directory
@@ -91,8 +100,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       HttpContent content = (HttpContent) msg;
       ByteBuf byteBuf = content.content();
       if (byteBuf.readableBytes() == 0) {
-        // hit EMPTY_LAST_CONTENT, it indicates the end of all file transfer.
-        // Skip it since it's not going to be used
         return;
       }
       // defensive check
