@@ -136,7 +136,8 @@ public class TestEmptyPush {
       PubSubTopic storeRealTimeTopic =
           venice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName));
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
-
+      // One time refresh of router metadata.
+      venice.refreshAllRouterMetaData();
       // Start writing some real-time records
       SystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducer(venice, storeName, Version.PushType.STREAM);
