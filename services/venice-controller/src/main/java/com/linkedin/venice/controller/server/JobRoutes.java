@@ -4,7 +4,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -13,7 +12,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.KILL_OFFLINE_PUSH_JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DETAILS;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -30,8 +28,6 @@ import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
-import org.apache.avro.io.DatumReader;
-import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -165,18 +161,7 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
-        PushJobDetails pushJobDetails;
-        // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
-        if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
-          String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
-          DatumReader<PushJobDetails> reader =
-              new SpecificDatumReader<>(PushJobDetails.getClassSchema(), PushJobDetails.getClassSchema());
-          pushJobDetails = reader.read(
-              null,
-              AvroCompatibilityHelper.newCompatibleJsonDecoder(PushJobDetails.getClassSchema(), pushJobDetailsString));
-        } else {
-          pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
-        }
+        PushJobDetails pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         admin.sendPushJobDetails(key, pushJobDetails);
 
         if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {

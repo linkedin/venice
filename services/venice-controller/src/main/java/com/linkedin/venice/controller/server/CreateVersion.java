@@ -306,7 +306,12 @@ public class CreateVersion extends AbstractRoute {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
             } else if (pushType.isIncremental()) {
               isTopicRT = true;
-              responseTopic = Version.composeRealTimeTopic(storeName);
+              if (version.isSeparateRealTimeTopicEnabled()) {
+                admin.getSeparateRealTimeTopic(clusterName, storeName);
+                responseTopic = Version.composeSeparateRealTimeTopic(storeName);
+              } else {
+                responseTopic = Version.composeRealTimeTopic(storeName);
+              }
               // disable amplificationFactor logic on real-time topic
               responseObject.setAmplificationFactor(1);
 

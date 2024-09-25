@@ -27,6 +27,13 @@ dependencies {
     exclude group: 'javax.servlet'
   }
 
+  implementation (libraries.hadoopHdfs) {
+    // Exclude transitive dependency
+    exclude group: 'org.apache.avro'
+    exclude group: 'javax.servlet'
+    exclude group: 'com.fasterxml.jackson.core'
+  }
+
   implementation (libraries.apacheSparkAvro) {
     // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
     // onwards, avro-mapred is no longer published with a hadoop2 classifier, but Gradle still looks for one.

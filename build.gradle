@@ -85,6 +85,7 @@ ext.libraries = [
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
+    hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.3',
     httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.4',
@@ -125,7 +126,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.11.4',
+    tehuti: 'io.tehuti:tehuti:0.12.2',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',

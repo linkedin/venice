@@ -214,6 +214,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+  // What instance group tag to assign to a cluster resource
+  public static final String CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG = "controller.resource.instance.group.tag";
   // What tags to assign to a controller instance
   public static final String CONTROLLER_INSTANCE_TAG_LIST = "controller.instance.tag.list";
 
@@ -1190,6 +1192,14 @@ public class ConfigKeys {
    */
   public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
       "enable.incremental.push.for.hybrid.active.active.user.stores";
+
+  /**
+   * We will use this config to determine whether we should enable separate real-time topic for incremental push enabled stores.
+   * If this config is set to true, we will enable separate real-time topic for incremental push enabled stores.
+   */
+  public static final String ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH =
+      "enable.separate.real.time.topic.for.store.with.incremental.push";
+
   /**
    * We will use this config to determine whether we should enable partial update for hybrid active-active user stores.
    * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value
@@ -2171,6 +2181,19 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
+
+  /**
+   * Configure in controllers to provide a custom list of checkpoints to define user errors and to
+   * override the default checkpoint list {@link PushJobCheckpoints#DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS}.
+   * This is useful to emit the push job failure metrics due to user errors or not due
+   * to user errors based on the custom checkpoint list.
+   *
+   * Check {@link PushJobCheckpoints} for the list of supported checkpoints: Config should contain one or more
+   * of the checkpoints strings separated by comma. In case of invalid config, the default list of checkpoints
+   * will be used.
+   */
+  public static final String PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR =
+      "push.job.failure.checkpoints.to.define.user.error";
 
   /**
    * Config for the default value which is filled in when the store-level config

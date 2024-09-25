@@ -152,6 +152,8 @@ public abstract class AbstractStore implements Store {
 
       version.setIncrementalPushEnabled(isIncrementalPushEnabled());
 
+      version.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
+
       version.setBlobTransferEnabled(isBlobTransferEnabled());
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
