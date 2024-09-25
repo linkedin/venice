@@ -49,6 +49,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
@@ -1704,6 +1705,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getRealTimeTopic(clusterName, storeName);
   }
 
+  @Override
+  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
+    return getVeniceHelixAdmin().getSeparateRealTimeTopic(clusterName, storeName);
+  }
+
   /**
    * A couple of extra checks are needed in parent controller
    * 1. check batch job statuses across child controllers. (We cannot only check the version status
@@ -2229,6 +2235,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
+      Optional<Boolean> separateRealTimeTopicEnabled = params.getSeparateRealTimeTopicEnabled();
       Optional<Boolean> storeMigration = params.getStoreMigration();
       Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
       Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
@@ -2460,6 +2467,13 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.incrementalPushEnabled = true;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
       }
+      // Enable separate real-time topic automatically when incremental push is enabled and cluster config allows it.
+      if (setStore.incrementalPushEnabled
+          && controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()) {
+        setStore.separateRealTimeTopicEnabled = true;
+        updatedConfigsList.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
+      }
+
       // When turning off hybrid store, we will also turn off incremental store config.
       if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
         setStore.incrementalPushEnabled = false;
@@ -2583,6 +2597,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.blobTransferEnabled = params.getBlobTransferEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_ENABLED))
           .orElseGet(currStore::isBlobTransferEnabled);
+
+      setStore.separateRealTimeTopicEnabled =
+          separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
+              .orElseGet(currStore::isSeparateRealTimeTopicEnabled);
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {

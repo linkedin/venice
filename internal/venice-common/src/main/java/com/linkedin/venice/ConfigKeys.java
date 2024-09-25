@@ -1192,6 +1192,14 @@ public class ConfigKeys {
    */
   public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
       "enable.incremental.push.for.hybrid.active.active.user.stores";
+
+  /**
+   * We will use this config to determine whether we should enable separate real-time topic for incremental push enabled stores.
+   * If this config is set to true, we will enable separate real-time topic for incremental push enabled stores.
+   */
+  public static final String ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH =
+      "enable.separate.real.time.topic.for.store.with.incremental.push";
+
   /**
    * We will use this config to determine whether we should enable partial update for hybrid active-active user stores.
    * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value
