@@ -6,7 +6,6 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -79,13 +78,12 @@ public class DefaultIngestionBackendTest {
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
 
     // Create the DefaultIngestionBackend instance with mocked dependencies
-    ingestionBackend = spy(
-        new DefaultIngestionBackend(
-            storageMetadataService,
-            storeIngestionService,
-            storageService,
-            blobTransferManager,
-            veniceServerConfig));
+    ingestionBackend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        veniceServerConfig);
   }
 
   // verify that blobTransferManager was called given it is a hybrid & blob enabled

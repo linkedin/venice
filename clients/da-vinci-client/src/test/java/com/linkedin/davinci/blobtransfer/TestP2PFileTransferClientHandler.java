@@ -7,7 +7,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTy
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.davinci.blobtransfer.client.ConditionalHttpObjectAggregator;
+import com.linkedin.davinci.blobtransfer.client.MetadataAggregator;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
 import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -22,6 +22,7 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
+import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -83,10 +84,7 @@ public class TestP2PFileTransferClientHandler {
 
     Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
 
-    ch = new EmbeddedChannel(
-        new ConditionalHttpObjectAggregator(1024 * 1024 * 100),
-        clientFileHandler,
-        clientMetadataHandler);
+    ch = new EmbeddedChannel(new MetadataAggregator(1024 * 1024 * 100), clientFileHandler, clientMetadataHandler);
   }
 
   @AfterMethod
@@ -260,19 +258,19 @@ public class TestP2PFileTransferClientHandler {
     String metadataJson = objectMapper.writeValueAsString(expectedMetadata);
     byte[] metadataBytes = metadataJson.getBytes(CharsetUtil.UTF_8);
 
-    DefaultHttpResponse metadataResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    FullHttpResponse metadataResponse = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.OK,
+        Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
     metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
-
-    HttpContent metadataChunk = new DefaultLastHttpContent(Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
 
     DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
 
     // Simulate inbound data for the metadata response
     ch.writeInbound(metadataResponse);
-    ch.writeInbound(metadataChunk);
     ch.writeInbound(endOfTransfer);
 
     // Ensure the future is completed
@@ -284,59 +282,6 @@ public class TestP2PFileTransferClientHandler {
     Assert.assertEquals(actualMetadata.getTopicName(), expectedMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectedMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectedMetadata.getOffsetRecord());
-    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
-  }
-
-  @Test
-  public void testMultiChunkMetadataTransfer()
-      throws JsonProcessingException, ExecutionException, InterruptedException, TimeoutException {
-    BlobTransferPartitionMetadata expectMetadata = new BlobTransferPartitionMetadata();
-    expectMetadata.setTopicName(TEST_STORE + "_v" + TEST_VERSION);
-    expectMetadata.setPartitionId(TEST_PARTITION);
-    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setOffsetLag(1000L);
-    expectMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
-
-    // Serialize metadata to JSON
-    ObjectMapper objectMapper = new ObjectMapper();
-    String metadataJson = objectMapper.writeValueAsString(expectMetadata);
-    byte[] metadataBytes = metadataJson.getBytes(CharsetUtil.UTF_8);
-
-    // Create metadata HTTP response
-    DefaultHttpResponse metadataResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
-    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
-    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
-
-    // Sending metadata in multiple chunks
-    int chunkSize = metadataBytes.length / 3; // Divide the metadata into 3 chunks
-    HttpContent metadataChunk1 = new DefaultHttpContent(Unpooled.copiedBuffer(metadataBytes, 0, chunkSize));
-    HttpContent metadataChunk2 = new DefaultHttpContent(Unpooled.copiedBuffer(metadataBytes, chunkSize, chunkSize));
-    HttpContent metadataChunk3 = new DefaultLastHttpContent(
-        Unpooled.copiedBuffer(metadataBytes, 2 * chunkSize, metadataBytes.length - 2 * chunkSize));
-
-    // End of transfer response
-    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-
-    // Simulate inbound data for the multi-chunk metadata transfer
-    ch.writeInbound(metadataResponse);
-    ch.writeInbound(metadataChunk1);
-    ch.writeInbound(metadataChunk2);
-    ch.writeInbound(metadataChunk3);
-    ch.writeInbound(endOfTransfer);
-
-    // Ensure the future is completed
-    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
-
-    // Verify that the metadata was correctly parsed and handled
-    BlobTransferPartitionMetadata actualMetadata = clientMetadataHandler.getMetadata();
-    Assert.assertNotNull(actualMetadata);
-    Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
-    Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
-    Assert.assertEquals(actualMetadata.getOffsetRecord(), expectMetadata.getOffsetRecord());
     Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
   }
 
@@ -384,17 +329,17 @@ public class TestP2PFileTransferClientHandler {
     String metadataJson = objectMapper.writeValueAsString(expectMetadata);
     byte[] metadataBytes = metadataJson.getBytes(CharsetUtil.UTF_8);
     // Metadata HTTP response
-    DefaultHttpResponse metadataResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    FullHttpResponse metadataResponse = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.OK,
+        Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
     metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
     metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
 
-    // Metadata content
-    HttpContent metadataChunk = new DefaultLastHttpContent(Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
-
     // Simulate inbound data for the metadata transfer
     ch.writeInbound(metadataResponse);
-    ch.writeInbound(metadataChunk);
+
     // End of metadata transfer
     DefaultHttpResponse endOfMetadataTransfer =
         new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);

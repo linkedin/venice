@@ -2,10 +2,9 @@ package com.linkedin.davinci.blobtransfer.client;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -67,8 +66,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
       }
       // redirect the message to the next handler if it's a metadata transfer
-      String blobTransferType = response.headers().get(BLOB_TRANSFER_TYPE);
-      if (blobTransferType != null && blobTransferType.equals(BlobTransferType.METADATA.toString())) {
+      boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
+      if (isMetadataMessage) {
         ReferenceCountUtil.retain(msg);
         ctx.fireChannelRead(msg);
         return;

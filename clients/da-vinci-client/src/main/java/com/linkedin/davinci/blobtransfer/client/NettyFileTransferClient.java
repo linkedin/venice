@@ -59,7 +59,7 @@ public class NettyFileTransferClient {
       // Attach the file handler to the pipeline
       // Attach the metadata handler to the pipeline
       ch.pipeline()
-          .addLast(new ConditionalHttpObjectAggregator(MAX_METADATA_CONTENT_LENGTH))
+          .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
           .addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition))
           .addLast(new P2PMetadataTransferHandler(storageMetadataService, baseDir, storeName, version, partition));
       // Send a GET request

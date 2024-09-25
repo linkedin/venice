@@ -1,6 +1,5 @@
 package com.linkedin.davinci.blobtransfer.client;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
@@ -18,7 +17,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,9 +58,9 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
         metadata);
   }
 
-  public void processMetadata(FullHttpResponse msg) throws JsonProcessingException {
+  private void processMetadata(FullHttpResponse msg) throws IOException {
     if (!msg.status().equals(HttpResponseStatus.OK)) {
-      throw new VeniceException("Failed to fetch file from remote peer. Response: " + msg.status());
+      throw new VeniceException("Failed to fetch metadata from remote peer. Response: " + msg.status());
     }
 
     ByteBuf content = msg.content();
@@ -69,9 +68,8 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
     content.readBytes(metadataBytes);
     BlobTransferPartitionMetadata transferredMetadata =
-        objectMapper.readValue(new String(metadataBytes, StandardCharsets.UTF_8), BlobTransferPartitionMetadata.class);
+        objectMapper.readValue(metadataBytes, BlobTransferPartitionMetadata.class);
     if (transferredMetadata == null) {
-      LOGGER.error("No transferPartitionMetadata received for topic {}. ", payload.getTopicName());
       throw new VeniceException("No transferPartitionMetadata received for topic " + payload.getTopicName());
     }
 

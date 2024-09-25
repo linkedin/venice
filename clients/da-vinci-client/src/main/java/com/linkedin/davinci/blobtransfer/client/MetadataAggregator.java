@@ -6,11 +6,11 @@ import io.netty.handler.codec.http.HttpResponse;
 
 
 /**
- * ConditionalHttpObjectAggregator is a custom HttpObjectAggregator that
+ * MetadataAggregator is a custom HttpObjectAggregator that
  * only aggregated HttpResponse messages for metadata.
  */
-public class ConditionalHttpObjectAggregator extends HttpObjectAggregator {
-  public ConditionalHttpObjectAggregator(int maxContentLength) {
+public class MetadataAggregator extends HttpObjectAggregator {
+  public MetadataAggregator(int maxContentLength) {
     super(maxContentLength);
   }
 
@@ -19,20 +19,12 @@ public class ConditionalHttpObjectAggregator extends HttpObjectAggregator {
     if (msg instanceof HttpResponse) {
       HttpResponse httpMessage = (HttpResponse) msg;
       // only accept metadata messages to be aggregated
-      if (isMetadataMessage(httpMessage)) {
+      if (BlobTransferUtils.isMetadataMessage(httpMessage)) {
         return super.acceptInboundMessage(msg);
       } else {
         return false;
       }
     }
     return super.acceptInboundMessage(msg);
-  }
-
-  private boolean isMetadataMessage(HttpResponse msg) {
-    String metadataHeader = msg.headers().get(BlobTransferUtils.BLOB_TRANSFER_TYPE);
-    if (metadataHeader == null) {
-      return false;
-    }
-    return metadataHeader.equals(BlobTransferUtils.BlobTransferType.METADATA.name());
   }
 }

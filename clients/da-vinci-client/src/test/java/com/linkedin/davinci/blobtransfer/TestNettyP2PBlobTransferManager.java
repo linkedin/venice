@@ -8,7 +8,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
@@ -32,7 +31,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.BiConsumer;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -46,8 +44,6 @@ public class TestNettyP2PBlobTransferManager {
   NettyFileTransferClient client;
   NettyP2PBlobTransferManager manager;
   StorageMetadataService storageMetadataService;
-  StorageService storageService;
-  BiConsumer<String, StoreVersionState> storeVersionStateSyncer;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
   String TEST_STORE = "test_store";
@@ -64,12 +60,6 @@ public class TestNettyP2PBlobTransferManager {
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     storageMetadataService = mock(StorageMetadataService.class);
     server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), storageMetadataService);
-
-    storageService = mock(StorageService.class);
-    storeVersionStateSyncer = mock(BiConsumer.class);
-    Mockito.doNothing().when(storeVersionStateSyncer).accept(anyString(), Mockito.any());
-    Mockito.doReturn(storeVersionStateSyncer).when(storageService).getStoreVersionStateSyncer();
-
     client = new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService);
     finder = mock(BlobFinder.class);
 
@@ -186,6 +176,11 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file1), Files.readAllBytes(destFile1)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
+
+    // Verify the metadata is retrieved
+    Mockito.verify(storageMetadataService, Mockito.times(1))
+        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(storageMetadataService, Mockito.times(1)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
 
     // Verify the record is updated
     Mockito.verify(storageMetadataService, Mockito.times(1))
