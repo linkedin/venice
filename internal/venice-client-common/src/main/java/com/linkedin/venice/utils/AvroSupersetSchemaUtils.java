@@ -83,7 +83,7 @@ public class AvroSupersetSchemaUtils {
       case MAP:
         return Schema.createMap(generateSuperSetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
-        return unionSchema(existingSchema, newSchema);
+        return unionSchema(newSchema, existingSchema);
       default:
         throw new VeniceException("Super set schema not supported");
     }
@@ -93,8 +93,8 @@ public class AvroSupersetSchemaUtils {
    * Merge union schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
    * generate the superset schema of these two versions of the same field, with new schema's information taking higher
    * priority.
-   * @param s1 old union schema
-   * @param s2 new union schema
+   * @param s1 new union schema
+   * @param s2 old union schema
    * @return merged schema field
    */
   private static Schema unionSchema(Schema s1, Schema s2) {
@@ -111,7 +111,6 @@ public class AvroSupersetSchemaUtils {
       }
     }
     s2Schema.forEach((k, v) -> combinedSchema.add(v));
-
     return Schema.createUnion(combinedSchema);
   }
 
@@ -159,7 +158,7 @@ public class AvroSupersetSchemaUtils {
 
       FieldBuilder fieldBuilder = deepCopySchemaField(f1);
       if (f2 != null) {
-        fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
+        fieldBuilder.setSchema(generateSuperSetSchema(f2.schema(), f1.schema()))
             .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
       }
       fields.add(fieldBuilder.build());
