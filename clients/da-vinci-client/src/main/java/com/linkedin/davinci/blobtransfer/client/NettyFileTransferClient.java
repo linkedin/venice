@@ -1,5 +1,6 @@
-package com.linkedin.venice.blobtransfer.client;
+package com.linkedin.davinci.blobtransfer.client;
 
+import com.linkedin.davinci.storage.StorageMetadataService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -22,16 +23,20 @@ import org.apache.logging.log4j.Logger;
 
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
+  private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
   private final int serverPort;
+  private StorageMetadataService storageMetadataService;
 
   // TODO 1: move tunable configs to a config class
   // TODO 2: consider either increasing worker threads or have a dedicated thread pool to handle requests.
-  public NettyFileTransferClient(int serverPort, String baseDir) {
+  public NettyFileTransferClient(int serverPort, String baseDir, StorageMetadataService storageMetadataService) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
+    this.storageMetadataService = storageMetadataService;
+
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
     clientBootstrap.group(workerGroup);
@@ -50,8 +55,13 @@ public class NettyFileTransferClient {
     // Connects to the remote host
     try {
       Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
+      // Request to get the blob file and metadata
       // Attach the file handler to the pipeline
-      ch.pipeline().addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition));
+      // Attach the metadata handler to the pipeline
+      ch.pipeline()
+          .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
+          .addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition))
+          .addLast(new P2PMetadataTransferHandler(storageMetadataService, baseDir, storeName, version, partition));
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition));
     } catch (Exception e) {

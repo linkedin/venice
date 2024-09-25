@@ -1,7 +1,9 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
-import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.venice.blobtransfer.BlobFinder;
+import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.List;

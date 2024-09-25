@@ -1,4 +1,4 @@
-package com.linkedin.venice.blobtransfer;
+package com.linkedin.davinci.blobtransfer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.concurrent.CompletionStage;
