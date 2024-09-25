@@ -20,6 +20,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
@@ -65,6 +66,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZ
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -911,6 +913,17 @@ public class ControllerClient implements Closeable {
 
   public MultiNodeResponse listStorageNodes() {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
+  }
+
+  public StoppableNodeStatusResponse getStoppableInstanceStatus(
+      String clusterName,
+      String instances,
+      String toBeStoppedInstances) {
+    QueryParams params = newParams().add(CLUSTER, clusterName)
+        .add(INSTANCES, instances)
+        .add(TO_BE_STOPPED_INSTANCES, toBeStoppedInstances);
+
+    return request(ControllerRoute.CLUSTER_HEALTH_STATUS, params, StoppableNodeStatusResponse.class);
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {

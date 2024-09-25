@@ -532,6 +532,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
   TopicManager getTopicManager(String pubSubServerAddress);
 
+  InstanceRemovableStatuses getInstanceRemovableStatuses(
+      String cluster,
+      Set<String> instances,
+      List<String> toBeStoppedInstances);
+
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
    * either a parent controller or a child controller since a cluster must have a leader child controller and a leader

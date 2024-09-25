@@ -112,6 +112,7 @@ import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
+import static com.linkedin.venice.Arg.STORAGE_NODES;
 import static com.linkedin.venice.Arg.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
@@ -121,6 +122,7 @@ import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
+import static com.linkedin.venice.Arg.TO_BE_STOPPED_NODES;
 import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
@@ -544,6 +546,11 @@ public enum Command {
       "extract-venice-zk-paths",
       "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
       new Arg[] { INFILE, OUTFILE, CLUSTER_LIST, BASE_PATH }
+  ),
+  CLUSTER_HEALTH_STATUS(
+      "cluster-health-status",
+      "Returns the set of instances which can be safely remove and instances which cannot be removed.",
+      new Arg[] { URL, CLUSTER, TO_BE_STOPPED_NODES, STORAGE_NODES }
   );
 
   private final String commandName;
