@@ -219,7 +219,7 @@ public class DaVinciClientDiskFullTest {
 
       // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
-
+      venice.refreshAllRouterMetaData();
       // Verify some records (note, record 1 have been pushed)
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         try {

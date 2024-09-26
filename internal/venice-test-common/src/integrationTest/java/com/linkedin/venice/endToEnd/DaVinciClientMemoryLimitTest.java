@@ -167,6 +167,7 @@ public class DaVinciClientMemoryLimitTest {
 
       // Do an VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
+      venice.refreshAllRouterMetaData();
 
       // Verify some records (note, records 1-100 have been pushed)
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
