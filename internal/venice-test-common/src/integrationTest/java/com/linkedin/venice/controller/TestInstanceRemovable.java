@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -88,10 +89,11 @@ public class TestInstanceRemovable {
             client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
         Assert.assertTrue(
             client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
-        String a = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
-        String b = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
-        StoppableNodeStatusResponse statuses = client.getStoppableInstanceStatus(clusterName, a + "," + b, "");
-
+        String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
+        String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
+        StoppableNodeStatusResponse statuses =
+            client.getAggregatedHealthStatus(clusterName, server2 + "," + server1, "");
+        Assert.assertEquals(statuses.getStoppableInstances().size(), 2);
         /*
          * This is the same scenario as we would do later in the following test steps.
          * If hosts serverPort1 and serverPort2 were stopped, host serverPort3 would still be removable.
@@ -185,10 +187,20 @@ public class TestInstanceRemovable {
      */
     try (ControllerClient client = new ControllerClient(clusterName, urls)) {
       Assert.assertTrue(
-          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)).isRemovable());
-      String a = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
-      String b = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
-      StoppableNodeStatusResponse statuses = client.getStoppableInstanceStatus(clusterName, a + "," + b, "");
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
+      String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
+      String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
+      String server3 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3);
+
+      StoppableNodeStatusResponse statuses = client.getAggregatedHealthStatus(clusterName, server1, "");
+      Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
+
+      statuses = client.getAggregatedHealthStatus(clusterName, server3 + "," + server1, "");
+      Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server3));
+      Assert.assertTrue(statuses.getNonStoppableInstances().containsKey(server1));
+      Assert.assertTrue(
+          statuses.getNonStoppableInstances()
+              .containsValue(InstanceRemovableStatuses.NonStoppableReason.MIN_ACTIVE_REPLICA_VIOLATION.name()));
 
       Assert.assertFalse(
           client
