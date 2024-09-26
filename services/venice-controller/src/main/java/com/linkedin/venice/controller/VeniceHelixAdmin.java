@@ -6563,7 +6563,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     Map<String, String> nonStoppableInstances = new HashMap<>();
-    List<String> stoppableInstances = new ArrayList<>();
+    List<String> stoppableInstances = new ArrayList<>(toBeStoppedInstances);
     statuses.setNonStoppableInstances(nonStoppableInstances);
     statuses.setStoppableInstances(stoppableInstances);
 
