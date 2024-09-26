@@ -3097,7 +3097,6 @@ public class VeniceParentHelixAdmin implements Admin {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
-
         if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
           doUpdateSupersetSchemaID = true;
 
@@ -3143,7 +3142,6 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         doUpdateSupersetSchemaID = false;
       }
-
       SchemaEntry addedSchemaEntry =
           addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId, doUpdateSupersetSchemaID);
 
