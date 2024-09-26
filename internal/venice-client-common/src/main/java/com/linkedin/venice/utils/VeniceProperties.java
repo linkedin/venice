@@ -389,6 +389,10 @@ public class VeniceProperties implements Serializable {
     }
 
     String value = get(key);
+    if (value.isEmpty()) {
+      return defaultValue;
+    }
+
     String[] pieces = value.split("\\s*,\\s*");
     return Arrays.asList(pieces);
   }
@@ -402,6 +406,10 @@ public class VeniceProperties implements Serializable {
       value = get(preferredKey);
     } else if (containsKey(altKey)) {
       value = get(altKey);
+    }
+
+    if (value.isEmpty()) {
+      return defaultValue;
     }
 
     String[] pieces = value.split("\\s*,\\s*");
