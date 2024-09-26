@@ -6,6 +6,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V4_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V5_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V6_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -36,7 +37,7 @@ public class TestAvroSupersetSchemaUtils {
         AvroSchemaUtils.generateSupersetSchemaFromAllValueSchemas(Arrays.asList(schemaEntry1, schemaEntry2));
 
     final Schema expectedSupersetSchema =
-        AvroSupersetSchemaUtils.generateSuperSetSchema(schemaEntry1.getSchema(), schemaEntry2.getSchema());
+        AvroSupersetSchemaUtils.generateSupersetSchema(schemaEntry1.getSchema(), schemaEntry2.getSchema());
     Assert.assertTrue(
         AvroSchemaUtils.compareSchemaIgnoreFieldOrder(expectedSupersetSchema, supersetSchemaEntry.getSchema()));
     Assert.assertEquals(supersetSchemaEntry.getId(), 2);
@@ -142,7 +143,7 @@ public class TestAvroSupersetSchemaUtils {
 
     Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr1);
     Schema existingValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr2);
-    Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
+    Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSupersetSchema(existingValueSchema, newValueSchema);
     Assert.assertTrue(
         new SchemaEntry(1, valueSchemaStr2)
             .isNewSchemaCompatible(new SchemaEntry(2, newSuperSetSchema), DirectionalSchemaCompatibilityType.FULL));
@@ -161,7 +162,7 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertNotEquals(s1, s2);
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s2, s1);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s2, s1);
     Assert.assertNotNull(s3);
     Assert.assertNotNull(
         AvroCompatibilityHelper.getSchemaPropAsJsonString(s3.getField("name").schema(), "avro.java.string"));
@@ -177,7 +178,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3);
   }
 
@@ -191,7 +192,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3);
   }
 
@@ -206,7 +207,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("id1"));
     Assert.assertNotNull(s3.getField("id2"));
   }
@@ -222,7 +223,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("id1"));
     Assert.assertNotNull(s3.getField("id2"));
   }
@@ -237,7 +238,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
 
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
-    AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
   }
 
   @Test
@@ -251,9 +252,25 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("company"));
     Assert.assertNotNull(s3.getField("organization"));
+  }
+
+  @Test
+  public void testSchemaMergeUnionWithComplexItemType() {
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(loadFileAsString("UnionV1.avsc"));
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(loadFileAsString("UnionV2.avsc"));
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Assert.assertNotNull(s3.getField("age"));
+    Assert.assertNotNull(s3.getField("field"));
+    Schema.Field subFieldInS2 = s2.getField("field");
+    Schema.Field subFieldInS3 = s3.getField("field");
+    Assert.assertEquals(subFieldInS3.defaultVal(), subFieldInS2.defaultVal());
+    Schema unionSubFieldInS2 = subFieldInS2.schema().getTypes().get(1);
+    Schema unionSubFieldInS3 = subFieldInS3.schema().getTypes().get(1);
+    Assert.assertEquals(unionSubFieldInS3, unionSubFieldInS2);
   }
 
   @Test
@@ -280,7 +297,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(recordSchemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(s3);
   }
 
@@ -309,7 +326,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
 
-    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Schema s3 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
     Assert.assertNotNull(AvroSchemaUtils.getFieldDefault(s3.getField("salary")));
   }
 
@@ -333,7 +350,7 @@ public class TestAvroSupersetSchemaUtils {
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
 
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
-    AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
   }
 
   @Test
@@ -425,7 +442,7 @@ public class TestAvroSupersetSchemaUtils {
 
     Schema schema1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr1);
     Schema schema2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr2);
-    Schema supersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(schema1, schema2);
+    Schema supersetSchema = AvroSupersetSchemaUtils.generateSupersetSchema(schema1, schema2);
 
     Schema.Field intField = supersetSchema.getField("int_field");
     Schema.Field stringField = supersetSchema.getField("string_field");
@@ -495,7 +512,7 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertNotEquals(NAME_RECORD_V5_SCHEMA, NAME_RECORD_V6_SCHEMA);
     // Test validation skip comparing props when checking for subset schema.
     Schema supersetSchemaForV5AndV4 =
-        AvroSupersetSchemaUtils.generateSuperSetSchema(NAME_RECORD_V5_SCHEMA, NAME_RECORD_V4_SCHEMA);
+        AvroSupersetSchemaUtils.generateSupersetSchema(NAME_RECORD_V5_SCHEMA, NAME_RECORD_V4_SCHEMA);
     Assert.assertTrue(
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V5_SCHEMA, supersetSchemaForV5AndV4.toString()));
     Assert.assertTrue(

@@ -26,7 +26,7 @@ public class AvroSupersetSchemaUtils {
    * @return True if {@param s1} is {@param s2}'s superset schema and false otherwise.
    */
   public static boolean isSupersetSchema(Schema s1, Schema s2) {
-    final Schema supersetSchema = generateSuperSetSchema(s1, s2);
+    final Schema supersetSchema = generateSupersetSchema(s1, s2);
     return AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, supersetSchema);
   }
 
@@ -39,7 +39,7 @@ public class AvroSupersetSchemaUtils {
    * @param newSchema schema to be added.
    * @return super-set schema of existingSchema abd newSchema
    */
-  public static Schema generateSuperSetSchema(Schema existingSchema, Schema newSchema) {
+  public static Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
     if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
@@ -76,14 +76,14 @@ public class AvroSupersetSchemaUtils {
 
         Schema superSetSchema = Schema
             .createRecord(existingSchema.getName(), existingSchema.getDoc(), existingSchema.getNamespace(), false);
-        superSetSchema.setFields(mergeFieldSchemas(newSchema, existingSchema));
+        superSetSchema.setFields(mergeFieldSchemas(existingSchema, newSchema));
         return superSetSchema;
       case ARRAY:
-        return Schema.createArray(generateSuperSetSchema(existingSchema.getElementType(), newSchema.getElementType()));
+        return Schema.createArray(generateSupersetSchema(existingSchema.getElementType(), newSchema.getElementType()));
       case MAP:
-        return Schema.createMap(generateSuperSetSchema(existingSchema.getValueType(), newSchema.getValueType()));
+        return Schema.createMap(generateSupersetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
-        return unionSchema(newSchema, existingSchema);
+        return unionSchema(existingSchema, newSchema);
       default:
         throw new VeniceException("Super set schema not supported");
     }
@@ -93,24 +93,22 @@ public class AvroSupersetSchemaUtils {
    * Merge union schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
    * generate the superset schema of these two versions of the same field, with new schema's information taking higher
    * priority.
-   * @param s1 new union schema
-   * @param s2 old union schema
-   * @return merged schema field
    */
-  private static Schema unionSchema(Schema s1, Schema s2) {
+  private static Schema unionSchema(Schema existingSchema, Schema newSchema) {
     List<Schema> combinedSchema = new ArrayList<>();
-    Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(Schema::getName, s -> s));
-    for (Schema subSchemaInS1: s1.getTypes()) {
-      final String fieldName = subSchemaInS1.getName();
-      final Schema subSchemaInS2 = s2Schema.get(fieldName);
-      if (subSchemaInS2 == null) {
-        combinedSchema.add(subSchemaInS1);
+    Map<String, Schema> existingSchemaTypeMap =
+        existingSchema.getTypes().stream().collect(Collectors.toMap(Schema::getName, s -> s));
+    for (Schema subSchemaInNewSchema: newSchema.getTypes()) {
+      final String fieldName = subSchemaInNewSchema.getName();
+      final Schema subSchemaInExistingSchema = existingSchemaTypeMap.get(fieldName);
+      if (subSchemaInExistingSchema == null) {
+        combinedSchema.add(subSchemaInNewSchema);
       } else {
-        combinedSchema.add(generateSuperSetSchema(subSchemaInS2, subSchemaInS1));
-        s2Schema.remove(fieldName);
+        combinedSchema.add(generateSupersetSchema(subSchemaInExistingSchema, subSchemaInNewSchema));
+        existingSchemaTypeMap.remove(fieldName);
       }
     }
-    s2Schema.forEach((k, v) -> combinedSchema.add(v));
+    existingSchemaTypeMap.forEach((k, v) -> combinedSchema.add(v));
     return Schema.createUnion(combinedSchema);
   }
 
@@ -146,27 +144,27 @@ public class AvroSupersetSchemaUtils {
    * Merge field schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
    * generate the superset schema of these two versions of the same field, with new schema's information taking higher
    * priority.
-   * @param s1 new schema
-   * @param s2 old schema
+   * @param newSchema new schema
+   * @param existingSchema old schema
    * @return merged schema field
    */
-  private static List<Schema.Field> mergeFieldSchemas(Schema s1, Schema s2) {
+  private static List<Schema.Field> mergeFieldSchemas(Schema existingSchema, Schema newSchema) {
     List<Schema.Field> fields = new ArrayList<>();
 
-    for (Schema.Field f1: s1.getFields()) {
-      Schema.Field f2 = s2.getField(f1.name());
+    for (Schema.Field fieldInNewSchema: newSchema.getFields()) {
+      Schema.Field fieldInExistingSchema = existingSchema.getField(fieldInNewSchema.name());
 
-      FieldBuilder fieldBuilder = deepCopySchemaField(f1);
-      if (f2 != null) {
-        fieldBuilder.setSchema(generateSuperSetSchema(f2.schema(), f1.schema()))
-            .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
+      FieldBuilder fieldBuilder = deepCopySchemaField(fieldInNewSchema);
+      if (fieldInExistingSchema != null) {
+        fieldBuilder.setSchema(generateSupersetSchema(fieldInExistingSchema.schema(), fieldInNewSchema.schema()))
+            .setDoc(fieldInNewSchema.doc() != null ? fieldInNewSchema.doc() : fieldInExistingSchema.doc());
       }
       fields.add(fieldBuilder.build());
     }
 
-    for (Schema.Field f2: s2.getFields()) {
-      if (s1.getField(f2.name()) == null) {
-        fields.add(deepCopySchemaField(f2).build());
+    for (Schema.Field fieldInExistingSchema: existingSchema.getFields()) {
+      if (newSchema.getField(fieldInExistingSchema.name()) == null) {
+        fields.add(deepCopySchemaField(fieldInExistingSchema).build());
       }
     }
     return fields;
