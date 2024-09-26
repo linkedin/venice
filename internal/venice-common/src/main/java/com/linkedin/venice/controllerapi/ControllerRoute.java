@@ -12,6 +12,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
@@ -136,8 +137,8 @@ public enum ControllerRoute {
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
   ),
-  CLUSTER_HEALTH_STATUS(
-      "/cluster_health_status", HttpMethod.GET, Arrays.asList(CLUSTER, INSTANCES, TO_BE_STOPPED_INSTANCES)
+  AGGREGATED_HEALTH_STATUS(
+      "/aggregatedHealthStatus", HttpMethod.GET, Arrays.asList(CLUSTER_ID, INSTANCES, TO_BE_STOPPED_INSTANCES)
   ),
   ROLL_FORWARD_TO_FUTURE_VERSION(
       "/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
