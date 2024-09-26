@@ -3788,7 +3788,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public InstanceRemovableStatuses getInstanceRemovableStatuses(
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
       Set<String> instances,
       List<String> toBeStoppedInstances) {
