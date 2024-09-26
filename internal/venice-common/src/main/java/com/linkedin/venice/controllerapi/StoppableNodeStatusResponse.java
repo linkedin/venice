@@ -6,14 +6,14 @@ import java.util.Map;
 
 public class StoppableNodeStatusResponse extends ControllerResponse {
   private List<String> stoppableInstances;
-  private Map<String, String> nonStoppableInstancesStatusMap;
+  private Map<String, String> nonStoppableInstancesWithReasons;
 
-  public Map<String, String> getNonStoppableInstancesStatusMap() {
-    return nonStoppableInstancesStatusMap;
+  public Map<String, String> getNonStoppableInstances() {
+    return nonStoppableInstancesWithReasons;
   }
 
-  public void setNonStoppableInstancesStatusMap(Map<String, String> nonStoppableInstancesStatusMap) {
-    this.nonStoppableInstancesStatusMap = nonStoppableInstancesStatusMap;
+  public void setNonStoppableInstances(Map<String, String> nonStoppableInstancesWithReasons) {
+    this.nonStoppableInstancesWithReasons = nonStoppableInstancesWithReasons;
   }
 
   public List<String> getStoppableInstances() {

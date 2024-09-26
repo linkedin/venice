@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VERSION_SWAP;
@@ -915,15 +916,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
-  public StoppableNodeStatusResponse getStoppableInstanceStatus(
+  public StoppableNodeStatusResponse getAggregatedHealthStatus(
       String clusterName,
       String instances,
       String toBeStoppedInstances) {
-    QueryParams params = newParams().add(CLUSTER, clusterName)
+    QueryParams params = newParams().add(CLUSTER_ID, clusterName)
         .add(INSTANCES, instances)
         .add(TO_BE_STOPPED_INSTANCES, toBeStoppedInstances);
 
-    return request(ControllerRoute.CLUSTER_HEALTH_STATUS, params, StoppableNodeStatusResponse.class);
+    return request(ControllerRoute.AGGREGATED_HEALTH_STATUS, params, StoppableNodeStatusResponse.class);
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {

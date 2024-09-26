@@ -532,7 +532,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   TopicManager getTopicManager(String pubSubServerAddress);
 
-  InstanceRemovableStatuses getInstanceRemovableStatuses(
+  InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
       Set<String> instances,
       List<String> toBeStoppedInstances);

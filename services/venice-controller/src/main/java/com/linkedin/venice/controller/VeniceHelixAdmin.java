@@ -6549,7 +6549,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public InstanceRemovableStatuses getInstanceRemovableStatuses(
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
       Set<String> instances,
       List<String> toBeStoppedInstances) {
@@ -6564,7 +6564,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     Map<String, String> nonStoppableInstances = new HashMap<>();
     List<String> stoppableInstances = new ArrayList<>();
-    statuses.setNonStoppableInstancesStatusMap(nonStoppableInstances);
+    statuses.setNonStoppableInstances(nonStoppableInstances);
     statuses.setStoppableInstances(stoppableInstances);
 
     // Check for maintenance, for ongoing maintenance none can be removed.
@@ -6579,30 +6579,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     List<String> allInstances = helixAdminClient.getInstancesInCluster(cluster);
+    Set<Instance> liveInstances = getLiveInstanceMonitor(cluster).getAllLiveInstances();
+
     HelixCustomizedViewOfflinePushRepository customizedViewRepo = resources.getCustomizedViewRepository();
     ReadWriteStoreRepository storeRepo = getHelixVeniceClusterResources(cluster).getStoreMetadataRepository();
 
     for (String instanceId: instances) {
+      Instance instance = Instance.fromNodeId(instanceId);
+
       // If not part of the cluster, mark non-stoppable as it could be part of other cluster.
       if (!allInstances.contains(instanceId)) {
         nonStoppableInstances.put(instanceId, InstanceRemovableStatuses.NonStoppableReason.UNKNOWN_INSTANCE.name());
         continue;
-      } else if (!HelixUtils
-          .isLiveInstance(cluster, instanceId, getHelixVeniceClusterResources(cluster).getHelixManager())) {
+      } else if (!liveInstances.contains(instance)) {
         stoppableInstances.add(instanceId);
         continue;
       }
       List<Replica> localReplicas = Utils.getReplicasForInstance(customizedViewRepo, instanceId);
-      Instance instance = Instance.fromNodeId(instanceId);
       ResourceAssignment resourceAssn = customizedViewRepo.getResourceAssignment();
       for (Replica replica: localReplicas) {
         // Skip if replica is not current version.
         if (!Utils.isCurrentVersion(replica.getResource(), storeRepo)) {
           continue;
         }
-        Version version = storeRepo.getStore(Version.parseStoreFromKafkaTopicName(replica.getResource()))
-            .getVersion(Version.parseVersionFromKafkaTopicName(replica.getResource()));
-        int replicationFactor = version != null ? version.getReplicationFactor() : 3;
+        Store store = storeRepo.getStore(Version.parseStoreFromKafkaTopicName(replica.getResource()));
+        Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(replica.getResource()));
+        int replicationFactor = store.getReplicationFactor();
+        int minActiveReplica = version != null ? version.getMinActiveReplicas() : replicationFactor - 1;
         List<Instance> readyToServeInstances = customizedViewRepo.getReadyToServeInstances(
             resourceAssn.getPartitionAssignment(replica.getResource()),
             replica.getPartitionId());
@@ -6611,14 +6614,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           nonStoppableInstances.put(instanceId, InstanceRemovableStatuses.NonStoppableReason.WILL_LOSE_DATA.name());
           break;
         } else {
-          if (numReplicas <= replicationFactor) {
+          if (numReplicas <= minActiveReplica) {
             nonStoppableInstances
                 .put(instanceId, InstanceRemovableStatuses.NonStoppableReason.MIN_ACTIVE_REPLICA_VIOLATION.name());
             break;
           }
           // Check if other replicas are already counted as stoppable in earlier iteration, we cannot remove it.
           for (Instance readyInstance: readyToServeInstances) {
-            if ((numReplicas <= replicationFactor + 1) && stoppableInstances.contains(readyInstance.getNodeId())) {
+            if ((numReplicas <= minActiveReplica + 1) && stoppableInstances.contains(readyInstance.getNodeId())) {
               nonStoppableInstances
                   .put(instanceId, InstanceRemovableStatuses.NonStoppableReason.MIN_ACTIVE_REPLICA_VIOLATION.name());
               break;

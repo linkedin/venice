@@ -285,6 +285,7 @@ public enum Arg {
       "How many producers will be used to write nearline workload in Server"
   );
   STORAGE_NODES("storage-nodes", "sns", true, "Input list of storage nodes to check if they can removed or not"),
+  INSTANCES("instances", "in", true, "Input list of storage nodes to check if they can removed or not"),
   TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of nodes assumed to be stopped");
 
   private final String argName;

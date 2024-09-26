@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
@@ -189,13 +190,13 @@ public class ControllerRoutes extends AbstractRoute {
     };
   }
 
-  public Route getClusterStoppableInstanceStatus(Admin admin) {
+  public Route getAggregatedHealthStatus(Admin admin) {
     return (request, response) -> {
       StoppableNodeStatusResponse responseObject = new StoppableNodeStatusResponse();
       response.type(HttpConstants.JSON);
 
       try {
-        String cluster = request.queryParams(CLUSTER);
+        String cluster = request.queryParams(CLUSTER_ID);
         String instances = request.queryParams(INSTANCES);
         String toBeStoppedInstances = request.queryParams(TO_BE_STOPPED_INSTANCES);
         if (StringUtils.isEmpty(instances)) {
@@ -212,11 +213,11 @@ public class ControllerRoutes extends AbstractRoute {
         }
         responseObject.setCluster(cluster);
         InstanceRemovableStatuses statuses =
-            admin.getInstanceRemovableStatuses(cluster, instanceSet, toBeStoppedInstanceList);
+            admin.getAggregatedHealthStatus(cluster, instanceSet, toBeStoppedInstanceList);
         if (statuses.getRedirectUrl() != null) {
           response.redirect(statuses.getRedirectUrl(), HttpStatus.SC_MOVED_TEMPORARILY);
         } else {
-          responseObject.setNonStoppableInstancesStatusMap(statuses.getNonStoppableInstancesStatusMap());
+          responseObject.setNonStoppableInstances(statuses.getNonStoppableInstances());
           responseObject.setStoppableInstances(statuses.getStoppableInstances());
         }
       } catch (Throwable e) {
