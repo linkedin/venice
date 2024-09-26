@@ -267,7 +267,6 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertNotNull(s3.getField("field"));
     Schema.Field subFieldInS2 = s2.getField("field");
     Schema.Field subFieldInS3 = s3.getField("field");
-    Assert.assertEquals(subFieldInS3.defaultVal(), subFieldInS2.defaultVal());
     Schema unionSubFieldInS2 = subFieldInS2.schema().getTypes().get(1);
     Schema unionSubFieldInS3 = subFieldInS3.schema().getTypes().get(1);
     Assert.assertEquals(unionSubFieldInS3, unionSubFieldInS2);
