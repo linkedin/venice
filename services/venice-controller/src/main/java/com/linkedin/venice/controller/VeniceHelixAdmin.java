@@ -6596,7 +6596,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         continue;
       }
       List<Replica> localReplicas = Utils.getReplicasForInstance(customizedViewRepo, instanceId);
-      ResourceAssignment resourceAssn = customizedViewRepo.getResourceAssignment();
+      ResourceAssignment resourceAssignment = customizedViewRepo.getResourceAssignment();
       for (Replica replica: localReplicas) {
         // Skip if replica is not current version.
         if (!Utils.isCurrentVersion(replica.getResource(), storeRepo)) {
@@ -6607,7 +6607,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         int replicationFactor = store.getReplicationFactor();
         int minActiveReplica = version != null ? version.getMinActiveReplicas() : replicationFactor - 1;
         List<Instance> readyToServeInstances = customizedViewRepo.getReadyToServeInstances(
-            resourceAssn.getPartitionAssignment(replica.getResource()),
+            resourceAssignment.getPartitionAssignment(replica.getResource()),
             replica.getPartitionId());
         int numReplicas = readyToServeInstances.size();
         if (numReplicas < 2) {
@@ -6633,7 +6633,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         stoppableInstances.add(instanceId);
       }
     }
-
     return statuses;
   }
 
