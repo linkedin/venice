@@ -151,7 +151,7 @@ public class AbstractRoute {
   }
 
   /**
-   * Check whether the user is within the admin users allowlist.
+   * Check whether the user is within the admin users allowlist for store deletion.
    */
   protected boolean isAllowListUserForStoreDeletion(Request request) {
     if (!isAclEnabled()) {

@@ -506,7 +506,7 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
-        // Limit to admin tool usage.
+        // This is to limit the manual store deletion from admin tool without https to a specific allow list users.
         if (!isSslEnabled()
             && !checkIsAllowListUser(request, veniceResponse, () -> isAllowListUserForStoreDeletion(request))) {
           return;
