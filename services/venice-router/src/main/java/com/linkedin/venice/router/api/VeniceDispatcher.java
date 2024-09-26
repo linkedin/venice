@@ -205,7 +205,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
 
       if (isStatefulHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         isRequestThrottled = true;
-        // try to trigger `error retry if its not cancelled already. if retry is cancelled throw exception which
+        // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which
         // increases the unhealthy request metric.
         if (!retryFuture.isCancelled()) {
           retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
