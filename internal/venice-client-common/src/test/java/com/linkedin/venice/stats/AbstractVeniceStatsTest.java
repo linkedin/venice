@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.stats.BasicClientStats;
@@ -227,5 +228,21 @@ public class AbstractVeniceStatsTest {
     // 2) total stats is null, so created a new one
     sensor = stats.registerOnlyTotalRate("testSensor", null, () -> parentCount, SystemTime.INSTANCE);
     Assert.assertNotEquals(sensor, parentCount);
+  }
+
+  @Test
+  public void testRegisterOnlyTotalSensor() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+
+    AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "testStore");
+    AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
+    Sensor totalSensor = totalStats.registerSensor("testSensor", new OccurrenceRate());
+    // 1) total stats is not null so use ths supplier
+    Sensor sensor = stats.registerOnlyTotalSensor("testSensor", totalStats, () -> totalSensor, new OccurrenceRate());
+    assertEquals(sensor, totalSensor);
+
+    // 2) total stats is null, so created a new one
+    Sensor newTotalSensor = stats.registerOnlyTotalSensor("testSensor", null, () -> totalSensor, new OccurrenceRate());
+    assertNotEquals(newTotalSensor, totalSensor);
   }
 }
