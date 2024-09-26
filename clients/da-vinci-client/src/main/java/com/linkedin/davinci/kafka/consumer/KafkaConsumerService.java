@@ -242,15 +242,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       synchronized (consumer) {
         consumer.unSubscribe(pubSubTopicPartition);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
-        versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
-          if (topicPartitionToConsumerMap != null) {
-            topicPartitionToConsumerMap.remove(pubSubTopicPartition);
-            return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
-          } else {
-            return null;
-          }
-        });
       }
+      versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
+        if (topicPartitionToConsumerMap != null) {
+          topicPartitionToConsumerMap.remove(pubSubTopicPartition);
+          return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
+        } else {
+          return null;
+        }
+      });
     }
   }
 

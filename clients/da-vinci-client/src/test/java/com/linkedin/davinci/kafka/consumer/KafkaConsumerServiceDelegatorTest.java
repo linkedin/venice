@@ -481,6 +481,11 @@ public class KafkaConsumerServiceDelegatorTest {
         partitionReplicaIngestionContext.getPubSubTopicPartition());
   }
 
+  /**
+   * This test is to simulate multiple threads resubscribing to the same real-time topic partition for different store
+   * versions and verify if the lock will protect the handoff for {@link ConsumptionTask} and {@link ConsumedDataReceiver}
+   * during the re-subscription.
+   */
   @Test
   public void testKafkaConsumerServiceResubscriptionConcurrency() throws Exception {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
@@ -507,7 +512,7 @@ public class KafkaConsumerServiceDelegatorTest {
         factory,
         properties,
         1000l,
-        versionNum + 1,
+        versionNum + 1, // Plus 1 to guarantee the consumer pool size is larger than the # of versions.
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
