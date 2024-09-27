@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -70,6 +71,11 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     zkStateListener = new CachedResourceZkStateListener(this);
   }
 
+  /**
+   * Obtain all store configs and attach ZK watches on every store config received.
+   * Note that calling this method would load all stores under the store config path from ZK and increases the ZK watch
+   * count significantly.
+   */
   @Override
   public void refresh() {
     LOGGER.info("Loading all store configs from zk.");
@@ -115,6 +121,15 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
       veniceStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
     }
     StoreConfig config = storeConfigMap.get().get(veniceStoreName);
+    // Lazy fetch. It should happen when the entire store config map is not loaded, and only do ad-hoc fetch
+    if (config == null) {
+      config = accessor.getStoreConfig(veniceStoreName);
+      if (config != null) {
+        storeConfigMap.get().put(config.getStoreName(), config);
+        accessor.subscribeStoreConfigDataChangedListener(veniceStoreName, storeConfigChangedListener);
+      }
+    }
+
     if (config != null) {
       return Optional.of(config.cloneStoreConfig());
     } else {
@@ -136,6 +151,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     return new ArrayList<>(storeConfigMap.get().values());
   }
 
+  @VisibleForTesting
   protected StoreConfigAddedOrDeletedChangedListener getStoreConfigAddedOrDeletedListener() {
     return storeConfigAddedOrDeletedListener;
   }

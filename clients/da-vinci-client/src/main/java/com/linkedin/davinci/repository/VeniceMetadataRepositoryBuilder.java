@@ -147,7 +147,6 @@ public class VeniceMetadataRepositoryBuilder {
         adapter,
         clusterConfig.getRefreshAttemptsForZkReconnect(),
         clusterConfig.getRefreshIntervalForZkReconnectInMs());
-    storeConfigRepo.refresh();
 
     readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
         readOnlyZKSharedSystemStoreRepository,
