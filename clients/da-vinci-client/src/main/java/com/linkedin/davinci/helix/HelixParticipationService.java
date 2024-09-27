@@ -1,5 +1,6 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -13,7 +14,6 @@ import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;

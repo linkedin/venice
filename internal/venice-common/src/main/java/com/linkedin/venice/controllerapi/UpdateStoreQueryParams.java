@@ -50,6 +50,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
@@ -404,6 +405,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getIncrementalPushEnabled() {
     return getBoolean(INCREMENTAL_PUSH_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    return putBoolean(SEPARATE_REAL_TIME_TOPIC_ENABLED, separateRealTimeTopicEnabled);
+  }
+
+  public Optional<Boolean> getSeparateRealTimeTopicEnabled() {
+    return getBoolean(SEPARATE_REAL_TIME_TOPIC_ENABLED);
   }
 
   public UpdateStoreQueryParams setBatchGetLimit(int batchGetLimit) {

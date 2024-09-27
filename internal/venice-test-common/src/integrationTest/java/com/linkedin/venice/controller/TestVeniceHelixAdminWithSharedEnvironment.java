@@ -1845,14 +1845,22 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(1));
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+            .setHybridRewindSeconds(1)
+            .setSeparateRealTimeTopicEnabled(true));
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isSeparateRealTimeTopicEnabled());
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isSeparateRealTimeTopicEnabled());
+
     String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
+    String incrementalPushRealTimeTopic = veniceAdmin.getSeparateRealTimeTopic(clusterName, storeName);
     Assert.assertFalse(veniceAdmin.isTopicTruncated(rtTopic));
+    Assert.assertFalse(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));
     veniceAdmin.updateStore(
         clusterName,
         storeName,
@@ -1860,6 +1868,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
             .setHybridRewindSeconds(-1)
             .setHybridTimeLagThreshold(-1));
     Assert.assertFalse(veniceAdmin.isTopicTruncated(rtTopic));
+    Assert.assertFalse(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));
     // Perform two new pushes and the RT should be deleted upon the completion of the new pushes.
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(
@@ -1872,6 +1881,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 3);
     Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
+    Assert.assertTrue(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -2052,6 +2062,18 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     });
 
     stopParticipant(newNodeId);
+  }
+
+  @Test
+  public void testInstanceTagging() {
+    List<String> instanceTagList = Arrays.asList("GENERAL", "TEST");
+    String controllerClusterName = "venice-controllers";
+
+    for (String instanceTag: instanceTagList) {
+      List<String> instances =
+          veniceAdmin.getHelixAdmin().getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      Assert.assertEquals(instances.size(), 1);
+    }
   }
 
 }

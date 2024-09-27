@@ -131,6 +131,8 @@ public class RealTimeTopicSwitcher {
     if (!hybridStoreConfig.isPresent()) {
       throw new VeniceException("Topic switching is only supported for Hybrid Stores.");
     }
+    Version version =
+        store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
     /**
      * TopicReplicator is used in child fabrics to create real-time (RT) topic when a child fabric
      * is ready to start buffer replay but RT topic doesn't exist. This scenario could happen for a
@@ -146,35 +148,47 @@ public class RealTimeTopicSwitcher {
      *       doesn't have any existing version or a correct storage quota, we cannot decide the partition
      *       number for it.
      */
-    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(srcTopicName)) {
+    createRealTimeTopicIfNeeded(store, version, srcTopicName, hybridStoreConfig.get());
+    if (version != null && version.isSeparateRealTimeTopicEnabled()) {
+      PubSubTopic separateRealTimeTopic =
+          pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
+      createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic, hybridStoreConfig.get());
+    }
+  }
+
+  void createRealTimeTopicIfNeeded(
+      Store store,
+      Version version,
+      PubSubTopic realTimeTopic,
+      HybridStoreConfig hybridStoreConfig) {
+    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {
       int partitionCount;
-      Version version =
-          store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
       if (version != null) {
         partitionCount = version.getPartitionCount();
       } else {
         partitionCount = store.getPartitionCount();
       }
-      int replicationFactor = srcTopicName.isRealTime() ? kafkaReplicationFactorForRTTopics : kafkaReplicationFactor;
-      Optional<Integer> minISR = srcTopicName.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
+      int replicationFactor = realTimeTopic.isRealTime() ? kafkaReplicationFactorForRTTopics : kafkaReplicationFactor;
+      Optional<Integer> minISR = realTimeTopic.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
       getTopicManager().createTopic(
-          srcTopicName,
+          realTimeTopic,
           partitionCount,
           replicationFactor,
-          StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get()),
-          false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+          StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
+          false,
           minISR,
           false);
     } else {
       /**
        * If real-time topic already exists, check whether its retention time is correct.
        */
-      long topicRetentionTimeInMs = getTopicManager().getTopicRetention(srcTopicName);
-      long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get());
+      long topicRetentionTimeInMs = getTopicManager().getTopicRetention(realTimeTopic);
+      long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig);
       if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
-        getTopicManager().updateTopicRetention(srcTopicName, expectedRetentionTimeMs);
+        getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs);
       }
     }
+
   }
 
   long getRewindStartTime(

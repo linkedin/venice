@@ -2,17 +2,15 @@ package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TOPIC_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
@@ -21,17 +19,12 @@ import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.InputStorageQuotaTracker;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
-import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
-import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.hadoop.task.TaskTracker;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -44,7 +37,6 @@ import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -56,9 +48,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumWriter;
-import org.apache.avro.io.Encoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -247,7 +236,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
-    duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, dataWriterTaskTracker);
+    duplicateKeyPrinter.detectAndHandleDuplicateKeys(valueBytes, values, dataWriterTaskTracker);
     return new VeniceWriterMessage(
         keyBytes,
         valueBytes,
@@ -545,24 +534,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     private final boolean isDupKeyAllowed;
 
-    private final Schema keySchema;
-    private final RecordDeserializer<?> keyDeserializer;
-    private final GenericDatumWriter<Object> avroDatumWriter;
     private int numOfDupKey = 0;
 
     DuplicateKeyPrinter(VeniceProperties props) {
       this.isDupKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-
-      AbstractVeniceRecordReader schemaReader = props.getBoolean(VSON_PUSH, false)
-          ? new VeniceVsonRecordReader(props)
-          : VeniceAvroRecordReader.fromProps(props);
-      this.keySchema = schemaReader.getKeySchema();
-      this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
-      this.avroDatumWriter = new GenericDatumWriter<>(keySchema);
     }
 
     protected void detectAndHandleDuplicateKeys(
-        byte[] keyBytes,
         byte[] valueBytes,
         Iterator<byte[]> values,
         DataWriterTaskTracker dataWriterTaskTracker) {
@@ -579,7 +557,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           identicalValuesToKeyCount++;
           if (shouldPrint) {
             shouldPrint = false;
-            LOGGER.warn(printDuplicateKey(keyBytes));
+            numOfDupKey++;
+            LOGGER.warn("There are multiple records for the same key");
           }
         } else {
           // Distinct values map to the same key. E.g. key:[ value_1, value_2 ]
@@ -588,28 +567,14 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           if (isDupKeyAllowed) {
             if (shouldPrint) {
               shouldPrint = false;
-              LOGGER.warn(printDuplicateKey(keyBytes));
+              numOfDupKey++;
+              LOGGER.warn("There are multiple records for the same key");
             }
           }
         }
       }
       dataWriterTaskTracker.trackDuplicateKeyWithIdenticalValue(identicalValuesToKeyCount);
       dataWriterTaskTracker.trackDuplicateKeyWithDistinctValue(distinctValuesToKeyCount);
-    }
-
-    private String printDuplicateKey(byte[] keyBytes) {
-      Object keyRecord = keyDeserializer.deserialize(keyBytes);
-      try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-        Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output, false);
-        avroDatumWriter.write(keyRecord, jsonEncoder);
-        jsonEncoder.flush();
-        output.flush();
-
-        numOfDupKey++;
-        return String.format("There are multiple records for key:\n%s", new String(output.toByteArray()));
-      } catch (IOException exception) {
-        throw new VeniceException(exception);
-      }
     }
 
     @Override

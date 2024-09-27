@@ -1,15 +1,15 @@
 package com.linkedin.venice.kafka.ssl;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_SSL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sslVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;

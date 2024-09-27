@@ -16,11 +16,13 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingResponseTracker;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.stats.ClusterRouteStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -38,6 +40,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private final FastClientStats clientStatsForStreamingBatchGet;
   private final FastClientStats clientStatsForStreamingCompute;
   private final ClusterStats clusterStats;
+  private final MetricsRepository metricsRepository;
+  private final ClusterRouteStats clusterRouteStats;
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate, clientConfig);
@@ -45,6 +49,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
     this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
+    this.metricsRepository = clientConfig.getMetricsRepository();
+    this.clusterRouteStats = ClusterRouteStats.get();
   }
 
   @Override
@@ -242,9 +248,17 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
       replicaRequestFuture.forEach((instance, future) -> {
         future.whenComplete((status, throwable) -> {
-          if (monitor != null) {
-            clusterStats.recordPendingRequestCount(instance, monitor.getPendingRequestCounter(instance));
-          }
+          ClusterRouteStats.RouteStats routeStats = clusterRouteStats.getRouteStats(
+              metricsRepository,
+              /**
+               * There is a race condition during store migration and the cluster name might not match
+               * with the requested instance.
+               * It is fine for tracking purpose as it would only happen for a very short period and
+               * the wrong cluster/instance combination will be deprecated soon because of a short lifetime.
+               */
+              requestContext.serverClusterName,
+              instance,
+              requestContext.getRequestType());
 
           if (throwable != null) {
             status = (throwable instanceof VeniceClientHttpException)
@@ -252,29 +266,28 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
                 : SC_SERVICE_UNAVAILABLE;
           }
 
-          clientStats.recordRequest(instance);
-          clientStats
-              .recordResponseWaitingTime(instance, LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
+          routeStats.recordRequest();
+          routeStats.recordResponseWaitingTime(LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
           switch (status) {
             case SC_OK:
             case SC_NOT_FOUND:
-              clientStats.recordHealthyRequest(instance);
+              routeStats.recordHealthyRequest();
               break;
             case SC_TOO_MANY_REQUESTS:
-              clientStats.recordQuotaExceededRequest(instance);
+              routeStats.recordQuotaExceededRequest();
               break;
             case SC_INTERNAL_SERVER_ERROR:
-              clientStats.recordInternalServerErrorRequest(instance);
+              routeStats.recordInternalServerErrorRequest();
               break;
             case SC_GONE:
               /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
-              clientStats.recordLeakedRequest(instance);
+              routeStats.recordLeakedRequest();
               break;
             case SC_SERVICE_UNAVAILABLE:
-              clientStats.recordServiceUnavailableRequest(instance);
+              routeStats.recordServiceUnavailableRequest();
               break;
             default:
-              clientStats.recordOtherErrorRequest(instance);
+              routeStats.recordOtherErrorRequest();
           }
         });
       });

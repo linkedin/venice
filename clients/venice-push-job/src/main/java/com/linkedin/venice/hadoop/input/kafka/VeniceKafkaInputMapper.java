@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.FilterChain;

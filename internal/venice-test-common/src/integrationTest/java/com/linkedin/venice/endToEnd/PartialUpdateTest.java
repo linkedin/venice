@@ -1,18 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
@@ -35,6 +23,19 @@ import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToUserWithStringMapSchema;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -70,7 +71,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -93,6 +93,7 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.tehuti.MetricsUtils;
@@ -399,6 +400,7 @@ public class PartialUpdateTest {
     vpjProperties.put(INCREMENTAL_PUSH, true);
     if (useSparkCompute) {
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     }
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {

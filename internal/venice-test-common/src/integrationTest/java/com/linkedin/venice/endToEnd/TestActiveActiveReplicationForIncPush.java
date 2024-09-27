@@ -8,14 +8,15 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATI
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -33,15 +34,22 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -63,9 +71,10 @@ public class TestActiveActiveReplicationForIncPush {
   private String[] clusterNames;
   private String parentRegionName;
   private String[] dcNames;
-
+  private String clusterName;
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   PubSubBrokerWrapper veniceParentDefaultKafka;
 
@@ -102,9 +111,9 @@ public class TestActiveActiveReplicationForIncPush {
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
+    clusterName = this.clusterNames[0];
     parentRegionName = multiRegionMultiClusterWrapper.getParentRegionName();
     dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
-
     veniceParentDefaultKafka = multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper();
   }
 
@@ -117,9 +126,8 @@ public class TestActiveActiveReplicationForIncPush {
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all
    * regions. And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testAAReplicationForIncrementalPushToRT() throws Exception {
-    String clusterName = this.clusterNames[0];
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationForIncrementalPushToRT(Boolean isSeparateRealTimeTopicEnabled) throws Exception {
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
@@ -174,7 +182,8 @@ public class TestActiveActiveReplicationForIncPush {
               .setPartitionCount(1)
               .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L)
-              .setNativeReplicationSourceFabric("dc-2");
+              .setNativeReplicationSourceFabric("dc-2")
+              .setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled);
 
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
 
@@ -208,29 +217,97 @@ public class TestActiveActiveReplicationForIncPush {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
-      // Run inc push with source fabric preference taking effect.
-      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      if (isSeparateRealTimeTopicEnabled) {
+        verifyForSeparateIncrementalPushTopic(storeName, propsInc1, 2);
+      } else {
+        verifyForRealTimeIncrementalPushTopic(storeName, propsInc1, propsInc2);
       }
-
-      // Verify
-      for (int i = 0; i < childDatacenters.size(); i++) {
-        VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
-        // Verify the current version should be 1.
-        Version version =
-            childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-        Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
-      }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
-
-      // Run another inc push with a different source fabric preference taking effect.
-      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-      }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
     }
+  }
+
+  private void verifyForSeparateIncrementalPushTopic(
+      String storeName,
+      Properties propsInc1,
+      int dcIndexForSourceRegion) {
+    // Prepare TopicManagers
+    List<TopicManager> topicManagers = new ArrayList<>();
+    for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
+      PubSubTopicRepository pubSubTopicRepository =
+          childDataCenter.getClusters().get(clusterNames[0]).getPubSubTopicRepository();
+      topicManagers.add(
+          IntegrationTestPushUtils
+              .getTopicManagerRepo(
+                  PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
+                  100,
+                  0l,
+                  childDataCenter.getKafkaBrokerWrapper(),
+                  pubSubTopicRepository)
+              .getLocalTopicManager());
+    }
+    // Run inc push with source fabric preference taking effect.
+    PubSubTopicPartition separateRealTimeTopicPartition = new PubSubTopicPartitionImpl(
+        PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
+        0);
+    PubSubTopicPartition realTimeTopicPartition =
+        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName)), 0);
+    try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
+      // TODO: Once server part separate topic ingestion logic is ready, we should avoid runAsync here and add extra
+      // check
+      CompletableFuture.runAsync(job::run);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        Assert.assertEquals(
+            job.getKafkaUrl(),
+            childDatacenters.get(dcIndexForSourceRegion).getKafkaBrokerWrapper().getAddress());
+        for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
+          long separateTopicOffset =
+              topicManagers.get(dcIndex).getLatestOffsetWithRetries(separateRealTimeTopicPartition, 3);
+          long realTimeTopicOffset = topicManagers.get(dcIndex).getLatestOffsetWithRetries(realTimeTopicPartition, 3);
+          // Real-time topic will have heartbeat messages, so the offset will be non-zero but smaller than the record
+          // count.
+          // DC 2 separeate real-time topic should get enough data.
+          if (dcIndex == dcIndexForSourceRegion) {
+            Assert.assertTrue(
+                separateTopicOffset > TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT,
+                "Records # is not enough: " + separateTopicOffset);
+            Assert.assertTrue(
+                realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
+                "Records # is more than expected: " + realTimeTopicOffset);
+          } else {
+            assertEquals(separateTopicOffset, 0, "Records # is not enough: " + separateTopicOffset);
+            Assert.assertTrue(
+                realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
+                "Records # is more than expected: " + realTimeTopicOffset);
+          }
+        }
+      });
+      job.cancel();
+    }
+  }
+
+  private void verifyForRealTimeIncrementalPushTopic(String storeName, Properties propsInc1, Properties propsInc2)
+      throws Exception {
+    // Run inc push with source fabric preference taking effect.
+    try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
+      job.run();
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+    }
+
+    // Verify
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
+      // Verify the current version should be 1.
+      Version version =
+          childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+      Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
+    }
+    NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+
+    // Run another inc push with a different source fabric preference taking effect.
+    try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
+      job.run();
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+    }
+    NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
   }
 
   public static void verifyHybridAndIncPushConfig(

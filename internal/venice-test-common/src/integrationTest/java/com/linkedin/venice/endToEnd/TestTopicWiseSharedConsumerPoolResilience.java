@@ -6,10 +6,10 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.ParticipantStoreConsumptionTask;

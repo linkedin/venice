@@ -484,6 +484,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isSeparateRealTimeTopicEnabled() {
+      return this.delegate.isSeparateRealTimeTopicEnabled();
+    }
+
+    @Override
+    public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean isBlobTransferEnabled() {
       return this.delegate.isBlobTransferEnabled();
     }
@@ -952,6 +962,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return this.delegate.isSeparateRealTimeTopicEnabled();
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
     throw new UnsupportedOperationException();
   }
 

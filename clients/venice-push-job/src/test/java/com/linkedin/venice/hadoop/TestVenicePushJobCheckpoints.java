@@ -1,23 +1,23 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -29,6 +29,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -40,11 +41,11 @@ import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -100,9 +101,9 @@ public class TestVenicePushJobCheckpoints {
             // All reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.QUOTA_EXCEEDED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -128,10 +129,10 @@ public class TestVenicePushJobCheckpoints {
                 MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
                 NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.QUOTA_EXCEEDED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -143,18 +144,18 @@ public class TestVenicePushJobCheckpoints {
    */
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Storage quota exceeded.*", dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHandleQuotaExceededWithCompressionCollectionEnabled(boolean useMapperToBuildDict) throws Exception {
-    List<VenicePushJob.PushJobCheckpoints> expectedCheckpoints;
+    List<PushJobCheckpoints> expectedCheckpoints;
     if (useMapperToBuildDict) {
       expectedCheckpoints = Arrays.asList(
-          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-          VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
-          VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-          VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED);
+          PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+          PushJobCheckpoints.NEW_VERSION_CREATED,
+          PushJobCheckpoints.QUOTA_EXCEEDED);
     } else {
       expectedCheckpoints = Arrays.asList(
-          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-          VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-          VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED);
+          PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          PushJobCheckpoints.NEW_VERSION_CREATED,
+          PushJobCheckpoints.QUOTA_EXCEEDED);
     }
 
     testHandleErrorsInCounter(
@@ -189,10 +190,10 @@ public class TestVenicePushJobCheckpoints {
             // All reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -214,11 +215,11 @@ public class TestVenicePushJobCheckpoints {
                 MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
                 NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -235,10 +236,10 @@ public class TestVenicePushJobCheckpoints {
             // All reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -247,20 +248,20 @@ public class TestVenicePushJobCheckpoints {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testWithCompressionCollectionEnabled(boolean useMapperToBuildDict) throws Exception {
-    List<VenicePushJob.PushJobCheckpoints> expectedCheckpoints;
+    List<PushJobCheckpoints> expectedCheckpoints;
     if (useMapperToBuildDict) {
       expectedCheckpoints = Arrays.asList(
-          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-          VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
-          VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-          VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-          VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
+          PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+          PushJobCheckpoints.NEW_VERSION_CREATED,
+          PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+          PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
     } else {
       expectedCheckpoints = Arrays.asList(
-          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-          VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-          VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-          VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
+          PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          PushJobCheckpoints.NEW_VERSION_CREATED,
+          PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+          PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
     }
 
     testHandleErrorsInCounter(
@@ -306,11 +307,11 @@ public class TestVenicePushJobCheckpoints {
             // Dictionary building succeeded if enabled
             new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME, 1)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
@@ -338,9 +339,7 @@ public class TestVenicePushJobCheckpoints {
                 NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT), // no +1 as the last part (build dict) failed
             // Dictionary building succeeded if enabled
             new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME, 1)),
-        Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED),
+        Arrays.asList(PushJobCheckpoints.INITIALIZE_PUSH_JOB, PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
@@ -370,11 +369,11 @@ public class TestVenicePushJobCheckpoints {
             // Dictionary building succeeded if enabled
             new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME, 1)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
@@ -402,9 +401,7 @@ public class TestVenicePushJobCheckpoints {
                 NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT), // no +1 as the last part (build dict) failed
             // Dictionary building succeeded if enabled
             new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME, 1)),
-        Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED),
+        Arrays.asList(PushJobCheckpoints.INITIALIZE_PUSH_JOB, PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
@@ -422,9 +419,9 @@ public class TestVenicePushJobCheckpoints {
             // All reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.WRITE_ACL_FAILED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.WRITE_ACL_FAILED),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -442,9 +439,9 @@ public class TestVenicePushJobCheckpoints {
             // All reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -466,9 +463,9 @@ public class TestVenicePushJobCheckpoints {
             // No reducers at all closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.START_DATA_WRITER_JOB),
         10L, // Non-empty input data file
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -491,9 +488,9 @@ public class TestVenicePushJobCheckpoints {
             // No reducers at all closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.START_DATA_WRITER_JOB),
         10L, // Non-empty input data file
         1,
         true,
@@ -516,10 +513,10 @@ public class TestVenicePushJobCheckpoints {
             // No reducers at all closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED // Expect the job to finish successfully
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED // Expect the job to finish successfully
         ),
         10L,
         1,
@@ -557,9 +554,9 @@ public class TestVenicePushJobCheckpoints {
             // Some but not all reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.START_DATA_WRITER_JOB),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -582,10 +579,10 @@ public class TestVenicePushJobCheckpoints {
             // Some but not all reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -605,10 +602,10 @@ public class TestVenicePushJobCheckpoints {
             // All reducers closed
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+            PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            PushJobCheckpoints.NEW_VERSION_CREATED,
+            PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+            PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -623,19 +620,18 @@ public class TestVenicePushJobCheckpoints {
     JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
     when(jobClientWrapper.runJobWithConfig(any())).thenThrow(new IOException("Job failed!"));
 
-    final List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints;
+    final List<PushJobCheckpoints> expectedReportedCheckpoints;
     if (useMapperToBuildDict) {
       /** Uses {@link ValidateSchemaAndBuildDictMapper} to validate schema and build dictionary which will checkpoint DATASET_CHANGED before NEW_VERSION_CREATED */
-      expectedReportedCheckpoints = Arrays.asList(
-          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-          VenicePushJob.PushJobCheckpoints.DATASET_CHANGED);
+      expectedReportedCheckpoints =
+          Arrays.asList(PushJobCheckpoints.INITIALIZE_PUSH_JOB, PushJobCheckpoints.DATASET_CHANGED);
     } else {
       /** {@link InputDataInfoProvider#validateInputAndGetInfo} in VPJ driver validates schema and build dictionary which will checkpoint NEW_VERSION_CREATED before DATASET_CHANGED.
        * DATASET_CHANGED will only be checked in the MR job to process data after creating the new version */
       expectedReportedCheckpoints = Arrays.asList(
-          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-          VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-          VenicePushJob.PushJobCheckpoints.DATASET_CHANGED);
+          PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          PushJobCheckpoints.NEW_VERSION_CREATED,
+          PushJobCheckpoints.DATASET_CHANGED);
     }
 
     runJobAndAssertCheckpoints(jobClientWrapper, 10, 1, true, true, ExecutionStatus.COMPLETED, properties -> {
@@ -660,12 +656,12 @@ public class TestVenicePushJobCheckpoints {
     JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
     doAnswer(invocation -> null).when(jobClientWrapper).runJobWithConfig(any());
 
-    final List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints;
+    final List<PushJobCheckpoints> expectedReportedCheckpoints;
     expectedReportedCheckpoints = Arrays.asList(
-        VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-        VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-        VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
-        VenicePushJob.PushJobCheckpoints.valueOf(status.toString()));
+        PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+        PushJobCheckpoints.NEW_VERSION_CREATED,
+        PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+        PushJobCheckpoints.valueOf(status.toString()));
 
     runJobAndAssertCheckpoints(
         jobClientWrapper,
@@ -680,14 +676,14 @@ public class TestVenicePushJobCheckpoints {
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
-      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
+      List<PushJobCheckpoints> expectedReportedCheckpoints,
       Consumer<Properties> extraProps) throws Exception {
     testHandleErrorsInCounter(mockCounterInfos, expectedReportedCheckpoints, 10L, extraProps);
   }
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
-      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
+      List<PushJobCheckpoints> expectedReportedCheckpoints,
       long inputFileDataSizeInBytes,
       Consumer<Properties> extraProps) throws Exception {
     testHandleErrorsInCounter(
@@ -701,7 +697,7 @@ public class TestVenicePushJobCheckpoints {
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
-      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
+      List<PushJobCheckpoints> expectedReportedCheckpoints,
       long inputFileDataSizeInBytes,
       int numInputFiles,
       boolean inputFileHasRecords,
@@ -725,7 +721,7 @@ public class TestVenicePushJobCheckpoints {
       boolean datasetChanged,
       ExecutionStatus executionStatus,
       Consumer<Properties> extraProps,
-      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) throws Exception {
+      List<PushJobCheckpoints> expectedReportedCheckpoints) throws Exception {
     Properties props = getVPJProps();
     if (extraProps != null) {
       extraProps.accept(props);
@@ -769,9 +765,8 @@ public class TestVenicePushJobCheckpoints {
         for (PushJobDetails pushJobDetails: pushJobDetailsTracker.getRecordedPushJobDetails()) {
           actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
         }
-        List<Integer> expectedCheckpointValues = expectedReportedCheckpoints.stream()
-            .map(VenicePushJob.PushJobCheckpoints::getValue)
-            .collect(Collectors.toList());
+        List<Integer> expectedCheckpointValues =
+            expectedReportedCheckpoints.stream().map(PushJobCheckpoints::getValue).collect(Collectors.toList());
 
         Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
       }

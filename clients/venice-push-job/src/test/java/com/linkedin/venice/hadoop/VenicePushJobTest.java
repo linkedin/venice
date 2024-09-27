@@ -2,34 +2,34 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -54,6 +54,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -883,7 +884,7 @@ public class VenicePushJobTest {
   }
 
   /**
-   * Tests that the error message for the {@link VenicePushJob.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
    * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -901,7 +902,7 @@ public class VenicePushJobTest {
       final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
       final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
       Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "100.0 MiB" : "950.0 KiB"), errorMessage);
-      Assert.assertEquals(latestCheckpoint, VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
+      Assert.assertEquals(latestCheckpoint, PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
     }
   }
 

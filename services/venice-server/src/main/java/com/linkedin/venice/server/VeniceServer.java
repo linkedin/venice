@@ -1,6 +1,8 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -22,8 +24,6 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
-import com.linkedin.venice.blobtransfer.BlobTransferUtil;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
@@ -467,7 +467,8 @@ public class VeniceServer {
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),
-          customizedViewFuture);
+          customizedViewFuture,
+          storageMetadataService);
     } else {
       blobTransferManager = null;
     }

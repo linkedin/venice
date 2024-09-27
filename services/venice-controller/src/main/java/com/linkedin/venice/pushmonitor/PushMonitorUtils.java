@@ -89,7 +89,7 @@ public class PushMonitorUtils {
       Set<String> incompleteInstanceList = new HashSet<>();
       ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
+        ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
         // We will skip completed instances, as they have stopped emitting heartbeats and will not be counted as live
         // instances.
         if (status == completeStatus) {
@@ -241,7 +241,7 @@ public class PushMonitorUtils {
       boolean allInstancesCompleted = true;
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
+        ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
         // We will skip completed replicas, as they have stopped emitting heartbeats and will not be counted as live
         // replicas.
         if (status == completeStatus) {

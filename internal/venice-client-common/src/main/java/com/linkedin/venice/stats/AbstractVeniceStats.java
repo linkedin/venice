@@ -201,6 +201,19 @@ public class AbstractVeniceStats {
     return registerSensor(sensorName, parent, stats);
   }
 
+  protected Sensor registerOnlyTotalSensor(
+      String sensorName,
+      AbstractVeniceStats totalStats,
+      Supplier<Sensor> totalSensor,
+      MeasurableStat... stats) {
+
+    if (totalStats == null) {
+      return registerSensor(sensorName, stats);
+    } else {
+      return totalSensor.get();
+    }
+  }
+
   /**
    * Only register sensor for total stats. If not provided, create a new one.
    * @param sensorName
