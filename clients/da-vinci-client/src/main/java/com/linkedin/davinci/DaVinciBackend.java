@@ -602,6 +602,13 @@ public class DaVinciBackend implements Closeable {
       int partition,
       ExecutionStatus status,
       Optional<String> incrementalPushVersion) {
+    if (hasCurrentVersionBootstrapping()) {
+      LOGGER.info(
+          "DaVinci is still bootstrapping, so skip the status report for store version: " + kafkaTopic + ", partition: "
+              + partition + ", status: " + status
+              + (incrementalPushVersion.isPresent() ? ", inc push version: " + incrementalPushVersion.get() : ""));
+      return;
+    }
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
@@ -817,5 +824,9 @@ public class DaVinciBackend implements Closeable {
       status = ExecutionStatus.ERROR;
     }
     return status;
+  }
+
+  public boolean hasCurrentVersionBootstrapping() {
+    return ingestionService.hasCurrentVersionBootstrapping();
   }
 }

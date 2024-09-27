@@ -6,12 +6,14 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -88,5 +90,32 @@ public class VersionBackendTest {
     verify(mockConsumer, times(1)).accept("inc_0");
     verify(mockConsumer, times(1)).accept("inc_49");
     Assert.assertFalse(partitionToBatchReportEOIPEnabled.get(0));
+  }
+
+  @Test
+  public void testSendOutHeartBeat() {
+    String storeName = "test_store";
+    DaVinciBackend backend = mock(DaVinciBackend.class);
+    doReturn(true).when(backend).hasCurrentVersionBootstrapping();
+    PushStatusStoreWriter mockWriter = mock(PushStatusStoreWriter.class);
+    doReturn(mockWriter).when(backend).getPushStatusStoreWriter();
+
+    Version currentVersion = mock(Version.class);
+    doReturn(storeName).when(currentVersion).getStoreName();
+    doReturn(1).when(currentVersion).getNumber();
+    Version futureVersion = mock(Version.class);
+    doReturn(storeName).when(futureVersion).getStoreName();
+    doReturn(2).when(futureVersion).getNumber();
+
+    VersionBackend.sendOutHeartbeat(backend, currentVersion);
+    VersionBackend.sendOutHeartbeat(backend, futureVersion);
+
+    verify(mockWriter, never()).writeHeartbeat(storeName);
+
+    doReturn(false).when(backend).hasCurrentVersionBootstrapping();
+    VersionBackend.sendOutHeartbeat(backend, currentVersion);
+    VersionBackend.sendOutHeartbeat(backend, futureVersion);
+
+    verify(mockWriter, times(2)).writeHeartbeat(storeName);
   }
 }

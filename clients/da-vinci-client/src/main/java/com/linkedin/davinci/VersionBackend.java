@@ -193,11 +193,22 @@ public class VersionBackend {
     if (isReportingPushStatus() && heartbeat == null) {
       heartbeat = backend.getExecutor().scheduleAtFixedRate(() -> {
         try {
-          backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
+          sendOutHeartbeat(backend, version);
         } catch (Throwable t) {
           LOGGER.error("Unable to send heartbeat for {}", this);
         }
       }, 0, heartbeatInterval, TimeUnit.SECONDS);
+    }
+  }
+
+  protected static void sendOutHeartbeat(DaVinciBackend backend, Version version) {
+    if (backend.hasCurrentVersionBootstrapping()) {
+      LOGGER.info(
+          "DaVinci still is still bootstrapping, so it will skip heart-beat message "
+              + "for store: {} to avoid delaying the new push job",
+          version.getStoreName());
+    } else {
+      backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
     }
   }
 
