@@ -79,6 +79,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -604,9 +605,11 @@ public class DaVinciBackend implements Closeable {
       Optional<String> incrementalPushVersion) {
     if (hasCurrentVersionBootstrapping()) {
       LOGGER.info(
-          "DaVinci is still bootstrapping, so skip the status report for store version: " + kafkaTopic + ", partition: "
-              + partition + ", status: " + status
-              + (incrementalPushVersion.isPresent() ? ", inc push version: " + incrementalPushVersion.get() : ""));
+          "DaVinci is still bootstrapping, so skip the status report for store version:{}, partition: {}, status: {}{}",
+          kafkaTopic,
+          partition,
+          status,
+          (incrementalPushVersion.isPresent() ? ", inc push version: " + incrementalPushVersion.get() : ""));
       return;
     }
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
@@ -828,5 +831,27 @@ public class DaVinciBackend implements Closeable {
 
   public boolean hasCurrentVersionBootstrapping() {
     return ingestionService.hasCurrentVersionBootstrapping();
+  }
+
+  static class BootstrappingAwareCompletableFuture {
+    private ScheduledExecutorService scheduledExecutor =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("DaVinci_Bootstrapping_Check_Executor"));
+    public final CompletableFuture<Void> bootstrappingFuture = new CompletableFuture<>();
+
+    public BootstrappingAwareCompletableFuture(DaVinciBackend backend) {
+      scheduledExecutor.scheduleAtFixedRate(() -> {
+        if (bootstrappingFuture.isDone()) {
+          return;
+        }
+        if (!backend.hasCurrentVersionBootstrapping()) {
+          bootstrappingFuture.complete(null);
+        }
+      }, 0, 3, TimeUnit.SECONDS);
+      bootstrappingFuture.whenComplete((ignored1, ignored2) -> scheduledExecutor.shutdown());
+    }
+
+    public CompletableFuture<Void> getBootstrappingFuture() {
+      return bootstrappingFuture;
+    }
   }
 }

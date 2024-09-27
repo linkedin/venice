@@ -76,6 +76,12 @@ public class PushStatusStoreWriter implements AutoCloseable {
     writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 
+  public void deleteHeartbeat(String storeName) {
+    VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
+    writer.delete(pushStatusKey, null);
+  }
+
   public void writePushStatus(
       String storeName,
       int version,

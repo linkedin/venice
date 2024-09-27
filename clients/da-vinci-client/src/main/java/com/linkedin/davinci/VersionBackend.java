@@ -204,9 +204,17 @@ public class VersionBackend {
   protected static void sendOutHeartbeat(DaVinciBackend backend, Version version) {
     if (backend.hasCurrentVersionBootstrapping()) {
       LOGGER.info(
-          "DaVinci still is still bootstrapping, so it will skip heart-beat message "
+          "DaVinci still is still bootstrapping, so it will send heart-beat deletion message "
               + "for store: {} to avoid delaying the new push job",
           version.getStoreName());
+      /**
+       * Delete the heartbeat for the current instance if it is still bootstrapping.
+       * The reason to have such logic is that the bootstrapping of current version of
+       * some other store can happen later than the current store.
+       * We need to delete heartbeat for current instance to make sure Controller
+       * doesn't accidentally treat this node as crashed, then fail the push job.
+       */
+      backend.getPushStatusStoreWriter().deleteHeartbeat(version.getStoreName());
     } else {
       backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
     }
@@ -370,9 +378,40 @@ public class VersionBackend {
       futures.add(partitionFutures.get(partition));
     }
 
-    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, e) -> {
+    CompletableFuture<Void> bootstrappingAwareSubscriptionFuture = new CompletableFuture<>();
+
+    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, e) -> {
       storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+      if (e != null) {
+        bootstrappingAwareSubscriptionFuture.completeExceptionally(e);
+        LOGGER.warn("Bootstrapping store: {}, version: {} failed", version.getStoreName(), version.getNumber(), e);
+      } else {
+        LOGGER.info("Bootstrapping store: {}, version: {} is completed", version.getStoreName(), version.getNumber());
+        /**
+         * It is important to start polling the bootstrapping status after the version ingestion is completed to
+         * make sure the bootstrapping status polling is valid (not doing polling without any past/active ingestion tasks).
+         */
+        new DaVinciBackend.BootstrappingAwareCompletableFuture(backend).getBootstrappingFuture()
+            .whenComplete((ignored, ee) -> {
+              if (ee != null) {
+                bootstrappingAwareSubscriptionFuture.completeExceptionally(ee);
+                LOGGER.warn(
+                    "Bootstrapping aware subscription to store: {}, version: {} failed",
+                    version.getStoreName(),
+                    version.getNumber(),
+                    ee);
+              } else {
+                bootstrappingAwareSubscriptionFuture.complete(null);
+                LOGGER.info(
+                    "Bootstrapping aware subscription to store: {}, version: {} is completed",
+                    version.getStoreName(),
+                    version.getNumber());
+              }
+            });
+      }
     });
+
+    return bootstrappingAwareSubscriptionFuture;
   }
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {

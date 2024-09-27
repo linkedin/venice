@@ -110,6 +110,8 @@ public class VersionBackendTest {
     VersionBackend.sendOutHeartbeat(backend, currentVersion);
     VersionBackend.sendOutHeartbeat(backend, futureVersion);
 
+    verify(mockWriter, times(2)).deleteHeartbeat(storeName);
+
     verify(mockWriter, never()).writeHeartbeat(storeName);
 
     doReturn(false).when(backend).hasCurrentVersionBootstrapping();
