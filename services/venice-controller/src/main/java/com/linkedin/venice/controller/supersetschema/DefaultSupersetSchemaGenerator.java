@@ -20,6 +20,6 @@ public class DefaultSupersetSchemaGenerator implements SupersetSchemaGenerator {
 
   @Override
   public Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
-    return AvroSupersetSchemaUtils.generateSuperSetSchema(existingSchema, newSchema);
+    return AvroSupersetSchemaUtils.generateSupersetSchema(existingSchema, newSchema);
   }
 }

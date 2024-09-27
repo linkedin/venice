@@ -79,6 +79,27 @@ public class TestHAASController {
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testClusterResourceEmptyInstanceTag() {
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      String instanceTag = "";
+      String controllerClusterName = "venice-controllers";
+
+      Properties clusterProperties = (Properties) enableControllerAndStorageClusterHAASProperties.clone();
+      clusterProperties.put(ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, instanceTag);
+      clusterProperties.put(ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST, instanceTag);
+
+      VeniceControllerWrapper controllerWrapper = venice.addVeniceController(clusterProperties);
+
+      HelixAdmin helixAdmin = controllerWrapper.getVeniceHelixAdmin().getHelixAdmin();
+      List<String> resources = helixAdmin.getResourcesInClusterWithTag(controllerClusterName, instanceTag);
+      assertEquals(resources.size(), 0);
+      List<String> instances = helixAdmin.getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      assertEquals(instances.size(), 0);
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testStartHAASHelixControllerAsControllerClusterLeader() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {

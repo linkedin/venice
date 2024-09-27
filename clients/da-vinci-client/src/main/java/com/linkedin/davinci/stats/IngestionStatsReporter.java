@@ -2,6 +2,11 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_LEADER_OFFSET_LAG;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_ERROR;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_RECORDS;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_REPLICATION_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY;
@@ -226,6 +231,44 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
           "local_broker_to_follower_consumer",
           IngestionStats::getLocalBrokerFollowerConsumerLatencySensor);
       registerLatencySensor("leader_producer_completion", IngestionStats::getLeaderProducerCompletionLatencySensor);
+
+      registerSensor(
+          new IngestionStatsGauge(this, () -> getStats().getBatchProcessingRequest(), 0, BATCH_PROCESSING_REQUEST));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getBatchProcessingRequestError(),
+              BATCH_PROCESSING_REQUEST_ERROR));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getBatchProcessingRequestRecords(),
+              0,
+              BATCH_PROCESSING_REQUEST_RECORDS));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getBatchProcessingRequestSizeSensor().getAvg(),
+              0,
+              BATCH_PROCESSING_REQUEST_SIZE + "_avg"));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getBatchProcessingRequestSizeSensor().getMax(),
+              0,
+              BATCH_PROCESSING_REQUEST_SIZE + "_max"));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getBatchProcessingRequestLatencySensor().getAvg(),
+              0,
+              BATCH_PROCESSING_REQUEST_LATENCY + "_avg"));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getBatchProcessingRequestLatencySensor().getMax(),
+              0,
+              BATCH_PROCESSING_REQUEST_LATENCY + "_max"));
     }
   }
 

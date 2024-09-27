@@ -76,7 +76,7 @@ public class SupersetSchemaGeneratorWithCustomProp implements SupersetSchemaGene
 
   @Override
   public Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
-    Schema supersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingSchema, newSchema);
+    Schema supersetSchema = AvroSupersetSchemaUtils.generateSupersetSchema(existingSchema, newSchema);
     String customPropInNewSchema = newSchema.getProp(customProp);
     if (customPropInNewSchema != null && supersetSchema.getProp(customProp) == null) {
       Schema newSupersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(supersetSchema.toString());
