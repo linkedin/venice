@@ -77,6 +77,7 @@ public class StorageService extends AbstractVeniceService {
    * @param restoreDataPartitions indicates if store data needs to be restored.
    * @param restoreMetadataPartitions indicates if meta data needs to be restored.
    * @param checkWhetherStorageEngineShouldBeKeptOrNot check whether the local storage engine should be kept or not.
+   * @param checkWhetherStoragePartitionShouldBeKeptOrNot check whether the partition is assigned and thus should be kept or not.
    */
   StorageService(
       VeniceConfigLoader configLoader,
@@ -88,6 +89,7 @@ public class StorageService extends AbstractVeniceService {
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
       Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
+      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionShouldBeKeptOrNot,
       Optional<Map<PersistenceType, StorageEngineFactory>> persistenceTypeToStorageEngineFactoryMapOptional) {
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -122,7 +124,8 @@ public class StorageService extends AbstractVeniceService {
           configLoader,
           restoreDataPartitions,
           restoreMetadataPartitions,
-          checkWhetherStorageEngineShouldBeKeptOrNot);
+          checkWhetherStorageEngineShouldBeKeptOrNot,
+          checkWhetherStoragePartitionShouldBeKeptOrNot);
     }
   }
 
@@ -135,7 +138,8 @@ public class StorageService extends AbstractVeniceService {
       ReadOnlyStoreRepository storeRepository,
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
-      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
+      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionShouldBeKeptOrNot) {
     this(
         configLoader,
         storageEngineStats,
@@ -146,6 +150,7 @@ public class StorageService extends AbstractVeniceService {
         restoreDataPartitions,
         restoreMetadataPartitions,
         checkWhetherStorageEngineShouldBeKeptOrNot,
+        checkWhetherStoragePartitionShouldBeKeptOrNot,
         Optional.empty());
   }
 
@@ -167,7 +172,8 @@ public class StorageService extends AbstractVeniceService {
         storeRepository,
         restoreDataPartitions,
         restoreMetadataPartitions,
-        s -> true);
+        s -> true,
+        se -> null);
   }
 
   /**
@@ -233,7 +239,8 @@ public class StorageService extends AbstractVeniceService {
       VeniceConfigLoader configLoader,
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
-      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
+      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionsShouldBeKeptOrNot) {
     LOGGER.info("Start restoring all the stores persisted previously");
     for (Map.Entry<PersistenceType, StorageEngineFactory> entry: persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       PersistenceType pType = entry.getKey();
@@ -254,6 +261,7 @@ public class StorageService extends AbstractVeniceService {
         if (checkWhetherStorageEngineShouldBeKeptOrNot.apply(storeName)) {
           try {
             storageEngine = openStore(storeConfig, () -> null);
+            checkWhetherStoragePartitionsShouldBeKeptOrNot.apply(storageEngine);
           } catch (Exception e) {
             if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
               LOGGER.warn("Encountered RocksDB error while opening store: {}", storeName, e);
@@ -467,7 +475,7 @@ public class StorageService extends AbstractVeniceService {
   public void cleanupAllStores(VeniceConfigLoader configLoader) {
     // Load local storage and delete them safely.
     // TODO Just clean the data dir in case loading and deleting is too slow.
-    restoreAllStores(configLoader, true, true, s -> true);
+    restoreAllStores(configLoader, true, true, s -> true, se -> null);
     LOGGER.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
       String storeName = storageEngine.getStoreVersionName();

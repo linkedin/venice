@@ -331,7 +331,8 @@ public class VeniceServer {
         metadataRepo,
         whetherToRestoreDataPartitions,
         true,
-        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
+        functionToCheckWhetherStorageEngineShouldBeKeptOrNot(),
+        functionToCheckWhetherStoragePartitionShouldBeKeptOrNot());
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -711,19 +712,15 @@ public class VeniceServer {
   }
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
-    return storageEngineName -> {
+    return storageEngineName -> true;
+  }
+
+  private Function<AbstractStorageEngine, Void> functionToCheckWhetherStoragePartitionShouldBeKeptOrNot() {
+    return storageEngine -> {
+      String storageEngineName = storageEngine.toString();
       String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
-
-      StorageEngineRepository storageEngineRepository = new StorageEngineRepository();
-
-      AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storageEngineName);
-
-      if (storageEngine == null) {
-        return true;
-      }
-
       PropertyKey.Builder propertyKeyBuilder =
-          new PropertyKey.Builder(this.veniceConfigLoader.getVeniceClusterConfig().getClusterName());
+          new PropertyKey.Builder(veniceConfigLoader.getVeniceClusterConfig().getClusterName());
       IdealState idealState = getHelixParticipationService().getHelixManager()
           .getHelixDataAccessor()
           .getProperty(propertyKeyBuilder.idealStates(storeName));
@@ -740,8 +737,7 @@ public class VeniceServer {
         }
         storageEngine.dropPartition(storageEnginePartitionId);
       }
-
-      return true;
+      return null;
     };
   }
 
