@@ -603,16 +603,22 @@ public class DaVinciBackend implements Closeable {
       int partition,
       ExecutionStatus status,
       Optional<String> incrementalPushVersion) {
-    if (hasCurrentVersionBootstrapping()) {
+    VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+    if (hasCurrentVersionBootstrapping()
+        /**
+         * It is fine to report the status for Venice current version as the push job for current version is completed already.
+         * Another benefit is to support blob discovery for current version.
+         */
+        && getVeniceCurrentVersionNumber(Version.parseStoreFromKafkaTopicName(kafkaTopic)) != Version
+            .parseVersionFromVersionTopicName(kafkaTopic)) {
       LOGGER.info(
-          "DaVinci is still bootstrapping, so skip the status report for store version:{}, partition: {}, status: {}{}",
+          "DaVinci is still bootstrapping, so skip the status report for store version: {}, partition: {}, status: {}{}",
           kafkaTopic,
           partition,
           status,
           (incrementalPushVersion.isPresent() ? ", inc push version: " + incrementalPushVersion.get() : ""));
       return;
     }
-    VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
       if (writeBatchingPushStatus && !incrementalPushVersion.isPresent()) {
@@ -664,6 +670,11 @@ public class DaVinciBackend implements Closeable {
     } catch (VeniceNoStoreException e) {
       return null;
     }
+  }
+
+  int getVeniceCurrentVersionNumber(String storeName) {
+    Version currentVersion = getVeniceCurrentVersion(storeName);
+    return currentVersion == null ? -1 : currentVersion.getNumber();
   }
 
   private Version getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
