@@ -332,7 +332,7 @@ public class VeniceServer {
         whetherToRestoreDataPartitions,
         true,
         functionToCheckWhetherStorageEngineShouldBeKeptOrNot(),
-        functionToCheckWhetherStoragePartitionShouldBeKeptOrNot());
+        functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot());
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -715,7 +715,7 @@ public class VeniceServer {
     return storageEngineName -> true;
   }
 
-  private Function<AbstractStorageEngine, Void> functionToCheckWhetherStoragePartitionShouldBeKeptOrNot() {
+  private Function<AbstractStorageEngine, Void> functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot() {
     return storageEngine -> {
       String storageEngineName = storageEngine.toString();
       String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);

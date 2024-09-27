@@ -77,7 +77,7 @@ public class StorageService extends AbstractVeniceService {
    * @param restoreDataPartitions indicates if store data needs to be restored.
    * @param restoreMetadataPartitions indicates if meta data needs to be restored.
    * @param checkWhetherStorageEngineShouldBeKeptOrNot check whether the local storage engine should be kept or not.
-   * @param checkWhetherStoragePartitionShouldBeKeptOrNot check whether the partition is assigned and thus should be kept or not.
+   * @param checkWhetherStoragePartitionsShouldBeKeptOrNot check whether the partition is assigned and thus should be kept or not.
    */
   StorageService(
       VeniceConfigLoader configLoader,
@@ -89,7 +89,7 @@ public class StorageService extends AbstractVeniceService {
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
       Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
-      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionShouldBeKeptOrNot,
+      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionsShouldBeKeptOrNot,
       Optional<Map<PersistenceType, StorageEngineFactory>> persistenceTypeToStorageEngineFactoryMapOptional) {
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -125,7 +125,7 @@ public class StorageService extends AbstractVeniceService {
           restoreDataPartitions,
           restoreMetadataPartitions,
           checkWhetherStorageEngineShouldBeKeptOrNot,
-          checkWhetherStoragePartitionShouldBeKeptOrNot);
+          checkWhetherStoragePartitionsShouldBeKeptOrNot);
     }
   }
 
@@ -139,7 +139,7 @@ public class StorageService extends AbstractVeniceService {
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
       Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
-      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionShouldBeKeptOrNot) {
+      Function<AbstractStorageEngine, Void> checkWhetherStoragePartitionsShouldBeKeptOrNot) {
     this(
         configLoader,
         storageEngineStats,
@@ -150,7 +150,7 @@ public class StorageService extends AbstractVeniceService {
         restoreDataPartitions,
         restoreMetadataPartitions,
         checkWhetherStorageEngineShouldBeKeptOrNot,
-        checkWhetherStoragePartitionShouldBeKeptOrNot,
+        checkWhetherStoragePartitionsShouldBeKeptOrNot,
         Optional.empty());
   }
 
