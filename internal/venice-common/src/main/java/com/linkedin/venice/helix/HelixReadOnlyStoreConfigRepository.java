@@ -34,78 +34,58 @@ import org.apache.logging.log4j.Logger;
 public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRepository, VeniceResource {
   private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyStoreConfigRepository.class);
 
-  private final AtomicReference<Map<String, StoreConfig>> storeConfigMap;
+  private final AtomicReference<Map<String, StoreConfig>> loadedStoreConfigMap;
+  private final AtomicReference<Set<String>> availableStoreSet;
   private final ZkStoreConfigAccessor accessor;
   private final StoreConfigChangedListener storeConfigChangedListener;
   private final StoreConfigAddedOrDeletedChangedListener storeConfigAddedOrDeletedListener;
   private final ZkClient zkClient;
   private final CachedResourceZkStateListener zkStateListener;
-  private final int refreshAttemptsForZkReconnect;
-  private final long refreshIntervalForZkReconnectInMs;
 
-  public HelixReadOnlyStoreConfigRepository(
-      ZkClient zkClient,
-      HelixAdapterSerializer adapterSerializer,
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs) {
-    this(
-        zkClient,
-        new ZkStoreConfigAccessor(zkClient, adapterSerializer, Optional.empty()),
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
+    this(zkClient, new ZkStoreConfigAccessor(zkClient, adapterSerializer, Optional.empty()));
   }
 
-  public HelixReadOnlyStoreConfigRepository(
-      ZkClient zkClient,
-      ZkStoreConfigAccessor accessor,
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs) {
+  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, ZkStoreConfigAccessor accessor) {
     this.zkClient = zkClient;
     this.accessor = accessor;
-    this.storeConfigMap = new AtomicReference<>(new HashMap<>());
+    this.loadedStoreConfigMap = new AtomicReference<>(new HashMap<>());
+    this.availableStoreSet = new AtomicReference<>(new HashSet<>());
     storeConfigChangedListener = new StoreConfigChangedListener();
     storeConfigAddedOrDeletedListener = new StoreConfigAddedOrDeletedChangedListener();
-    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
-    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
     // This repository already retry on getChildren, so do not need extra retry in listener.
     zkStateListener = new CachedResourceZkStateListener(this);
   }
 
   /**
-   * Obtain all store configs and attach ZK watches on every store config received.
-   * Note that calling this method would load all stores under the store config path from ZK and increases the ZK watch
-   * count significantly.
+   * Obtain all available stores and load them into cache, but it doesn't fetch the store configs and attach ZK watch yet
    */
   @Override
   public void refresh() {
-    LOGGER.info("Loading all store configs from zk.");
+    LOGGER.info("Loading all store names from zk.");
     accessor.subscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    List<StoreConfig> configList =
-        accessor.getAllStoreConfigs(refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-    LOGGER.info("Found {} store configs.", configList.size());
-    Map<String, StoreConfig> configMap = new HashMap<>();
-    for (StoreConfig config: configList) {
-      configMap.put(config.getStoreName(), config);
-      accessor.subscribeStoreConfigDataChangedListener(config.getStoreName(), storeConfigChangedListener);
-    }
-    storeConfigMap.set(configMap);
+    availableStoreSet.set(new HashSet<>(accessor.getAllStores()));
+    LOGGER.info("Found {} stores.", availableStoreSet.get().size());
     zkClient.subscribeStateChanges(zkStateListener);
-    LOGGER.info("All store configs are loaded.");
+    LOGGER.info("All store names are loaded.");
   }
 
   @Override
   public void clear() {
     LOGGER.info("Clearing all store configs in local");
     accessor.unsubscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    for (String storeName: storeConfigMap.get().keySet()) {
+    for (String storeName: loadedStoreConfigMap.get().keySet()) {
       accessor.unsubscribeStoreConfigDataChangedListener(storeName, storeConfigChangedListener);
     }
-    this.storeConfigMap.set(Collections.emptyMap());
+    this.loadedStoreConfigMap.set(Collections.emptyMap());
+    this.availableStoreSet.set(Collections.emptySet());
     zkClient.unsubscribeStateChanges(zkStateListener);
     LOGGER.info("Cleared all store configs in local");
   }
 
   /**
+   * Get the store config by store name. It would fetch the store config from ZK if it's not in cache yet and attach ZK
+   * watch.
    * The corresponding Venice store config is returned for metadata system store's store config. This is the most
    * natural way to handle cluster discovery for metadata system stores and store migration.
    */
@@ -120,21 +100,20 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
       veniceStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
     }
-    StoreConfig config = storeConfigMap.get().get(veniceStoreName);
-    // Lazy fetch. It should happen when the entire store config map is not loaded, and only do ad-hoc fetch
-    if (config == null) {
-      config = accessor.getStoreConfig(veniceStoreName);
-      if (config != null) {
-        storeConfigMap.get().put(config.getStoreName(), config);
-        accessor.subscribeStoreConfigDataChangedListener(veniceStoreName, storeConfigChangedListener);
-      }
-    }
 
-    if (config != null) {
-      return Optional.of(config.cloneStoreConfig());
-    } else {
-      return Optional.empty();
+    if (availableStoreSet.get().contains(storeName)) {
+      StoreConfig config = loadedStoreConfigMap.get().get(storeName);
+      if (config == null) {
+        // lazy fetch from ZK and attach watch
+        config = accessor.getStoreConfig(veniceStoreName);
+        if (config != null) {
+          loadedStoreConfigMap.get().put(config.getStoreName(), config);
+          accessor.subscribeStoreConfigDataChangedListener(veniceStoreName, storeConfigChangedListener);
+        }
+      }
+      return Optional.ofNullable(config != null ? config.cloneStoreConfig() : null);
     }
+    return Optional.empty();
   }
 
   @Override
@@ -148,61 +127,72 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
   @Override
   public List<StoreConfig> getAllStoreConfigs() {
-    return new ArrayList<>(storeConfigMap.get().values());
+    return new ArrayList<>(loadedStoreConfigMap.get().values());
   }
 
   @VisibleForTesting
-  protected StoreConfigAddedOrDeletedChangedListener getStoreConfigAddedOrDeletedListener() {
+  StoreConfigAddedOrDeletedChangedListener getStoreConfigAddedOrDeletedListener() {
     return storeConfigAddedOrDeletedListener;
   }
 
-  protected StoreConfigChangedListener getStoreConfigChangedListener() {
+  @VisibleForTesting
+  StoreConfigChangedListener getStoreConfigChangedListener() {
     return storeConfigChangedListener;
+  }
+
+  @VisibleForTesting
+  Set<String> getAvailableStoreSet() {
+    return availableStoreSet.get();
+  }
+
+  @VisibleForTesting
+  Map<String, StoreConfig> getLoadedStoreConfigMap() {
+    return loadedStoreConfigMap.get();
   }
 
   protected class StoreConfigAddedOrDeletedChangedListener implements IZkChildListener {
     @Override
-    public void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
-      synchronized (storeConfigMap) {
-        Map<String, StoreConfig> map = new HashMap<>(storeConfigMap.get());
+    public void handleChildChange(String parentPath, List<String> currentChildren) {
+      synchronized (availableStoreSet) {
+        Set<String> set = new HashSet<>(availableStoreSet.get());
         List<String> newStores =
-            currentChildren.stream().filter(newStore -> !map.containsKey(newStore)).collect(Collectors.toList());
+            currentChildren.stream().filter(newStore -> !set.contains(newStore)).collect(Collectors.toList());
 
-        Set<String> deletedStores = new HashSet<>(map.keySet());
-        currentChildren.forEach(deletedStores::remove);
+        // obtain the stores that are removed
+        currentChildren.forEach(set::remove);
         LOGGER.info(
             "Store configs list is changed. {} new configs. And will delete {} configs.",
             newStores.size(),
-            deletedStores.size());
-        // New added store configs
-        List<StoreConfig> newConfigs = accessor.getStoreConfigs(newStores);
-        for (StoreConfig config: newConfigs) {
-          map.put(config.getStoreName(), config);
-          accessor.subscribeStoreConfigDataChangedListener(config.getStoreName(), storeConfigChangedListener);
-        }
+            set.size());
 
-        // Deleted store configs
-        for (String deletedStore: deletedStores) {
-          map.remove(deletedStore);
-          accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
+        // update the available store set
+        availableStoreSet.set(new HashSet<>(currentChildren));
+
+        synchronized (loadedStoreConfigMap) {
+          Map<String, StoreConfig> map = new HashMap<>(loadedStoreConfigMap.get());
+          // Deleted store configs
+          for (String deletedStore: set) {
+            map.remove(deletedStore);
+            accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
+          }
+          loadedStoreConfigMap.set(map);
         }
-        storeConfigMap.set(map);
       }
     }
   }
 
   protected class StoreConfigChangedListener implements IZkDataListener {
     @Override
-    public void handleDataChange(String dataPath, Object data) throws Exception {
+    public void handleDataChange(String dataPath, Object data) {
       if (!(data instanceof StoreConfig)) {
         throw new VeniceException(
             "Invalid data from zk notification. Required: StoreConfig, but get: " + data.getClass().getName());
       }
       StoreConfig config = (StoreConfig) data;
-      synchronized (storeConfigMap) {
-        Map<String, StoreConfig> map = new HashMap<>(storeConfigMap.get());
+      synchronized (loadedStoreConfigMap) {
+        Map<String, StoreConfig> map = new HashMap<>(loadedStoreConfigMap.get());
         map.put(config.getStoreName(), config);
-        storeConfigMap.set(map);
+        loadedStoreConfigMap.set(map);
       }
     }
 

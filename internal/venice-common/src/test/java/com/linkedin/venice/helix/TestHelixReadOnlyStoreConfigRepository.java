@@ -4,12 +4,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.meta.StoreConfig;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -21,124 +21,122 @@ public class TestHelixReadOnlyStoreConfigRepository {
   private ZkStoreConfigAccessor mockAccessor;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
 
+  private static final String DEFAULT_STORE_NAME = "testGetStoreConfigStore";
+  private static final String DEFAULT_CLUSTER_NAME = "testGetStoreConfigCluster";
+  private static final StoreConfig DEFAULT_STORE_CONFIG = new StoreConfig(DEFAULT_STORE_NAME);
+  static {
+    DEFAULT_STORE_CONFIG.setCluster(DEFAULT_CLUSTER_NAME);
+  }
+
   @BeforeMethod
   public void setUp() {
     mockAccessor = mock(ZkStoreConfigAccessor.class);
-    storeConfigRepository = new HelixReadOnlyStoreConfigRepository(mock(ZkClient.class), mockAccessor, 1, 1000);
+    storeConfigRepository = new HelixReadOnlyStoreConfigRepository(mock(ZkClient.class), mockAccessor);
   }
 
   @Test
   public void testGetStoreConfig() {
-    String clusterName = "testGetStoreConfigCluster";
-    String storeName = "testGetStoreConfigStore";
-    StoreConfig config = new StoreConfig(storeName);
-    config.setCluster(clusterName);
-    List<StoreConfig> list = new ArrayList<>();
-    list.add(config);
-    doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
+    List<String> list = new ArrayList<>();
+    list.add(DEFAULT_STORE_NAME);
+    doReturn(list).when(mockAccessor).getAllStores();
+    // 1.) obtain a config doesn't exist in available store set
     storeConfigRepository.refresh();
-    Assert.assertEquals(
-        storeConfigRepository.getStoreConfig(storeName).get().getCluster(),
-        clusterName,
-        "Should get the cluster from config correctly.");
-    Assert.assertFalse(
-        storeConfigRepository.getStoreConfig("non-existing-store").isPresent(),
-        "Store config should not exist.");
+    Assert.assertFalse(storeConfigRepository.getStoreConfig(DEFAULT_STORE_NAME + "test").isPresent());
+
+    // 2.) obtain a config exists in available store set but not in cache
+
+    // a.) ZK has no store config
+    doReturn(null).when(mockAccessor).getStoreConfig(DEFAULT_STORE_NAME);
+    Assert.assertFalse(storeConfigRepository.getStoreConfig(DEFAULT_STORE_NAME).isPresent());
+
+    // b. ZK has the store config
+    doReturn(DEFAULT_STORE_CONFIG).when(mockAccessor).getStoreConfig(DEFAULT_STORE_NAME);
+    Assert.assertEquals(storeConfigRepository.getStoreConfig(DEFAULT_STORE_NAME).get(), DEFAULT_STORE_CONFIG);
+    verify(mockAccessor, times(1)).subscribeStoreConfigDataChangedListener(eq(DEFAULT_STORE_NAME), any());
+
+    // 3.) Obtain a config exists in available store set and in cache
+    Assert.assertEquals(storeConfigRepository.getStoreConfig(DEFAULT_STORE_NAME).get(), DEFAULT_STORE_CONFIG);
+    // the invocation count should not increase and remain at 1
+    verify(mockAccessor, times(1)).subscribeStoreConfigDataChangedListener(eq(DEFAULT_STORE_NAME), any());
   }
 
   @Test
   public void testRefreshAndClear() {
     int storeCount = 10;
-    List<StoreConfig> list = new ArrayList<>();
+    List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < storeCount; i++) {
-      StoreConfig config = new StoreConfig("testRefreshAndClearStore" + i);
-      config.setCluster("testRefreshAndClearCluster" + i);
-      list.add(config);
+      String name = "testRefreshAndClearStore" + i;
+      storeNames.add(name);
     }
-    doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
+    doReturn(storeNames).when(mockAccessor).getAllStores();
 
     storeConfigRepository.refresh();
     for (int i = 0; i < storeCount; i++) {
-      Assert.assertEquals(
-          storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + i).get().getCluster(),
-          "testRefreshAndClearCluster" + i,
-          "Should already load all configs correctly.");
+      Assert.assertTrue(storeConfigRepository.getAvailableStoreSet().contains("testRefreshAndClearStore" + i));
     }
+    Assert.assertEquals(storeConfigRepository.getLoadedStoreConfigMap().size(), 0);
+
     storeConfigRepository.clear();
     for (int i = 0; i < storeCount; i++) {
-      Assert.assertFalse(
-          storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + i).isPresent(),
-          "Should already clear all configs correctly.");
+      Assert.assertFalse(storeConfigRepository.getAvailableStoreSet().contains("testRefreshAndClearStore" + i));
     }
+    Assert.assertEquals(storeConfigRepository.getLoadedStoreConfigMap().size(), 0);
   }
 
   @Test
   public void testGetStoreConfigChildrenChangedNotification() throws Exception {
+    String STORE_PREFIX = "testRefreshAndClearStore";
+    String CLUSTER_PREFIX = "testRefreshAndClearCluster";
     HelixReadOnlyStoreConfigRepository.StoreConfigAddedOrDeletedChangedListener listener =
         storeConfigRepository.getStoreConfigAddedOrDeletedListener();
     int storeCount = 10;
     List<StoreConfig> list = new ArrayList<>();
+    List<String> storeList = new ArrayList<>();
     for (int i = 0; i < storeCount; i++) {
-      StoreConfig config = new StoreConfig("testRefreshAndClearStore" + i);
-      config.setCluster("testRefreshAndClearCluster" + i);
+      StoreConfig config = new StoreConfig(STORE_PREFIX + i);
+      storeList.add(STORE_PREFIX + i);
+      config.setCluster(CLUSTER_PREFIX + i);
       list.add(config);
     }
-    doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
+    doReturn(storeList).when(mockAccessor).getAllStores();
     storeConfigRepository.refresh();
+    for (int i = 0; i < storeCount; i++) {
+      doReturn(list.get(i)).when(mockAccessor).getStoreConfig(STORE_PREFIX + i);
+      storeConfigRepository.getStoreConfig(STORE_PREFIX + i);
+    }
 
     List<String> storeNames = list.stream().map(config -> config.getStoreName()).collect(Collectors.toList());
     storeNames.remove(0);
     String newStoreName = "testRefreshAndClearStoreNew";
     storeNames.add(newStoreName);
 
-    List<String> newStoreNames = new ArrayList<>();
-    newStoreNames.add(newStoreName);
-    List<StoreConfig> newStoreConfigList = new ArrayList<>();
     StoreConfig newStoreConfig = new StoreConfig(newStoreName);
     newStoreConfig.setCluster("testRefreshAndClearClusterNew");
-    newStoreConfigList.add(newStoreConfig);
-    doReturn(newStoreConfigList).when(mockAccessor).getStoreConfigs(eq(newStoreNames));
 
     listener.handleChildChange("", storeNames);
 
-    Assert.assertFalse(storeConfigRepository.getStoreConfig("testRefreshAndClearStore" + 0).isPresent());
-    Assert.assertEquals(
-        storeConfigRepository.getStoreConfig(newStoreName).get().getCluster(),
-        newStoreConfig.getCluster());
+    Assert.assertFalse(storeConfigRepository.getStoreConfig(STORE_PREFIX + 0).isPresent());
+    Assert.assertTrue(storeConfigRepository.getAvailableStoreSet().contains(newStoreName));
   }
 
   @Test
   public void testGetUpdateStoreConfigNotification() throws Exception {
-    String storeNAme = "testGetUpdateStoreConfigNotification";
-    List<StoreConfig> list = new ArrayList<>();
-    StoreConfig config = new StoreConfig(storeNAme);
+    String storeName = "testGetUpdateStoreConfigNotification";
+    StoreConfig config = new StoreConfig(storeName);
+    List<String> list = new ArrayList<>();
+    list.add(storeName);
+    doReturn(list).when(mockAccessor).getAllStores();
     config.setCluster("testCluster");
-    list.add(config);
-    doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
+    doReturn(config).when(mockAccessor).getStoreConfig(storeName);
     storeConfigRepository.refresh();
+    storeConfigRepository.getStoreConfigOrThrow(storeName);
 
     HelixReadOnlyStoreConfigRepository.StoreConfigChangedListener listener =
         storeConfigRepository.getStoreConfigChangedListener();
-    StoreConfig newConfig = new StoreConfig(storeNAme);
+    StoreConfig newConfig = new StoreConfig(storeName);
     newConfig.setCluster("newCluster");
     listener.handleDataChange("", newConfig);
 
-    Assert.assertEquals(storeConfigRepository.getStoreConfig(storeNAme).get().getCluster(), newConfig.getCluster());
-  }
-
-  @Test
-  public void testStoreConfigLazyFetch() {
-    String storeName = "testLazyFetchStore";
-    Optional<StoreConfig> storeConfigOptional = storeConfigRepository.getStoreConfig(storeName);
-    // config is empty
-    Assert.assertFalse(storeConfigOptional.isPresent());
-
-    // config is fetched
-    StoreConfig config = mock(StoreConfig.class);
-    doReturn(config).when(config).cloneStoreConfig();
-    doReturn(config).when(mockAccessor).getStoreConfig(storeName);
-    storeConfigOptional = storeConfigRepository.getStoreConfig(storeName);
-    Assert.assertEquals(storeConfigOptional.get(), config);
-    verify(mockAccessor).subscribeStoreConfigDataChangedListener(eq(storeName), any());
+    Assert.assertEquals(storeConfigRepository.getStoreConfig(storeName).get().getCluster(), newConfig.getCluster());
   }
 }
