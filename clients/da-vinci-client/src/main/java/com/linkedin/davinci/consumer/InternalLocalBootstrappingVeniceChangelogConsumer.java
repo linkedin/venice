@@ -130,8 +130,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         storeRepository,
         true,
         true,
-        functionToCheckWhetherStorageEngineShouldBeKeptOrNot(),
-        functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot());
+        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     storageMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
   }
@@ -175,10 +174,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
       return true;
     };
-  }
-
-  private Function<AbstractStorageEngine, Void> functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot() {
-    return storageEngine -> null;
   }
 
   @Override

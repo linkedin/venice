@@ -129,6 +129,67 @@ public class StorageService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Allocates a new {@code StorageService} object.
+   * @param configLoader a config loader to load configs related to cluster and server.
+   * @param storageEngineStats storage engine related stats.
+   * @param rocksDBMemoryStats RocksDB memory consumption stats.
+   * @param storeVersionStateSerializer serializer for translating a store-version level state into avro-format.
+   * @param partitionStateSerializer serializer for translating a partition state into avro-format.
+   * @param storeRepository supports readonly operations to access stores
+   * @param restoreDataPartitions indicates if store data needs to be restored.
+   * @param restoreMetadataPartitions indicates if meta data needs to be restored.
+   * @param checkWhetherStorageEngineShouldBeKeptOrNot check whether the local storage engine should be kept or not.
+   */
+  StorageService(
+      VeniceConfigLoader configLoader,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      ReadOnlyStoreRepository storeRepository,
+      boolean restoreDataPartitions,
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
+      Optional<Map<PersistenceType, StorageEngineFactory>> persistenceTypeToStorageEngineFactoryMapOptional) {
+    String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
+    if (!Utils.directoryExists(dataPath)) {
+      if (!configLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
+        throw new VeniceException(
+            "Data directory '" + dataPath + "' does not exist and " + ConfigKeys.AUTOCREATE_DATA_PATH
+                + " is disabled.");
+      }
+
+      File dataDir = new File(dataPath);
+      LOGGER.info("Creating data directory {}", dataDir.getAbsolutePath());
+      dataDir.mkdirs();
+    }
+
+    this.configLoader = configLoader;
+    this.serverConfig = configLoader.getVeniceServerConfig();
+    this.storageEngineRepository = new StorageEngineRepository();
+
+    this.aggVersionedStorageEngineStats = storageEngineStats;
+    this.rocksDBMemoryStats = rocksDBMemoryStats;
+    this.storeVersionStateSerializer = storeVersionStateSerializer;
+    this.partitionStateSerializer = partitionStateSerializer;
+    this.storeRepository = storeRepository;
+    if (persistenceTypeToStorageEngineFactoryMapOptional.isPresent()) {
+      this.persistenceTypeToStorageEngineFactoryMap = persistenceTypeToStorageEngineFactoryMapOptional.get();
+    } else {
+      this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
+      initInternalStorageEngineFactories();
+    }
+    if (restoreDataPartitions || restoreMetadataPartitions) {
+      restoreAllStores(
+          configLoader,
+          restoreDataPartitions,
+          restoreMetadataPartitions,
+          checkWhetherStorageEngineShouldBeKeptOrNot,
+          se -> null);
+    }
+  }
+
   public StorageService(
       VeniceConfigLoader configLoader,
       AggVersionedStorageEngineStats storageEngineStats,
@@ -162,6 +223,29 @@ public class StorageService extends AbstractVeniceService {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       ReadOnlyStoreRepository storeRepository,
       boolean restoreDataPartitions,
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
+    this(
+        configLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        storeRepository,
+        restoreDataPartitions,
+        restoreMetadataPartitions,
+        checkWhetherStorageEngineShouldBeKeptOrNot,
+        Optional.empty());
+  }
+
+  public StorageService(
+      VeniceConfigLoader configLoader,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      ReadOnlyStoreRepository storeRepository,
+      boolean restoreDataPartitions,
       boolean restoreMetadataPartitions) {
     this(
         configLoader,
@@ -172,8 +256,7 @@ public class StorageService extends AbstractVeniceService {
         storeRepository,
         restoreDataPartitions,
         restoreMetadataPartitions,
-        s -> true,
-        se -> null);
+        s -> true);
   }
 
   /**

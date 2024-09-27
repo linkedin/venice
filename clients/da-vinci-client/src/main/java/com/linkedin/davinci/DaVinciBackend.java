@@ -198,8 +198,7 @@ public class DaVinciBackend implements Closeable {
           storeRepository,
           whetherToRestoreDataPartitions,
           true,
-          functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients),
-          se -> null);
+          functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();
       PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
       VeniceWriterFactory writerFactory =
