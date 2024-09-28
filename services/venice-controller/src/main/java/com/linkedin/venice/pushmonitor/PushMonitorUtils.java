@@ -105,7 +105,7 @@ public class PushMonitorUtils {
           }
           continue;
         }
-        if (!instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
           offlineInstanceCount++;
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
