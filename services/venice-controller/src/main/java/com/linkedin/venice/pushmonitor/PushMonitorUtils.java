@@ -87,6 +87,7 @@ public class PushMonitorUtils {
       Optional<String> erroredInstance = Optional.empty();
       Set<String> offlineInstanceList = new HashSet<>();
       Set<String> incompleteInstanceList = new HashSet<>();
+      Set<String> bootstrappingInstanceList = new HashSet<>();
       ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
@@ -96,8 +97,15 @@ public class PushMonitorUtils {
           completedInstanceCount++;
           continue;
         }
-        boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
-        if (!isInstanceAlive) {
+        PushStatusStoreReader.InstanceStatus instanceStatus =
+            reader.getInstanceStatus(storeName, entry.getKey().toString());
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
+          if (bootstrappingInstanceList.size() < 5) {
+            bootstrappingInstanceList.add(entry.getKey().toString());
+          }
+          continue;
+        }
+        if (!instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
           offlineInstanceCount++;
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
@@ -133,7 +141,8 @@ public class PushMonitorUtils {
                     ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
                     : ExecutionStatus.ERROR,
                 "Too many dead instances: " + offlineInstanceCount + ", total instances: " + totalInstanceCount
-                    + ", example offline instances: " + offlineInstanceList,
+                    + ", example offline instances: " + offlineInstanceList + ", example bootstrapping instances: "
+                    + bootstrappingInstanceList,
                 noDaVinciStatusReported);
           }
         } else {
@@ -231,10 +240,11 @@ public class PushMonitorUtils {
     int completedReplicaCount = 0;
     Set<String> offlineInstanceList = new HashSet<>();
     Set<Integer> incompletePartition = new HashSet<>();
+    Set<String> bootstrappingInstanceList = new HashSet<>();
     /**
      * This cache is used to reduce the duplicate calls for liveness check as one host can host multiple partitions.
      */
-    Map<String, Boolean> instanceLivenessCache = new HashMap<>();
+    Map<String, PushStatusStoreReader.InstanceStatus> instanceLivenessCache = new HashMap<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances =
           reader.getPartitionStatus(storeName, version, partitionId, incrementalPushVersion);
@@ -249,9 +259,18 @@ public class PushMonitorUtils {
           continue;
         }
         String instanceName = entry.getKey().toString();
-        boolean isInstanceAlive = instanceLivenessCache
-            .computeIfAbsent(instanceName, ignored -> reader.isInstanceAlive(storeName, instanceName));
-        if (!isInstanceAlive) {
+        PushStatusStoreReader.InstanceStatus instanceStatus = instanceLivenessCache
+            .computeIfAbsent(instanceName, ignored -> reader.getInstanceStatus(storeName, instanceName));
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
+          // Keep at most 5 bootstrapping instances for logging purpose.
+          if (bootstrappingInstanceList.size() < 5) {
+            bootstrappingInstanceList.add(entry.getKey().toString());
+          }
+          // Don't count bootstrapping instance status report.
+          totalReplicaCount--;
+          continue;
+        }
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
             offlineInstanceList.add(entry.getKey().toString());
@@ -294,7 +313,8 @@ public class PushMonitorUtils {
                   ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
                   : ExecutionStatus.ERROR,
               "Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount
-                  + ", example offline instances: " + offlineInstanceList,
+                  + ", example offline instances: " + offlineInstanceList + " example bootstrapping instances: "
+                  + bootstrappingInstanceList,
               noDaVinciStatusReported);
         }
       } else {

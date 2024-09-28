@@ -208,13 +208,10 @@ public class VersionBackend {
               + "for store: {} to avoid delaying the new push job",
           version.getStoreName());
       /**
-       * Delete the heartbeat for the current instance if it is still bootstrapping.
-       * The reason to have such logic is that the bootstrapping of current version of
-       * some other store can happen later than the current store.
-       * We need to delete heartbeat for current instance to make sure Controller
-       * doesn't accidentally treat this node as crashed, then fail the push job.
+       * Tell backend that the report from the bootstrapping instance doesn't count to avoid
+       * delaying new pushes.
        */
-      backend.getPushStatusStoreWriter().deleteHeartbeat(version.getStoreName());
+      backend.getPushStatusStoreWriter().writeHeartbeatForBootstrappingInstance(version.getStoreName());
     } else {
       backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
     }
