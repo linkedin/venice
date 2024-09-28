@@ -8,6 +8,8 @@ dependencies {
     exclude module: ':internal:alpini'
   }
 
+  implementation project(':internal:venice-hadoop-common')
+
   implementation (libraries.avro) {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
   }
