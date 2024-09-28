@@ -91,6 +91,16 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
   }
 
   @Override
+  public int hashCode() {
+    return Objects.hash(
+        storeClusterConfig.storeName,
+        storeClusterConfig.cluster,
+        storeClusterConfig.deleting,
+        storeClusterConfig.migrationSrcCluster,
+        storeClusterConfig.migrationDestCluster);
+  }
+
+  @Override
   public boolean equals(Object o) {
     if (this == o) {
       return true;
