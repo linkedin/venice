@@ -46,7 +46,7 @@ public class ZkStoreConfigAccessor {
   }
 
   public List<String> getAllStores() {
-    return dataAccessor.getChildNames(ROOT_PATH, AccessOption.PERSISTENT);
+    return HelixUtils.listPathContents(dataAccessor, ROOT_PATH);
   }
 
   public List<StoreConfig> getAllStoreConfigs(
