@@ -87,7 +87,6 @@ public class PushMonitorUtils {
       Optional<String> erroredInstance = Optional.empty();
       Set<String> offlineInstanceList = new HashSet<>();
       Set<String> incompleteInstanceList = new HashSet<>();
-      Set<String> bootstrappingInstanceList = new HashSet<>();
       ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
@@ -100,9 +99,10 @@ public class PushMonitorUtils {
         PushStatusStoreReader.InstanceStatus instanceStatus =
             reader.getInstanceStatus(storeName, entry.getKey().toString());
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
-          if (bootstrappingInstanceList.size() < 5) {
-            bootstrappingInstanceList.add(entry.getKey().toString());
-          }
+          LOGGER.info(
+              "Skipping ingestion status report from bootstrapping instance: {} for topic: {}",
+              entry.getKey().toString(),
+              topicName);
           continue;
         }
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
@@ -141,8 +141,7 @@ public class PushMonitorUtils {
                     ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
                     : ExecutionStatus.ERROR,
                 "Too many dead instances: " + offlineInstanceCount + ", total instances: " + totalInstanceCount
-                    + ", example offline instances: " + offlineInstanceList + ", example bootstrapping instances: "
-                    + bootstrappingInstanceList,
+                    + ", example offline instances: " + offlineInstanceList,
                 noDaVinciStatusReported);
           }
         } else {
@@ -240,7 +239,6 @@ public class PushMonitorUtils {
     int completedReplicaCount = 0;
     Set<String> offlineInstanceList = new HashSet<>();
     Set<Integer> incompletePartition = new HashSet<>();
-    Set<String> bootstrappingInstanceList = new HashSet<>();
     /**
      * This cache is used to reduce the duplicate calls for liveness check as one host can host multiple partitions.
      */
@@ -262,12 +260,13 @@ public class PushMonitorUtils {
         PushStatusStoreReader.InstanceStatus instanceStatus = instanceLivenessCache
             .computeIfAbsent(instanceName, ignored -> reader.getInstanceStatus(storeName, instanceName));
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
-          // Keep at most 5 bootstrapping instances for logging purpose.
-          if (bootstrappingInstanceList.size() < 5) {
-            bootstrappingInstanceList.add(entry.getKey().toString());
-          }
           // Don't count bootstrapping instance status report.
           totalReplicaCount--;
+          LOGGER.info(
+              "Skipping ingestion status report from bootstrapping node: {} for topic: {}, partition: {}",
+              entry.getKey().toString(),
+              topicName,
+              partitionId);
           continue;
         }
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
@@ -313,8 +312,7 @@ public class PushMonitorUtils {
                   ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
                   : ExecutionStatus.ERROR,
               "Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount
-                  + ", example offline instances: " + offlineInstanceList + " example bootstrapping instances: "
-                  + bootstrappingInstanceList,
+                  + ", example offline instances: " + offlineInstanceList,
               noDaVinciStatusReported);
         }
       } else {
@@ -376,5 +374,10 @@ public class PushMonitorUtils {
 
   static void setDaVinciErrorInstanceWaitTime(int time) {
     daVinciErrorInstanceWaitTime = time;
+  }
+
+  // For testing purpose
+  static void setDVCDeadInstanceTime(String topicName, long timestamp) {
+    storeVersionToDVCDeadInstanceTimeMap.put(topicName, timestamp);
   }
 }

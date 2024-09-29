@@ -204,8 +204,8 @@ public class VersionBackend {
   protected static void sendOutHeartbeat(DaVinciBackend backend, Version version) {
     if (backend.hasCurrentVersionBootstrapping()) {
       LOGGER.info(
-          "DaVinci still is still bootstrapping, so it will send heart-beat deletion message "
-              + "for store: {} to avoid delaying the new push job",
+          "DaVinci still is still bootstrapping, so it will send heart-beat message with a special timestamp"
+              + " for store: {} to avoid delaying the new push job",
           version.getStoreName());
       /**
        * Tell backend that the report from the bootstrapping instance doesn't count to avoid
