@@ -230,7 +230,10 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   public boolean isInstanceAlive(String storeName, String instanceName) {
-    long lastReportTimeStamp = getHeartbeat(storeName, instanceName);
+    return isInstanceAlive(getHeartbeat(storeName, instanceName));
+  }
+
+  boolean isInstanceAlive(long lastReportTimeStamp) {
     return System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS
         .toMillis(heartbeatExpirationTimeInSeconds);
   }
@@ -240,11 +243,8 @@ public class PushStatusStoreReader implements Closeable {
     if (lastReportTimeStamp < 0) {
       return InstanceStatus.BOOTSTRAPPING;
     }
-    if (System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS
-        .toMillis(heartbeatExpirationTimeInSeconds)) {
-      return InstanceStatus.ALIVE;
-    }
-    return InstanceStatus.DEAD;
+
+    return isInstanceAlive(lastReportTimeStamp) ? InstanceStatus.ALIVE : InstanceStatus.DEAD;
   }
 
   public Map<CharSequence, Integer> getSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion) {
