@@ -775,7 +775,7 @@ public class DaVinciClientTest {
         // Isolated clients should not be able to unsubscribe partitions of other clients.
         client3.unsubscribeAll();
 
-        client3.subscribe(Collections.singleton(partition)).get(0, TimeUnit.SECONDS);
+        client3.subscribe(Collections.singleton(partition)).get(10, TimeUnit.SECONDS);
         for (int i = 0; i < KEY_COUNT; i++) {
           final int key = i;
           // Both client2 & client4 are not subscribed to any partition. But client2 is not-isolated so it can
