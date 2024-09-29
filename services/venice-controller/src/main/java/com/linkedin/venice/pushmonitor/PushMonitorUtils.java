@@ -89,13 +89,6 @@ public class PushMonitorUtils {
       Set<String> incompleteInstanceList = new HashSet<>();
       ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
-        // We will skip completed instances, as they have stopped emitting heartbeats and will not be counted as live
-        // instances.
-        if (status == completeStatus) {
-          completedInstanceCount++;
-          continue;
-        }
         PushStatusStoreReader.InstanceStatus instanceStatus =
             reader.getInstanceStatus(storeName, entry.getKey().toString());
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
@@ -103,6 +96,13 @@ public class PushMonitorUtils {
               "Skipping ingestion status report from bootstrapping instance: {} for topic: {}",
               entry.getKey().toString(),
               topicName);
+          continue;
+        }
+        ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
+        // We will skip completed instances, as they have stopped emitting heartbeats and will not be counted as live
+        // instances.
+        if (status == completeStatus) {
+          completedInstanceCount++;
           continue;
         }
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
@@ -249,13 +249,6 @@ public class PushMonitorUtils {
       boolean allInstancesCompleted = true;
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
-        // We will skip completed replicas, as they have stopped emitting heartbeats and will not be counted as live
-        // replicas.
-        if (status == completeStatus) {
-          completedReplicaCount++;
-          continue;
-        }
         String instanceName = entry.getKey().toString();
         PushStatusStoreReader.InstanceStatus instanceStatus = instanceLivenessCache
             .computeIfAbsent(instanceName, ignored -> reader.getInstanceStatus(storeName, instanceName));
@@ -267,6 +260,14 @@ public class PushMonitorUtils {
               entry.getKey().toString(),
               topicName,
               partitionId);
+          continue;
+        }
+
+        ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
+        // We will skip completed replicas, as they have stopped emitting heartbeats and will not be counted as live
+        // replicas.
+        if (status == completeStatus) {
+          completedReplicaCount++;
           continue;
         }
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
