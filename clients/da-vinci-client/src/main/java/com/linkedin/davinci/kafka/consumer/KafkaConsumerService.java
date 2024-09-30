@@ -222,6 +222,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
       if (topicPartitionToConsumerMap != null) {
         topicPartitionToConsumerMap.forEach((topicPartition, sharedConsumer) -> {
+          /**
+           * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+           * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+           */
           synchronized (sharedConsumer) {
             sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
@@ -239,6 +243,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
+      /**
+       * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+       * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+       */
       synchronized (consumer) {
         consumer.unSubscribe(pubSubTopicPartition);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
@@ -269,20 +277,25 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
      */
-    consumerUnSubTopicPartitionSet.forEach((c, tpSet) -> {
-      c.batchUnsubscribe(tpSet);
-      ConsumptionTask task = consumerToConsumptionTask.get(c);
-      tpSet.forEach(tp -> {
-        task.removeDataReceiver(tp);
-        versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
-          if (topicPartitionToConsumerMap != null) {
-            topicPartitionToConsumerMap.remove(tp);
-            return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
-          } else {
-            return null;
-          }
-        });
-      });
+    consumerUnSubTopicPartitionSet.forEach((sharedConsumer, tpSet) -> {
+      ConsumptionTask task = consumerToConsumptionTask.get(sharedConsumer);
+      /**
+       * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+       * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+       */
+      synchronized (sharedConsumer) {
+        sharedConsumer.batchUnsubscribe(tpSet);
+        tpSet.forEach(task::removeDataReceiver);
+      }
+      tpSet.forEach(
+          tp -> versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
+            if (topicPartitionToConsumerMap != null) {
+              topicPartitionToConsumerMap.remove(tp);
+              return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
+            } else {
+              return null;
+            }
+          }));
     });
   }
 
@@ -396,6 +409,12 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       throw new VeniceException(
           "Shared consumer must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaUrl);
     }
+    /**
+     * It is possible that when one {@link StoreIngestionTask} thread finishes unsubscribing a topic partition but not
+     * finish removing data receiver, but the other {@link StoreIngestionTask} thread is setting data receiver for this
+     * topic partition before subscription. As {@link ConsumptionTask} does not allow 2 different data receivers for
+     * the same topic partition, it will throw exception.
+     */
     synchronized (consumer) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       if (consumptionTask == null) {

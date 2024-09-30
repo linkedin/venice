@@ -34,6 +34,7 @@ import io.tehuti.metrics.Sensor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -594,12 +595,14 @@ public class KafkaConsumerServiceDelegatorTest {
           consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setNextPollTimeOutSeconds(0);
           int versionNum =
               Version.parseVersionFromKafkaTopicName(partitionReplicaIngestionContext.getVersionTopic().getName());
-          // Here we did not consider batchUnsubscribe, as it is only for batch-only stores with version topic
-          // partitions.
-          if (versionNum % 2 == 0) {
+          if (versionNum % 3 == 0) {
             consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition);
-          } else {
+          } else if (versionNum % 3 == 1) {
             consumerServiceDelegator.unsubscribeAll(partitionReplicaIngestionContext.getVersionTopic());
+          } else {
+            consumerServiceDelegator.batchUnsubscribe(
+                partitionReplicaIngestionContext.getVersionTopic(),
+                Collections.singleton(partitionReplicaIngestionContext.getPubSubTopicPartition()));
           }
         }
       } catch (Exception e) {
