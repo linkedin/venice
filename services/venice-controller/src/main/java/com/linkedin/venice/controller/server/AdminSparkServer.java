@@ -110,6 +110,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AuditInfo;
+import com.linkedin.venice.controller.VeniceControllerApiHandler;
 import com.linkedin.venice.controller.spark.VeniceSparkServerFactory;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -169,6 +170,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final VeniceControllerApiHandler veniceControllerApiHandler;
 
   public AdminSparkServer(
       int port,
@@ -206,6 +208,19 @@ public class AdminSparkServer extends AbstractVeniceService {
     this.disabledRoutes = disabledRoutes;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.veniceControllerApiHandler = new VeniceControllerApiHandler(
+        port,
+        admin,
+        metricsRepository,
+        clusters,
+        enforceSSL,
+        sslConfig,
+        checkReadMethodForKafka,
+        accessController,
+        disabledRoutes,
+        jettyConfigOverrides,
+        disableParentRequestTopicForStreamPushes,
+        pubSubTopicRepository);
   }
 
   @Override
@@ -280,7 +295,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     // Build all different routes
     ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository);
     StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
-    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
+    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController, veniceControllerApiHandler);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(
         sslEnabled,

@@ -15,6 +15,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DE
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerApiHandler;
+import com.linkedin.venice.controller.server.endpoint.JobStatusRequest;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -38,9 +40,14 @@ public class JobRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(JobRoutes.class);
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+  private VeniceControllerApiHandler veniceControllerApiHandler;
 
-  public JobRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public JobRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerApiHandler veniceControllerApiHandler) {
     super(sslEnabled, accessController);
+    this.veniceControllerApiHandler = veniceControllerApiHandler;
   }
 
   /**
@@ -53,54 +60,23 @@ public class JobRoutes extends AbstractRoute {
       try {
         // No ACL check for getting job metadata
         AdminSparkServer.validateParams(request, JOB.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String store = request.queryParams(NAME);
-        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
-        String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
-        String targetedRegions = request.queryParams(TARGETED_REGIONS);
-        String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
-        responseObject = populateJobStatus(
-            cluster,
-            store,
-            versionNumber,
-            admin,
-            Optional.ofNullable(incrementalPushVersion),
-            region,
-            targetedRegions);
+
+        JobStatusRequest jobStatusRequest = new JobStatusRequest();
+        jobStatusRequest.setCluster(request.queryParams(CLUSTER));
+        jobStatusRequest.setStore(request.queryParams(NAME));
+        jobStatusRequest.setVersionNumber(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
+        jobStatusRequesqt
+            .setIncrementalPushVersion(AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION));
+        jobStatusRequest.setTargetedRegions(request.queryParams(TARGETED_REGIONS));
+        jobStatusRequest.setRegion(AdminSparkServer.getOptionalParameterValue(request, FABRIC));
+
+        responseObject = veniceControllerApiHandler.populateJobStatus(jobStatusRequest);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
-  }
-
-  JobStatusQueryResponse populateJobStatus(
-      String cluster,
-      String store,
-      int versionNumber,
-      Admin admin,
-      Optional<String> incrementalPushVersion,
-      String region,
-      String targetedRegions) {
-    JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
-
-    String kafkaTopicName = Version.composeKafkaTopic(store, versionNumber);
-
-    Admin.OfflinePushStatusInfo offlineJobStatus =
-        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);
-    responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
-    responseObject.setStatusUpdateTimestamp(offlineJobStatus.getStatusUpdateTimestamp());
-    responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
-    responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
-    responseObject.setExtraInfoUpdateTimestamp(offlineJobStatus.getExtraInfoUpdateTimestamp());
-    responseObject.setExtraDetails(offlineJobStatus.getExtraDetails());
-    responseObject.setUncompletedPartitions(offlineJobStatus.getUncompletedPartitions());
-
-    responseObject.setCluster(cluster);
-    responseObject.setName(store);
-    responseObject.setVersion(versionNumber);
-    return responseObject;
   }
 
   /**
