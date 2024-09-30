@@ -115,7 +115,6 @@ public class StorageServiceTest {
         true,
         true,
         (s) -> true,
-        (se) -> null,
         Optional.of(persistenceTypeToStorageEngineFactoryMap));
 
     Map<String, Set<Integer>> expectedMapping = new HashMap<>();

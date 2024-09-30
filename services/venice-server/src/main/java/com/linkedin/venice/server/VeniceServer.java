@@ -331,8 +331,7 @@ public class VeniceServer {
         metadataRepo,
         whetherToRestoreDataPartitions,
         true,
-        functionToCheckWhetherStorageEngineShouldBeKeptOrNot(),
-        functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot());
+        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -599,6 +598,10 @@ public class VeniceServer {
 
     for (AbstractVeniceService service: veniceServiceList) {
       service.start();
+    }
+
+    for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+      functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot().apply(storageEngine);
     }
 
     for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
