@@ -196,6 +196,8 @@ subprojects {
 
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
     tasks.withType(JavaCompile) {
+      // Compiler arguments can be injected here...
+      // options.compilerArgs << '-Xlint:unchecked'
       options.release = 8
     }
   }
