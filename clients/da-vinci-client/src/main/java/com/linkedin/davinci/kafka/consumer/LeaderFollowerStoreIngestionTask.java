@@ -2146,7 +2146,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isWaitingForReplicationLag());
+          partitionConsumptionState.isComplete());
     } else {
       heartbeatMonitoringService.recordFollowerHeartbeat(
           storeName,
@@ -2154,7 +2154,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isWaitingForReplicationLag());
+          partitionConsumptionState.isComplete());
     }
   }
 
