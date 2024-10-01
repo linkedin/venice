@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 
 public class BlobP2PTransferAmongServersTest {
   private static final Logger LOGGER = LogManager.getLogger(BlobP2PTransferAmongServersTest.class);
-
+  private static int PARTITION_COUNT = 3;
   private String path1;
   private String path2;
   private VeniceClusterWrapper cluster;
@@ -60,8 +60,8 @@ public class BlobP2PTransferAmongServersTest {
     VeniceServerWrapper server1 = cluster.getVeniceServers().get(0);
     VeniceServerWrapper server2 = cluster.getVeniceServers().get(1);
 
-    // very the snapshot is generated for both servers after the job is done
-    for (int i = 0; i < 3; i++) {
+    // verify the snapshot is generated for both servers after the job is done
+    for (int i = 0; i < PARTITION_COUNT; i++) {
       String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", i);
       Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
       String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", i);
@@ -71,26 +71,38 @@ public class BlobP2PTransferAmongServersTest {
     // cleanup and restart server 1
     FileUtils.deleteDirectory(
         new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", METADATA_PARTITION_ID)));
-    FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", 0)));
-    FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", 1)));
-    FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", 2)));
+    for (int i = 0; i < PARTITION_COUNT; i++) {
+      FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", i)));
+      // both partition db and snapshot should be deleted
+      Assert.assertFalse(
+          Files.exists(Paths.get(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", i))));
+      Assert.assertFalse(
+          Files.exists(Paths.get(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", i))));
+    }
 
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       cluster.stopAndRestartVeniceServer(server1.getPort());
       Assert.assertTrue(server1.isRunning());
     });
 
+    // wait for server 1 to ingest
+    Thread.sleep(120000);
+
     // the partition files should be transferred to server 1 and offset should be the same
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < PARTITION_COUNT; i++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", i));
         Boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
+        File snapshotFile = new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", i));
+        Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        // snapshot folder in server1 should not exist
+        Assert.assertFalse(snapshotFileExisted);
       }
     });
 
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < PARTITION_COUNT; i++) {
         OffsetRecord offsetServer1 =
             server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", i);
         OffsetRecord offsetServer2 =
@@ -155,8 +167,7 @@ public class BlobP2PTransferAmongServersTest {
     Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
     propertiesConsumer.accept(vpjProperties);
     // Create & update store for test.
-    final int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions); // Update the
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(PARTITION_COUNT); // Update the
     // partition count.
     paramsConsumer.accept(params);
 
