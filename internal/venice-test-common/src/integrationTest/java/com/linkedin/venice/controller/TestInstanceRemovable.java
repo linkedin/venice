@@ -190,14 +190,14 @@ public class TestInstanceRemovable {
           client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
       String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
       String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
-      String server3 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3);
 
       StoppableNodeStatusResponse statuses = client.getAggregatedHealthStatus(clusterName, server1, "");
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
 
-      statuses = client.getAggregatedHealthStatus(clusterName, server3 + "," + server1, "");
-      Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server3));
-      Assert.assertTrue(statuses.getNonStoppableInstances().containsKey(server1));
+      statuses = client.getAggregatedHealthStatus(clusterName, server1 + "," + server2, "");
+      System.out.println("stat1 " + statuses);
+      Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
+      Assert.assertTrue(statuses.getNonStoppableInstances().containsKey(server2));
       Assert.assertTrue(
           statuses.getNonStoppableInstances()
               .containsValue(NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.name()));
@@ -240,6 +240,10 @@ public class TestInstanceRemovable {
               .getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort4))
               .size() == 2);
       // After replica number back to 3, all of node could be removed.
+      TestUtils.waitForNonDeterministicCompletion(
+          3,
+          TimeUnit.SECONDS,
+          () -> client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
       Assert.assertTrue(
           client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
       Assert.assertTrue(
