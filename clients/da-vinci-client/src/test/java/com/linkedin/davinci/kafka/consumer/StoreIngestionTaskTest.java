@@ -4250,6 +4250,76 @@ public abstract class StoreIngestionTaskTest {
     verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
   }
 
+  @Test(dataProvider = "aaConfigProvider")
+  public void testProduceToStoreBufferServiceOrKafka(AAConfig aaConfig) throws Exception {
+    byte[] keyBytes = new byte[1];
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
+    put.putValue = ByteBuffer.allocate(10);
+    put.putValue.position(4);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
+        new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, topicPartition, 0, 0, 0);
+
+    HostLevelIngestionStats stats = mock(HostLevelIngestionStats.class);
+    when(mockAggStoreIngestionStats.getStoreStats(anyString())).thenReturn(stats);
+
+    String rtTopic = Version.composeRealTimeTopic(storeNameWithoutVersionInfo);
+    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(rtPubSubTopic).when(mockOffsetRecord).getLeaderTopic(any());
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedMessages = new ArrayList<>();
+      consumedMessages.add(pubSubMessage);
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessageWrapper =
+          new PubSubMessageProcessedResultWrapper<>(pubSubMessage);
+      VeniceWriter writer = getVeniceWriter(topic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
+      doReturn(writer).when(mockWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
+      Runnable produce = () -> {
+        try {
+          storeIngestionTaskUnderTest.produceToStoreBufferServiceOrKafka(
+              consumedMessages,
+              topicPartition,
+              localKafkaConsumerService.kafkaUrl,
+              0);
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      };
+      Thread t = new Thread(() -> {
+        Utils.sleep(100L);
+        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
+        doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, 0);
+        pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
+      });
+      t.start();
+      produce.run();
+      try {
+        TestUtils.shutdownThread(t);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+
+      Utils.sleep(100L);
+
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO)));
+    }, aaConfig);
+  }
+
   @Test
   public void testCheckIngestionTaskActiveness() {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
