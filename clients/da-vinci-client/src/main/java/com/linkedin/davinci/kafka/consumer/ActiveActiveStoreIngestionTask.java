@@ -164,7 +164,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           null,
           this::processActiveActiveMessage,
           isWriteComputationEnabled,
-          isActiveActiveReplicationEnabled());
+          isActiveActiveReplicationEnabled(),
+          aggVersionedIngestionStats,
+          getHostLevelIngestionStats());
     });
   }
 
@@ -608,7 +610,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
     KafkaKey kafkaKey = consumerRecord.getKey();
-    // KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
     final MergeConflictResultWrapper mergeConflictResultWrapper;
     if (consumerRecordWrapper.getProcessedResult() != null

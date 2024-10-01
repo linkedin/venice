@@ -598,6 +598,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
+        testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
       }
     }
@@ -1130,6 +1131,48 @@ public class VeniceParentHelixAdminTest {
 
     registeredWriteComputeSchema = getWriteComputeSchemaStrs(registeredSchemas);
     Assert.assertEquals(registeredWriteComputeSchema.size(), 1);
+  }
+
+  private void testSupersetSchemaGenerationWithUpdateDefaultValue(ControllerClient parentControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+
+    // Step 1. Create a store with missing default fields schema
+    parentControllerClient
+        .createNewStore(storeName, owner, keySchemaStr, TestWriteUtils.UNION_RECORD_V1_SCHEMA.toString());
+    MultiSchemaResponse valueAndWriteComputeSchemaResponse =
+        parentControllerClient.getAllValueAndDerivedSchema(storeName);
+    MultiSchemaResponse.Schema[] registeredSchemas = valueAndWriteComputeSchemaResponse.getSchemas();
+    Assert.assertEquals(registeredSchemas.length, 1);
+    MultiSchemaResponse.Schema registeredSchema = registeredSchemas[0];
+    Assert.assertFalse(registeredSchema.isDerivedSchema()); // No write compute schema yet.
+
+    // Step 2. Update this store to enable write compute.
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+    updateStoreQueryParams.setWriteComputationEnabled(true);
+    parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+
+    // Could not enable write compute bad schema did not have defaults
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    Assert.assertTrue(store.isWriteComputationEnabled());
+    Assert.assertEquals(store.getLatestSuperSetValueSchemaId(), 1);
+
+    // Step 3. Add a valid latest value schema for write-compute
+    parentControllerClient.addValueSchema(storeName, TestWriteUtils.UNION_RECORD_V2_SCHEMA.toString());
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert
+            .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 2));
+
+    parentControllerClient.addValueSchema(storeName, TestWriteUtils.UNION_RECORD_V3_SCHEMA.toString());
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> Assert
+            .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 3));
+
   }
 
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {

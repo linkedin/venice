@@ -64,6 +64,11 @@ public class IngestionStats {
   public static final String PRODUCER_CALLBACK_LATENCY = "producer_callback_latency";
   public static final String LEADER_PREPROCESSING_LATENCY = "leader_preprocessing_latency";
   public static final String INTERNAL_PREPROCESSING_LATENCY = "internal_preprocessing_latency";
+  public static final String BATCH_PROCESSING_REQUEST = "batch_processing_request";
+  public static final String BATCH_PROCESSING_REQUEST_SIZE = "batch_processing_request_size";
+  public static final String BATCH_PROCESSING_REQUEST_RECORDS = "batch_processing_request_records";
+  public static final String BATCH_PROCESSING_REQUEST_LATENCY = "batch_processing_request_latency";
+  public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -117,6 +122,11 @@ public class IngestionStats {
 
   private Count transformerErrorCount = new Count();
   private Sensor transformerErrorSensor;
+  private final LongAdderRateGauge batchProcessingRequestSensor = new LongAdderRateGauge();
+  private final WritePathLatencySensor batchProcessingRequestSizeSensor;
+  private final LongAdderRateGauge batchProcessingRequestRecordsSensor = new LongAdderRateGauge();
+  private final WritePathLatencySensor batchProcessingRequestLatencySensor;
+  private final LongAdderRateGauge batchProcessingRequestErrorSensor = new LongAdderRateGauge();
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -207,6 +217,14 @@ public class IngestionStats {
     registerSensor(localMetricRepository, OFFSET_REGRESSION_DCR_ERROR, offsetRegressionDCRErrorSensor);
     registerSensor(localMetricRepository, TOMBSTONE_CREATION_DCR, tombstoneCreationDCRSensor);
     registerSensor(localMetricRepository, IDLE_TIME, idleTimeSensor);
+
+    registerSensor(localMetricRepository, BATCH_PROCESSING_REQUEST, batchProcessingRequestSensor);
+    registerSensor(localMetricRepository, BATCH_PROCESSING_REQUEST_RECORDS, batchProcessingRequestRecordsSensor);
+    registerSensor(localMetricRepository, BATCH_PROCESSING_REQUEST_ERROR, batchProcessingRequestErrorSensor);
+    batchProcessingRequestSizeSensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, BATCH_PROCESSING_REQUEST_SIZE);
+    batchProcessingRequestLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, BATCH_PROCESSING_REQUEST_LATENCY);
   }
 
   private void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
@@ -663,6 +681,40 @@ public class IngestionStats {
 
   public WritePathLatencySensor getLeaderProducerCompletionLatencySensor() {
     return leaderProducerCompletionLatencySensor;
+  }
+
+  public void recordBatchProcessingRequest(int size, long currentTimeMs) {
+    batchProcessingRequestSensor.record();
+    batchProcessingRequestRecordsSensor.record(size);
+    batchProcessingRequestSizeSensor.record(size, currentTimeMs);
+  }
+
+  public double getBatchProcessingRequest() {
+    return batchProcessingRequestSensor.getRate();
+  }
+
+  public double getBatchProcessingRequestRecords() {
+    return batchProcessingRequestRecordsSensor.getRate();
+  }
+
+  public void recordBatchProcessingRequestError() {
+    batchProcessingRequestErrorSensor.record();
+  }
+
+  public double getBatchProcessingRequestError() {
+    return batchProcessingRequestErrorSensor.getRate();
+  }
+
+  public WritePathLatencySensor getBatchProcessingRequestSizeSensor() {
+    return batchProcessingRequestSizeSensor;
+  }
+
+  public void recordBatchProcessingRequestLatency(double latency, long currentTimeMs) {
+    batchProcessingRequestLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public WritePathLatencySensor getBatchProcessingRequestLatencySensor() {
+    return batchProcessingRequestLatencySensor;
   }
 
   public static double unAvailableToZero(double value) {

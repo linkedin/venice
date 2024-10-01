@@ -262,10 +262,9 @@ public class AvroSchemaUtils {
       validateTwoSchemasAreFullyCompatible(tmpSupersetSchema, valueSchema);
       largestSchemaID = Math.max(largestSchemaID, valueSchemaEntry.getId());
       /**
-       * Note that superset schema should be the second parameter. For the reason, please refer to the Javadoc of the
-       * {@link AvroSchemaUtils#generateSuperSetSchema} method.
+       * Current superset schema should be the first parameter, and the incoming value schema is the 2nd parameter.
        */
-      tmpSupersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(valueSchema, tmpSupersetSchema);
+      tmpSupersetSchema = AvroSupersetSchemaUtils.generateSupersetSchema(tmpSupersetSchema, valueSchema);
     }
     final Schema supersetSchema = tmpSupersetSchema;
 

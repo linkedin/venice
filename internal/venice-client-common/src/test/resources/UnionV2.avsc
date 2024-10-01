@@ -1,0 +1,26 @@
+{
+  "type" : "record",
+  "name" : "User",
+  "namespace" : "example.avro",
+  "fields" : [
+    {
+      "name": "field",
+      "type": [
+        "int",
+        {
+          "type": "record",
+          "name": "subField",
+          "fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "doc v2",
+              "default": "v2"
+            }
+          ]
+        }
+      ],
+      "default": 20
+    }
+  ]
+}

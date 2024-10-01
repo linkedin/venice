@@ -325,7 +325,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           null,
           this::processMessage,
           isWriteComputationEnabled,
-          isActiveActiveReplicationEnabled());
+          isActiveActiveReplicationEnabled(),
+          builder.getVersionedStorageIngestionStats(),
+          getHostLevelIngestionStats());
     });
   }
 
@@ -1606,7 +1608,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long sourceTopicOffset = consumerRecord.getOffset();
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
+    long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
+    getHostLevelIngestionStats()
+        .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
   }
 
   @Override
@@ -2141,7 +2146,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isWaitingForReplicationLag());
+          partitionConsumptionState.isComplete());
     } else {
       heartbeatMonitoringService.recordFollowerHeartbeat(
           storeName,
@@ -2149,7 +2154,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isWaitingForReplicationLag());
+          partitionConsumptionState.isComplete());
     }
   }
 
