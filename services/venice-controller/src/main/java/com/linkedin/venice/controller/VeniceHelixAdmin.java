@@ -6578,9 +6578,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return statuses;
     }
 
-    List<String> allInstances = helixAdminClient.getInstancesInCluster(cluster);
-    Set<Instance> liveInstances = getLiveInstanceMonitor(cluster).getAllLiveInstances();
-
     List<NodeRemovableResult> removableResults =
         InstanceStatusDecider.getInstanceStoppableStatuses(resources, cluster, instances, toBeStoppedInstances);
     for (NodeRemovableResult nodeRemovableResult: removableResults) {
