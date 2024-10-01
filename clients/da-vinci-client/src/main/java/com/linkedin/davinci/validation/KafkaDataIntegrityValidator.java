@@ -137,7 +137,11 @@ public class KafkaDataIntegrityValidator {
         this.kafkaLogCompactionDelayInMs);
   }
 
-  /** N.B. Intended for tests */
+  /**
+   * N.B. Intended for tests only
+   *
+   * @return the number of tracked producer GUIDs for the VERSION_TOPIC only.
+   */
   int getNumberOfTrackedProducerGUIDs() {
     Set<GUID> guids = new HashSet<>();
     for (PartitionTracker partitionTracker: this.partitionTrackers.values()) {

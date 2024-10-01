@@ -152,8 +152,9 @@ public class OffsetRecord {
       String kafkaUrl,
       GUID producerGuid,
       ProducerPartitionState state) {
-    partitionState.getRealtimeTopicProducerStates().putIfAbsent(kafkaUrl, new VeniceConcurrentHashMap<>());
-    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).put(guidToUtf8(producerGuid), state);
+    partitionState.getRealtimeTopicProducerStates()
+        .computeIfAbsent(kafkaUrl, url -> new VeniceConcurrentHashMap<>())
+        .put(guidToUtf8(producerGuid), state);
   }
 
   public synchronized void removeRealTimeTopicProducerState(String kafkaUrl, GUID producerGuid) {

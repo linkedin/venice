@@ -2198,10 +2198,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               isEndOfPushReceived,
               partitionConsumptionState);
         } else {
-          PartitionTracker.TopicType rtTopic =
-              PartitionTracker.TopicType.of(PartitionTracker.TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
           validateMessage(
-              isRealTimeMsg ? rtTopic : PartitionTracker.VERSION_TOPIC,
+              PartitionTracker.TopicType.of(
+                  isRealTimeMsg
+                      ? PartitionTracker.TopicType.REALTIME_TOPIC_TYPE
+                      : PartitionTracker.TopicType.VERSION_TOPIC_TYPE,
+                  kafkaUrl),
               this.kafkaDataIntegrityValidatorForLeaders,
               record,
               isEndOfPushReceived,
