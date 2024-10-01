@@ -30,8 +30,8 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -209,7 +209,7 @@ public class ControllerRoutes extends AbstractRoute {
         if (!StringUtils.isEmpty(toBeStoppedInstances)) {
           toBeStoppedInstanceList = Arrays.stream(instances.split(",")).map(String::trim).collect(Collectors.toList());
         } else {
-          toBeStoppedInstanceList = Collections.emptyList();
+          toBeStoppedInstanceList = new ArrayList<>();
         }
         responseObject.setCluster(cluster);
         InstanceRemovableStatuses statuses =

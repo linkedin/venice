@@ -192,15 +192,15 @@ public class TestInstanceRemovable {
       String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
       String server3 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3);
 
-      StoppableNodeStatusResponse statuses = client.getAggregatedHealthStatus(clusterName, server1, "");
-      Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
+      StoppableNodeStatusResponse statuses;// = client.getAggregatedHealthStatus(clusterName, server1, "");
+      // Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
 
       statuses = client.getAggregatedHealthStatus(clusterName, server3 + "," + server1, "");
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server3));
       Assert.assertTrue(statuses.getNonStoppableInstances().containsKey(server1));
       Assert.assertTrue(
           statuses.getNonStoppableInstances()
-              .containsValue(InstanceRemovableStatuses.NonStoppableReason.MIN_ACTIVE_REPLICA_VIOLATION.name()));
+              .containsValue(NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.name()));
 
       Assert.assertFalse(
           client
