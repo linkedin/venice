@@ -7,7 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
-import java.util.ArrayList;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,7 +49,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, ZkStoreConfigAccessor accessor) {
     this.zkClient = zkClient;
     this.accessor = accessor;
-    this.loadedStoreConfigMap = new AtomicReference<>(new HashMap<>());
+    this.loadedStoreConfigMap = new AtomicReference<>(new VeniceConcurrentHashMap<>());
     this.availableStoreSet = new AtomicReference<>(new HashSet<>());
     storeConfigChangedListener = new StoreConfigChangedListener();
     storeConfigAddedOrDeletedListener = new StoreConfigAddedOrDeletedChangedListener();
@@ -109,6 +109,11 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
         if (config != null) {
           loadedStoreConfigMap.get().put(config.getStoreName(), config);
           accessor.subscribeStoreConfigDataChangedListener(veniceStoreName, storeConfigChangedListener);
+          StoreConfig configToVerify = accessor.getStoreConfig(veniceStoreName);
+          if (!configToVerify.equals(config)) {
+            LOGGER.debug("Store config is changed during fetching. Reload the store config.");
+            config = configToVerify;
+          }
         }
       }
       return Optional.ofNullable(config != null ? config.cloneStoreConfig() : null);
@@ -123,11 +128,6 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
       throw new VeniceNoStoreException(storeName);
     }
     return storeConfig.get();
-  }
-
-  @Override
-  public List<StoreConfig> getAllStoreConfigs() {
-    return new ArrayList<>(loadedStoreConfigMap.get().values());
   }
 
   @VisibleForTesting
@@ -154,16 +154,17 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     @Override
     public void handleChildChange(String parentPath, List<String> currentChildren) {
       synchronized (availableStoreSet) {
-        Set<String> set = new HashSet<>(availableStoreSet.get());
-        List<String> newStores =
-            currentChildren.stream().filter(newStore -> !set.contains(newStore)).collect(Collectors.toList());
+        Set<String> storeSetSnapshot = new HashSet<>(availableStoreSet.get());
+        List<String> newStores = currentChildren.stream()
+            .filter(newStore -> !storeSetSnapshot.contains(newStore))
+            .collect(Collectors.toList());
 
         // obtain the stores that are removed
-        currentChildren.forEach(set::remove);
+        currentChildren.forEach(storeSetSnapshot::remove);
         LOGGER.info(
             "Store configs list is changed. {} new configs. And will delete {} configs.",
             newStores.size(),
-            set.size());
+            storeSetSnapshot.size());
 
         // update the available store set
         availableStoreSet.set(new HashSet<>(currentChildren));
@@ -171,7 +172,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
         synchronized (loadedStoreConfigMap) {
           Map<String, StoreConfig> map = new HashMap<>(loadedStoreConfigMap.get());
           // Deleted store configs
-          for (String deletedStore: set) {
+          for (String deletedStore: storeSetSnapshot) {
             map.remove(deletedStore);
             accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
           }
