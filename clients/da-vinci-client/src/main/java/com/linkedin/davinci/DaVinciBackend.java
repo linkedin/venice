@@ -447,7 +447,8 @@ public class DaVinciBackend implements Closeable {
             storageMetadataService,
             ingestionService,
             storageService,
-            blobTransferManager)
+            blobTransferManager,
+            this::getVeniceCurrentVersionNumber)
         : new DefaultIngestionBackend(
             storageMetadataService,
             ingestionService,
@@ -657,6 +658,11 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
+  int getVeniceCurrentVersionNumber(String storeName) {
+    Version currentVersion = getVeniceCurrentVersion(storeName);
+    return currentVersion == null ? -1 : currentVersion.getNumber();
+  }
+
   private Version getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
     Version latestNonFaultyVersion = null;
     for (Version version: store.getVersions()) {
@@ -821,7 +827,7 @@ public class DaVinciBackend implements Closeable {
   }
 
   public boolean hasCurrentVersionBootstrapping() {
-    return ingestionService.hasCurrentVersionBootstrapping();
+    return ingestionBackend.hasCurrentVersionBootstrapping();
   }
 
   static class BootstrappingAwareCompletableFuture {

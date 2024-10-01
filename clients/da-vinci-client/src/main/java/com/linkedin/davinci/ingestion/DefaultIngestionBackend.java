@@ -189,6 +189,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
+  public boolean hasCurrentVersionBootstrapping() {
+    return getStoreIngestionService().hasCurrentVersionBootstrapping();
+  }
+
+  @Override
   public KafkaStoreIngestionService getStoreIngestionService() {
     return storeIngestionService;
   }
