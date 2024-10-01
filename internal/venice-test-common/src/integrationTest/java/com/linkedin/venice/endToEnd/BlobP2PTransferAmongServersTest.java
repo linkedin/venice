@@ -23,11 +23,14 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -36,11 +39,20 @@ public class BlobP2PTransferAmongServersTest {
 
   private String path1;
   private String path2;
+  private VeniceClusterWrapper cluster;
+
+  @BeforeMethod
+  public void setUp() {
+    cluster = initializeVeniceCluster();
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    Utils.closeQuietlyWithErrorLogged(cluster);
+  }
 
   @Test(singleThreaded = true)
   public void testBlobP2PTransferAmongServers() throws Exception {
-    // set up store with 2 servers and trigger the job
-    VeniceClusterWrapper cluster = initializeVeniceCluster();
     String storeName = "test-store";
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
     setUpStore(cluster, storeName, paramsConsumer, properties -> {}, true);
@@ -62,23 +74,30 @@ public class BlobP2PTransferAmongServersTest {
     FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", 0)));
     FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", 1)));
     FileUtils.deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", 2)));
-    cluster.stopAndRestartVeniceServer(server1.getPort());
 
-    // wait 2 min
-    Thread.sleep(120000);
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      cluster.stopAndRestartVeniceServer(server1.getPort());
+      Assert.assertTrue(server1.isRunning());
+    });
 
     // the partition files should be transferred to server 1 and offset should be the same
-    for (int i = 0; i < 3; i++) {
-      File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", i));
-      Boolean fileExisted = Files.exists(file.toPath());
-      Assert.assertTrue(fileExisted);
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int i = 0; i < 3; i++) {
+        File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", i));
+        Boolean fileExisted = Files.exists(file.toPath());
+        Assert.assertTrue(fileExisted);
+      }
+    });
 
-      OffsetRecord offsetServer1 =
-          server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", i);
-      OffsetRecord offsetServer2 =
-          server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", i);
-      Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
-    }
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int i = 0; i < 3; i++) {
+        OffsetRecord offsetServer1 =
+            server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", i);
+        OffsetRecord offsetServer2 =
+            server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", i);
+        Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
+      }
+    });
   }
 
   public VeniceClusterWrapper initializeVeniceCluster() {
