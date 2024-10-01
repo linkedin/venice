@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -315,8 +316,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     long beforeProcessingRecordTimestamp = 0;
     boolean resultReuseInput = true;
 
+    HostLevelIngestionStats mockHostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
+    when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mockHostLevelIngestionStats);
     when(ingestionTask.getVersionIngestionStats()).thenReturn(mock(AggVersionedIngestionStats.class));
     when(ingestionTask.getVersionedDIVStats()).thenReturn(mock(AggVersionedDIVStats.class));
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
@@ -452,6 +454,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(3).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(4).getKey());
+    verify(mockHostLevelIngestionStats).recordLeaderProduceLatency(anyDouble());
   }
 
   @Test

@@ -1,10 +1,14 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,11 +39,15 @@ public class IngestionBatchProcessor {
   }
 
   private final String storeVersionName;
+  private final String storeName;
+  private final int version;
   private final ExecutorService batchProcessingThreadPool;
   private final KeyLevelLocksManager lockManager;
   private final boolean isWriteComputationEnabled;
   private final boolean isActiveActiveReplicationEnabled;
   private final ProcessingFunction processingFunction;
+  private final AggVersionedIngestionStats aggVersionedIngestionStats;
+  private final HostLevelIngestionStats hostLevelIngestionStats;
 
   public IngestionBatchProcessor(
       String storeVersionName,
@@ -47,13 +55,20 @@ public class IngestionBatchProcessor {
       KeyLevelLocksManager lockManager,
       ProcessingFunction processingFunction,
       boolean isWriteComputationEnabled,
-      boolean isActiveActiveReplicationEnabled) {
+      boolean isActiveActiveReplicationEnabled,
+      AggVersionedIngestionStats aggVersionedIngestionStats,
+      HostLevelIngestionStats hostLevelIngestionStats) {
     this.storeVersionName = storeVersionName;
     this.batchProcessingThreadPool = batchProcessingThreadPool;
     this.lockManager = lockManager;
     this.processingFunction = processingFunction;
     this.isWriteComputationEnabled = isWriteComputationEnabled;
     this.isActiveActiveReplicationEnabled = isActiveActiveReplicationEnabled;
+    this.aggVersionedIngestionStats = aggVersionedIngestionStats;
+    this.hostLevelIngestionStats = hostLevelIngestionStats;
+
+    this.storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+    this.version = Version.parseVersionFromKafkaTopicName(storeVersionName);
   }
 
   /**
@@ -104,6 +119,7 @@ public class IngestionBatchProcessor {
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
+    long currentTimestampInNs = System.nanoTime();
     if (records.isEmpty()) {
       return Collections.emptyList();
     }
@@ -123,18 +139,26 @@ public class IngestionBatchProcessor {
     if (!isAllMessagesFromRTTopic.get()) {
       return resultList;
     }
+
     /**
      * We would like to process the messages belonging to the same key sequentially to avoid race conditions.
      */
+    int totalNumOfRecords = 0;
     Map<ByteArrayKey, List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>>> keyGroupMap =
         new HashMap<>(records.size());
-    resultList.forEach(r -> {
+
+    for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> r: resultList) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message = r.getMessage();
       if (!message.getKey().isControlMessage()) {
         ByteArrayKey byteArrayKey = ByteArrayKey.wrap(message.getKey().getKey());
         keyGroupMap.computeIfAbsent(byteArrayKey, (ignored) -> new ArrayList<>()).add(r);
+        totalNumOfRecords++;
       }
-    });
+    }
+    aggVersionedIngestionStats
+        .recordBatchProcessingRequest(storeName, version, totalNumOfRecords, System.currentTimeMillis());
+    hostLevelIngestionStats.recordBatchProcessingRequest(totalNumOfRecords);
+
     List<CompletableFuture<Void>> futureList = new ArrayList<>(keyGroupMap.size());
     keyGroupMap.forEach((ignored, recordsWithTheSameKey) -> {
       futureList.add(CompletableFuture.runAsync(() -> {
@@ -153,7 +177,13 @@ public class IngestionBatchProcessor {
     });
     try {
       CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0])).get();
+      double requestLatency = LatencyUtils.getElapsedTimeFromNSToMS(currentTimestampInNs);
+      aggVersionedIngestionStats
+          .recordBatchProcessingLatency(storeName, version, requestLatency, System.currentTimeMillis());
+      hostLevelIngestionStats.recordBatchProcessingRequestLatency(requestLatency);
     } catch (Exception e) {
+      aggVersionedIngestionStats.recordBatchProcessingRequestError(storeName, version);
+      hostLevelIngestionStats.recordBatchProcessingRequestError();
       throw new VeniceException(
           "Failed to execute the batch processing for " + storeVersionName + " partition: "
               + partitionConsumptionState.getPartition(),

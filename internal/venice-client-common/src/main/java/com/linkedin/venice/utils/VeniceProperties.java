@@ -389,6 +389,7 @@ public class VeniceProperties implements Serializable {
     }
 
     String value = get(key);
+
     String[] pieces = value.split("\\s*,\\s*");
     return Arrays.asList(pieces);
   }
