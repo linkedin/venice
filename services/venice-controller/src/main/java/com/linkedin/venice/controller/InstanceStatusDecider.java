@@ -53,7 +53,7 @@ public class InstanceStatusDecider {
       String clusterName,
       Set<String> instances,
       List<String> toBeStoppedInstances) {
-    return getNodeRemovableResult(resources, clusterName, instances, toBeStoppedInstances, true, true);
+    return getNodeRemovableResult(resources, clusterName, instances, toBeStoppedInstances, true);
   }
 
   /**
@@ -72,13 +72,8 @@ public class InstanceStatusDecider {
       String instanceId,
       List<String> lockedNodes,
       boolean isInstanceView) {
-    List<NodeRemovableResult> list = getNodeRemovableResult(
-        resources,
-        clusterName,
-        Collections.singleton(instanceId),
-        lockedNodes,
-        isInstanceView,
-        false);
+    List<NodeRemovableResult> list =
+        getNodeRemovableResult(resources, clusterName, Collections.singleton(instanceId), lockedNodes, isInstanceView);
     if (list.isEmpty()) {
       throw new VeniceException("Error in finding isRemovable call for instance " + instanceId);
     }
@@ -90,12 +85,10 @@ public class InstanceStatusDecider {
       String clusterName,
       Set<String> instanceIds,
       List<String> lockedNodes,
-      boolean isInstanceView,
-      boolean useCustomizedView) {
+      boolean isInstanceView) {
     List<NodeRemovableResult> removableResults = new ArrayList<>();
     Set<String> nonStoppableNodes = new HashSet<>();
-    RoutingDataRepository routingDataRepository =
-        useCustomizedView ? resources.getCustomizedViewRepository() : resources.getRoutingDataRepository();
+    RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     for (String instanceId: instanceIds) {
       try {
         // If instance is not alive, it's removable.
@@ -138,8 +131,7 @@ public class InstanceStatusDecider {
               // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
               // In that case partition would be moved to other instances and might cause the consumption from the begin
               // of topic.
-              Pair<Boolean, String> result =
-                  willLoseData(resources, partitionAssignmentAfterRemoving, useCustomizedView);
+              Pair<Boolean, String> result = willLoseData(resources, partitionAssignmentAfterRemoving);
               if (result.getFirst()) {
                 LOGGER.info(
                     "Instance: {} is not removable because Version: {} would lose data "
@@ -163,10 +155,7 @@ public class InstanceStatusDecider {
                   .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
 
               if (version != null) {
-                result = willTriggerRebalance(
-                    partitionAssignmentAfterRemoving,
-                    version.getMinActiveReplicas(),
-                    useCustomizedView);
+                result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.getMinActiveReplicas());
               } else {
                 result = new Pair<>(
                     false,
@@ -208,17 +197,12 @@ public class InstanceStatusDecider {
 
   private static Pair<Boolean, String> willLoseData(
       HelixVeniceClusterResources resources,
-      PartitionAssignment partitionAssignmentAfterRemoving,
-      boolean useCustomizedView) {
+      PartitionAssignment partitionAssignmentAfterRemoving) {
     RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     for (Partition partitionAfterRemoving: partitionAssignmentAfterRemoving.getAllPartitions()) {
-      if (useCustomizedView
-          ? routingDataRepository
-              .getReadyToServeInstances(partitionAssignmentAfterRemoving, partitionAfterRemoving.getId())
-              .isEmpty()
-          : resources.getPushMonitor()
-              .getReadyToServeInstances(partitionAssignmentAfterRemoving, partitionAfterRemoving.getId())
-              .isEmpty()) {
+      if (routingDataRepository
+          .getReadyToServeInstances(partitionAssignmentAfterRemoving, partitionAfterRemoving.getId())
+          .isEmpty()) {
         // After removing the instance, no online replica exists. Venice will lose data in this case.
         return new Pair<>(
             true,
@@ -231,12 +215,9 @@ public class InstanceStatusDecider {
 
   private static Pair<Boolean, String> willTriggerRebalance(
       PartitionAssignment partitionAssignmentAfterRemoving,
-      int minActiveReplicas,
-      boolean useCV) {
+      int minActiveReplicas) {
     for (Partition partitionAfterRemoving: partitionAssignmentAfterRemoving.getAllPartitions()) {
-      int activeReplicaCount = useCV
-          ? partitionAfterRemoving.getReadyToServeInstances().size()
-          : partitionAfterRemoving.getWorkingInstances().size();
+      int activeReplicaCount = partitionAfterRemoving.getReadyToServeInstances().size();
       activeReplicaCount += partitionAfterRemoving.getErrorInstances().size();
       if (activeReplicaCount < minActiveReplicas) {
         // After removing the instance, Venice would not have enough active replicas so a re-balance would be triggered.
