@@ -6,7 +6,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -39,7 +39,7 @@ public class TestInstanceStatusDecider {
   private HelixVeniceClusterResources resources;
   private String clusterName;
   private SafeHelixDataAccessor accessor;
-  private HelixExternalViewRepository routingDataRepository;
+  private HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private HelixReadWriteStoreRepository readWriteStoreRepository;
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
@@ -50,7 +50,8 @@ public class TestInstanceStatusDecider {
   public void setUp() {
     clusterName = Utils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(HelixVeniceClusterResources.class);
-    routingDataRepository = mock(HelixExternalViewRepository.class);
+    routingDataRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
+
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
     mockMonitor = mock(PushMonitorDelegator.class);
 
@@ -59,12 +60,12 @@ public class TestInstanceStatusDecider {
       int partitionId = invocation.getArgument(1);
 
       return partitionAssignment.getPartition(partitionId).getReadyToServeInstances();
-    }).when(mockMonitor).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
+    }).when(routingDataRepository).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
 
     SafeHelixManager manager = mock(SafeHelixManager.class);
 
     accessor = mock(SafeHelixDataAccessor.class);
-    doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
+    doReturn(routingDataRepository).when(resources).getCustomizedViewRepository();
     doReturn(readWriteStoreRepository).when(resources).getStoreMetadataRepository();
     doReturn(mockMonitor).when(resources).getPushMonitor();
     doReturn(manager).when(resources).getHelixManager();

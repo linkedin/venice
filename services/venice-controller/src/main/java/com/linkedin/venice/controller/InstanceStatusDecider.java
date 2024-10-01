@@ -28,7 +28,7 @@ public class InstanceStatusDecider {
   private static final Logger LOGGER = LogManager.getLogger(InstanceStatusDecider.class);
 
   static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
-    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
+    RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     return Utils.getReplicasForInstance(routingDataRepository, instanceId);
   }
 
