@@ -5,13 +5,16 @@ import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionA
 import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -20,6 +23,7 @@ import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +34,8 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -243,6 +249,29 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
        * using the new instance of the read-write lock for the same partition.
        */
       this.rwLockForStoragePartitionAdjustmentList.set(partitionId, new ReentrantReadWriteLock());
+    }
+  }
+
+  public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(
+      SafeHelixManager manager,
+      VeniceConfigLoader veniceConfigLoader) {
+    String storageEngineName = getStoreVersionName();
+    String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+    PropertyKey.Builder propertyKeyBuilder =
+        new PropertyKey.Builder(veniceConfigLoader.getVeniceClusterConfig().getClusterName());
+    IdealState idealState = manager.getHelixDataAccessor().getProperty(propertyKeyBuilder.idealStates(storeName));
+
+    Set<Integer> idealStatePartitionIds = new HashSet<>();
+    idealState.getPartitionSet().stream().forEach(partitionId -> {
+      idealStatePartitionIds.add(Integer.parseInt(partitionId));
+    });
+    Set<Integer> storageEnginePartitionIds = getPartitionIds();
+
+    for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
+      if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
+        continue;
+      }
+      dropPartition(storageEnginePartitionId);
     }
   }
 

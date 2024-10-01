@@ -59,6 +59,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
+
   }
 
   /**

@@ -48,7 +48,6 @@ import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -69,16 +68,12 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import org.apache.helix.PropertyKey;
-import org.apache.helix.model.IdealState;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -369,6 +364,14 @@ public class VeniceServer {
       return helixData;
     });
 
+    managerFuture.thenApply(manager -> {
+      for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository()
+          .getAllLocalStorageEngines()) {
+        storageEngine.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager, veniceConfigLoader);
+      }
+      return true;
+    });
+
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
@@ -600,10 +603,6 @@ public class VeniceServer {
       service.start();
     }
 
-    for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
-      functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot().apply(storageEngine);
-    }
-
     for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
       LOGGER.info("Registering to service discovery: {}", serviceDiscoveryAnnouncer);
       serviceDiscoveryAnnouncer.register();
@@ -717,32 +716,6 @@ public class VeniceServer {
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
     return storageEngineName -> true;
-  }
-
-  private Function<AbstractStorageEngine, Void> functionToCheckWhetherStoragePartitionsShouldBeKeptOrNot() {
-    return storageEngine -> {
-      String storageEngineName = storageEngine.toString();
-      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
-      PropertyKey.Builder propertyKeyBuilder =
-          new PropertyKey.Builder(veniceConfigLoader.getVeniceClusterConfig().getClusterName());
-      IdealState idealState = getHelixParticipationService().getHelixManager()
-          .getHelixDataAccessor()
-          .getProperty(propertyKeyBuilder.idealStates(storeName));
-
-      Set<Integer> idealStatePartitionIds = new HashSet<>();
-      idealState.getPartitionSet().stream().forEach(partitionId -> {
-        idealStatePartitionIds.add(Integer.parseInt(partitionId));
-      });
-      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
-
-      for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
-        if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
-          continue;
-        }
-        storageEngine.dropPartition(storageEnginePartitionId);
-      }
-      return null;
-    };
   }
 
   public MetricsRepository getMetricsRepository() {
