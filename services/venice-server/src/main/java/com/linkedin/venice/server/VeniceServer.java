@@ -21,6 +21,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
@@ -42,6 +43,7 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.ServerReadMetadataRepository;
 import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -71,6 +73,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -310,8 +313,8 @@ public class VeniceServer {
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
-    // boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
-    // || veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+    boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
+        || veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
 
     // Create and add StorageService. storeRepository will be populated by StorageService
     storageService = new StorageService(
@@ -320,10 +323,10 @@ public class VeniceServer {
         rocksDBMemoryStats,
         storeVersionStateSerializer,
         partitionStateSerializer,
-        metadataRepo);
-    // whetherToRestoreDataPartitions,
-    // true,
-    // functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
+        metadataRepo,
+        whetherToRestoreDataPartitions,
+        true,
+        functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     storageEngineMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
@@ -361,13 +364,13 @@ public class VeniceServer {
       return helixData;
     });
 
-    // managerFuture.thenApply(manager -> {
-    // for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository()
-    // .getAllLocalStorageEngines()) {
-    // storageEngine.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager, veniceConfigLoader);
-    // }
-    // return true;
-    // });
+    managerFuture.thenApply(manager -> {
+      for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository()
+          .getAllLocalStorageEngines()) {
+        storageEngine.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager, veniceConfigLoader);
+      }
+      return true;
+    });
 
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
@@ -707,13 +710,13 @@ public class VeniceServer {
     return veniceConfigLoader;
   }
 
-  // protected final boolean isIsolatedIngestion() {
-  // return veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
-  // }
-  //
-  // private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
-  // return storageEngineName -> true;
-  // }
+  protected final boolean isIsolatedIngestion() {
+    return veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
+  }
+
+  private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
+    return storageEngineName -> true;
+  }
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
