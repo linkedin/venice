@@ -11,8 +11,10 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
@@ -70,6 +72,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -148,6 +151,8 @@ public class DaVinciClientTest {
     inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
+    clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, false, false, clusterConfig);
     d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
@@ -775,7 +780,7 @@ public class DaVinciClientTest {
         // Isolated clients should not be able to unsubscribe partitions of other clients.
         client3.unsubscribeAll();
 
-        client3.subscribe(Collections.singleton(partition)).get(0, TimeUnit.SECONDS);
+        client3.subscribe(Collections.singleton(partition)).get(10, TimeUnit.SECONDS);
         for (int i = 0; i < KEY_COUNT; i++) {
           final int key = i;
           // Both client2 & client4 are not subscribed to any partition. But client2 is not-isolated so it can
@@ -785,6 +790,58 @@ public class DaVinciClientTest {
           assertThrows(NonLocalAccessException.class, () -> client4.get(key).get());
         }
       }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class)
+  public void testStatusReportDuringBoostrap(IngestionMode ingestionMode) throws Exception {
+    int keyCnt = 1000;
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(keyCnt);
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Map<String, Object> extraBackendProp = new HashMap<>();
+    extraBackendProp.put(DATA_BASE_PATH, baseDataPath);
+    extraBackendProp.put(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, "5");
+    extraBackendProp.put(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "5");
+    extraBackendProp.put(PUSH_STATUS_STORE_ENABLED, "true");
+    DaVinciTestContext<Integer, Object> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster.getZk().getAddress(),
+            storeName,
+            new DaVinciConfig().setIsolated(ingestionMode.equals(IngestionMode.ISOLATED)),
+            extraBackendProp);
+    try (DaVinciClient<Integer, Object> client = daVinciTestContext.getDaVinciClient()) {
+      CompletableFuture<Void> subscribeFuture = client.subscribeAll();
+
+      /**
+       * Create a new version while bootstrapping.
+       */
+      VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
+      String topic = newVersion.getKafkaTopic();
+      VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+          .getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
+      VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
+      VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
+      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+
+      try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
+          new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+              .setValueSerializer(valueSerializer)
+              .build())) {
+        batchProducer.broadcastStartOfPush(Collections.emptyMap());
+        int keyCntForSecondVersion = 100;
+        Future[] writerFutures = new Future[keyCntForSecondVersion];
+        for (int i = 0; i < keyCntForSecondVersion; i++) {
+          writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
+        }
+        for (int i = 0; i < keyCntForSecondVersion; i++) {
+          writerFutures[i].get();
+        }
+        batchProducer.broadcastEndOfPush(Collections.emptyMap());
+      }
+      subscribeFuture.get();
     }
   }
 

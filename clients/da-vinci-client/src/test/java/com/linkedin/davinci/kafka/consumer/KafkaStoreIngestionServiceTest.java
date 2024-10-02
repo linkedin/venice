@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -53,6 +54,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -448,5 +451,42 @@ public abstract class KafkaStoreIngestionServiceTest {
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
     verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFromConsumer(pubSubTopic, pubSubTopicPartition);
+  }
+
+  @Test
+  public void testHasCurrentVersionBootstrapping() {
+    StoreIngestionTask nonCurrentVersionBootstrappingTask = mock(StoreIngestionTask.class);
+    doReturn(false).when(nonCurrentVersionBootstrappingTask).isCurrentVersion();
+    doReturn(false).when(nonCurrentVersionBootstrappingTask).hasAllPartitionReportedCompleted();
+
+    StoreIngestionTask nonCurrentVersionCompletedTask = mock(StoreIngestionTask.class);
+    doReturn(false).when(nonCurrentVersionCompletedTask).isCurrentVersion();
+    doReturn(true).when(nonCurrentVersionCompletedTask).hasAllPartitionReportedCompleted();
+
+    StoreIngestionTask currentVersionBootstrappingTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(currentVersionBootstrappingTask).isCurrentVersion();
+    doReturn(false).when(currentVersionBootstrappingTask).hasAllPartitionReportedCompleted();
+
+    StoreIngestionTask currentVersionCompletedTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(currentVersionCompletedTask).isCurrentVersion();
+    doReturn(true).when(currentVersionCompletedTask).hasAllPartitionReportedCompleted();
+
+    Map<String, StoreIngestionTask> mapContainsAllCompletedTask = new HashMap<>();
+    mapContainsAllCompletedTask.put("non_current_version_completed", nonCurrentVersionCompletedTask);
+    mapContainsAllCompletedTask.put("current_version_completed", currentVersionCompletedTask);
+
+    assertFalse(KafkaStoreIngestionService.hasCurrentVersionBootstrapping(mapContainsAllCompletedTask));
+
+    Map<String, StoreIngestionTask> mapContainsNonCurrentBootstrappingTask = new HashMap<>();
+    mapContainsNonCurrentBootstrappingTask.put("non_current_version_bootstrapping", nonCurrentVersionBootstrappingTask);
+    mapContainsNonCurrentBootstrappingTask.put("current_version_completed", currentVersionCompletedTask);
+
+    assertFalse(KafkaStoreIngestionService.hasCurrentVersionBootstrapping(mapContainsNonCurrentBootstrappingTask));
+
+    Map<String, StoreIngestionTask> mapContainsCurrentBootstrappingTask = new HashMap<>();
+    mapContainsCurrentBootstrappingTask.put("non_current_version_bootstrapping", nonCurrentVersionBootstrappingTask);
+    mapContainsCurrentBootstrappingTask.put("current_version_bootstrapping", currentVersionBootstrappingTask);
+
+    assertTrue(KafkaStoreIngestionService.hasCurrentVersionBootstrapping(mapContainsCurrentBootstrappingTask));
   }
 }
