@@ -557,6 +557,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public boolean hasCurrentVersionBootstrapping() {
+    return hasCurrentVersionBootstrapping(topicNameToIngestionTaskMap);
+  }
+
+  public static boolean hasCurrentVersionBootstrapping(Map<String, StoreIngestionTask> ingestionTaskMap) {
+    for (Map.Entry<String, StoreIngestionTask> entry: ingestionTaskMap.entrySet()) {
+      StoreIngestionTask task = entry.getValue();
+      if (task.isCurrentVersion() && !task.hasAllPartitionReportedCompleted()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Stops all the Kafka consumption tasks.
    * Closes all the Kafka clients.
