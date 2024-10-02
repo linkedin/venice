@@ -8,17 +8,18 @@ import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class ServerBlobFinder implements BlobFinder {
-  private final HelixCustomizedViewOfflinePushRepository customizedViewRepository;
+  private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository;
 
   private static final Logger LOGGER = LogManager.getLogger(ServerBlobFinder.class);
 
   public ServerBlobFinder(CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository) {
-    this.customizedViewRepository = customizedViewRepository.join();
+    this.customizedViewRepository = customizedViewRepository;
   }
 
   @Override
@@ -28,6 +29,7 @@ public class ServerBlobFinder implements BlobFinder {
       String currentVersionResource = Version.composeKafkaTopic(storeName, version);
       // Get the partition assignments for the specific partition and retrieve the host names
       List<String> hostNames = new ArrayList<>();
+      HelixCustomizedViewOfflinePushRepository customizedViewRepository = this.customizedViewRepository.get();
       for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
           .getAllPartitions()) {
         if (partition.getId() == partitionId) {
@@ -37,7 +39,7 @@ public class ServerBlobFinder implements BlobFinder {
         }
       }
       response.setDiscoveryResult(hostNames);
-    } catch (VeniceException e) {
+    } catch (VeniceException | InterruptedException | ExecutionException e) {
       response.setError(true);
       String errorMsg = String.format(
           "Error finding peers for blob transfer in store: %s, version: %d, partitionId: %d",
