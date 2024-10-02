@@ -17,6 +17,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
@@ -42,6 +43,8 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDBException;
@@ -369,6 +372,30 @@ public class StorageService extends AbstractVeniceService {
         topicName,
         LatencyUtils.getElapsedTimeFromNSToMS(startTimeInBuildingNewEngine));
     return engine;
+  }
+
+  public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
+    for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
+      String storageEngineName = storageEngine.toString();
+      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+      PropertyKey.Builder propertyKeyBuilder =
+          new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
+      IdealState idealState = manager.getHelixDataAccessor().getProperty(propertyKeyBuilder.idealStates(storeName));
+
+      Set<Integer> idealStatePartitionIds = new HashSet<>();
+
+      idealState.getPartitionSet().stream().forEach(partitionId -> {
+        idealStatePartitionIds.add(Integer.parseInt(partitionId));
+      });
+      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
+
+      for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
+        if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
+          continue;
+        }
+        storageEngine.dropPartition(storageEnginePartitionId);
+      }
+    }
   }
 
   /**

@@ -21,7 +21,6 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
@@ -365,10 +364,7 @@ public class VeniceServer {
     });
 
     managerFuture.thenApply(manager -> {
-      for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository()
-          .getAllLocalStorageEngines()) {
-        storageEngine.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager, veniceConfigLoader);
-      }
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
       return true;
     });
 
