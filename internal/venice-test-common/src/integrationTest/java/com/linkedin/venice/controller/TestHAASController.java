@@ -333,7 +333,7 @@ public class TestHAASController {
       cloudInfoSources.add("TestSource");
 
       when(commonConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
-      when(commonConfig.isControllerStorageClusterHelixCloudEnabled()).thenReturn(true);
+      when(commonConfig.isStorageClusterHelixCloudEnabled()).thenReturn(true);
       when(commonConfig.getHelixCloudProvider()).thenReturn(cloudProvider);
       when(commonConfig.getHelixCloudId()).thenReturn("NA");
       when(commonConfig.getHelixCloudInfoSources()).thenReturn(cloudInfoSources);
