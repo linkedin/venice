@@ -32,12 +32,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_R
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLOUD_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLOUD_ID;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLOUD_INFO_PROCESSOR_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLOUD_INFO_SOURCES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
@@ -52,6 +48,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENAB
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -66,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -362,11 +363,12 @@ public class VeniceControllerClusterConfig {
 
   private final boolean concurrentInitRoutinesEnabled;
 
-  private final boolean controllerCloudEnabled;
-  private final String controllerCloudProvider;
-  private final String controllerCloudId;
-  private final List<String> controllerCloudInfoSources;
-  private final String controllerCloudInfoProcessorName;
+  private final boolean controllerClusterHelixCloudEnabled;
+  private final boolean controllerStorageClusterHelixCloudEnabled;
+  private final String controllerHelixCloudProvider;
+  private final String controllerHelixCloudId;
+  private final List<String> controllerHelixCloudInfoSources;
+  private final String controllerHelixCloudInfoProcessorName;
 
   private final boolean usePushStatusStoreForIncrementalPush;
 
@@ -902,11 +904,13 @@ public class VeniceControllerClusterConfig {
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
-    this.controllerCloudEnabled = props.getBoolean(CONTROLLER_CLOUD_ENABLED, false);
-    this.controllerCloudProvider = props.getString(CONTROLLER_CLOUD_PROVIDER, "");
-    this.controllerCloudId = props.getString(CONTROLLER_CLOUD_ID, "");
-    this.controllerCloudInfoProcessorName = props.getString(CONTROLLER_CLOUD_INFO_PROCESSOR_NAME, "");
-    this.controllerCloudInfoSources = props.getList(CONTROLLER_CLOUD_INFO_SOURCES, Collections.emptyList());
+    this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.controllerStorageClusterHelixCloudEnabled =
+        props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.controllerHelixCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER, "");
+    this.controllerHelixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
+    this.controllerHelixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
+    this.controllerHelixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, Collections.emptyList());
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
@@ -1545,24 +1549,28 @@ public class VeniceControllerClusterConfig {
     return concurrentInitRoutinesEnabled;
   }
 
-  public boolean isControllerCloudEnabled() {
-    return controllerCloudEnabled;
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return controllerClusterHelixCloudEnabled;
   }
 
-  public String getControllerCloudProvider() {
-    return controllerCloudProvider;
+  public boolean isControllerStorageClusterHelixCloudEnabled() {
+    return controllerClusterHelixCloudEnabled;
   }
 
-  public String getControllerCloudId() {
-    return controllerCloudId;
+  public String getControllerHelixCloudProvider() {
+    return controllerHelixCloudProvider;
   }
 
-  public List<String> getControllerCloudInfoSources() {
-    return controllerCloudInfoSources;
+  public String getControllerHelixCloudId() {
+    return controllerHelixCloudId;
   }
 
-  public String getControllerCloudInfoProcessorName() {
-    return controllerCloudInfoProcessorName;
+  public List<String> getControllerHelixCloudInfoSources() {
+    return controllerHelixCloudInfoSources;
+  }
+
+  public String getControllerHelixCloudInfoProcessorName() {
+    return controllerHelixCloudInfoProcessorName;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {

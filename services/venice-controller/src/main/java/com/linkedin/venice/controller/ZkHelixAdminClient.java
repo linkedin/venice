@@ -105,7 +105,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         updateClusterConfigs(controllerClusterName, helixClusterProperties);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        setCloudConfig(commonConfig);
+        setCloudConfig(commonConfig, true);
       }
       return true;
     }, 3, Duration.ofSeconds(5), Collections.singletonList(Exception.class));
@@ -130,7 +130,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
         VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-        setCloudConfig(config);
+        setCloudConfig(config, false);
       }
       return true;
     }, 3, Duration.ofSeconds(5), Collections.singletonList(Exception.class));
@@ -326,40 +326,28 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin.addInstanceTag(clusterName, instanceName, tag);
   }
 
-  public void setCloudConfig(VeniceControllerClusterConfig config) {
-    if (!config.isControllerCloudEnabled()) {
+  public void setCloudConfig(VeniceControllerClusterConfig config, boolean isControllerCluster) {
+    if (isControllerCluster && !config.isControllerClusterHelixCloudEnabled()) {
+      return;
+    } else if (!isControllerCluster && !config.isControllerStorageClusterHelixCloudEnabled()) {
       return;
     }
 
-    String controllerCloudProvider = config.getControllerCloudProvider();
-    if (controllerCloudProvider.isEmpty()) {
-      throw new VeniceException("Controller cloud provider must be set when the controller is cloud enabled");
-    }
-
+    String controllerCloudProvider = config.getControllerHelixCloudProvider().toUpperCase();
     CloudProvider cloudProvider;
     try {
-      cloudProvider = CloudProvider.valueOf(controllerCloudProvider.toUpperCase());
+      cloudProvider = CloudProvider.valueOf(controllerCloudProvider);
     } catch (IllegalArgumentException e) {
       throw new VeniceException(
-          "Invalid cloud provider: " + controllerCloudProvider + ". Must be one of: "
+          "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
               + Arrays.toString(CloudProvider.values()));
     }
 
-    String controllerCloudId = config.getControllerCloudId();
-    List<String> controllerCloudInfoSources = config.getControllerCloudInfoSources();
-    String controllerCloudInfoProcessorName = config.getControllerCloudInfoProcessorName();
+    String controllerCloudId = config.getControllerHelixCloudId();
+    List<String> controllerCloudInfoSources = config.getControllerHelixCloudInfoSources();
+    String controllerCloudInfoProcessorName = config.getControllerHelixCloudInfoProcessorName();
     CloudConfig.Builder cloudConfigBuilder =
         new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(cloudProvider).setCloudID(controllerCloudId);
-
-    if (!cloudProvider.equals(CloudProvider.AZURE)) {
-      if (controllerCloudInfoSources.isEmpty()) {
-        throw new VeniceException("Controller cloud info sources must be set when not using Azure");
-      }
-
-      if (controllerCloudInfoProcessorName.isEmpty()) {
-        throw new VeniceException("Controller cloud info processor name must be set when not using Azure");
-      }
-    }
 
     controllerCloudInfoSources.forEach(cloudConfigBuilder::addCloudInfoSource);
 

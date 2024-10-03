@@ -332,11 +332,12 @@ public class TestHAASController {
       List<String> cloudInfoSources = new ArrayList<>();
       cloudInfoSources.add("TestSource");
 
-      when(commonConfig.isControllerCloudEnabled()).thenReturn(true);
-      when(commonConfig.getControllerCloudProvider()).thenReturn("CUSTOMIZED");
-      when(commonConfig.getControllerCloudId()).thenReturn("NA");
-      when(commonConfig.getControllerCloudInfoSources()).thenReturn(cloudInfoSources);
-      when(commonConfig.getControllerCloudInfoProcessorName()).thenReturn("TestProcessor");
+      when(commonConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
+      when(commonConfig.isControllerStorageClusterHelixCloudEnabled()).thenReturn(true);
+      when(commonConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+      when(commonConfig.getControllerHelixCloudId()).thenReturn("NA");
+      when(commonConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
+      when(commonConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
