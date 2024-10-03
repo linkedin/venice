@@ -320,9 +320,29 @@ public class ConfigKeys {
   public static final String ALLOW_CLUSTER_WIPE = "allow.cluster.wipe";
 
   /**
-   * Whether the controller is in Azure fabric. Default is false.
+   * Whether the controller is in a cloud environment. Default is false.
    */
-  public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
+  public static final String CONTROLLER_CLOUD_ENABLED = "controller.cloud.enabled";
+
+  /**
+   * What cloud environment the controller is in, i.e. AZURE, CUSTOMIZED. Default is empty string.
+   */
+  public static final String CONTROLLER_CLOUD_PROVIDER = "controller.cloud.provider";
+
+  /**
+   * Specific id in cloud environment that belongs to this cluster. Default is empty string.
+   */
+  public static final String CONTROLLER_CLOUD_ID = "controller.cloud.id";
+
+  /**
+   * Sources for retrieving the cloud information. Default is empty list.
+   */
+  public static final String CONTROLLER_CLOUD_INFO_SOURCES = "controller.cloud.info.sources";
+
+  /**
+   * Name of the function that processes the fetching and parsing of cloud information. Default is empty string.
+   */
+  public static final String CONTROLLER_CLOUD_INFO_PROCESSOR_NAME = "controller.cloud.info.processor.name";
 
   /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.

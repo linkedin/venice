@@ -4,8 +4,7 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.shutdownExecutor;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -259,11 +258,11 @@ public class TestHAASController {
 
     @Override
     public Void call() {
-      client.createVeniceControllerCluster(false);
+      client.createVeniceControllerCluster();
       client.addClusterToGrandCluster("venice-controllers");
       for (int i = 0; i < 10; i++) {
         String clusterName = "cluster-" + String.valueOf(i);
-        client.createVeniceStorageCluster(clusterName, new HashMap<>(), false);
+        client.createVeniceStorageCluster(clusterName, new HashMap<>());
         client.addClusterToGrandCluster(clusterName);
         client.addVeniceStorageClusterToControllerCluster(clusterName);
       }
@@ -282,6 +281,7 @@ public class TestHAASController {
         new DaemonThreadFactory("test-concurrent-cluster-init"));
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
@@ -290,7 +290,8 @@ public class TestHAASController {
       doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
       List<Callable<Void>> tasks = new ArrayList<>();
       for (int i = 0; i < 3; i++) {
-        tasks.add(new InitTask(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository())));
+        tasks.add(
+            new InitTask(new ZkHelixAdminClient(commonConfig, controllerMultiClusterConfig, new MetricsRepository())));
       }
       List<Future<Void>> results = executorService.invokeAll(tasks);
       for (Future<Void> result: results) {
@@ -315,6 +316,36 @@ public class TestHAASController {
     } catch (Exception e) {
       Utils.closeQuietlyWithErrorLogged(helixAsAServiceWrapper);
       throw e;
+    }
+  }
+
+  @Test
+  public void testCloudConfig() {
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
+      VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+
+      List<String> cloudInfoSources = new ArrayList<>();
+      cloudInfoSources.add("TestSource");
+
+      when(commonConfig.isControllerCloudEnabled()).thenReturn(true);
+      when(commonConfig.getControllerCloudProvider()).thenReturn("CUSTOMIZED");
+      when(commonConfig.getControllerCloudId()).thenReturn("NA");
+      when(commonConfig.getControllerCloudInfoSources()).thenReturn(cloudInfoSources);
+      when(commonConfig.getControllerCloudInfoProcessorName()).thenReturn("TestProcessor");
+
+      doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
+      doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
+          .getControllerHAASSuperClusterName();
+      doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
+      doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
+      doReturn(commonConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
+
+      ZkHelixAdminClient client =
+          new ZkHelixAdminClient(commonConfig, controllerMultiClusterConfig, new MetricsRepository());
+      InitTask task = new InitTask(client);
+      task.call();
     }
   }
 }

@@ -2075,5 +2075,4 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       Assert.assertEquals(instances.size(), 1);
     }
   }
-
 }
