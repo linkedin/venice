@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -38,7 +39,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -53,7 +55,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         helixAdminClient,
         controllerConfig,
         pushStatusStoreReader,
-        disabledPartitionStats);
+        disabledPartitionStats,
+        customizedViewOfflinePushRepository);
   }
 
   @Override
