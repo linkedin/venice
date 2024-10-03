@@ -29,6 +29,7 @@ import java.util.Properties;
  * this interface for lifecycle management of arbitrary resources (not just kafka topics).
  */
 public abstract class VeniceView {
+  public static final String VIEW_TOPIC_SEPARATOR = "_";
   protected final Properties props;
   protected final Store store;
   protected final Map<String, String> viewParameters;
@@ -88,7 +89,8 @@ public abstract class VeniceView {
     // So for now, we'll keep this static, but needs a better approach. Perhaps, a config
     // that's passed into the server that lists the types of views supported, and then
     // for each type having an uniformly named static method that doesn't override.
-    return topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    return topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)
+        || topicName.endsWith(RePartitionView.RE_PARTITION_TOPIC_SUFFIX);
   }
 
   // TODO: see above TODO for isViewtopic function, same applies here.
@@ -99,7 +101,7 @@ public abstract class VeniceView {
   // TODO: see above TODO for isViewTopic function, same applies here
   public static int parseVersionFromViewTopic(String topicName) {
     int versionStartIndex = Version.getLastIndexOfVersionSeparator(topicName) + Version.VERSION_SEPARATOR.length();
-    return Integer.parseInt(
-        topicName.substring(versionStartIndex, topicName.lastIndexOf(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)));
+    int versionEndIndex = versionStartIndex + topicName.substring(versionStartIndex).indexOf(VIEW_TOPIC_SEPARATOR);
+    return Integer.parseInt(topicName.substring(versionStartIndex, versionEndIndex));
   }
 }

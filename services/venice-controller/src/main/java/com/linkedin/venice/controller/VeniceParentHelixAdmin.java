@@ -189,6 +189,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -230,6 +231,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.RePartitionView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -2339,8 +2341,9 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
           ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
-          validateStoreViewConfig(currStore, viewConfig);
-          updatedViewSettings = VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), viewConfig);
+          ViewConfig validatedViewConfig = validateAndDecorateStoreViewConfig(currStore, viewConfig, viewName.get());
+          updatedViewSettings =
+              VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), validatedViewConfig);
         } else {
           updatedViewSettings = VeniceHelixAdmin.removeViewConfigFromStoreViewConfigMap(currStore, viewName.get());
         }
@@ -2350,8 +2353,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if (storeViewConfig.isPresent()) {
         // Validate and overwrite store views if they're getting set
-        validateStoreViewConfigs(storeViewConfig.get(), currStore);
-        setStore.views = StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(storeViewConfig.get());
+        Map<String, ViewConfig> validatedViewConfigs =
+            validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
+        setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
         updatedConfigsList.add(STORE_VIEW);
       }
 
@@ -2780,18 +2784,28 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void validateStoreViewConfigs(Map<String, String> stringMap, Store store) {
+  private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(Map<String, String> stringMap, Store store) {
     Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfigMap(stringMap);
+    Map<String, ViewConfig> validatedConfigs = new HashMap<>();
     for (Map.Entry<String, ViewConfig> viewConfigEntry: configs.entrySet()) {
-      validateStoreViewConfig(store, viewConfigEntry.getValue());
+      ViewConfig validatedViewConfig =
+          validateAndDecorateStoreViewConfig(store, viewConfigEntry.getValue(), viewConfigEntry.getKey());
+      validatedConfigs.put(viewConfigEntry.getKey(), validatedViewConfig);
     }
+    return validatedConfigs;
   }
 
-  private void validateStoreViewConfig(Store store, ViewConfig viewConfig) {
+  private ViewConfig validateAndDecorateStoreViewConfig(Store store, ViewConfig viewConfig, String viewName) {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
+    if (viewConfig.getViewClassName().equals(RePartitionView.class.getCanonicalName())) {
+      Map<String, String> viewParams = viewConfig.getViewParameters();
+      viewParams.put(ViewParameterKeys.RE_PARTITION_VIEW_NAME.name(), viewName);
+      viewConfig.setViewParameters(viewParams);
+    }
     VeniceView view =
         ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
     view.validateConfigs();
+    return viewConfig;
   }
 
   private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {

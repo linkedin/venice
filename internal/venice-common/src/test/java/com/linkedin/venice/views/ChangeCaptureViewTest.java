@@ -1,6 +1,10 @@
 package com.linkedin.venice.views;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
+
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -26,5 +30,23 @@ public class ChangeCaptureViewTest {
     Assert.assertThrows(() -> new ChangeCaptureView(props, NonAAStore, viewParams).validateConfigs());
     // Should now throw
     new ChangeCaptureView(props, AAChunkedStore, viewParams).validateConfigs();
+  }
+
+  @Test
+  public void testCCViewTopicProcessing() {
+    String storeName = "test-store";
+    int version = 3;
+    Store testStore = Mockito.mock(Store.class);
+    Mockito.when(testStore.getName()).thenReturn(storeName);
+    ChangeCaptureView changeCaptureView = new ChangeCaptureView(new Properties(), testStore, new HashMap<>());
+    Map<String, VeniceProperties> changeCaptureViewTopicMap =
+        changeCaptureView.getTopicNamesAndConfigsForVersion(version);
+    assertEquals(changeCaptureViewTopicMap.size(), 1);
+    for (Map.Entry<String, VeniceProperties> entry: changeCaptureViewTopicMap.entrySet()) {
+      String viewTopic = entry.getKey();
+      assertTrue(VeniceView.isViewTopic(viewTopic));
+      assertEquals(VeniceView.parseStoreFromViewTopic(viewTopic), storeName);
+      assertEquals(VeniceView.parseVersionFromViewTopic(viewTopic), version);
+    }
   }
 }
