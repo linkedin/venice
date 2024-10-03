@@ -57,7 +57,8 @@ public class PushMonitorDelegator implements PushMonitor {
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
 
@@ -75,7 +76,8 @@ public class PushMonitorDelegator implements PushMonitor {
         helixAdminClient,
         controllerConfig,
         pushStatusStoreReader,
-        disabledPartitionStats);
+        disabledPartitionStats,
+        customizedViewOfflinePushRepository);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
