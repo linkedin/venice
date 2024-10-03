@@ -210,6 +210,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
@@ -365,7 +366,7 @@ public class VeniceControllerClusterConfig {
 
   private final boolean controllerClusterHelixCloudEnabled;
   private final boolean controllerStorageClusterHelixCloudEnabled;
-  private final String controllerHelixCloudProvider;
+  private final CloudProvider controllerHelixCloudProvider;
   private final String controllerHelixCloudId;
   private final List<String> controllerHelixCloudInfoSources;
   private final String controllerHelixCloudInfoProcessorName;
@@ -907,7 +908,20 @@ public class VeniceControllerClusterConfig {
     this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
     this.controllerStorageClusterHelixCloudEnabled =
         props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
-    this.controllerHelixCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER, "");
+
+    if (controllerClusterHelixCloudEnabled || controllerStorageClusterHelixCloudEnabled) {
+      String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER, "").toUpperCase();
+      try {
+        this.controllerHelixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
+      } catch (IllegalArgumentException e) {
+        throw new VeniceException(
+            "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
+                + Arrays.toString(CloudProvider.values()));
+      }
+    } else {
+      this.controllerHelixCloudProvider = null;
+    }
+
     this.controllerHelixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
     this.controllerHelixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
 
@@ -1564,7 +1578,7 @@ public class VeniceControllerClusterConfig {
     return controllerStorageClusterHelixCloudEnabled;
   }
 
-  public String getControllerHelixCloudProvider() {
+  public CloudProvider getControllerHelixCloudProvider() {
     return controllerHelixCloudProvider;
   }
 

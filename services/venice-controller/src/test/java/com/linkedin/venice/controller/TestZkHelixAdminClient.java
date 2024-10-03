@@ -8,7 +8,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertThrows;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -17,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixException;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.model.IdealState;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -69,10 +69,11 @@ public class TestZkHelixAdminClient {
 
   @Test
   public void testSetCloudConfig() {
+    CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
     when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
     when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
     when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
@@ -84,16 +85,9 @@ public class TestZkHelixAdminClient {
   }
 
   @Test
-  public void testControllerCloudProviderNotSet() {
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("");
-
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
-    assertThrows(VeniceException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
-  }
-
-  @Test
   public void testControllerCloudInfoSourcesNotSet() {
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+    CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
+    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
     when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
     when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(Collections.emptyList());
     when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
@@ -104,10 +98,11 @@ public class TestZkHelixAdminClient {
 
   @Test
   public void testControllerCloudInfoProcessorNameNotSet() {
+    CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
     when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
     when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
     when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("");

@@ -7,14 +7,12 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
@@ -330,21 +328,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   public void setCloudConfig(VeniceControllerClusterConfig config) {
-    String controllerCloudProvider = config.getControllerHelixCloudProvider().toUpperCase();
-    CloudProvider cloudProvider;
-    try {
-      cloudProvider = CloudProvider.valueOf(controllerCloudProvider);
-    } catch (IllegalArgumentException e) {
-      throw new VeniceException(
-          "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
-              + Arrays.toString(CloudProvider.values()));
-    }
-
     String controllerCloudId = config.getControllerHelixCloudId();
     List<String> controllerCloudInfoSources = config.getControllerHelixCloudInfoSources();
     String controllerCloudInfoProcessorName = config.getControllerHelixCloudInfoProcessorName();
     CloudConfig.Builder cloudConfigBuilder =
-        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(cloudProvider);
+        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(config.getControllerHelixCloudProvider());
 
     if (!controllerCloudId.isEmpty()) {
       cloudConfigBuilder.setCloudID(controllerCloudId);

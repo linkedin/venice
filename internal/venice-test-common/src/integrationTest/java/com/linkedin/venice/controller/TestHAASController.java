@@ -38,6 +38,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.LiveInstance;
 import org.testng.annotations.BeforeClass;
@@ -284,7 +285,6 @@ public class TestHAASController {
         new DaemonThreadFactory("test-concurrent-cluster-init"));
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
-      VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
@@ -327,13 +327,14 @@ public class TestHAASController {
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+      CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
 
       List<String> cloudInfoSources = new ArrayList<>();
       cloudInfoSources.add("TestSource");
 
       when(commonConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
       when(commonConfig.isControllerStorageClusterHelixCloudEnabled()).thenReturn(true);
-      when(commonConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+      when(commonConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
       when(commonConfig.getControllerHelixCloudId()).thenReturn("NA");
       when(commonConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
       when(commonConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
