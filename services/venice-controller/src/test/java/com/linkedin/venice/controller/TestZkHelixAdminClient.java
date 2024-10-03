@@ -73,10 +73,10 @@ public class TestZkHelixAdminClient {
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
-    when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
-    when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
-    when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
+    when(mockClusterConfig.getHelixCloudProvider()).thenReturn(cloudProvider);
+    when(mockClusterConfig.getHelixCloudId()).thenReturn("NA");
+    when(mockClusterConfig.getHelixCloudInfoSources()).thenReturn(cloudInfoSources);
+    when(mockClusterConfig.getHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
     doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
     zkHelixAdminClient.setCloudConfig(mockClusterConfig);
@@ -87,10 +87,10 @@ public class TestZkHelixAdminClient {
   @Test
   public void testControllerCloudInfoSourcesNotSet() {
     CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
-    when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
-    when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(Collections.emptyList());
-    when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
+    when(mockClusterConfig.getHelixCloudProvider()).thenReturn(cloudProvider);
+    when(mockClusterConfig.getHelixCloudId()).thenReturn("NA");
+    when(mockClusterConfig.getHelixCloudInfoSources()).thenReturn(Collections.emptyList());
+    when(mockClusterConfig.getHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
     doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
     assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
@@ -102,10 +102,10 @@ public class TestZkHelixAdminClient {
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn(cloudProvider);
-    when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
-    when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
-    when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("");
+    when(mockClusterConfig.getHelixCloudProvider()).thenReturn(cloudProvider);
+    when(mockClusterConfig.getHelixCloudId()).thenReturn("NA");
+    when(mockClusterConfig.getHelixCloudInfoSources()).thenReturn(cloudInfoSources);
+    when(mockClusterConfig.getHelixCloudInfoProcessorName()).thenReturn("");
 
     doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
     assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));

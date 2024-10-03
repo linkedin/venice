@@ -2084,6 +2084,15 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testCloudProviderNotSet() throws IOException {
     Properties clusterProperties = getControllerProperties(clusterName);
     clusterProperties.put(ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, String.valueOf(true));
+    assertThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+  }
+
+  @Test
+  public void testCloudProviderSetToEmptyString() throws IOException {
+    Properties clusterProperties = getControllerProperties(clusterName);
+    clusterProperties.put(ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, String.valueOf(true));
     clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER, "");
     assertThrows(
         VeniceException.class,

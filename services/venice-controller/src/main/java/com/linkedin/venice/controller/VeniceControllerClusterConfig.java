@@ -364,12 +364,12 @@ public class VeniceControllerClusterConfig {
 
   private final boolean concurrentInitRoutinesEnabled;
 
-  private final boolean controllerClusterHelixCloudEnabled;
-  private final boolean controllerStorageClusterHelixCloudEnabled;
-  private final CloudProvider controllerHelixCloudProvider;
-  private final String controllerHelixCloudId;
-  private final List<String> controllerHelixCloudInfoSources;
-  private final String controllerHelixCloudInfoProcessorName;
+  private final boolean helixClusterCloudEnabled;
+  private final boolean helixStorageClusterCloudEnabled;
+  private final CloudProvider helixCloudProvider;
+  private final String helixCloudId;
+  private final List<String> helixCloudInfoSources;
+  private final String helixCloudInfoProcessorName;
 
   private final boolean usePushStatusStoreForIncrementalPush;
 
@@ -669,7 +669,7 @@ public class VeniceControllerClusterConfig {
     if (props.getString(CONTROLLER_INSTANCE_TAG_LIST, "").isEmpty()) {
       this.controllerInstanceTagList = Collections.emptyList();
     } else {
-      this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, Collections.emptyList());
+      this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST);
     }
 
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
@@ -905,31 +905,29 @@ public class VeniceControllerClusterConfig {
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
-    this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
-    this.controllerStorageClusterHelixCloudEnabled =
-        props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.helixClusterCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.helixStorageClusterCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
 
-    if (controllerClusterHelixCloudEnabled || controllerStorageClusterHelixCloudEnabled) {
-      String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER, "").toUpperCase();
+    if (helixClusterCloudEnabled || helixStorageClusterCloudEnabled) {
+      String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER).toUpperCase();
       try {
-        this.controllerHelixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
+        this.helixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
       } catch (IllegalArgumentException e) {
         throw new VeniceException(
             "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
                 + Arrays.toString(CloudProvider.values()));
       }
     } else {
-      this.controllerHelixCloudProvider = null;
+      this.helixCloudProvider = null;
     }
 
-    this.controllerHelixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
-    this.controllerHelixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
+    this.helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
+    this.helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
 
     if (props.getString(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, "").isEmpty()) {
-      this.controllerHelixCloudInfoSources = Collections.emptyList();
+      this.helixCloudInfoSources = Collections.emptyList();
     } else {
-      this.controllerHelixCloudInfoSources =
-          props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, Collections.emptyList());
+      this.helixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES);
     }
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
@@ -1570,28 +1568,28 @@ public class VeniceControllerClusterConfig {
     return concurrentInitRoutinesEnabled;
   }
 
-  public boolean isControllerClusterHelixCloudEnabled() {
-    return controllerClusterHelixCloudEnabled;
+  public boolean isHelixClusterCloudEnabled() {
+    return helixClusterCloudEnabled;
   }
 
-  public boolean isControllerStorageClusterHelixCloudEnabled() {
-    return controllerStorageClusterHelixCloudEnabled;
+  public boolean isHelixStorageClusterCloudEnabled() {
+    return helixStorageClusterCloudEnabled;
   }
 
-  public CloudProvider getControllerHelixCloudProvider() {
-    return controllerHelixCloudProvider;
+  public CloudProvider getHelixCloudProvider() {
+    return helixCloudProvider;
   }
 
-  public String getControllerHelixCloudId() {
-    return controllerHelixCloudId;
+  public String getHelixCloudId() {
+    return helixCloudId;
   }
 
-  public List<String> getControllerHelixCloudInfoSources() {
-    return controllerHelixCloudInfoSources;
+  public List<String> getHelixCloudInfoSources() {
+    return helixCloudInfoSources;
   }
 
-  public String getControllerHelixCloudInfoProcessorName() {
-    return controllerHelixCloudInfoProcessorName;
+  public String getHelixCloudInfoProcessorName() {
+    return helixCloudInfoProcessorName;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {

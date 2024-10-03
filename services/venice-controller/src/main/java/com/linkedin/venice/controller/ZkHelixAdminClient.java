@@ -102,7 +102,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         updateClusterConfigs(controllerClusterName, helixClusterProperties);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        if (commonConfig.isControllerClusterHelixCloudEnabled()) {
+        if (commonConfig.isHelixClusterCloudEnabled()) {
           setCloudConfig(commonConfig);
         }
       }
@@ -129,7 +129,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
         VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-        if (config.isControllerStorageClusterHelixCloudEnabled()) {
+        if (config.isHelixStorageClusterCloudEnabled()) {
           setCloudConfig(config);
         }
       }
@@ -328,22 +328,22 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   public void setCloudConfig(VeniceControllerClusterConfig config) {
-    String controllerCloudId = config.getControllerHelixCloudId();
-    List<String> controllerCloudInfoSources = config.getControllerHelixCloudInfoSources();
-    String controllerCloudInfoProcessorName = config.getControllerHelixCloudInfoProcessorName();
+    String cloudId = config.getHelixCloudId();
+    List<String> cloudInfoSources = config.getHelixCloudInfoSources();
+    String cloudInfoProcessorName = config.getHelixCloudInfoProcessorName();
     CloudConfig.Builder cloudConfigBuilder =
-        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(config.getControllerHelixCloudProvider());
+        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(config.getHelixCloudProvider());
 
-    if (!controllerCloudId.isEmpty()) {
-      cloudConfigBuilder.setCloudID(controllerCloudId);
+    if (!cloudId.isEmpty()) {
+      cloudConfigBuilder.setCloudID(cloudId);
     }
 
-    if (!controllerCloudInfoSources.isEmpty()) {
-      cloudConfigBuilder.setCloudInfoSources(controllerCloudInfoSources);
+    if (!cloudInfoSources.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
     }
 
-    if (!controllerCloudInfoProcessorName.isEmpty()) {
-      cloudConfigBuilder.setCloudInfoProcessorName(controllerCloudInfoProcessorName);
+    if (!cloudInfoProcessorName.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
     }
     helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
   }
