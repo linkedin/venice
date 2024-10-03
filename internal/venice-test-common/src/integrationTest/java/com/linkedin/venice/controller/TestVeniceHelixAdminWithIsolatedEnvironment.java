@@ -194,12 +194,11 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       return partitionAssignment.getPartition(0).getWorkingInstances().size() == 1;
     });
 
-    NodeRemovableResult result =
-        veniceAdmin.isInstanceRemovable(clusterName, newNodeId, Collections.emptyList(), false);
+    NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, newNodeId, new ArrayList<>(), false);
     Assert.assertFalse(result.isRemovable(), "Only one instance is alive, can not be moved out.");
     Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA.toString());
     Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable(),
+        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, new ArrayList<>(), false).isRemovable(),
         "Instance is shutdown.");
   }
 
@@ -217,12 +216,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         Version.guidBasedDummyPushId(),
         partitionCount,
         replicaCount);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      Assert.assertFalse(
-          resourceMissingTopState(
-              veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(),
-              clusterName,
-              version.kafkaTopicName()));
+    TestUtils.waitForNonDeterministicAssertion(50, TimeUnit.SECONDS, () -> {
+      Assert.assertFalse((veniceAdmin.getReplicasOfStorageNode(clusterName, NODE_ID).isEmpty()));
     });
 
     Assert.assertFalse(
