@@ -72,6 +72,8 @@ public abstract class AbstractPushMonitor
   private final String clusterName;
   private final ReadWriteStoreRepository metadataRepository;
   private final RoutingDataRepository routingDataRepository;
+  private final HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository;
+
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
@@ -103,7 +105,8 @@ public abstract class AbstractPushMonitor
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -134,6 +137,7 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
         controllerConfig.useDaVinciSpecificExecutionStatusForError());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+    this.customizedViewOfflinePushRepository = customizedViewOfflinePushRepository;
     pushStatusCollector.start();
   }
 
@@ -149,6 +153,27 @@ public abstract class AbstractPushMonitor
     pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
+      // Subscribe to changes first
+      List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
+      for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
+        try {
+          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
+          customizedViewOfflinePushRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
+
+          /**
+           * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
+           * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
+           * to changes in the data.
+           */
+          refreshedOfflinePushStatusList
+              .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
+        } catch (Exception e) {
+          LOGGER.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
+        }
+
+      }
+      offlinePushStatusList = refreshedOfflinePushStatusList;
+
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
@@ -240,6 +265,7 @@ public abstract class AbstractPushMonitor
       topicToPushMap.put(kafkaTopic, pushStatus);
       offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       routingDataRepository.subscribeRoutingDataChange(kafkaTopic, this);
+      customizedViewOfflinePushRepository.subscribeRoutingDataChange(kafkaTopic, this);
       pushStatusCollector.subscribeTopic(kafkaTopic, numberOfPartition);
       LOGGER.info("Started monitoring push on topic:{}", kafkaTopic);
     }
