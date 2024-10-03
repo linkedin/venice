@@ -101,8 +101,8 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
       veniceStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
     }
 
-    if (availableStoreSet.get().contains(storeName)) {
-      StoreConfig config = loadedStoreConfigMap.get().get(storeName);
+    if (availableStoreSet.get().contains(veniceStoreName)) {
+      StoreConfig config = loadedStoreConfigMap.get().get(veniceStoreName);
       if (config == null) {
         // lazy fetch from ZK and attach watch
         config = accessor.getStoreConfig(veniceStoreName);

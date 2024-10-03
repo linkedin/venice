@@ -22,6 +22,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
 
   private static final String DEFAULT_STORE_NAME = "testGetStoreConfigStore";
+  private static final String DEFAULT_META_SYSTEM_STORE_NAME = "venice_system_store_meta_store_testGetStoreConfigStore";
   private static final String DEFAULT_CLUSTER_NAME = "testGetStoreConfigCluster";
   private static final StoreConfig DEFAULT_STORE_CONFIG = new StoreConfig(DEFAULT_STORE_NAME);
   static {
@@ -57,6 +58,11 @@ public class TestHelixReadOnlyStoreConfigRepository {
     // 3.) Obtain a config exists in available store set and in cache
     Assert.assertEquals(storeConfigRepository.getStoreConfig(DEFAULT_STORE_NAME).get(), DEFAULT_STORE_CONFIG);
     // the invocation count should not increase and remain at 1
+    verify(mockAccessor, times(1)).subscribeStoreConfigDataChangedListener(eq(DEFAULT_STORE_NAME), any());
+
+    // 4.) Obtain the config for the system store. It should use the same config for the store
+    Assert
+        .assertEquals(storeConfigRepository.getStoreConfig(DEFAULT_META_SYSTEM_STORE_NAME).get(), DEFAULT_STORE_CONFIG);
     verify(mockAccessor, times(1)).subscribeStoreConfigDataChangedListener(eq(DEFAULT_STORE_NAME), any());
   }
 
