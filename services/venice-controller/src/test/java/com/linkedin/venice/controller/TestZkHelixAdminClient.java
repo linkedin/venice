@@ -4,8 +4,6 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertThrows;
@@ -74,61 +72,34 @@ public class TestZkHelixAdminClient {
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    when(mockClusterConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
-    when(mockClusterConfig.isControllerStorageClusterHelixCloudEnabled()).thenReturn(true);
     when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
     when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
     when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
     when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, true);
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, false);
-    zkHelixAdminClient.setCloudConfig(mockClusterConfig, true);
-    zkHelixAdminClient.setCloudConfig(mockClusterConfig, false);
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
+    zkHelixAdminClient.setCloudConfig(mockClusterConfig);
 
-    verify(mockHelixAdmin, times(2)).addCloudConfig(any(), any());
-  }
-
-  @Test
-  public void testControllerClusterCloudDisabled() {
-    when(mockClusterConfig.isControllerClusterHelixCloudEnabled()).thenReturn(false);
-    when(mockClusterConfig.isControllerStorageClusterHelixCloudEnabled()).thenReturn(false);
-
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, true);
-    zkHelixAdminClient.setCloudConfig(mockClusterConfig, true);
-
-    verify(mockHelixAdmin, never()).addCloudConfig(any(), any());
-  }
-
-  @Test
-  public void testControllerStorageClusterCloudDisabled() {
-    when(mockClusterConfig.isControllerClusterHelixCloudEnabled()).thenReturn(false);
-    when(mockClusterConfig.isControllerStorageClusterHelixCloudEnabled()).thenReturn(false);
-
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, false);
-    zkHelixAdminClient.setCloudConfig(mockClusterConfig, false);
-
-    verify(mockHelixAdmin, never()).addCloudConfig(any(), any());
+    verify(mockHelixAdmin).addCloudConfig(any(), any());
   }
 
   @Test
   public void testControllerCloudProviderNotSet() {
-    when(mockClusterConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
     when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, true);
-    assertThrows(VeniceException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig, true));
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
+    assertThrows(VeniceException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
   }
 
   @Test
   public void testControllerCloudInfoSourcesNotSet() {
-    when(mockClusterConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
     when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+    when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
     when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(Collections.emptyList());
     when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, true);
-    assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig, true));
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
+    assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
   }
 
   @Test
@@ -136,12 +107,12 @@ public class TestZkHelixAdminClient {
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    when(mockClusterConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
     when(mockClusterConfig.getControllerHelixCloudProvider()).thenReturn("CUSTOMIZED");
+    when(mockClusterConfig.getControllerHelixCloudId()).thenReturn("NA");
     when(mockClusterConfig.getControllerHelixCloudInfoSources()).thenReturn(cloudInfoSources);
     when(mockClusterConfig.getControllerHelixCloudInfoProcessorName()).thenReturn("");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig, true);
-    assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig, true));
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
+    assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
   }
 }

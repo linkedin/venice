@@ -293,8 +293,7 @@ public class TestHAASController {
       doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
       List<Callable<Void>> tasks = new ArrayList<>();
       for (int i = 0; i < 3; i++) {
-        tasks.add(
-            new InitTask(new ZkHelixAdminClient(commonConfig, controllerMultiClusterConfig, new MetricsRepository())));
+        tasks.add(new InitTask(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository())));
       }
       List<Future<Void>> results = executorService.invokeAll(tasks);
       for (Future<Void> result: results) {
@@ -345,9 +344,9 @@ public class TestHAASController {
       doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
       doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
       doReturn(commonConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
+      doReturn(commonConfig).when(controllerMultiClusterConfig).getCommonConfig();
 
-      ZkHelixAdminClient client =
-          new ZkHelixAdminClient(commonConfig, controllerMultiClusterConfig, new MetricsRepository());
+      ZkHelixAdminClient client = new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository());
       InitTask task = new InitTask(client);
       task.call();
     }

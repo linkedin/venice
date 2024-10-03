@@ -910,7 +910,14 @@ public class VeniceControllerClusterConfig {
     this.controllerHelixCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER, "");
     this.controllerHelixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
     this.controllerHelixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
-    this.controllerHelixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, Collections.emptyList());
+
+    if (props.getString(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, "").isEmpty()) {
+      this.controllerHelixCloudInfoSources = Collections.emptyList();
+    } else {
+      this.controllerHelixCloudInfoSources =
+          props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, Collections.emptyList());
+    }
+
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
@@ -1554,7 +1561,7 @@ public class VeniceControllerClusterConfig {
   }
 
   public boolean isControllerStorageClusterHelixCloudEnabled() {
-    return controllerClusterHelixCloudEnabled;
+    return controllerStorageClusterHelixCloudEnabled;
   }
 
   public String getControllerHelixCloudProvider() {

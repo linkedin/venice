@@ -516,7 +516,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
     this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
-    this.helixAdminClient = new ZkHelixAdminClient(commonConfig, multiClusterConfigs, metricsRepository);
+    this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
     // There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
     this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
