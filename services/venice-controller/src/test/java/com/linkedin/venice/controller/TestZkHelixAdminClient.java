@@ -1,7 +1,13 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.lang.reflect.Field;
@@ -86,9 +92,7 @@ public class TestZkHelixAdminClient {
     when(mockClusterConfig.getControllerCloudProvider()).thenReturn("");
 
     doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(any());
-    assertThrows(VeniceException.class, () -> {
-      zkHelixAdminClient.setCloudConfig(mockClusterConfig);
-    });
+    assertThrows(VeniceException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
   }
 
   @Test
@@ -98,9 +102,7 @@ public class TestZkHelixAdminClient {
     when(mockClusterConfig.getControllerCloudInfoSources()).thenReturn(Collections.emptyList());
 
     doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(any());
-    assertThrows(VeniceException.class, () -> {
-      zkHelixAdminClient.setCloudConfig(mockClusterConfig);
-    });
+    assertThrows(VeniceException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
   }
 
   @Test
@@ -114,8 +116,6 @@ public class TestZkHelixAdminClient {
     when(mockClusterConfig.getControllerCloudInfoProcessorName()).thenReturn("");
 
     doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(any());
-    assertThrows(VeniceException.class, () -> {
-      zkHelixAdminClient.setCloudConfig(mockClusterConfig);
-    });
+    assertThrows(VeniceException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
   }
 }
