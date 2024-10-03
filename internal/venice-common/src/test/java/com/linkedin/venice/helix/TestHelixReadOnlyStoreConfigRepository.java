@@ -67,6 +67,20 @@ public class TestHelixReadOnlyStoreConfigRepository {
   }
 
   @Test
+  // when the store config changes among fetches, it should be updated in the cache
+  public void testGetStoreConfigRace() {
+    List<String> list = new ArrayList<>();
+    list.add(DEFAULT_STORE_NAME);
+    doReturn(list).when(mockAccessor).getAllStores();
+    storeConfigRepository.refresh();
+
+    StoreConfig copiedConfig = DEFAULT_STORE_CONFIG.cloneStoreConfig();
+    copiedConfig.setCluster("testGetStoreConfigCluster2");
+    doReturn(DEFAULT_STORE_CONFIG).doReturn(copiedConfig).when(mockAccessor).getStoreConfig(DEFAULT_STORE_NAME);
+    Assert.assertEquals(storeConfigRepository.getStoreConfig(DEFAULT_STORE_NAME).get(), copiedConfig);
+  }
+
+  @Test
   public void testRefreshAndClear() {
     int storeCount = 10;
     List<String> storeNames = new ArrayList<>();

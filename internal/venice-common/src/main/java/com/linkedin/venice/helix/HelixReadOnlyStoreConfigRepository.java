@@ -9,7 +9,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +33,7 @@ import org.apache.logging.log4j.Logger;
 public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRepository, VeniceResource {
   private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyStoreConfigRepository.class);
 
-  private final AtomicReference<Map<String, StoreConfig>> loadedStoreConfigMap;
+  private final Map<String, StoreConfig> loadedStoreConfigMap;
   private final AtomicReference<Set<String>> availableStoreSet;
   private final ZkStoreConfigAccessor accessor;
   private final StoreConfigChangedListener storeConfigChangedListener;
@@ -49,7 +48,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, ZkStoreConfigAccessor accessor) {
     this.zkClient = zkClient;
     this.accessor = accessor;
-    this.loadedStoreConfigMap = new AtomicReference<>(new VeniceConcurrentHashMap<>());
+    this.loadedStoreConfigMap = new VeniceConcurrentHashMap<>();
     this.availableStoreSet = new AtomicReference<>(new HashSet<>());
     storeConfigChangedListener = new StoreConfigChangedListener();
     storeConfigAddedOrDeletedListener = new StoreConfigAddedOrDeletedChangedListener();
@@ -74,10 +73,10 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   public void clear() {
     LOGGER.info("Clearing all store configs in local");
     accessor.unsubscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    for (String storeName: loadedStoreConfigMap.get().keySet()) {
+    for (String storeName: loadedStoreConfigMap.keySet()) {
       accessor.unsubscribeStoreConfigDataChangedListener(storeName, storeConfigChangedListener);
     }
-    this.loadedStoreConfigMap.set(Collections.emptyMap());
+    this.loadedStoreConfigMap.clear();
     this.availableStoreSet.set(Collections.emptySet());
     zkClient.unsubscribeStateChanges(zkStateListener);
     LOGGER.info("Cleared all store configs in local");
@@ -102,17 +101,18 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     }
 
     if (availableStoreSet.get().contains(veniceStoreName)) {
-      StoreConfig config = loadedStoreConfigMap.get().get(veniceStoreName);
+      StoreConfig config = loadedStoreConfigMap.get(veniceStoreName);
       if (config == null) {
         // lazy fetch from ZK and attach watch
         config = accessor.getStoreConfig(veniceStoreName);
         if (config != null) {
-          loadedStoreConfigMap.get().put(config.getStoreName(), config);
+          loadedStoreConfigMap.put(config.getStoreName(), config);
           accessor.subscribeStoreConfigDataChangedListener(veniceStoreName, storeConfigChangedListener);
           StoreConfig configToVerify = accessor.getStoreConfig(veniceStoreName);
           if (!configToVerify.equals(config)) {
-            LOGGER.debug("Store config is changed during fetching. Reload the store config.");
+            LOGGER.debug("Store config is changed during fetching. Reload the store config for {}", configToVerify);
             config = configToVerify;
+            loadedStoreConfigMap.put(config.getStoreName(), config);
           }
         }
       }
@@ -147,7 +147,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
   @VisibleForTesting
   Map<String, StoreConfig> getLoadedStoreConfigMap() {
-    return loadedStoreConfigMap.get();
+    return loadedStoreConfigMap;
   }
 
   protected class StoreConfigAddedOrDeletedChangedListener implements IZkChildListener {
@@ -169,14 +169,10 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
         // update the available store set
         availableStoreSet.set(new HashSet<>(currentChildren));
 
-        synchronized (loadedStoreConfigMap) {
-          Map<String, StoreConfig> map = new HashMap<>(loadedStoreConfigMap.get());
-          // Deleted store configs
-          for (String deletedStore: storeSetSnapshot) {
-            map.remove(deletedStore);
-            accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
-          }
-          loadedStoreConfigMap.set(map);
+        // Deleted store configs
+        for (String deletedStore: storeSetSnapshot) {
+          loadedStoreConfigMap.remove(deletedStore);
+          accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
         }
       }
     }
@@ -190,11 +186,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
             "Invalid data from zk notification. Required: StoreConfig, but get: " + data.getClass().getName());
       }
       StoreConfig config = (StoreConfig) data;
-      synchronized (loadedStoreConfigMap) {
-        Map<String, StoreConfig> map = new HashMap<>(loadedStoreConfigMap.get());
-        map.put(config.getStoreName(), config);
-        loadedStoreConfigMap.set(map);
-      }
+      loadedStoreConfigMap.put(config.getStoreName(), config);
     }
 
     @Override
