@@ -11,6 +11,8 @@ import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -33,14 +35,20 @@ public class TestZkHelixAdminClient {
     mockMultiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
     mockClusterConfig = mock(VeniceControllerClusterConfig.class);
 
-    Field helixAdminField = ZkHelixAdminClient.class.getDeclaredField("helixAdmin");
-    helixAdminField.setAccessible(true);
-    helixAdminField.set(zkHelixAdminClient, mockHelixAdmin);
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      try {
+        Field helixAdminField = ZkHelixAdminClient.class.getDeclaredField("helixAdmin");
+        helixAdminField.setAccessible(true);
+        helixAdminField.set(zkHelixAdminClient, mockHelixAdmin);
 
-    Field multiClusterConfigsField = ZkHelixAdminClient.class.getDeclaredField("multiClusterConfigs");
-    multiClusterConfigsField.setAccessible(true);
-    multiClusterConfigsField.set(zkHelixAdminClient, mockMultiClusterConfigs);
-
+        Field multiClusterConfigsField = ZkHelixAdminClient.class.getDeclaredField("multiClusterConfigs");
+        multiClusterConfigsField.setAccessible(true);
+        multiClusterConfigsField.set(zkHelixAdminClient, mockMultiClusterConfigs);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+      return null;
+    });
   }
 
   @Test
