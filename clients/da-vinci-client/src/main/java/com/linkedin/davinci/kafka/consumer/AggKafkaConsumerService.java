@@ -305,6 +305,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 metricsRepository,
                 kafkaClusterUrlToAliasMap.getOrDefault(url, url) + poolType.getStatSuffix(),
                 sharedConsumerNonExistingTopicCleanupDelayMS,
+                serverConfig.getPubSubConsumerWaitAfterUnsubscribeTimeoutMs(),
                 topicExistenceChecker,
                 liveConfigBasedKafkaThrottlingEnabled,
                 pubSubDeserializer,

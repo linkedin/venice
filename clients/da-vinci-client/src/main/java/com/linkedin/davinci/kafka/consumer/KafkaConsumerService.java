@@ -68,6 +68,15 @@ import org.apache.logging.log4j.Logger;
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
 public abstract class KafkaConsumerService extends AbstractKafkaConsumerService {
+  /**
+   * Waiting for the next poll() after unsubscribing, indicating that all previous inflight messages were processed
+   */
+  public static final int DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
+  /**
+   * A shorter timeout wait during shutdown / termination to avoid blocking the shutdown process
+   */
+  public static final int SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = (int) TimeUnit.SECONDS.toMillis(10);
+
   protected final String kafkaUrl;
   protected final String kafkaUrlForLogger;
   protected final ConsumerPoolType poolType;
@@ -97,6 +106,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
+      final int consumerWaitAfterUnsubscribeTimeoutMs,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
@@ -135,6 +145,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
               pubSubDeserializer,
               null),
           aggStats,
+          consumerWaitAfterUnsubscribeTimeoutMs,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
 
@@ -222,7 +233,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
       if (topicPartitionToConsumerMap != null) {
         topicPartitionToConsumerMap.forEach((topicPartition, sharedConsumer) -> {
-          sharedConsumer.unSubscribe(topicPartition);
+          sharedConsumer.unSubscribe(topicPartition, SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
           removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
         });
       }
@@ -421,6 +432,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         MetricsRepository metricsRepository,
         String kafkaClusterAlias,
         long sharedConsumerNonExistingTopicCleanupDelayMS,
+        int consumerWaitAfterUnsubscribeTimeoutMs,
         TopicExistenceChecker topicExistenceChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,
         PubSubMessageDeserializer pubSubDeserializer,
