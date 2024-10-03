@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -23,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -48,7 +50,8 @@ public class SharedKafkaConsumerTest {
   public void testSubscriptionEmptyPoll() {
     PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v3");
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, (c, vt, tp) -> {});
+    final int timeoutMs = KafkaConsumerService.SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, timeoutMs, () -> {}, (c, vt, tp) -> {});
 
     Set<PubSubTopicPartition> assignmentReturnedConsumer = new HashSet<>();
     PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
@@ -72,7 +75,7 @@ public class SharedKafkaConsumerTest {
 
   private void setUpSharedConsumer() {
     consumerAdapter = mock(PubSubConsumerAdapter.class);
-    AggKafkaConsumerServiceStats stats = mock(AggKafkaConsumerServiceStats.class);
+    stats = mock(AggKafkaConsumerServiceStats.class);
     Runnable assignmentChangeListener = mock(Runnable.class);
     SharedKafkaConsumer.UnsubscriptionListener unsubscriptionListener =
         mock(SharedKafkaConsumer.UnsubscriptionListener.class);
@@ -80,6 +83,7 @@ public class SharedKafkaConsumerTest {
     sharedKafkaConsumer = new SharedKafkaConsumer(
         consumerAdapter,
         stats,
+        KafkaConsumerService.SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
         assignmentChangeListener,
         unsubscriptionListener,
         new SystemTime());
@@ -93,9 +97,10 @@ public class SharedKafkaConsumerTest {
     Supplier<Set<PubSubTopicPartition>> supplier = () -> topicPartitions;
 
     long poolTimesBeforeUnsubscribe = sharedKafkaConsumer.getPollTimes();
-    sharedKafkaConsumer.setNextPollTimeoutSeconds(1);
-    sharedKafkaConsumer.unSubscribeAction(supplier);
+    sharedKafkaConsumer.setWaitAfterUnsubscribeTimeoutMs((int) TimeUnit.SECONDS.toMillis(1));
+    sharedKafkaConsumer.unSubscribeAction(supplier, KafkaConsumerService.SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
 
+    verify(stats, times(1)).recordTotalWaitAfterUnsubscribeLatency(anyInt());
     // This is to test that if the poll time is not incremented when the consumer is unsubscribed the correct log can
     // be found in the logs.
     Assert.assertEquals(poolTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
