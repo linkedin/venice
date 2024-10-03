@@ -102,7 +102,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         updateClusterConfigs(controllerClusterName, helixClusterProperties);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        if (commonConfig.isHelixClusterCloudEnabled()) {
+        if (commonConfig.isControllerClusterHelixCloudEnabled()) {
           setCloudConfig(commonConfig);
         }
       }
@@ -129,7 +129,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
         VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-        if (config.isHelixStorageClusterCloudEnabled()) {
+        if (config.isStorageClusterHelixCloudEnabled()) {
           setCloudConfig(config);
         }
       }

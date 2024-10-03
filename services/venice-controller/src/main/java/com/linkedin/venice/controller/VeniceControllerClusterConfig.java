@@ -364,8 +364,8 @@ public class VeniceControllerClusterConfig {
 
   private final boolean concurrentInitRoutinesEnabled;
 
-  private final boolean helixClusterCloudEnabled;
-  private final boolean helixStorageClusterCloudEnabled;
+  private final boolean controllerClusterHelixCloudEnabled;
+  private final boolean storageClusterHelixCloudEnabled;
   private final CloudProvider helixCloudProvider;
   private final String helixCloudId;
   private final List<String> helixCloudInfoSources;
@@ -905,10 +905,10 @@ public class VeniceControllerClusterConfig {
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
-    this.helixClusterCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
-    this.helixStorageClusterCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.storageClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
 
-    if (helixClusterCloudEnabled || helixStorageClusterCloudEnabled) {
+    if (controllerClusterHelixCloudEnabled || storageClusterHelixCloudEnabled) {
       String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER).toUpperCase();
       try {
         this.helixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
@@ -1568,12 +1568,12 @@ public class VeniceControllerClusterConfig {
     return concurrentInitRoutinesEnabled;
   }
 
-  public boolean isHelixClusterCloudEnabled() {
-    return helixClusterCloudEnabled;
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return controllerClusterHelixCloudEnabled;
   }
 
-  public boolean isHelixStorageClusterCloudEnabled() {
-    return helixStorageClusterCloudEnabled;
+  public boolean isStorageClusterHelixCloudEnabled() {
+    return storageClusterHelixCloudEnabled;
   }
 
   public CloudProvider getHelixCloudProvider() {
