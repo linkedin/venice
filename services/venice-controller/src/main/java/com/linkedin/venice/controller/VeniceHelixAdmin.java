@@ -659,7 +659,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Create the controller cluster if required.
     if (isControllerClusterHAAS) {
-      checkAndCreateVeniceControllerCluster(commonConfig.isControllerInAzureFabric());
+      checkAndCreateVeniceControllerCluster();
     } else {
       createControllerClusterIfRequired();
     }
@@ -773,9 +773,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     liveInstanceMonitor.clear();
   }
 
-  private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
+  private void checkAndCreateVeniceControllerCluster() {
     if (!helixAdminClient.isVeniceControllerClusterCreated()) {
-      helixAdminClient.createVeniceControllerCluster(isControllerInAzure);
+      helixAdminClient.createVeniceControllerCluster();
     }
     if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
       helixAdminClient.addClusterToGrandCluster(controllerClusterName);
@@ -848,9 +848,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new IllegalArgumentException("Invalid cluster name:" + clusterName);
     }
     if (multiClusterConfigs.getControllerConfig(clusterName).isVeniceClusterLeaderHAAS()) {
-      setupStorageClusterAsNeeded(
-          clusterName,
-          multiClusterConfigs.getControllerConfig(clusterName).isControllerInAzureFabric());
+      setupStorageClusterAsNeeded(clusterName);
     } else {
       createClusterIfRequired(clusterName);
     }
@@ -6241,7 +6239,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
   }
 
-  private void setupStorageClusterAsNeeded(String clusterName, boolean isControllerInAzureFabric) {
+  private void setupStorageClusterAsNeeded(String clusterName) {
     if (!helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
       Map<String, String> helixClusterProperties = new HashMap<>();
       helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
@@ -6260,7 +6258,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
       helixClusterProperties
           .put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
-      helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties, isControllerInAzureFabric);
+      helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties);
     }
     if (!helixAdminClient.isClusterInGrandCluster(clusterName)) {
       helixAdminClient.addClusterToGrandCluster(clusterName);
