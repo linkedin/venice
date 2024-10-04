@@ -28,9 +28,11 @@ public class ServerBlobFinder implements BlobFinder {
       String currentVersionResource = Version.composeKafkaTopic(storeName, version);
       // Get the partition assignments for the specific partition and retrieve the host with COMPLETE status
       HelixCustomizedViewOfflinePushRepository customizedViewRepository = this.customizedViewRepository.get();
-      List<Instance> instances = customizedViewRepository.getReadyToServeInstances(currentVersionResource, partitionId);
 
-      List<String> hostNames = instances.stream().map(Instance::getHost).collect(Collectors.toList());
+      List<String> hostNames = customizedViewRepository.getReadyToServeInstances(currentVersionResource, partitionId)
+          .stream()
+          .map(Instance::getHost)
+          .collect(Collectors.toList());
 
       response.setDiscoveryResult(hostNames);
     } catch (VeniceException | InterruptedException | ExecutionException e) {

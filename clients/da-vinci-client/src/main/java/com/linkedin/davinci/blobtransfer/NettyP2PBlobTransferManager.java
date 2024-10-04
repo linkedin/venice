@@ -6,6 +6,8 @@ import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -22,6 +24,8 @@ import org.apache.logging.log4j.Logger;
 public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void> {
   private static final Logger LOGGER = LogManager.getLogger(NettyP2PBlobTransferManager.class);
   protected static final int MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST = 3;
+  private static final int MAX_DURATION_OF_BLOB_TRANSFER_IN_HOUR = 5;
+  private static final Duration maxDuration = Duration.ofHours(MAX_DURATION_OF_BLOB_TRANSFER_IN_HOUR);
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
   protected final NettyFileTransferClient nettyClient;
@@ -55,9 +59,16 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
     LOGGER
         .info("Discovered peers {} for store {} version {} partition {}", discoverPeers, storeName, version, partition);
+
+    Instant startTime = Instant.now();
     for (String peer: discoverPeers) {
       int retryCount = 0;
       while (retryCount < MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST) {
+
+        if (Duration.between(startTime, Instant.now()).compareTo(maxDuration) > 0) {
+          throw new VenicePeersNotFoundException("No valid peers found within the maximum duration for blob transfer.");
+        }
+
         try {
           // instanceName comes as a format of <hostName>_<applicationPort>
           String chosenHost = peer.split("_")[0];
@@ -66,6 +77,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           CompletableFuture<InputStream> inputStreamFuture = inputStreamStage.toCompletableFuture();
 
           InputStream inputStream = inputStreamFuture.get(30, TimeUnit.MINUTES);
+
+          LOGGER.info(
+              "Successfully fetched blob from peer {} for store {} partition {} version {} in {} seconds",
+              peer,
+              storeName,
+              partition,
+              version,
+              Duration.between(startTime, Instant.now()).getSeconds());
           return CompletableFuture.completedFuture(inputStream);
         } catch (Exception e) {
           LOGGER.warn(

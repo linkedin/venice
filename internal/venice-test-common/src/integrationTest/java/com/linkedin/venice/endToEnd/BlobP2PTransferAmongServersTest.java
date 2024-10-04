@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
+import static com.linkedin.venice.meta.StoreStatus.FULLLY_REPLICATED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
@@ -96,8 +97,18 @@ public class BlobP2PTransferAmongServersTest {
       Assert.assertTrue(server1.isRunning());
     });
 
-    // wait for server 1 to ingest
-    Thread.sleep(120000);
+    // wait for server 1
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
 
     // the partition files should be transferred to server 1 and offset should be the same
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
@@ -130,7 +141,6 @@ public class BlobP2PTransferAmongServersTest {
     setUpStore(cluster, storeName, paramsConsumer, properties -> {}, true);
 
     VeniceServerWrapper server1 = cluster.getVeniceServers().get(0);
-    VeniceServerWrapper server2 = cluster.getVeniceServers().get(1);
 
     // verify the snapshot is generated for both servers after the job is done
     for (int i = 0; i < PARTITION_COUNT; i++) {
@@ -166,8 +176,18 @@ public class BlobP2PTransferAmongServersTest {
       Assert.assertTrue(server1.isRunning());
     });
 
-    // wait for server 1 to ingest
-    Thread.sleep(120000);
+    // wait for server 1
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
 
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int i = 0; i < PARTITION_COUNT; i++) {
