@@ -53,8 +53,8 @@ import org.apache.logging.log4j.Logger;
  * This class also encapsulates the capability to clear expired state, in the functions
  * which take in the maxAgeInMs parameter:
  * <p>
- * - {@link #clearExpiredStateAndUpdateOffsetRecord(OffsetRecord, long)}
- * - {@link #setPartitionState(OffsetRecord, long)}
+ * - {@link #clearExpiredStateAndUpdateOffsetRecord(TopicType, OffsetRecord, long)}
+ * - {@link #setPartitionState(TopicType, OffsetRecord, long)}
  */
 @Threadsafe
 public class PartitionTracker {
@@ -66,10 +66,16 @@ public class PartitionTracker {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  public static final TopicType VERSION_TOPIC = TopicType.of(TopicType.VERSION_TOPIC_TYPE);
+
   private final Logger logger;
   private final String topicName;
   private final int partition;
-  private final Map<GUID, Segment> segments = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
+
+  // rtSegments is a map of source Kafka URL to a map of GUID to Segment.
+  private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
+      new VeniceConcurrentHashMap<>();
 
   public PartitionTracker(String topicName, int partition) {
     this.topicName = topicName;
@@ -86,19 +92,26 @@ public class PartitionTracker {
   }
 
   /** N.B. Intended for tests */
-  Set<GUID> getTrackedGUIDs() {
-    return Collections.unmodifiableSet(this.segments.keySet());
+  Set<GUID> getTrackedGUIDs(TopicType type) {
+    return Collections.unmodifiableSet(getSegments(type).keySet());
+  }
+
+  private VeniceConcurrentHashMap<GUID, Segment> getSegments(TopicType type) {
+    if (TopicType.isVersionTopic(type)) {
+      return vtSegments;
+    }
+    return rtSegments.computeIfAbsent(type.getKafkaUrl(), k -> new VeniceConcurrentHashMap<>());
   }
 
   /**
    * @param guid for which to retrieve the lock and segment
    * @return a {@link Segment} or null if it's absent
    */
-  Segment getSegment(GUID guid) {
-    return this.segments.get(guid);
+  Segment getSegment(TopicType type, GUID guid) {
+    return getSegments(type).get(guid);
   }
 
-  public void setPartitionState(OffsetRecord offsetRecord, long maxAgeInMs) {
+  public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp =
         maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
@@ -115,17 +128,17 @@ public class PartitionTracker {
          * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
          * {@link PartitionTracker}.
          */
-        setSegment(producerGuid, new Segment(partition, producerPartitionState));
+        setSegment(type, producerGuid, new Segment(partition, producerPartitionState));
       } else {
         // The state is eligible to be cleared.
-        segments.remove(producerGuid);
+        getSegments(type).remove(producerGuid);
         iterator.remove();
       }
     }
   }
 
-  private void setSegment(GUID guid, Segment segment) {
-    Segment previousSegment = this.segments.put(guid, segment);
+  private void setSegment(TopicType type, GUID guid, Segment segment) {
+    Segment previousSegment = getSegments(type).put(guid, segment);
     if (previousSegment == null) {
       logger.debug(" set state for partition: {}, New state: {}", partition, segment);
     } else {
@@ -137,18 +150,34 @@ public class PartitionTracker {
     }
   }
 
+  // Clone both vtSegment and rtSegment to the destination PartitionTracker.
   public void cloneProducerStates(PartitionTracker destProducerTracker) {
-    for (Map.Entry<GUID, Segment> entry: this.segments.entrySet()) {
-      destProducerTracker.setSegment(entry.getKey(), new Segment(entry.getValue()));
+    for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
+      destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
+    }
+
+    for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
+      for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
+        destProducerTracker.setSegment(
+            TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),
+            rtEntry.getKey(),
+            new Segment(rtEntry.getValue()));
+      }
     }
   }
 
-  private void updateOffsetRecord(GUID guid, Segment segment, OffsetRecord offsetRecord) {
+  private void updateOffsetRecord(TopicType type, GUID guid, Segment segment, OffsetRecord offsetRecord) {
     if (segment == null) {
       // This producer didn't write anything to this GUID
       return;
     }
-    ProducerPartitionState state = offsetRecord.getProducerPartitionState(guid);
+    ProducerPartitionState state;
+    if (TopicType.isVersionTopic(type)) {
+      state = offsetRecord.getProducerPartitionState(guid);
+    } else {
+      state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
+    }
+
     if (state == null) {
       state = new ProducerPartitionState();
 
@@ -180,12 +209,24 @@ public class PartitionTracker {
     state.segmentStatus = segment.getStatus().getValue();
     state.isRegistered = segment.isRegistered();
 
-    offsetRecord.setProducerPartitionState(guid, state);
+    setProducerState(offsetRecord, type, guid, state);
   }
 
-  public void updateOffsetRecord(OffsetRecord offsetRecord) {
-    for (Map.Entry<GUID, Segment> entry: this.segments.entrySet()) {
-      updateOffsetRecord(entry.getKey(), entry.getValue(), offsetRecord);
+  public void setProducerState(OffsetRecord offsetRecord, TopicType type, GUID guid, ProducerPartitionState state) {
+    if (TopicType.isVersionTopic(type)) {
+      offsetRecord.setProducerPartitionState(guid, state);
+      return;
+    }
+    if (TopicType.isRealtimeTopic(type)) {
+      offsetRecord.setRealtimeTopicProducerState(type.getKafkaUrl(), guid, state);
+      return;
+    }
+    throw new IllegalArgumentException("Unsupported TopicType: " + type);
+  }
+
+  public void updateOffsetRecord(TopicType type, OffsetRecord offsetRecord) {
+    for (Map.Entry<GUID, Segment> entry: getSegments(type).entrySet()) {
+      updateOffsetRecord(type, entry.getKey(), entry.getValue(), offsetRecord);
     }
   }
 
@@ -201,12 +242,13 @@ public class PartitionTracker {
    * @throws DataValidationException if the DIV check failed.
    */
   public void validateMessage(
+      TopicType type,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
-    Segment segment = getSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
+    Segment segment = getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID());
     boolean hasPreviousSegment = segment != null;
-    segment = trackSegment(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    segment = trackSegment(type, segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
@@ -222,12 +264,13 @@ public class PartitionTracker {
    * 1. The previous segment does not exist, or
    * 2. The incoming segment is exactly one greater than the previous one, and the previous segment is ended.
    *
-   * @see #initializeNewSegment(PubSubMessage, boolean, boolean)
+   * @see #initializeNewSegment(TopicType, PubSubMessage, boolean, boolean)
    *
    * @param consumerRecord the incoming Kafka message.
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
    */
   private Segment trackSegment(
+      TopicType type,
       Segment previousSegment,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
@@ -242,7 +285,7 @@ public class PartitionTracker {
             endOfPushReceived,
             true);
       }
-      return initializeNewSegment(consumerRecord, endOfPushReceived, true);
+      return initializeNewSegment(type, consumerRecord, endOfPushReceived, true);
     }
     int previousSegmentNumber = previousSegment.getSegmentNumber();
     if (incomingSegmentNumber == previousSegmentNumber) {
@@ -250,11 +293,11 @@ public class PartitionTracker {
     }
     if (incomingSegmentNumber == previousSegmentNumber + 1 && previousSegment.isEnded()) {
       /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
-      return initializeNewSegment(consumerRecord, endOfPushReceived, false);
+      return initializeNewSegment(type, consumerRecord, endOfPushReceived, false);
     }
     if (incomingSegmentNumber > previousSegmentNumber) {
       if (tolerateMissingMsgs.get()) {
-        return initializeNewSegment(consumerRecord, endOfPushReceived, true);
+        return initializeNewSegment(type, consumerRecord, endOfPushReceived, true);
       }
       throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
     }
@@ -275,6 +318,7 @@ public class PartitionTracker {
    * @throws IllegalStateException if called for a message other than a {@link ControlMessageType#START_OF_SEGMENT}
    */
   private Segment initializeNewSegment(
+      TopicType type,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
@@ -307,7 +351,7 @@ public class PartitionTracker {
         debugInfo,
         aggregates);
     newSegment.setLastRecordProducerTimestamp(consumerRecord.getValue().getProducerMetadata().getMessageTimestamp());
-    this.segments.put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
+    getSegments(type).put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
 
     if (unregisteredProducer) {
       handleUnregisteredProducer(
@@ -581,16 +625,17 @@ public class PartitionTracker {
   }
 
   public void checkMissingMessage(
+      TopicType type,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback,
       long kafkaLogCompactionDelayInMs) throws DataValidationException {
-    Segment segment = getSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
+    Segment segment = getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID());
 
     try {
       /**
        * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
        */
-      segment = trackSegment(segment, consumerRecord, true, Lazy.FALSE);
+      segment = trackSegment(type, segment, consumerRecord, true, Lazy.FALSE);
     } catch (DuplicateDataException duplicate) {
       /**
        * Tolerate a segment rewind and not necessary to validate a previous segment;
@@ -628,10 +673,10 @@ public class PartitionTracker {
     }
   }
 
-  void clearExpiredStateAndUpdateOffsetRecord(OffsetRecord offsetRecord, long maxAgeInMs) {
+  void clearExpiredStateAndUpdateOffsetRecord(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
     int numberOfClearedGUIDs = 0;
-    Iterator<Map.Entry<GUID, Segment>> iterator = this.segments.entrySet().iterator();
+    Iterator<Map.Entry<GUID, Segment>> iterator = getSegments(type).entrySet().iterator();
     Map.Entry<GUID, Segment> entry;
     Segment segment;
     while (iterator.hasNext()) {
@@ -639,15 +684,29 @@ public class PartitionTracker {
       segment = entry.getValue();
       if (segment.getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
         iterator.remove();
-        offsetRecord.removeProducerPartitionState(entry.getKey());
+        removeProducerState(type, entry.getKey(), offsetRecord);
         numberOfClearedGUIDs++;
       } else {
-        updateOffsetRecord(entry.getKey(), segment, offsetRecord);
+        updateOffsetRecord(type, entry.getKey(), segment, offsetRecord);
       }
     }
     if (numberOfClearedGUIDs > 0) {
       logger.info("Cleared {} expired producer GUID(s).", numberOfClearedGUIDs);
     }
+  }
+
+  public void removeProducerState(TopicType type, GUID guid, OffsetRecord offsetRecord) {
+    if (TopicType.isVersionTopic(type)) {
+      offsetRecord.removeProducerPartitionState(guid);
+      return;
+    }
+
+    if (TopicType.isRealtimeTopic(type)) {
+      offsetRecord.removeRealTimeTopicProducerState(type.getKafkaUrl(), guid);
+      return;
+    }
+
+    throw new IllegalArgumentException("Unsupported TopicType: " + type);
   }
 
   enum DataFaultType {
@@ -785,5 +844,49 @@ public class PartitionTracker {
 
   public interface DIVErrorMetricCallback {
     void execute(DataValidationException exception);
+  }
+
+  public static class TopicType {
+    /**
+     * The topic is a version topic.
+     */
+    public static final int VERSION_TOPIC_TYPE = 0;
+
+    /**
+     * The topic is a realtime topic.
+     */
+    public static final int REALTIME_TOPIC_TYPE = 1;
+
+    private final int val;
+    private final String kafkaUrl;
+
+    private TopicType(int val, String kakfkaUrl) {
+      this.val = val;
+      this.kafkaUrl = kakfkaUrl;
+    }
+
+    public static TopicType of(int val, String kafkaUrl) {
+      return new TopicType(val, kafkaUrl);
+    }
+
+    public static TopicType of(int val) {
+      return of(val, null);
+    }
+
+    public int getValue() {
+      return val;
+    }
+
+    public String getKafkaUrl() {
+      return kafkaUrl;
+    }
+
+    public static boolean isRealtimeTopic(TopicType type) {
+      return type.getValue() == REALTIME_TOPIC_TYPE;
+    }
+
+    public static boolean isVersionTopic(TopicType type) {
+      return type.getValue() == VERSION_TOPIC_TYPE;
+    }
   }
 }
