@@ -20,7 +20,6 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -117,23 +116,26 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeName,
           versionNumber,
           partitionId);
-      return CompletableFuture.runAsync(() -> {
-        try {
-          p2pFuture.get(30, TimeUnit.MINUTES);
-        } catch (Exception e) {
-          LOGGER.warn(
-              "Failed bootstrapping from blobs for store {}, version {}, partition {}",
+      return p2pFuture.thenRun(
+          () -> LOGGER.info(
+              "Successfully bootstrapped from blobs for store {}, version {}, partition {}",
               storeName,
               versionNumber,
-              partitionId,
-              e);
-          RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
-          p2pFuture.cancel(true);
-          // TODO: close channels
-        }
-      });
+              partitionId))
+          .exceptionally(e -> {
+            LOGGER.warn(
+                "Failed bootstrapping from blobs for store {}, version {}, partition {}",
+                storeName,
+                versionNumber,
+                partitionId,
+                e);
+            RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
+            // TODO: close channels
+            return null;
+          });
     } catch (VenicePeersNotFoundException e) {
-      LOGGER.warn("No peers founds for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
+      LOGGER
+          .warn("No valid peers founds for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
       return CompletableFuture.completedFuture(null);
     }
   }

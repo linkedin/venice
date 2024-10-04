@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.NettyP2PBlobTransferManager.MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -60,7 +61,7 @@ public class TestNettyP2PBlobTransferManager {
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     storageMetadataService = mock(StorageMetadataService.class);
     server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), storageMetadataService);
-    client = new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService);
+    client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder);
@@ -167,6 +168,91 @@ public class TestNettyP2PBlobTransferManager {
     // Manager should be able to fetch the file and download it to another directory
     CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     future.toCompletableFuture().get(1, TimeUnit.MINUTES);
+
+    // Verify files are all written to the partition directory
+    Assert.assertTrue(Files.exists(destFile1));
+    Assert.assertTrue(Files.exists(destFile2));
+    Assert.assertTrue(Files.exists(destFile3));
+    // same content
+    Assert.assertTrue(Arrays.equals(Files.readAllBytes(file1), Files.readAllBytes(destFile1)));
+    Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
+    Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
+
+    // Verify the metadata is retrieved
+    Mockito.verify(storageMetadataService, Mockito.times(1))
+        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(storageMetadataService, Mockito.times(1)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
+
+    // Verify the record is updated
+    Mockito.verify(storageMetadataService, Mockito.times(1))
+        .put(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, expectOffsetRecord);
+
+    // Verify the store version state is updated
+    Mockito.verify(storageMetadataService, Mockito.times(1))
+        .computeStoreVersionState(Mockito.anyString(), Mockito.any());
+  }
+
+  /**
+   * Test the case where the host is bad and cannot connect, the nettyP2PBlobTransferManager should throw an exception
+   * and after retry, it uses the good host to transfer the file
+   */
+  @Test
+  public void testRetryAndSkipBadHostAndUseCorrectHost()
+      throws IOException, ExecutionException, InterruptedException, TimeoutException {
+    String badHost = "badhost";
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Arrays.asList(badHost, "localhost"));
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
+    // Prepare files in the snapshot directory
+    Path snapshotDir = Paths.get(
+        RocksDBUtils.composeSnapshotDir(tmpSnapshotDir.toString(), TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION));
+    Path partitionDir = Paths.get(
+        RocksDBUtils
+            .composePartitionDbDir(tmpPartitionDir.toString(), TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION));
+    Files.createDirectories(snapshotDir);
+    Path file1 = snapshotDir.resolve("file1.txt");
+    Path file2 = snapshotDir.resolve("file2.txt");
+    Path file3 = snapshotDir.resolve("file3.txt");
+    Path destFile1 = partitionDir.resolve("file1.txt");
+    Path destFile2 = partitionDir.resolve("file2.txt");
+    Path destFile3 = partitionDir.resolve("file3.txt");
+    // small file
+    Files.write(file1.toAbsolutePath(), "helloworld".getBytes());
+    Files.write(file3.toAbsolutePath(), "helloworldtwice".getBytes());
+    // large file
+    long size = 10 * 1024 * 1024;
+    // Create an array of dummy bytes
+    byte[] dummyData = new byte[1024]; // 1KB of dummy data
+    Arrays.fill(dummyData, (byte) 0); // Fill with zeros or any dummy value
+
+    // Write data to the file in chunks
+    for (long written = 0; written < size; written += dummyData.length) {
+      Files.write(file2.toAbsolutePath(), dummyData, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+    }
+
+    // both files don't exist in the partition directory
+    Assert.assertTrue(Files.notExists(destFile1));
+    Assert.assertTrue(Files.notExists(destFile2));
+    Assert.assertTrue(Files.notExists(destFile3));
+
+    // Manager should be able to fetch the file and download it to another directory
+    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    future.toCompletableFuture().get(1, TimeUnit.MINUTES);
+
+    // Verify the client try to get from the bad host and then the good host
+    Mockito.verify(client, Mockito.times(MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST))
+        .get(badHost, TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(client, Mockito.times(1)).get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION);
 
     // Verify files are all written to the partition directory
     Assert.assertTrue(Files.exists(destFile1));

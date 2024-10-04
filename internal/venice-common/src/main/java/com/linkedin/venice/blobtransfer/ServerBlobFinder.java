@@ -3,12 +3,11 @@ package com.linkedin.venice.blobtransfer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.Version;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,17 +26,12 @@ public class ServerBlobFinder implements BlobFinder {
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     try {
       String currentVersionResource = Version.composeKafkaTopic(storeName, version);
-      // Get the partition assignments for the specific partition and retrieve the host names
-      List<String> hostNames = new ArrayList<>();
+      // Get the partition assignments for the specific partition and retrieve the host with COMPLETE status
       HelixCustomizedViewOfflinePushRepository customizedViewRepository = this.customizedViewRepository.get();
-      for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
-          .getAllPartitions()) {
-        if (partition.getId() == partitionId) {
-          for (Instance instances: partition.getReadyToServeInstances()) {
-            hostNames.add(instances.getHost());
-          }
-        }
-      }
+      List<Instance> instances = customizedViewRepository.getReadyToServeInstances(currentVersionResource, partitionId);
+
+      List<String> hostNames = instances.stream().map(Instance::getHost).collect(Collectors.toList());
+
       response.setDiscoveryResult(hostNames);
     } catch (VeniceException | InterruptedException | ExecutionException e) {
       response.setError(true);
