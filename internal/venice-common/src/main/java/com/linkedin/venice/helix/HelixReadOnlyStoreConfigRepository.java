@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
@@ -105,7 +104,9 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
       if (config == null) {
         // lazy fetch from ZK and attach watch
         config = accessor.getStoreConfig(veniceStoreName);
-        if (config != null) {
+        if (config == null) {
+          LOGGER.warn("Store config is not found for store: {}", veniceStoreName);
+        } else {
           loadedStoreConfigMap.put(config.getStoreName(), config);
           accessor.subscribeStoreConfigDataChangedListener(veniceStoreName, storeConfigChangedListener);
           StoreConfig configToVerify = accessor.getStoreConfig(veniceStoreName);
@@ -155,15 +156,13 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     public void handleChildChange(String parentPath, List<String> currentChildren) {
       synchronized (availableStoreSet) {
         Set<String> storeSetSnapshot = new HashSet<>(availableStoreSet.get());
-        List<String> newStores = currentChildren.stream()
-            .filter(newStore -> !storeSetSnapshot.contains(newStore))
-            .collect(Collectors.toList());
+        long newStoresCount = currentChildren.stream().filter(newStore -> !storeSetSnapshot.contains(newStore)).count();
 
         // obtain the stores that are removed
         currentChildren.forEach(storeSetSnapshot::remove);
-        LOGGER.info(
+        LOGGER.debug(
             "Store configs list is changed. {} new configs. And will delete {} configs.",
-            newStores.size(),
+            newStoresCount,
             storeSetSnapshot.size());
 
         // update the available store set
