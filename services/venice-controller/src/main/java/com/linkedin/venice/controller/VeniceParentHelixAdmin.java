@@ -61,6 +61,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
@@ -2798,6 +2799,10 @@ public class VeniceParentHelixAdmin implements Admin {
   private ViewConfig validateAndDecorateStoreViewConfig(Store store, ViewConfig viewConfig, String viewName) {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
     if (viewConfig.getViewClassName().equals(RePartitionView.class.getCanonicalName())) {
+      if (viewName.contains(VERSION_SEPARATOR)) {
+        throw new VeniceException(
+            String.format("Re-partition View name cannot contain version separator: %s", VERSION_SEPARATOR));
+      }
       Map<String, String> viewParams = viewConfig.getViewParameters();
       viewParams.put(ViewParameterKeys.RE_PARTITION_VIEW_NAME.name(), viewName);
       viewConfig.setViewParameters(viewParams);
