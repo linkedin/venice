@@ -162,17 +162,14 @@ public abstract class AbstractPushMonitor
            */
           refreshedOfflinePushStatusList
               .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
-        } catch (Exception e) {
-          LOGGER.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
-        }
 
-      }
-      offlinePushStatusList = refreshedOfflinePushStatusList;
-
-      for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
-        try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
+          /**
+           * This update call is necessary it won't miss updates between initial offline push retrival and update subscription.
+           * This call uses the same store-level lock as partition status update listener callback.
+           */
+          updateOfflinePush(offlinePushStatus.getKafkaTopic());
 
           // Check the status for running pushes. In case controller missed some notification during the failover, we
           // need to update it based on current routing data.
@@ -319,6 +316,14 @@ public abstract class AbstractPushMonitor
 
   protected OfflinePushStatus getOfflinePush(String topic) {
     return topicToPushMap.get(topic);
+  }
+
+  protected void updateOfflinePush(String topic) {
+    String store = Version.parseStoreFromKafkaTopicName(topic);
+    try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
+      OfflinePushStatus offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
+      topicToPushMap.put(topic, offlinePushStatus);
+    }
   }
 
   public ExecutionStatus getPushStatus(String topic) {
