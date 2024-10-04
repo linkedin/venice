@@ -246,6 +246,11 @@ public class RouterStoreAclHandlerTest {
     }
 
     @Override
+    public boolean isAllowlistUsersForStoreDeletion(X509Certificate clientCert, String resource, String method) {
+      return isAllowlistUsers(clientCert, resource, method);
+    }
+
+    @Override
     public String getPrincipalId(X509Certificate clientCert) {
       assertNotNull(clientCert, resourceType.toString());
       return "testPrincipalId";
