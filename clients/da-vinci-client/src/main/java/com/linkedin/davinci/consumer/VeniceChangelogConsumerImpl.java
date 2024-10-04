@@ -219,7 +219,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       synchronized (pubSubConsumer) {
-        Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>(pubSubConsumer.getAssignment());
+        Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
         for (PubSubTopicPartition topicPartition: pubSubConsumer.getAssignment()) {
           if (partitions.contains(topicPartition.getPartitionNumber())) {
             pubSubConsumer.unSubscribe(topicPartition);
@@ -279,8 +279,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush() {
     return seekToBeginningOfPush(
-        pubSubConsumer.getAssignment()
-            .stream()
+        getTopicAssignment().stream()
             .map(topicPartition -> topicPartition.getPartitionNumber())
             .collect(Collectors.toSet()));
   }
@@ -298,17 +297,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void pause() {
-    this.pause(
-        pubSubConsumer.getAssignment()
-            .stream()
-            .map(PubSubTopicPartition::getPartitionNumber)
-            .collect(Collectors.toSet()));
+    this.pause(getTopicAssignment().stream().map(PubSubTopicPartition::getPartitionNumber).collect(Collectors.toSet()));
   }
 
   @Override
   public void resume(Set<Integer> partitions) {
     synchronized (pubSubConsumer) {
-      Set<PubSubTopicPartition> currentSubscriptions = pubSubConsumer.getAssignment();
+      Set<PubSubTopicPartition> currentSubscriptions = getTopicAssignment();
       for (PubSubTopicPartition partition: currentSubscriptions) {
         if (partitions.contains(partition.getPartitionNumber())) {
           pubSubConsumer.resume(partition);
@@ -320,16 +315,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public void resume() {
     this.resume(
-        pubSubConsumer.getAssignment()
-            .stream()
-            .map(PubSubTopicPartition::getPartitionNumber)
-            .collect(Collectors.toSet()));
+        getTopicAssignment().stream().map(PubSubTopicPartition::getPartitionNumber).collect(Collectors.toSet()));
   }
 
   @Override
   public void pause(Set<Integer> partitions) {
     synchronized (pubSubConsumer) {
-      Set<PubSubTopicPartition> currentSubscriptions = pubSubConsumer.getAssignment();
+      Set<PubSubTopicPartition> currentSubscriptions = getTopicAssignment();
       for (PubSubTopicPartition partition: currentSubscriptions) {
         if (partitions.contains(partition.getPartitionNumber())) {
           pubSubConsumer.pause(partition);
@@ -341,8 +333,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToEndOfPush() {
     return seekToEndOfPush(
-        pubSubConsumer.getAssignment()
-            .stream()
+        getTopicAssignment().stream()
             .map(topicPartition -> topicPartition.getPartitionNumber())
             .collect(Collectors.toSet()));
   }
@@ -371,10 +362,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToTail() {
     return seekToTail(
-        pubSubConsumer.getAssignment()
-            .stream()
-            .map(PubSubTopicPartition::getPartitionNumber)
-            .collect(Collectors.toSet()));
+        getTopicAssignment().stream().map(PubSubTopicPartition::getPartitionNumber).collect(Collectors.toSet()));
   }
 
   @Override
@@ -456,7 +444,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToTimestamp(Long timestamp) {
-    Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>(pubSubConsumer.getAssignment());
+    Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
     Map<Integer, Long> partitionsToSeek = new HashMap<>();
     for (PubSubTopicPartition partition: topicPartitionSet) {
       partitionsToSeek.put(partition.getPartitionNumber(), timestamp);
@@ -480,7 +468,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return CompletableFuture.supplyAsync(() -> {
       synchronized (pubSubConsumer) {
         // Prune out current subscriptions
-        for (PubSubTopicPartition topicPartition: pubSubConsumer.getAssignment()) {
+        for (PubSubTopicPartition topicPartition: getTopicAssignment()) {
           currentVersionHighWatermarks.remove(topicPartition.getPartitionNumber());
           if (partitions.contains(topicPartition.getPartitionNumber())) {
             pubSubConsumer.unSubscribe(topicPartition);
@@ -525,7 +513,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public void unsubscribe(Set<Integer> partitions) {
     synchronized (pubSubConsumer) {
-      Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>(pubSubConsumer.getAssignment());
+      Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
       Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
       for (PubSubTopicPartition topicPartition: topicPartitionSet) {
         if (partitions.contains(topicPartition.getPartitionNumber())) {
@@ -930,10 +918,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return false;
   }
 
+  protected Set<PubSubTopicPartition> getTopicAssignment() {
+    return Collections.synchronizedSet(pubSubConsumer.getAssignment());
+  }
+
   protected boolean switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
     PubSubTopic mergedTopicName = pubSubTopicRepository.getTopic(newTopic.getName() + topicSuffix);
     Set<Integer> partitions = Collections.singleton(partition);
-    for (PubSubTopicPartition currentSubscribedPartition: pubSubConsumer.getAssignment()) {
+    for (PubSubTopicPartition currentSubscribedPartition: getTopicAssignment()) {
       if (partition.equals(currentSubscribedPartition.getPartitionNumber())) {
         if (mergedTopicName.getName().equals(currentSubscribedPartition.getPubSubTopic().getName())) {
           // We're being asked to switch to a topic that we're already subscribed to, NoOp this
@@ -969,7 +961,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected VeniceChangeCoordinate getLatestCoordinate(Integer partition) {
-    Set<PubSubTopicPartition> topicPartitionSet = pubSubConsumer.getAssignment();
+    Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
     Optional<PubSubTopicPartition> topicPartition =
         topicPartitionSet.stream().filter(tp -> tp.getPartitionNumber() == partition).findFirst();
     if (!topicPartition.isPresent()) {
@@ -984,7 +976,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected PubSubTopicPartition getTopicPartition(Integer partition) {
-    Set<PubSubTopicPartition> topicPartitionSet = pubSubConsumer.getAssignment();
+    Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
     Optional<PubSubTopicPartition> topicPartition =
         topicPartitionSet.stream().filter(tp -> tp.getPartitionNumber() == partition).findFirst();
     if (!topicPartition.isPresent()) {
@@ -1019,7 +1011,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     public void run() {
       while (!Thread.interrupted()) {
         try {
-          recordStats(currentVersionLastHeartbeat, changeCaptureStats, pubSubConsumer.getAssignment());
+          recordStats(currentVersionLastHeartbeat, changeCaptureStats, getTopicAssignment());
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);

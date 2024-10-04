@@ -176,7 +176,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
 
         // Check the current ingested version
-        Set<PubSubTopicPartition> subscriptions = pubSubConsumer.getAssignment();
+        Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
         if (subscriptions.isEmpty()) {
           continue;
         }
