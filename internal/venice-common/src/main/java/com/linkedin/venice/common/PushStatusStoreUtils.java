@@ -30,6 +30,10 @@ public class PushStatusStoreUtils {
     return getFullPushKey(version);
   }
 
+  public static PushStatusKey getPushKey(int version, Optional<String> incrementalPushVersion) {
+    return incrementalPushVersion.map(s -> getIncrementalPushKey(version, s)).orElseGet(() -> getFullPushKey(version));
+  }
+
   public static PushStatusKey getPushKey(int version, int partitionId, Optional<String> incrementalPushVersion) {
     return getPushKey(version, partitionId, incrementalPushVersion, Optional.empty());
   }
@@ -63,6 +67,13 @@ public class PushStatusStoreUtils {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId);
     pushStatusKey.messageType = PushStatusKeyType.FULL_PUSH.ordinal();
+    return pushStatusKey;
+  }
+
+  private static PushStatusKey getIncrementalPushKey(int version, String incrementalPushVersion) {
+    PushStatusKey pushStatusKey = new PushStatusKey();
+    pushStatusKey.keyStrings = Arrays.asList(version, incrementalPushVersion);
+    pushStatusKey.messageType = PushStatusKeyType.INCREMENTAL_PUSH.ordinal();
     return pushStatusKey;
   }
 

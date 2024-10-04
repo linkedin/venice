@@ -59,8 +59,15 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   public Map<CharSequence, Integer> getVersionStatus(String storeName, int version) {
+    return getVersionStatus(storeName, version, Optional.empty());
+  }
+
+  public Map<CharSequence, Integer> getVersionStatus(
+      String storeName,
+      int version,
+      Optional<String> incrementalPushVersion) {
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, incrementalPushVersion);
     try {
       PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
