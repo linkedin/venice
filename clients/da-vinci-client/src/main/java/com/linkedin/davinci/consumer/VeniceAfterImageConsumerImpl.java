@@ -177,23 +177,25 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
         // Check the current ingested version
         Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
-        if (subscriptions.isEmpty()) {
-          continue;
-        }
-        int maxVersion = -1;
-        for (PubSubTopicPartition topicPartition: subscriptions) {
-          int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
-          if (version >= maxVersion) {
-            maxVersion = version;
+        Set<Integer> partitions = new HashSet<>();
+        synchronized (subscriptions) {
+          if (subscriptions.isEmpty()) {
+            continue;
           }
-        }
+          int maxVersion = -1;
+          for (PubSubTopicPartition topicPartition: subscriptions) {
+            int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+            if (version >= maxVersion) {
+              maxVersion = version;
+            }
+          }
 
-        // Seek to end of push
-        if (currentVersion != maxVersion) {
-          // get current subscriptions and seek to endOfPush
-          Set<Integer> partitions = new HashSet<>();
-          for (PubSubTopicPartition partitionSubscription: subscriptions) {
-            partitions.add(partitionSubscription.getPartitionNumber());
+          // Seek to end of push
+          if (currentVersion != maxVersion) {
+            // get current subscriptions and seek to endOfPush
+            for (PubSubTopicPartition partitionSubscription: subscriptions) {
+              partitions.add(partitionSubscription.getPartitionNumber());
+            }
           }
           try {
             LOGGER.info(
