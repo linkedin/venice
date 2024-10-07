@@ -38,6 +38,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -336,6 +337,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected final boolean isGlobalRtDivEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
   protected final boolean batchReportIncPushStatusEnabled;
@@ -506,6 +508,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
+    this.isGlobalRtDivEnabled = serverConfig.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
@@ -1040,6 +1043,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      String kafkaUrl,
       PubSubTopicPartition topicPartition);
 
   private int handleSingleMessage(
@@ -1139,7 +1143,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
      * the following batch processing logic won't spend useless efforts on duplicate messages.
       */
-    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, topicPartition);
+    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
 
     if ((isActiveActiveReplicationEnabled || isWriteComputationEnabled)
         && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
@@ -1686,8 +1690,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      *
      * The reason to transform the internal state only during checkpointing is that the intermediate checksum
      * generation is an expensive operation.
+     *
+     * TODO:
+     * 'kafkaDataIntegrityValidator' is used by drainer threads and we need to transfer its full responsibility to the
+     * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+     * Keep drainer DIV the way as is today (containing both rt and vt messages).
      */
-    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(pcs.getPartition(), pcs.getOffsetRecord());
+    this.kafkaDataIntegrityValidator
+        .updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(kafkaVersionTopic, pcs);
@@ -2020,7 +2030,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        kafkaDataIntegrityValidator.setPartitionState(partition, offsetRecord);
+
+        /**
+         * TODO:
+         * 'kafkaDataIntegrityValidator' is used by drainer threads and we need to transfer its full responsibility to the
+         * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+         * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
+         * VERSION_TOPIC to contain both rt and vt messages.
+         */
+        kafkaDataIntegrityValidator.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
@@ -3032,8 +3050,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
            * N.B.: If a leader server is processing a chunk, then the {@link consumerRecord} is going to be the same for
            * every chunk, and we don't want to treat them as dupes, hence we skip DIV. The DIV state will get updated on
            * the last message of the sequence, which is not a chunk but rather the manifest.
+           *
+           * TODO:
+           * This function is called by drainer threads and we need to transfer its full responsibility to the
+           * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+           * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
+           * VERSION_TOPIC to contain both rt and vt messages.
            */
           validateMessage(
+              PartitionTracker.VERSION_TOPIC,
               this.kafkaDataIntegrityValidator,
               consumerRecord,
               endOfPushReceived,
@@ -3191,6 +3216,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 3. For any DIV errors happened to records which is after logCompactionDelayInMs, the errors will be ignored.
    **/
   protected void validateMessage(
+      PartitionTracker.TopicType type,
       KafkaDataIntegrityValidator validator,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
@@ -3214,7 +3240,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     });
 
     try {
-      validator.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+      validator.validateMessage(type, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
     } catch (FatalDataValidationException fatalException) {
       divErrorMetricCallback.accept(fatalException);
       /**
@@ -3243,7 +3269,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Run a dummy validation to update DIV metadata.
          */
-        validator.validateMessage(consumerRecord, true, Lazy.TRUE);
+        validator.validateMessage(type, consumerRecord, true, Lazy.TRUE);
       }
     }
   }

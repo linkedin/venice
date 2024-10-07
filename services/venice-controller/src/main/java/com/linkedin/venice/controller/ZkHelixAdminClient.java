@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
@@ -43,16 +42,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
 
   private final HelixAdmin helixAdmin;
+  private final VeniceControllerClusterConfig commonConfig;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
   private final String controllerClusterName;
   private final int controllerClusterReplicaCount;
-  private final CloudConfig.Builder cloudConfigBuilder;
 
   public ZkHelixAdminClient(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
+    this.commonConfig = multiClusterConfigs.getCommonConfig();
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
     controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
@@ -64,7 +64,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
     helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
-    cloudConfigBuilder = new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(CloudProvider.AZURE);
   }
 
   /**
@@ -84,10 +83,10 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceControllerCluster(boolean)
+   * @see HelixAdminClient#createVeniceControllerCluster()
    */
   @Override
-  public void createVeniceControllerCluster(boolean isControllerInAzureFabric) {
+  public void createVeniceControllerCluster() {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceControllerClusterCreated()) {
         if (!helixAdmin.addCluster(controllerClusterName, false)) {
@@ -103,8 +102,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         updateClusterConfigs(controllerClusterName, helixClusterProperties);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        if (isControllerInAzureFabric) {
-          helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
+        if (commonConfig.isControllerClusterHelixCloudEnabled()) {
+          setCloudConfig(commonConfig);
         }
       }
       return true;
@@ -117,13 +116,10 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceStorageCluster(String, Map, boolean)
+   * @see HelixAdminClient#createVeniceStorageCluster(String, Map)
    */
   @Override
-  public void createVeniceStorageCluster(
-      String clusterName,
-      Map<String, String> helixClusterProperties,
-      boolean isControllerInAzureFabric) {
+  public void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties) {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceStorageClusterCreated(clusterName)) {
         if (!helixAdmin.addCluster(clusterName, false)) {
@@ -131,8 +127,10 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         }
         updateClusterConfigs(clusterName, helixClusterProperties);
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
-        if (isControllerInAzureFabric) {
-          helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
+
+        VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
+        if (config.isStorageClusterHelixCloudEnabled()) {
+          setCloudConfig(config);
         }
       }
       return true;
@@ -327,5 +325,26 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void addInstanceTag(String clusterName, String instanceName, String tag) {
     helixAdmin.addInstanceTag(clusterName, instanceName, tag);
+  }
+
+  public void setCloudConfig(VeniceControllerClusterConfig config) {
+    String cloudId = config.getHelixCloudId();
+    List<String> cloudInfoSources = config.getHelixCloudInfoSources();
+    String cloudInfoProcessorName = config.getHelixCloudInfoProcessorName();
+    CloudConfig.Builder cloudConfigBuilder =
+        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(config.getHelixCloudProvider());
+
+    if (!cloudId.isEmpty()) {
+      cloudConfigBuilder.setCloudID(cloudId);
+    }
+
+    if (!cloudInfoSources.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
+    }
+
+    if (!cloudInfoProcessorName.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
+    }
+    helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
   }
 }

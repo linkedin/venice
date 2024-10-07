@@ -28,6 +28,8 @@ public class DataProviderUtils {
   public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
   public static final Object[] PARTITION_COUNTS = { 1, 2, 3, 4, 8, 10, 16, 19, 92, 128 };
 
+  public static final Object[] CHECKSUM_TYPES = { CheckSumType.MD5, CheckSumType.ADHASH };
+
   /**
    * To use these data providers, add (dataProvider = "<provider_name>", dataProviderClass = DataProviderUtils.class)
    * into the @Test annotation.
@@ -101,6 +103,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Boolean-Boolean-Compression")
   public static Object[][] booleanBooleanCompression() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, COMPRESSION_STRATEGIES);
+  }
+
+  @DataProvider(name = "Boolean-Checksum")
+  public static Object[][] booleanChecksumType() {
+    return allPermutationGenerator(BOOLEAN, CHECKSUM_TYPES);
   }
 
   @DataProvider(name = "All-Avro-Schemas-Except-Null-And-Union")

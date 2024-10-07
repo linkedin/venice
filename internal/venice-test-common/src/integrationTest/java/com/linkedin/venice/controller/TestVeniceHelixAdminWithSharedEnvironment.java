@@ -11,7 +11,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.testng.Assert.assertThrows;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -62,6 +64,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -69,6 +72,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -2076,4 +2080,22 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
   }
 
+  @Test
+  public void testCloudProviderNotSet() throws IOException {
+    Properties clusterProperties = getControllerProperties(clusterName);
+    clusterProperties.put(ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, String.valueOf(true));
+    assertThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+  }
+
+  @Test
+  public void testCloudProviderSetToEmptyString() throws IOException {
+    Properties clusterProperties = getControllerProperties(clusterName);
+    clusterProperties.put(ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, String.valueOf(true));
+    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER, "");
+    assertThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+  }
 }
