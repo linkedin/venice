@@ -124,8 +124,8 @@ public abstract class AbstractPushMonitor
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
-        (topic) -> handleCompletedPush(topic),
-        (topic, details) -> handleErrorPush(topic, details),
+        this::handleCompletedPush,
+        this::handleErrorPush,
         controllerConfig.isDaVinciPushStatusScanEnabled(),
         controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
         controllerConfig.getDaVinciPushStatusScanThreadNumber(),
@@ -149,21 +149,10 @@ public abstract class AbstractPushMonitor
     pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
-      // Subscribe to changes first
-      List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
-          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-
-          /**
-           * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
-           * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
-           * to changes in the data.
-           */
-          refreshedOfflinePushStatusList
-              .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
-
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
+          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
           /**
            * This update call is necessary it won't miss updates between initial offline push retrival and update subscription.
@@ -323,6 +312,10 @@ public abstract class AbstractPushMonitor
     try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
       OfflinePushStatus offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
       topicToPushMap.put(topic, offlinePushStatus);
+      LOGGER.info(
+          "Update offline push status from ZK for topic: {}, current status: {}",
+          topic,
+          offlinePushStatus.getCurrentStatus());
     }
   }
 
