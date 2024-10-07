@@ -73,6 +73,7 @@ public class OffsetRecord {
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
+    emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
     return emptyPartitionState;
   }
 
@@ -145,6 +146,34 @@ public class OffsetRecord {
 
   public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
+  }
+
+  public synchronized void setRealtimeTopicProducerState(
+      String kafkaUrl,
+      GUID producerGuid,
+      ProducerPartitionState state) {
+    partitionState.getRealtimeTopicProducerStates()
+        .computeIfAbsent(kafkaUrl, url -> new VeniceConcurrentHashMap<>())
+        .put(guidToUtf8(producerGuid), state);
+  }
+
+  public synchronized void removeRealTimeTopicProducerState(String kafkaUrl, GUID producerGuid) {
+    if (partitionState.getRealtimeTopicProducerStates().get(kafkaUrl) == null) {
+      return;
+    }
+    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(guidToUtf8(producerGuid));
+  }
+
+  public synchronized ProducerPartitionState getRealTimeProducerState(String kafkaUrl, GUID producerGuid) {
+    Map<CharSequence, ProducerPartitionState> map = partitionState.getRealtimeTopicProducerStates().get(kafkaUrl);
+    if (map == null) {
+      return null;
+    }
+    return map.get(guidToUtf8(producerGuid));
+  }
+
+  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
+    return partitionState.getRealtimeTopicProducerStates();
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
@@ -273,7 +302,7 @@ public class OffsetRecord {
    * @param guid to be converted
    * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
    */
-  private CharSequence guidToUtf8(GUID guid) {
+  CharSequence guidToUtf8(GUID guid) {
     return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
@@ -283,7 +312,7 @@ public class OffsetRecord {
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
   }
 
   /**

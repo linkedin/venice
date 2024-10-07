@@ -34,6 +34,10 @@ import org.apache.logging.log4j.Logger;
  * This class is a helper class for Venice controller to read PushStatus / Heartbeat messages.
  */
 public class PushStatusStoreReader implements Closeable {
+  public enum InstanceStatus {
+    ALIVE, DEAD, BOOTSTRAPPING
+  }
+
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreReader.class);
   private static final int DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS = 3;
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients =
@@ -226,9 +230,21 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   public boolean isInstanceAlive(String storeName, String instanceName) {
-    long lastReportTimeStamp = getHeartbeat(storeName, instanceName);
+    return isInstanceAlive(getHeartbeat(storeName, instanceName));
+  }
+
+  boolean isInstanceAlive(long lastReportTimeStamp) {
     return System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS
         .toMillis(heartbeatExpirationTimeInSeconds);
+  }
+
+  public InstanceStatus getInstanceStatus(String storeName, String instanceName) {
+    long lastReportTimeStamp = getHeartbeat(storeName, instanceName);
+    if (lastReportTimeStamp < 0) {
+      return InstanceStatus.BOOTSTRAPPING;
+    }
+
+    return isInstanceAlive(lastReportTimeStamp) ? InstanceStatus.ALIVE : InstanceStatus.DEAD;
   }
 
   public Map<CharSequence, Integer> getSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion) {

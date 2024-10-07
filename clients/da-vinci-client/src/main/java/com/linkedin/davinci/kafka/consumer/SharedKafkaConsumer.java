@@ -348,4 +348,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
   }
+
+  // Test only
+  public void setNextPollTimeOutSeconds(long seconds) {
+    this.nextPollTimeOutSeconds = seconds;
+  }
 }
