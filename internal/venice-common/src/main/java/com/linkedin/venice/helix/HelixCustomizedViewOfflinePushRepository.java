@@ -111,7 +111,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   @Override
   protected void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
     Collection<CustomizedView> customizedViewCollection = routingTableSnapshot.getCustomizeViews();
-    if (customizedViewCollection == null || customizedViewCollection.isEmpty()) {
+    if (customizedViewCollection == null) {
       LOGGER.warn("There is no existing customized view");
       return;
     }

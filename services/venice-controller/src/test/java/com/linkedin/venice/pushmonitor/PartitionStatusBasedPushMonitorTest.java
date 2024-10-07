@@ -66,8 +66,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         helixAdminClient,
         getMockControllerConfig(),
         null,
-        mock(DisabledPartitionStats.class),
-        null);
+        mock(DisabledPartitionStats.class));
   }
 
   @Override
@@ -86,8 +85,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         mock(HelixAdminClient.class),
         getMockControllerConfig(),
         null,
-        mock(DisabledPartitionStats.class),
-        null);
+        mock(DisabledPartitionStats.class));
   }
 
   @Test
