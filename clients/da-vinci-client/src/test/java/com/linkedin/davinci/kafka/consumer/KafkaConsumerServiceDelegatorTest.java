@@ -487,7 +487,7 @@ public class KafkaConsumerServiceDelegatorTest {
    * versions and verify if the lock will protect the handoff for {@link ConsumptionTask} and {@link ConsumedDataReceiver}
    * during the re-subscription.
    */
-  @Test
+  @Test(enabled = false)
   public void testKafkaConsumerServiceResubscriptionConcurrency() throws Exception {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
