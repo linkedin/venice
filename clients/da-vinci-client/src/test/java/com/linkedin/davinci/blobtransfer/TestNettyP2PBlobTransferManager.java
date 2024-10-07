@@ -1,6 +1,5 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.davinci.blobtransfer.NettyP2PBlobTransferManager.MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -249,9 +248,7 @@ public class TestNettyP2PBlobTransferManager {
     CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
     future.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
-    // Verify the client try to get from the bad host and then the good host
-    Mockito.verify(client, Mockito.times(MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST))
-        .get(badHost, TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    // Verify that even has badhost in the list, it still finally uses good host to transfer the file
     Mockito.verify(client, Mockito.times(1)).get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION);
 
     // Verify files are all written to the partition directory

@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -54,6 +55,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       throw new VenicePeersNotFoundException("Failed to obtain the peers for the requested blob");
     }
     List<String> discoverPeers = response.getDiscoveryResult();
+    Collections.shuffle(discoverPeers);
+
     if (discoverPeers == null || discoverPeers.isEmpty()) {
       throw new VenicePeersNotFoundException("No peers found for the requested blob");
     }
