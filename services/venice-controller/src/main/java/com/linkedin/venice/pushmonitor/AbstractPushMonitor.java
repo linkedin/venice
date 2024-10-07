@@ -72,8 +72,6 @@ public abstract class AbstractPushMonitor
   private final String clusterName;
   private final ReadWriteStoreRepository metadataRepository;
   private final RoutingDataRepository routingDataRepository;
-  private final HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository;
-
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
@@ -105,8 +103,7 @@ public abstract class AbstractPushMonitor
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats,
-      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
+      DisabledPartitionStats disabledPartitionStats) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -137,7 +134,6 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
         controllerConfig.useDaVinciSpecificExecutionStatusForError());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
-    this.customizedViewOfflinePushRepository = customizedViewOfflinePushRepository;
     pushStatusCollector.start();
   }
 
@@ -158,8 +154,6 @@ public abstract class AbstractPushMonitor
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-          customizedViewOfflinePushRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-
           /**
            * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
            * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
@@ -265,7 +259,6 @@ public abstract class AbstractPushMonitor
       topicToPushMap.put(kafkaTopic, pushStatus);
       offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       routingDataRepository.subscribeRoutingDataChange(kafkaTopic, this);
-      customizedViewOfflinePushRepository.subscribeRoutingDataChange(kafkaTopic, this);
       pushStatusCollector.subscribeTopic(kafkaTopic, numberOfPartition);
       LOGGER.info("Started monitoring push on topic:{}", kafkaTopic);
     }
@@ -283,7 +276,7 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
-      customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
+      // customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
       if (pushStatus.getCurrentStatus().isError() && !isForcedDelete) {
         retireOldErrorPushes(storeName);
       } else {
@@ -1009,7 +1002,7 @@ public abstract class AbstractPushMonitor
 
   protected void handleCompletedPush(String topic) {
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
-    customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(topic, this);
+    // customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(topic, this);
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
       LOGGER.warn("Could not find OfflinePushStatus for topic: {}, will skip push completion handling", topic);
@@ -1061,7 +1054,6 @@ public abstract class AbstractPushMonitor
     ExecutionStatus executionStatus = executionStatusWithDetails.getStatus();
     String statusDetails = executionStatusWithDetails.getDetails();
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
-    customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(topic, this);
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
       LOGGER.warn("Could not find OfflinePushStatus for topic: {}, will skip push error handling", topic);
