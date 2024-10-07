@@ -376,7 +376,7 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
-    if (getStorageEngineRepository() == null || manager.getOriginalManager() == null) {
+    if (getStorageEngineRepository() == null || manager == null) {
       return;
     }
     for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
