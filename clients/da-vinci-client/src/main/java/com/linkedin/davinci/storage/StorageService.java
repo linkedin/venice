@@ -17,6 +17,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -375,12 +376,20 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
+    if (getStorageEngineRepository() == null || manager.getOriginalManager() == null) {
+      return;
+    }
     for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
-      String storageEngineName = storageEngine.toString();
+      String storageEngineName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
       PropertyKey.Builder propertyKeyBuilder =
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
-      IdealState idealState = manager.getHelixDataAccessor().getProperty(propertyKeyBuilder.idealStates(storeName));
+      SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
+      IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
+
+      if (idealState == null) {
+        return;
+      }
 
       Set<Integer> idealStatePartitionIds = new HashSet<>();
 

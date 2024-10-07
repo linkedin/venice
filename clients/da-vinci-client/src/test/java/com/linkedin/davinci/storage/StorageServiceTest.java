@@ -1,11 +1,9 @@
 package com.linkedin.davinci.storage;
 
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
+import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -14,6 +12,8 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -29,6 +29,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.helix.HelixManager;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.mockito.internal.util.collections.Sets;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -120,5 +123,87 @@ public class StorageServiceTest {
     Map<String, Set<Integer>> expectedMapping = new HashMap<>();
     expectedMapping.put(resourceName, partitionSet);
     Assert.assertEquals(storageService.getStoreAndUserPartitionsMapping(), expectedMapping);
+  }
+
+  @Test
+  public void testCheckWhetherStoragePartitionsShouldBeKeptOrNot() {
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    when(mockServerConfig.getDataBasePath()).thenReturn("/tmp");
+    when(configLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
+    VeniceClusterConfig mockClusterConfig = mock(VeniceClusterConfig.class);
+    when(configLoader.getVeniceClusterConfig()).thenReturn(mockClusterConfig);
+
+    AggVersionedStorageEngineStats storageEngineStats = mock(AggVersionedStorageEngineStats.class);
+    RocksDBMemoryStats rocksDBMemoryStats = mock(RocksDBMemoryStats.class);
+    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+        mock(InternalAvroSpecificSerializer.class);
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        mock(InternalAvroSpecificSerializer.class);
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    StorageEngineFactory mockStorageEngineFactory = mock(StorageEngineFactory.class);
+
+    String resourceName = "test_store_v1";
+    String storeName = "test_store";
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    PartitionerConfig mockPartitionerConfig = mock(PartitionerConfig.class);
+    when(mockPartitionerConfig.getAmplificationFactor()).thenReturn(1);
+    when(mockVersion.getPartitionerConfig()).thenReturn(mockPartitionerConfig);
+    when(mockStore.getVersion(1)).thenReturn(mockVersion);
+
+    when(storeRepository.getStore(storeName)).thenReturn(mockStore);
+
+    VeniceStoreVersionConfig storeVersionConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeVersionConfig.getStoreVersionName()).thenReturn(resourceName);
+    when(storeVersionConfig.isStorePersistenceTypeKnown()).thenReturn(true);
+    when(storeVersionConfig.getPersistenceType()).thenReturn(PersistenceType.BLACK_HOLE);
+    when(storeVersionConfig.getStorePersistenceType()).thenReturn(PersistenceType.BLACK_HOLE);
+
+    when(configLoader.getStoreConfig(eq(resourceName), eq(PersistenceType.BLACK_HOLE))).thenReturn(storeVersionConfig);
+
+    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false)).thenReturn(mockStorageEngine);
+    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitionSet);
+    when(mockStorageEngine.getStoreVersionName()).thenReturn(resourceName);
+    when(mockStorageEngineFactory.getPersistedStoreNames()).thenReturn(Sets.newSet(resourceName));
+    when(mockStorageEngineFactory.getPersistenceType()).thenReturn(PersistenceType.BLACK_HOLE);
+
+    Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
+    persistenceTypeToStorageEngineFactoryMap.put(PersistenceType.BLACK_HOLE, mockStorageEngineFactory);
+    StorageService storageService = new StorageService(
+        configLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        storeRepository,
+        true,
+        true,
+        (s) -> true,
+        Optional.of(persistenceTypeToStorageEngineFactoryMap));
+
+    String clusterName = "test_cluster";
+    VeniceClusterConfig veniceClusterConfig = mock(VeniceClusterConfig.class);
+    when(configLoader.getVeniceClusterConfig()).thenReturn(veniceClusterConfig);
+    when(veniceClusterConfig.getClusterName()).thenReturn(clusterName);
+
+    StorageService mockStorageService = mock(StorageService.class);
+    SafeHelixManager manager = mock(SafeHelixManager.class);
+    HelixManager helixManager = mock(HelixManager.class);
+    when(manager.getOriginalManager()).thenReturn(helixManager);
+
+    SafeHelixDataAccessor helixDataAccessor = mock(SafeHelixDataAccessor.class);
+    when(manager.getHelixDataAccessor()).thenReturn(helixDataAccessor);
+    PropertyKey key = mock(PropertyKey.class);
+    IdealState idealState = mock(IdealState.class);
+    when(helixDataAccessor.getProperty(key)).thenReturn(idealState);
+    Set<String> helixPartitionSet = new HashSet<>();
+    when(idealState.getPartitionSet()).thenReturn(helixPartitionSet);
+
+    doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+    mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+    storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
   }
 }
