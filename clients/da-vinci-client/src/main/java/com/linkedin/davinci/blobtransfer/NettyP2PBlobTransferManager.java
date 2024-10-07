@@ -54,12 +54,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     if (response == null || response.isError()) {
       throw new VenicePeersNotFoundException("Failed to obtain the peers for the requested blob");
     }
-    List<String> discoverPeers = response.getDiscoveryResult();
-    Collections.shuffle(discoverPeers);
 
+    List<String> discoverPeers = response.getDiscoveryResult();
     if (discoverPeers == null || discoverPeers.isEmpty()) {
       throw new VenicePeersNotFoundException("No peers found for the requested blob");
     }
+
+    Collections.shuffle(discoverPeers);
     LOGGER
         .info("Discovered peers {} for store {} version {} partition {}", discoverPeers, storeName, version, partition);
 

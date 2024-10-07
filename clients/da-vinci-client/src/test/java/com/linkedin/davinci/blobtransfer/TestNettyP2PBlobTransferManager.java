@@ -33,8 +33,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -52,7 +52,7 @@ public class TestNettyP2PBlobTransferManager {
   int TEST_VERSION = 1;
   int TEST_PARTITION = 0;
 
-  @BeforeClass
+  @BeforeMethod
   public void setUp() throws Exception {
     int port = TestUtils.getFreePort();
     tmpSnapshotDir = Files.createTempDirectory(TMP_SNAPSHOT_DIR);
@@ -67,23 +67,28 @@ public class TestNettyP2PBlobTransferManager {
     manager.start();
   }
 
-  @AfterClass
+  @AfterMethod
   public void teardown() throws Exception {
     manager.close();
-    Files.walk(tmpSnapshotDir).sorted(Comparator.reverseOrder()).forEach(path -> {
-      try {
-        Files.delete(path);
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-    });
-    Files.walk(tmpPartitionDir).sorted(Comparator.reverseOrder()).forEach(path -> {
-      try {
-        Files.delete(path);
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-    });
+    // if the partition directory is not empty, delete all files
+    if (Files.exists(tmpSnapshotDir)) {
+      Files.walk(tmpSnapshotDir).sorted(Comparator.reverseOrder()).forEach(path -> {
+        try {
+          Files.delete(path);
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      });
+    }
+    if (Files.exists(tmpPartitionDir)) {
+      Files.walk(tmpPartitionDir).sorted(Comparator.reverseOrder()).forEach(path -> {
+        try {
+          Files.delete(path);
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      });
+    }
   }
 
   @Test
