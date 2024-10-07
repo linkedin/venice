@@ -418,6 +418,8 @@ public class TestInstanceRemovable {
 
     // Shutdown one instance
     cluster.stopVeniceServer(serverPort1);
+    store.setCurrentVersion(1);
+    storeRepository.updateStore(store);
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
           .getRoutingDataRepository()
