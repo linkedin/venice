@@ -16,7 +16,6 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -109,35 +108,24 @@ public class DefaultIngestionBackend implements IngestionBackend {
     String storeName = store.getName();
     String baseDir = serverConfig.getRocksDBPath();
     try {
-      CompletableFuture<InputStream> p2pFuture =
-          blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
-      LOGGER.info(
-          "Bootstrapping from blobs for store {}, version {}, partition {}",
+      blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
+    } catch (VenicePeersNotFoundException e) {
+      LOGGER.warn(
+          "No valid peers founds for store {}, version {}, partition {}, giving up the blob transfer bootstrap",
           storeName,
           versionNumber,
           partitionId);
-      return p2pFuture.thenRun(
-          () -> LOGGER.info(
-              "Successfully bootstrapped from blobs for store {}, version {}, partition {}",
-              storeName,
-              versionNumber,
-              partitionId))
-          .exceptionally(e -> {
-            LOGGER.warn(
-                "Failed bootstrapping from blobs for store {}, version {}, partition {}",
-                storeName,
-                versionNumber,
-                partitionId,
-                e);
-            RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
-            // TODO: close channels
-            return null;
-          });
-    } catch (VenicePeersNotFoundException e) {
-      LOGGER
-          .warn("No valid peers founds for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
-      return CompletableFuture.completedFuture(null);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed bootstrapping from blobs for store {}, version {}, partition {} with exception, "
+              + "giving up the blob transfer bootstrap.",
+          storeName,
+          versionNumber,
+          partitionId,
+          e);
+      RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
     }
+    return CompletableFuture.completedFuture(null);
   }
 
   @Override

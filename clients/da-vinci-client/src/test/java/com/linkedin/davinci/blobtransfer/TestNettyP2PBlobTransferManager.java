@@ -10,6 +10,7 @@ import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
+import com.linkedin.venice.exceptions.VenicePeersCannotConnectException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -93,8 +94,14 @@ public class TestNettyP2PBlobTransferManager {
 
   @Test
   public void testFailedConnectPeer() {
-    CompletionStage<InputStream> future = client.get("remotehost123", "test_store", 1, 1);
-    Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
+    CompletionStage<InputStream> future = null;
+    try {
+      client.get("remotehost123", "test_store", 1, 1);
+    } catch (Exception e) {
+      Assert.assertTrue(e instanceof VenicePeersCannotConnectException);
+      Assert.assertEquals(e.getMessage(), "Failed to connect to the host: remotehost123");
+      Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
+    }
   }
 
   @Test
