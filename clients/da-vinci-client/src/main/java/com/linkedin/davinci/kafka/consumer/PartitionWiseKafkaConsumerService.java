@@ -50,7 +50,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final int consumerWaitAfterUnsubscribeTimeoutMs,
+      final long consumerWaitAfterUnsubscribeTimeoutMs,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,

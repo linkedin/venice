@@ -60,7 +60,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   private final AtomicBoolean waitingForPoll = new AtomicBoolean(false);
 
-  private int waitAfterUnsubscribeTimeoutMs;
+  private long waitAfterUnsubscribeTimeoutMs;
 
   private final Time time;
 
@@ -86,7 +86,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   public SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
       AggKafkaConsumerServiceStats stats,
-      int waitAfterUnsubscribeTimeoutMs,
+      long waitAfterUnsubscribeTimeoutMs,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener) {
     this(
@@ -101,7 +101,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
       AggKafkaConsumerServiceStats stats,
-      int waitAfterUnsubscribeTimeoutMs,
+      long waitAfterUnsubscribeTimeoutMs,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
       Time time) {
@@ -166,12 +166,12 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    * {@link SharedKafkaConsumer#poll(long)} and produceToStoreBufferService sequentially. So waiting for at least one more
    * invocation of {@link SharedKafkaConsumer#poll(long)} achieves the above objective.
    */
-  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, int timeoutMsArg) {
+  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMsArg) {
     /*
       Other values of timeoutMs are provided by the shutdown code path for a shorter timeout wait than the default
       value of the server config. However, if the server config waitAfterUnsubscribeTimeoutMs is smaller, then use it.
      */
-    final int timeoutMs = Math.min(waitAfterUnsubscribeTimeoutMs, timeoutMsArg);
+    final long timeoutMs = Math.min(waitAfterUnsubscribeTimeoutMs, timeoutMsArg);
     unSubscribeAction(() -> {
       this.delegate.unSubscribe(pubSubTopicPartition);
       PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
@@ -198,7 +198,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    *
    * @param supplier which performs the unsubscription and returns a set of partitions which were unsubscribed
    */
-  protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier, int timeoutMs) {
+  protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier, long timeoutMs) {
     long currentPollTimes = pollTimes;
     Set<PubSubTopicPartition> topicPartitions = supplier.get();
     long startTime = System.currentTimeMillis();
@@ -213,7 +213,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     waitAfterUnsubscribe(currentPollTimes, topicPartitions, timeoutMs);
   }
 
-  protected void waitAfterUnsubscribe(long currentPollTimes, Set<PubSubTopicPartition> topicPartitions, int timeoutMs) {
+  protected void waitAfterUnsubscribe(
+      long currentPollTimes,
+      Set<PubSubTopicPartition> topicPartitions,
+      long timeoutMs) {
     currentPollTimes++;
     waitingForPoll.set(true);
     // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait
@@ -238,7 +241,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       LOGGER.info("Wait for poll request in `unsubscribe` function got interrupted.");
       Thread.currentThread().interrupt();
     }
-    stats.recordTotalWaitAfterUnsubscribeLatency((int) (time.getMilliseconds() - startTimeMs));
+    stats.recordTotalWaitAfterUnsubscribeLatency(time.getMilliseconds() - startTimeMs);
   }
 
   // Only for testing.

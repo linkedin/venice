@@ -556,7 +556,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
   private final boolean isGlobalRtDivEnabled;
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
-  private final int pubSubConsumerWaitAfterUnsubscribeTimeoutMs;
+  private final long pubSubConsumerWaitAfterUnsubscribeTimeoutMs;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -931,7 +931,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
     nearlineWorkloadProducerThroughputOptimizationEnabled =
         serverProperties.getBoolean(SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED, true);
-    pubSubConsumerWaitAfterUnsubscribeTimeoutMs = serverProperties.getInt(
+    pubSubConsumerWaitAfterUnsubscribeTimeoutMs = serverProperties.getLong(
         SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
         KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
   }
@@ -1184,7 +1184,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return pubSubConsumerPollRetryBackoffMs;
   }
 
-  public int getPubSubConsumerWaitAfterUnsubscribeTimeoutMs() {
+  public long getPubSubConsumerWaitAfterUnsubscribeTimeoutMs() {
     return pubSubConsumerWaitAfterUnsubscribeTimeoutMs;
   }
 

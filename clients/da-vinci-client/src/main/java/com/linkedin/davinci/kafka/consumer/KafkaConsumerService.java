@@ -71,11 +71,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   /**
    * Waiting for the next poll() after unsubscribing, indicating that all previous inflight messages were processed
    */
-  public static final int DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
+  public static final long DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
   /**
    * A shorter timeout wait during shutdown / termination to avoid blocking the shutdown process
    */
-  public static final int SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = (int) TimeUnit.SECONDS.toMillis(10);
+  public static final long SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
 
   protected final String kafkaUrl;
   protected final String kafkaUrlForLogger;
@@ -106,7 +106,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final int consumerWaitAfterUnsubscribeTimeoutMs,
+      final long consumerWaitAfterUnsubscribeTimeoutMs,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
@@ -458,7 +458,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         MetricsRepository metricsRepository,
         String kafkaClusterAlias,
         long sharedConsumerNonExistingTopicCleanupDelayMS,
-        int consumerWaitAfterUnsubscribeTimeoutMs,
+        long consumerWaitAfterUnsubscribeTimeoutMs,
         TopicExistenceChecker topicExistenceChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,
         PubSubMessageDeserializer pubSubDeserializer,
