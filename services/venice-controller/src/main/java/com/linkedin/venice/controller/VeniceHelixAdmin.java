@@ -538,11 +538,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
     this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-    this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        adapterSerializer,
-        commonConfig.getRefreshAttemptsForZkReconnect(),
-        commonConfig.getRefreshIntervalForZkReconnectInMs());
+    this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer);
     storeConfigRepo.refresh();
     this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
     veniceWriterFactory = new VeniceWriterFactory(
