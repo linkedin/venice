@@ -124,8 +124,8 @@ public abstract class AbstractPushMonitor
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
-        this::handleCompletedPush,
-        this::handleErrorPush,
+        (topic) -> handleCompletedPush(topic),
+        (topic, details) -> handleErrorPush(topic, details),
         controllerConfig.isDaVinciPushStatusScanEnabled(),
         controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
         controllerConfig.getDaVinciPushStatusScanThreadNumber(),
@@ -773,7 +773,9 @@ public abstract class AbstractPushMonitor
   @Override
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    LOGGER.info("DEBUGGING 123");
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+      LOGGER.info("DEBUGGING 456");
       OfflinePushStatus pushStatus = getOfflinePush(topic);
       if (pushStatus == null) {
         LOGGER.error("Can not find Offline push for topic:{}, ignore the partition status change notification.", topic);
