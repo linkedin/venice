@@ -151,15 +151,21 @@ public class PushStatusNotifier implements VeniceNotifier {
       long offset,
       List<String> pendingReportIncPushVersionList) {
 
-    offLinePushAccessor
-        .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, pendingReportIncPushVersionList);
-    // We don't need to report redundant SOIP for these stale inc push versions as they've all received EOIP.
-    for (String incPushVersion: pendingReportIncPushVersionList) {
-      updateIncrementalPushStatusToPushStatusStore(
-          topic,
-          incPushVersion,
-          partitionId,
-          END_OF_INCREMENTAL_PUSH_RECEIVED);
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.ZOOKEEPER_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      offLinePushAccessor
+          .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, pendingReportIncPushVersionList);
+    }
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.PUSH_STATUS_SYSTEM_STORE_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      // We don't need to report redundant SOIP for these stale inc push versions as they've all received EOIP.
+      for (String incPushVersion: pendingReportIncPushVersionList) {
+        updateIncrementalPushStatusToPushStatusStore(
+            topic,
+            incPushVersion,
+            partitionId,
+            END_OF_INCREMENTAL_PUSH_RECEIVED);
+      }
     }
   }
 
