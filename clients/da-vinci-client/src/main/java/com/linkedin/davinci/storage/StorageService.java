@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
@@ -376,33 +377,32 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
-    if (getStorageEngineRepository() == null || manager == null) {
+    if (manager == null) {
       return;
     }
     for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
       String storageEngineName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
       PropertyKey.Builder propertyKeyBuilder =
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
       SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
 
       if (idealState == null) {
-        return;
-      }
+        continue;
+      } else {
+        Set<Integer> idealStatePartitionIds = new HashSet<>();
+        idealState.getPartitionSet().stream().forEach(partitionDbName -> {
+          idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
+        });
 
-      Set<Integer> idealStatePartitionIds = new HashSet<>();
-
-      idealState.getPartitionSet().stream().forEach(partitionId -> {
-        idealStatePartitionIds.add(Integer.parseInt(partitionId));
-      });
-      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
-
-      for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
-        if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
-          continue;
+        for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
+          if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
+            continue;
+          }
+          storageEngine.dropPartition(storageEnginePartitionId);
         }
-        storageEngine.dropPartition(storageEnginePartitionId);
       }
     }
   }

@@ -695,6 +695,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return this.partitionList.values().stream().map(Partition::getPartitionId).collect(Collectors.toSet());
   }
 
+  public synchronized SparseConcurrentList<Partition> getPartitionList() {
+    return this.partitionList;
+  }
+
   public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
     AbstractStoragePartition partition;
     ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);

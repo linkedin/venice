@@ -143,8 +143,12 @@ public class StorageServiceTest {
     AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
 
+    String resourceName = "test_store_v1";
     String storeName = "test_store";
-    when(abstractStorageEngine.getStoreVersionName()).thenReturn(storeName);
+    when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
+    abstractStorageEngine.addStoragePartition(1);
+    abstractStorageEngine.addStoragePartition(2);
+    abstractStorageEngine.addStoragePartition(3);
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
@@ -162,8 +166,10 @@ public class StorageServiceTest {
     when(manager.getHelixDataAccessor()).thenReturn(helixDataAccessor);
     IdealState idealState = mock(IdealState.class);
     when(helixDataAccessor.getProperty((PropertyKey) any())).thenReturn(idealState);
-    Set<String> helixPartitionSet = new HashSet<>();
+    Set<String> helixPartitionSet = new HashSet<>(Arrays.asList("test_store_v1_1", "test_store_v1_2"));
     when(idealState.getPartitionSet()).thenReturn(helixPartitionSet);
+    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
+    when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
 
     Field storageEngineRepositoryField = StorageService.class.getDeclaredField("storageEngineRepository");
     storageEngineRepositoryField.setAccessible(true);
@@ -173,6 +179,9 @@ public class StorageServiceTest {
     Field configLoaderField = StorageService.class.getDeclaredField("configLoader");
     configLoaderField.setAccessible(true);
     configLoaderField.set(mockStorageService, mockVeniceConfigLoader);
+    Field partitionListField = AbstractStorageEngine.class.getDeclaredField("partitionList");
+    partitionListField.setAccessible(true);
+    partitionListField.set(abstractStorageEngine, abstractStorageEngine.getPartitionList());
 
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
