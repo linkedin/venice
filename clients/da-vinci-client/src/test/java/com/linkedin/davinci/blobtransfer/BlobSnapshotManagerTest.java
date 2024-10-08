@@ -2,15 +2,16 @@ package com.linkedin.davinci.blobtransfer;
 
 import static org.mockito.Mockito.*;
 
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
 import java.io.IOException;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,126 +26,132 @@ import org.testng.annotations.Test;
 
 
 public class BlobSnapshotManagerTest {
-  private static final long SNAPSHOT_RETENTION_TIME = 60000;
-  private static final String STORE_NAME = Utils.getUniqueString("sstTest");
+  private static final String STORE_NAME = "test-store";
+  private static final int VERSION_ID = 1;
+  private static final String TOPIC_NAME = STORE_NAME + "_v" + VERSION_ID;
   private static final int PARTITION_ID = 0;
   private static final String BASE_PATH = Utils.getUniqueTempPath("sstTest");
   private static final ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
-  private static final String DB_DIR =
-      BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID);
+  private static final StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+  private static final String DB_DIR = BASE_PATH + "/" + STORE_NAME + "_v" + VERSION_ID + "/"
+      + RocksDBUtils.getPartitionDbName(STORE_NAME + "_v" + VERSION_ID, PARTITION_ID);
+  private static final BlobTransferPayload blobTransferPayload =
+      new BlobTransferPayload(BASE_PATH, STORE_NAME, VERSION_ID, PARTITION_ID);
 
   @Test
-  public void testHybridSnapshot() throws RocksDBException {
-    RocksDB mockRocksDB = mock(RocksDB.class);
-    Checkpoint mockCheckpoint = mock(Checkpoint.class);
+  public void testHybridSnapshot() {
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
+
     Store mockStore = mock(Store.class);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
     when(mockStore.isHybrid()).thenReturn(true);
+
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
-    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
-    doNothing().when(mockCheckpoint)
-        .createCheckpoint(
-            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
 
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    boolean snapshotGenerated = blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload);
 
-    verify(mockCheckpoint, times(1)).createCheckpoint(DB_DIR + "/.snapshot_files");
+    // Due to the store is hybrid, it will re-create a new snapshot.
+    Assert.assertEquals(snapshotGenerated, true);
+    verify(storagePartition, times(1)).createSnapshot();
   }
 
   @Test
-  public void testSnapshotUpdatesWhenStale() throws RocksDBException {
-    RocksDB mockRocksDB = mock(RocksDB.class);
-    Checkpoint mockCheckpoint = mock(Checkpoint.class);
+  public void testSameSnapshotWhenConcurrentUsers() {
     Store mockStore = mock(Store.class);
+
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
     when(mockStore.isHybrid()).thenReturn(true);
+
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
-    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
-    doNothing().when(mockCheckpoint).createCheckpoint(DB_DIR);
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    Map<String, Map<Integer, Long>> snapShotTimestamps = new VeniceConcurrentHashMap<>();
-    snapShotTimestamps.put(STORE_NAME, new VeniceConcurrentHashMap<>());
-    snapShotTimestamps.get(STORE_NAME).put(PARTITION_ID, System.currentTimeMillis() - SNAPSHOT_RETENTION_TIME - 1);
-    blobSnapshotManager.setSnapShotTimestamps(snapShotTimestamps);
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
 
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
 
-    verify(mockCheckpoint, times(1)).createCheckpoint(DB_DIR + "/.snapshot_files");
+    // Create snapshot for the first time
+    boolean snapshotGenerated = blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload);
+    Assert.assertEquals(snapshotGenerated, true);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 1);
+
+    // Try to create snapshot again with concurrent users
+    // Snapshot manager is creating one snapshot, then it will not allow to create another one with same topic and
+    // partition.
+    boolean snapshotGeneratedAgain = false;
+    try {
+      snapshotGeneratedAgain = blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload);
+    } catch (VeniceException e) {
+      String errorMessage = String.format(
+          "Snapshot is being used by some hosts, cannot recreate new snapshot for topic %s partition %d",
+          TOPIC_NAME,
+          PARTITION_ID);
+      Assert.assertEquals(e.getMessage(), errorMessage);
+    }
+
+    Assert.assertEquals(snapshotGeneratedAgain, false);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 1);
   }
 
   @Test
-  public void testSameSnapshotWhenConcurrentUsers() throws RocksDBException {
-    RocksDB mockRocksDB = mock(RocksDB.class);
-    Checkpoint mockCheckpoint = mock(Checkpoint.class);
-    Store mockStore = mock(Store.class);
-    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
-    BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
-    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
-    doNothing().when(mockCheckpoint)
-        .createCheckpoint(
-            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(mockRocksDB, STORE_NAME, PARTITION_ID), 3);
-  }
-
-  @Test
-  public void testMultipleThreads() throws RocksDBException {
+  public void testMultipleThreads() {
     final int numberOfThreads = 2;
     final ExecutorService asyncExecutor = Executors.newFixedThreadPool(numberOfThreads);
     final CountDownLatch latch = new CountDownLatch(numberOfThreads);
-    RocksDB mockRocksDB = mock(RocksDB.class);
-    Checkpoint mockCheckpoint = mock(Checkpoint.class);
+
     Store mockStore = mock(Store.class);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
     when(mockStore.isHybrid()).thenReturn(true);
-    BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
-    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
-    doNothing().when(mockCheckpoint)
-        .createCheckpoint(
-            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
 
-    for (int i = 0; i < numberOfThreads; i++) {
-      asyncExecutor.submit(() -> {
-        blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-        blobSnapshotManager.decreaseConcurrentUserCount(STORE_NAME, PARTITION_ID);
-        latch.countDown();
-      });
-    }
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
 
     try {
-      // Wait for all threads to finish
-      latch.await();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException("Test interrupted", e);
+      for (int i = 0; i < numberOfThreads; i++) {
+        asyncExecutor.submit(() -> {
+          blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload);
+          blobSnapshotManager.decreaseConcurrentUserCount(blobTransferPayload.getTopicName(), PARTITION_ID);
+          latch.countDown();
+        });
+      }
+    } catch (VeniceException e) {
+      String errorMessage = String.format(
+          "Snapshot is being used by some hosts, cannot update for topic %s partition %d",
+          TOPIC_NAME,
+          PARTITION_ID);
+      Assert.assertEquals(e.getMessage(), errorMessage);
     }
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(mockRocksDB, STORE_NAME, PARTITION_ID), 0);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 0);
   }
 
   @Test
-  public void testSnapshotNotUpdatedWhenNotHybrid() throws RocksDBException {
-    RocksDB mockRocksDB = mock(RocksDB.class);
-    Checkpoint mockCheckpoint = mock(Checkpoint.class);
+  public void testSnapshotNotCreatedWhenNotHybrid() {
+    // If the store is not hybrid, it will not re-create a new snapshot.
     Store mockStore = mock(Store.class);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
     when(mockStore.isHybrid()).thenReturn(false);
+
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
-    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
-    doNothing().when(mockCheckpoint)
-        .createCheckpoint(
-            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
-    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    verify(mockCheckpoint, times(0)).createCheckpoint(DB_DIR + "/.snapshot_files");
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+
+    boolean snapshotGenerated = blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload);
+
+    Assert.assertEquals(snapshotGenerated, false);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 0);
   }
 
   @Test
@@ -161,7 +168,7 @@ public class BlobSnapshotManagerTest {
 
         // case 1: snapshot file not exists
         // test execute
-        BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+        BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
         // test verify
         verify(mockCheckpoint, times(1)).createCheckpoint(fullSnapshotPath);
         fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(0));
@@ -173,7 +180,7 @@ public class BlobSnapshotManagerTest {
           fullSnapshotDir.mkdirs();
         }
         // test execute
-        BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+        BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
         // test verify
         verify(mockCheckpoint, times(2)).createCheckpoint(fullSnapshotPath);
         fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(1));
@@ -184,7 +191,7 @@ public class BlobSnapshotManagerTest {
             .thenThrow(new IOException("Delete snapshot file failed."));
         // test execute
         try {
-          BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+          BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
           Assert.fail("Should throw exception");
         } catch (VeniceException e) {
           // test verify
@@ -201,7 +208,7 @@ public class BlobSnapshotManagerTest {
             .createCheckpoint(fullSnapshotPath);
         // test execute
         try {
-          BlobSnapshotManager.createSnapshotForBatch(mockRocksDB, fullSnapshotPath);
+          BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
           Assert.fail("Should throw exception");
         } catch (VeniceException e) {
           // test verify

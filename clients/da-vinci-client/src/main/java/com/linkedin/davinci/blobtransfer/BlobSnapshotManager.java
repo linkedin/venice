@@ -1,15 +1,17 @@
 package com.linkedin.davinci.blobtransfer;
 
-import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -28,11 +30,11 @@ import org.rocksdb.RocksDBException;
  */
 
 public class BlobSnapshotManager {
+  // A map to keep track of the number of hosts using a snapshot for a particular topic and partition
   private final Map<String, Map<Integer, AtomicLong>> concurrentSnapshotUsers;
-  private Map<String, Map<Integer, Long>> snapShotTimestamps;
-  private final long snapshotRetentionTime;
-  private final String basePath;
+
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
+  private final StorageEngineRepository storageEngineRepository;
   private final Lock lock = new ReentrantLock();
   private static final Logger LOGGER = LogManager.getLogger(BlobSnapshotManager.class);
 
@@ -40,48 +42,53 @@ public class BlobSnapshotManager {
    * Constructor for the BlobSnapshotManager
    */
   public BlobSnapshotManager(
-      String basePath,
-      long snapshotRetentionTime,
-      ReadOnlyStoreRepository readOnlyStoreRepository) {
-    this.basePath = basePath;
-    this.snapshotRetentionTime = snapshotRetentionTime;
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      StorageEngineRepository storageEngineRepository) {
     this.readOnlyStoreRepository = readOnlyStoreRepository;
-    this.snapShotTimestamps = new VeniceConcurrentHashMap<>();
+    this.storageEngineRepository = storageEngineRepository;
+
     this.concurrentSnapshotUsers = new VeniceConcurrentHashMap<>();
   }
 
   /**
-   * Checks if the snapshot is stale, if it is and no one is using it, it updates the snapshot,
-   * otherwise it increases the count of people using the snapshot
+   * Recreate a snapshot for a hybrid store and return true if the snapshot is successfully created
+   * If the snapshot is being used by some other host, throw an exception
    */
-  public void maybeUpdateHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
-    if (rocksDB == null || topicName == null) {
-      throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
+  public boolean recreateSnapshotForHybrid(BlobTransferPayload payload) {
+    String topicName = payload.getTopicName();
+    String storeName = payload.getStoreName();
+    int partitionId = payload.getPartition();
+
+    if (!isStoreHybrid(storeName)) {
+      LOGGER.info("Store {} is not hybrid, skipping snapshot re-create", storeName);
+      return false;
     }
-    if (!isStoreHybrid(topicName)) {
-      LOGGER.warn("Store {} is not hybrid, skipping snapshot update", topicName);
-      return;
-    }
-    String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
-    snapShotTimestamps.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
+
     concurrentSnapshotUsers.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
     concurrentSnapshotUsers.get(topicName).putIfAbsent(partitionId, new AtomicLong(0));
+
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
-      if (isSnapshotStale(topicName, partitionId)) {
-        if (concurrentSnapshotUsers.get(topicName).get(partitionId) == null
-            || concurrentSnapshotUsers.get(topicName).get(partitionId).get() == 0) {
-          updateHybridSnapshot(rocksDB, topicName, partitionId);
-          snapShotTimestamps.get(topicName).put(partitionId, System.currentTimeMillis());
-        }
+      if (concurrentSnapshotUsers.get(topicName).get(partitionId) == null
+          || concurrentSnapshotUsers.get(topicName).get(partitionId).get() == 0) {
+        createSnapshot(topicName, partitionId);
+      } else {
+        // the snapshot is being used, cannot generate a new snapshot at the same time
+        String errorMessage = String.format(
+            "Snapshot is being used by some hosts, cannot recreate new snapshot for topic %s partition %d",
+            topicName,
+            partitionId);
+        LOGGER.error(errorMessage);
+        throw new VeniceException(errorMessage);
       }
-      concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
-      LOGGER.info(
-          "Retrieved snapshot from {} with timestamp {}",
-          fullPathForPartitionDBSnapshot,
-          snapShotTimestamps.get(topicName).get(partitionId));
     }
+
+    concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
+    return true;
   }
 
+  /**
+   * Decrease the count of hosts using the snapshot
+   */
   public void decreaseConcurrentUserCount(String topicName, int partitionId) {
     Map<Integer, AtomicLong> concurrentPartitionUsers = concurrentSnapshotUsers.get(topicName);
     if (concurrentPartitionUsers == null) {
@@ -99,8 +106,8 @@ public class BlobSnapshotManager {
     }
   }
 
-  long getConcurrentSnapshotUsers(RocksDB rocksDB, String topicName, int partitionId) {
-    if (rocksDB == null || topicName == null) {
+  protected long getConcurrentSnapshotUsers(String topicName, int partitionId) {
+    if (topicName == null) {
       throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
     }
     if (!concurrentSnapshotUsers.containsKey(topicName)
@@ -110,22 +117,13 @@ public class BlobSnapshotManager {
     return concurrentSnapshotUsers.get(topicName).get(partitionId).get();
   }
 
-  void setSnapShotTimestamps(Map<String, Map<Integer, Long>> snapShotTimestamps) {
-    this.snapShotTimestamps = snapShotTimestamps;
-  }
-
   /**
-   * Checks if the current snapshot of the partition is stale
+   * Check if the store is hybrid
+   * @param storeName the name of the store
+   * @return true if the store is hybrid, false otherwise
    */
-  private boolean isSnapshotStale(String topicName, int partitionId) {
-    if (!snapShotTimestamps.containsKey(topicName) || !snapShotTimestamps.get(topicName).containsKey(partitionId)) {
-      return true;
-    }
-    return System.currentTimeMillis() - snapShotTimestamps.get(topicName).get(partitionId) > snapshotRetentionTime;
-  }
-
-  private boolean isStoreHybrid(String topicName) {
-    Store store = readOnlyStoreRepository.getStore(topicName);
+  protected boolean isStoreHybrid(String storeName) {
+    Store store = readOnlyStoreRepository.getStore(storeName);
     if (store != null) {
       return store.isHybrid();
     }
@@ -133,42 +131,11 @@ public class BlobSnapshotManager {
   }
 
   /**
-   * Updates the snapshot of the hybrid store
-   */
-  private void updateHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
-    String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
-    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
-    if (partitionSnapshotDir.exists()) {
-      if (!partitionSnapshotDir.delete()) {
-        throw new VeniceException(
-            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot);
-      }
-      return;
-    }
-    try {
-      Checkpoint checkpoint = createCheckpoint(rocksDB);
-
-      LOGGER.info("Creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
-      checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
-      LOGGER.info("Finished creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
-    } catch (RocksDBException e) {
-      throw new VeniceException(
-          "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
-          e);
-    }
-  }
-
-  @VisibleForTesting
-  protected Checkpoint createCheckpoint(RocksDB rocksDB) {
-    return Checkpoint.create(rocksDB);
-  }
-
-  /**
-   * util method to create a snapshot for batch only
+   * util method to create a snapshot
    * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
    */
-  public static void createSnapshotForBatch(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
-    LOGGER.info("Creating snapshot for batch in directory: {}", fullPathForPartitionDBSnapshot);
+  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
+    LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
 
     // clean up the snapshot directory if it exists
     File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
@@ -184,16 +151,26 @@ public class BlobSnapshotManager {
     }
 
     try {
-      LOGGER.info("Start creating snapshots for batch in directory: {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Start creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
 
       Checkpoint checkpoint = Checkpoint.create(rocksDB);
       checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
 
-      LOGGER.info("Finished creating snapshots for batch in directory: {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Finished creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
     } catch (RocksDBException e) {
       throw new VeniceException(
           "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
           e);
     }
+  }
+
+  /**
+   * Create a snapshot for a particular partition
+   */
+  public void createSnapshot(String kafkaVersionTopic, int partitionId) {
+    AbstractStorageEngine storageEngine =
+        Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
+    partition.createSnapshot();
   }
 }

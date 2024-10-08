@@ -453,7 +453,9 @@ public class VeniceServer {
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),
           customizedViewFuture,
-          storageMetadataService);
+          storageMetadataService,
+          metadataRepo,
+          storageService.getStorageEngineRepository());
     } else {
       blobTransferManager = null;
     }

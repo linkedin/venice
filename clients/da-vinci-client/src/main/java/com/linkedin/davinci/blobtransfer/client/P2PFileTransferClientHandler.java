@@ -100,8 +100,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       Path partitionDir = Paths.get(payload.getPartitionDir());
       Files.createDirectories(partitionDir);
 
-      // Prepare the file
+      // Prepare the file, remove it if it exists
+      Files.deleteIfExists(partitionDir.resolve(fileName));
       Path file = Files.createFile(partitionDir.resolve(fileName));
+
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
 
     } else if (msg instanceof HttpContent) {

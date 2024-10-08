@@ -10,6 +10,7 @@ import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STR
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -45,6 +46,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,10 +63,15 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private boolean useZeroCopy = false;
   private final String baseDir;
   private StorageMetadataService storageMetadataService;
+  private BlobSnapshotManager blobSnapshotManager;
 
-  public P2PFileTransferServerHandler(String baseDir, StorageMetadataService storageMetadataService) {
+  public P2PFileTransferServerHandler(
+      String baseDir,
+      StorageMetadataService storageMetadataService,
+      BlobSnapshotManager blobSnapshotManager) {
     this.baseDir = baseDir;
     this.storageMetadataService = storageMetadataService;
+    this.blobSnapshotManager = blobSnapshotManager;
   }
 
   @Override
@@ -101,9 +108,23 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     }
     final BlobTransferPayload blobTransferRequest;
     final File snapshotDir;
+
+    boolean newSnapshotGenerated;
+    BlobTransferPartitionMetadata metadataForHybrid;
+
     try {
       blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
       snapshotDir = new File(blobTransferRequest.getSnapshotDir());
+
+      // check if the snapshot should be re-generated for hybrid mode
+      try {
+        metadataForHybrid = prepareMetadata(blobTransferRequest, ctx);
+        newSnapshotGenerated = blobSnapshotManager.recreateSnapshotForHybrid(blobTransferRequest);
+      } catch (Exception e) {
+        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+        return;
+      }
+
       if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
         byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
         setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
@@ -132,8 +153,10 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       sendFile(file, ctx);
     }
 
-    // transfer metadata
-    sendMetadata(blobTransferRequest, ctx);
+    // transfer metadata, use the metadata before the snapshot is generated for hybrid.
+    BlobTransferPartitionMetadata transferredMetadata =
+        newSnapshotGenerated ? metadataForHybrid : prepareMetadata(blobTransferRequest, ctx);
+    sendMetadata(blobTransferRequest, ctx, transferredMetadata);
 
     // end of transfer
     HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
@@ -145,6 +168,9 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         LOGGER.error("Failed to send all files for {}", blobTransferRequest.getFullResourceName(), future.cause());
       }
     });
+
+    // clean up new generated snapshot if the transfer is successful for hybrid store
+    cleanupAndRemoveConcurrentUserRestriction(newSnapshotGenerated, snapshotDir, blobTransferRequest);
   }
 
   /**
@@ -170,6 +196,51 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
     setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage().getBytes(), false, ctx);
     ctx.close();
+  }
+
+  /**
+   * Cleanup the snapshot directory if the snapshot is new generated for hybrid mode
+   * Decrease the user count for the snapshot to allow other hosts can use it.
+   * @param newSnapshotGenerated whether the snapshot is generated for hybrid mode
+   * @param snapshotDir the snapshot directory
+   * @param blobTransferRequest the blob transfer request
+   */
+  private void cleanupAndRemoveConcurrentUserRestriction(
+      boolean newSnapshotGenerated,
+      File snapshotDir,
+      BlobTransferPayload blobTransferRequest) {
+    if (!newSnapshotGenerated) {
+      LOGGER.info(
+          "Snapshot for topic {} partition {} is not new generated, skip cleanup",
+          blobTransferRequest.getTopicName(),
+          blobTransferRequest.getPartition());
+      return;
+    }
+
+    // 1. cleanup the snapshot directory
+    try {
+      FileUtils.deleteDirectory(snapshotDir);
+      LOGGER.info(
+          "Deleted snapshot directory {} for topic {} partition {} as the snapshot is transferred successfully",
+          snapshotDir,
+          blobTransferRequest.getTopicName(),
+          blobTransferRequest.getPartition());
+    } catch (IOException e) {
+      LOGGER.error(
+          "Failed to delete snapshot directory {} for topic {} partition {}",
+          snapshotDir,
+          blobTransferRequest.getTopicName(),
+          blobTransferRequest.getPartition(),
+          e);
+    }
+
+    // 2. decrease the user count for allowing other hosts can use it
+    blobSnapshotManager
+        .decreaseConcurrentUserCount(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+    LOGGER.info(
+        "Decreased user count for snapshot of topic {} partition {}",
+        blobTransferRequest.getTopicName(),
+        blobTransferRequest.getPartition());
   }
 
   private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {
@@ -210,8 +281,15 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     });
   }
 
-  public void sendMetadata(BlobTransferPayload blobTransferRequest, ChannelHandlerContext ctx)
-      throws JsonProcessingException {
+  /**
+   * Prepare metadata for the given blob transfer request
+   * @param blobTransferRequest the blob transfer request
+   * @param ctx the channel context
+   * @return the metadata for the given blob transfer request
+   */
+  private BlobTransferPartitionMetadata prepareMetadata(
+      BlobTransferPayload blobTransferRequest,
+      ChannelHandlerContext ctx) {
     // prepare metadata
     BlobTransferPartitionMetadata metadata = null;
     try {
@@ -234,6 +312,20 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, errBody, false, ctx);
     }
 
+    return metadata;
+  }
+
+  /**
+   * Send metadata for the given blob transfer request
+   * @param blobTransferRequest the blob transfer request
+   * @param ctx the channel context
+   * @param metadata the metadata to be sent
+   * @throws JsonProcessingException
+   */
+  public void sendMetadata(
+      BlobTransferPayload blobTransferRequest,
+      ChannelHandlerContext ctx,
+      BlobTransferPartitionMetadata metadata) throws JsonProcessingException {
     ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
     String jsonMetadata = objectMapper.writeValueAsString(metadata);
     byte[] metadataBytes = jsonMetadata.getBytes();
