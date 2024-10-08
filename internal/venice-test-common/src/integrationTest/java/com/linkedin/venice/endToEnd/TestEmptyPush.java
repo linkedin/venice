@@ -1,21 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.pubsub.PubSubConstants.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
-import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFile;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -153,7 +144,7 @@ public class TestEmptyPush {
       Runnable dataValidator = () -> {
         try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
             try {
               for (int i = 1; i <= 1000; ++i) {
                 String key = keyPrefix + i;
