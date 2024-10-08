@@ -20,17 +20,20 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -91,6 +94,91 @@ public class TestParentControllerWithMultiDataCenter {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  }
+
+  @Test
+  public void testRTTopicDeletionWithHybridAndIncrementalVersions() {
+    String storeName = Utils.getUniqueString("testRTTopicDeletion");
+    String clusterName = CLUSTER_NAMES[0];
+    String rtTopicName = Version.composeRealTimeTopic(storeName);
+    PubSubTopic rtPubSubTopic = new PubSubTopicRepository().getTopic(rtTopicName);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+
+    List<TopicManager> topicManagers = new ArrayList<>(2);
+    topicManagers
+        .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+    topicManagers
+        .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(1)
+        .setHybridRewindSeconds(1000)
+        .setHybridOffsetLagThreshold(1000);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+
+    // change store from hybrid to batch-only
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setHybridRewindSeconds(-1).setHybridTimeLagThreshold(-1).setHybridOffsetLagThreshold(-1);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, params);
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+    // at this point, the current version should be batch-only, but the older version should be hybrid, so rt topic
+    // should not get deleted
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
+    // now both the versions should be batch-only, so rt topic should get deleted by TopicCleanupService
+    for (TopicManager topicManager: topicManagers) {
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> Assert.assertFalse(topicManager.containsTopic(rtPubSubTopic)));
+    }
+
+    /*
+     todo - RT topic is not deleted in parent colo yet.
+     we need to probably modify TopicCleanupServiceForParentController and check if all the child colos have deleted
+     RT topic, then it can also be deleted from parent colo. I believe we can extend it to non RT topics as well and
+     then can get rid of `storeToCountdownForDeletion`
+    
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true,  true, () -> {
+      Assert.assertFalse(parentTopicManager.containsTopic(rtPubSubTopic));
+      }
+     );
+    */
   }
 
   @Test(timeOut = TEST_TIMEOUT)
