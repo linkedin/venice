@@ -82,6 +82,7 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         offlinePushStatus,
         partitionAssignment,
         getDisableReplicaCallback(partitionAssignment.getTopic()));
+    LOGGER.info("DEBUGGING NEW DETAIL: {}", statusWithDetails.getStatus());
     if (statusWithDetails.getStatus().isTerminal()) {
       LOGGER.info(
           "Found a offline pushes could be terminated: {}, status: {}",
