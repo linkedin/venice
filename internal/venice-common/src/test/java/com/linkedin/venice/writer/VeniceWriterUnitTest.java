@@ -666,4 +666,64 @@ public class VeniceWriterUnitTest {
       }
     }
   }
+
+  @Test
+  public void testGlobalDivChunking() {
+    final int maxRecordSizeBytes = BYTES_PER_MB;
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeySerializer(serializer)
+        .setValueSerializer(serializer)
+        .setMaxRecordSizeBytes(maxRecordSizeBytes)
+        .build();
+    VeniceProperties props = VeniceProperties.empty();
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+    for (int size: Arrays.asList(SMALL_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
+      char[] valueChars = new char[size];
+      Arrays.fill(valueChars, '*');
+      try {
+        writer.sendChunkSupportedDivMessage(0, "test-key", new String(valueChars));
+      } catch (Exception e) {
+        Assert.fail("Shouldn't have thrown any exception");
+      }
+
+      ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+      ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+
+      if (size == SMALL_VALUE_SIZE) {
+        // 1 SOS, 1 DivControlMessage
+        verify(mockedProducer, times(2))
+            .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+      } else { // TOO_LARGE_VALUE_SIZE
+        // 1 SOS, 4 DivChunk, 1 DivManifest
+        verify(mockedProducer, times(6))
+            .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+      }
+
+      for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
+        Assert.assertTrue(key.isDivControlMessage() || key.isControlMessage());
+      }
+
+      for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
+        if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+          Assert.assertTrue(
+              ((ControlMessage) kme.getPayloadUnion()).getControlMessageType() == ControlMessageType.START_OF_SEGMENT
+                  .getValue());
+        } else {
+          Assert.assertTrue(kme.messageType == MessageType.PUT.getValue());
+          Put put = (Put) kme.payloadUnion;
+          Assert.assertTrue(
+              put.getSchemaId() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+                  || put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()
+                  || put.getSchemaId() == AvroProtocolDefinition.GLOBAL_DIV_STATE.getCurrentProtocolVersion());
+        }
+      }
+    }
+  }
 }
