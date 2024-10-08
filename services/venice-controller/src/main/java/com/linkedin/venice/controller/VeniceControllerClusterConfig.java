@@ -371,7 +371,7 @@ public class VeniceControllerClusterConfig {
   private final List<String> helixCloudInfoSources;
   private final String helixCloudInfoProcessorName;
 
-  private final boolean usePushStatusStoreForIncrementalPush;
+  private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
   private final long metaStoreWriterCloseTimeoutInMS;
 
@@ -899,7 +899,8 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
-    this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
+    this.usePushStatusStoreForIncrementalPushStatusReads =
+        props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.metaStoreWriterCloseTimeoutInMS = props.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
     this.metaStoreWriterCloseConcurrency = props.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
@@ -1593,7 +1594,7 @@ public class VeniceControllerClusterConfig {
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {
-    return usePushStatusStoreForIncrementalPush;
+    return usePushStatusStoreForIncrementalPushStatusReads;
   }
 
   public long getMetaStoreWriterCloseTimeoutInMS() {

@@ -379,7 +379,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
-  private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -559,7 +558,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-    usePushStatusStoreToReadServerIncrementalPushStatus = commonConfig.usePushStatusStoreForIncrementalPush();
 
     zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
         zkClient,
@@ -6056,7 +6054,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
     if (incrementalPushVersion.isPresent()
         && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
-        && usePushStatusStoreToReadServerIncrementalPushStatus) {
+        && store.isDaVinciPushStatusStoreEnabled()) {
       getPushStatusStoreWriter().removeFromSupposedlyOngoingIncrementalPushVersions(
           store.getName(),
           versionNumber,
@@ -6069,17 +6067,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String clusterName,
       String kafkaTopic,
       String incrementalPushVersion,
-      PushMonitor monitor) {
+      PushMonitor monitor,
+      Store store) {
     HelixCustomizedViewOfflinePushRepository cvRepo =
         getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-    if (!usePushStatusStoreToReadServerIncrementalPushStatus) {
-      return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
+
+    if (multiClusterConfigs.getControllerConfig(clusterName).usePushStatusStoreForIncrementalPush()
+        && store.isDaVinciPushStatusStoreEnabled()) {
+      return monitor.getIncrementalPushStatusFromPushStatusStore(
+          kafkaTopic,
+          incrementalPushVersion,
+          cvRepo,
+          getPushStatusStoreReader());
     }
-    return monitor.getIncrementalPushStatusFromPushStatusStore(
-        kafkaTopic,
-        incrementalPushVersion,
-        cvRepo,
-        getPushStatusStoreReader());
+
+    if (multiClusterConfigs.getControllerConfig(clusterName).usePushStatusStoreForIncrementalPush()) {
+      LOGGER.info(
+          "Push status system store is not enabled for store: {} in cluster: {}, using ZK for incremental push status reads",
+          store.getName(),
+          clusterName);
+    }
+
+    return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
   }
 
   private OfflinePushStatusInfo getOfflinePushStatusInfo(
@@ -6106,7 +6115,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     if (incrementalPushVersion.isPresent()) {
-      statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
+      statusAndDetails =
+          getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor, store);
     } else {
       statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
     }
