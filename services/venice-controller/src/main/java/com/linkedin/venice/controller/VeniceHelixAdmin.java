@@ -6071,23 +6071,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store) {
     HelixCustomizedViewOfflinePushRepository cvRepo =
         getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-
-    if (multiClusterConfigs.getControllerConfig(clusterName).usePushStatusStoreForIncrementalPush()
-        && store.isDaVinciPushStatusStoreEnabled()) {
-      return monitor.getIncrementalPushStatusFromPushStatusStore(
-          kafkaTopic,
-          incrementalPushVersion,
-          cvRepo,
-          getPushStatusStoreReader());
+    boolean usePushStatusStoreForIncrementalPush =
+        multiClusterConfigs.getControllerConfig(clusterName).usePushStatusStoreForIncrementalPush();
+    if (usePushStatusStoreForIncrementalPush) {
+      if (store.isDaVinciPushStatusStoreEnabled()) {
+        return monitor.getIncrementalPushStatusFromPushStatusStore(
+            kafkaTopic,
+            incrementalPushVersion,
+            cvRepo,
+            getPushStatusStoreReader());
+      } else {
+        LOGGER.warn(
+            "Push status system store is not enabled for store: {} in cluster: {}, using ZK for incremental push status reads",
+            store.getName(),
+            clusterName);
+      }
     }
-
-    if (multiClusterConfigs.getControllerConfig(clusterName).usePushStatusStoreForIncrementalPush()) {
-      LOGGER.info(
-          "Push status system store is not enabled for store: {} in cluster: {}, using ZK for incremental push status reads",
-          store.getName(),
-          clusterName);
-    }
-
     return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
   }
 
