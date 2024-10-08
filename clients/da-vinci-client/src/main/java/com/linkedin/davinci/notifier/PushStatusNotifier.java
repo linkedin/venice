@@ -10,6 +10,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 
+import com.linkedin.davinci.config.VeniceServerConfig.IncrementalPushStatusWriteMode;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -39,18 +40,21 @@ public class PushStatusNotifier implements VeniceNotifier {
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ReadOnlyStoreRepository storeRepository;
   private final String instanceId;
+  private final IncrementalPushStatusWriteMode incrementalPushStatusWriteMode;
 
   public PushStatusNotifier(
       OfflinePushAccessor offlinePushAccessor,
       HelixPartitionStatusAccessor helixPartitionStatusAccessor,
       PushStatusStoreWriter pushStatusStoreWriter,
       ReadOnlyStoreRepository storeRepository,
-      String instanceId) {
+      String instanceId,
+      IncrementalPushStatusWriteMode incrementalPushStatusWriteMode) {
     this.offLinePushAccessor = offlinePushAccessor;
     this.helixPartitionStatusAccessor = helixPartitionStatusAccessor;
     this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.storeRepository = storeRepository;
     this.instanceId = instanceId;
+    this.incrementalPushStatusWriteMode = incrementalPushStatusWriteMode;
   }
 
   @Override
@@ -116,16 +120,28 @@ public class PushStatusNotifier implements VeniceNotifier {
 
   @Override
   public void startOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
-    offLinePushAccessor
-        .updateReplicaStatus(topic, partitionId, instanceId, START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    updateIncrementalPushStatusToPushStatusStore(topic, message, partitionId, START_OF_INCREMENTAL_PUSH_RECEIVED);
+    updateIncrementalPushStatus(topic, partitionId, offset, message, START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   @Override
   public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
-    offLinePushAccessor
-        .updateReplicaStatus(topic, partitionId, instanceId, END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    updateIncrementalPushStatusToPushStatusStore(topic, message, partitionId, END_OF_INCREMENTAL_PUSH_RECEIVED);
+    updateIncrementalPushStatus(topic, partitionId, offset, message, END_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  private void updateIncrementalPushStatus(
+      String topic,
+      int partitionId,
+      long offset,
+      String message,
+      ExecutionStatus status) {
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.ZOOKEEPER_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, status, offset, message);
+    }
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.PUSH_STATUS_SYSTEM_STORE_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      updateIncrementalPushStatusToPushStatusStore(topic, message, partitionId, status);
+    }
   }
 
   @Override
