@@ -113,8 +113,6 @@ public class VenicePubsubInputPartitionReaderTest {
     // assertTrue(row.getInt(1) >= 0);
     // assertTrue(row.getInt(1) < 1000);
     // assertTrue(row.getBoolean(2));
-    System.out.println(key);
-    System.out.println(value);
   }
 
   @Test
