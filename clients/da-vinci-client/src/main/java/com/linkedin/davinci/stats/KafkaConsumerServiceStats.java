@@ -33,7 +33,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor detectedDeletedTopicNumSensor;
   private final Sensor detectedNoRunningIngestionTopicPartitionNumSensor;
   private final Sensor delegateSubscribeLatencySensor;
-  private final Sensor waitAfterUnsubscribeLatencySensor;
   private final Sensor updateCurrentAssignmentLatencySensor;
   private final Sensor maxPartitionsPerConsumer;
   private final Sensor minPartitionsPerConsumer;
@@ -103,7 +102,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     detectedNoRunningIngestionTopicPartitionNumSensor =
         registerSensor("detected_no_running_ingestion_topic_partition_num", new Total());
     delegateSubscribeLatencySensor = registerSensor("delegate_subscribe_latency", new Avg(), new Max());
-    waitAfterUnsubscribeLatencySensor = registerSensor("wait_after_unsubscribe_latency_ms", new Avg(), new Max());
     updateCurrentAssignmentLatencySensor = registerSensor("update_current_assignment_latency", new Avg(), new Max());
 
     minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
@@ -155,10 +153,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordDelegateSubscribeLatency(double value) {
     delegateSubscribeLatencySensor.record(value);
-  }
-
-  public void recordWaitAfterUnsubscribeLatency(long value) {
-    waitAfterUnsubscribeLatencySensor.record(value);
   }
 
   public void recordUpdateCurrentAssignmentLatency(double value) {

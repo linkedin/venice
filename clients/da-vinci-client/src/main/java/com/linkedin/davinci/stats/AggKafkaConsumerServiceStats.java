@@ -63,10 +63,6 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     totalStats.recordDelegateSubscribeLatency(value);
   }
 
-  public void recordTotalWaitAfterUnsubscribeLatency(long value) {
-    totalStats.recordWaitAfterUnsubscribeLatency(value);
-  }
-
   public void recordTotalUpdateCurrentAssignmentLatency(double value) {
     totalStats.recordUpdateCurrentAssignmentLatency(value);
   }

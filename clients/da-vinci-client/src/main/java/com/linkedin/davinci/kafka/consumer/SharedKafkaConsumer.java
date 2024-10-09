@@ -222,8 +222,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait
     // returned
     // due to timeout. So an explicit time check is necessary.
-    final long startTimeMs = time.getMilliseconds();
-    final long endTimeMs = startTimeMs + timeoutMs;
+    final long endTimeMs = time.getMilliseconds() + timeoutMs;
     try {
       while (currentPollTimes > pollTimes) {
         final long waitMs = endTimeMs - time.getMilliseconds();
@@ -241,7 +240,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       LOGGER.info("Wait for poll request in `unsubscribe` function got interrupted.");
       Thread.currentThread().interrupt();
     }
-    stats.recordTotalWaitAfterUnsubscribeLatency(time.getMilliseconds() - startTimeMs);
   }
 
   // Only for testing.
