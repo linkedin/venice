@@ -6536,6 +6536,48 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return model.isLeader();
   }
 
+  @Override
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      Set<String> instances,
+      List<String> toBeStoppedInstances) {
+    InstanceRemovableStatuses statuses = new InstanceRemovableStatuses();
+
+    // If current controller is not the leader, redirect with leader URL
+    if (!isLeaderControllerFor(cluster)) {
+      Instance instance = getLeaderController(cluster);
+      statuses.setRedirectUrl(instance.getNodeId());
+      return statuses;
+    }
+
+    Map<String, String> nonStoppableInstances = new HashMap<>();
+    List<String> stoppableInstances = new ArrayList<>(toBeStoppedInstances);
+    statuses.setNonStoppableInstances(nonStoppableInstances);
+    statuses.setStoppableInstances(stoppableInstances);
+
+    // Check for maintenance, for ongoing maintenance none can be removed.
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(cluster);
+    MaintenanceSignal maintenanceSignal = HelixUtils.getClusterMaintenanceSignal(cluster, resources.getHelixManager());
+
+    if (maintenanceSignal != null) {
+      for (String instanceId: instances) {
+        nonStoppableInstances.put(instanceId, InstanceRemovableStatuses.NonStoppableReason.ONGOING_MAINTENANCE.name());
+      }
+      return statuses;
+    }
+
+    List<NodeRemovableResult> removableResults =
+        InstanceStatusDecider.getInstanceStoppableStatuses(resources, cluster, instances, toBeStoppedInstances);
+    for (NodeRemovableResult nodeRemovableResult: removableResults) {
+      if (nodeRemovableResult.isRemovable()) {
+        stoppableInstances.add(nodeRemovableResult.getInstanceId());
+      } else {
+        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getBlockingReason());
+      }
+    }
+    return statuses;
+  }
+
   /**
    * Calculate number of partition for given store.
    */

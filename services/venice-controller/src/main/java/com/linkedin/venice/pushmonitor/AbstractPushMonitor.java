@@ -154,7 +154,6 @@ public abstract class AbstractPushMonitor
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-
           /**
            * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
            * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
@@ -271,6 +270,7 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
+      // customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
       if (pushStatus.getCurrentStatus().isError() && !isForcedDelete) {
         retireOldErrorPushes(storeName);
       } else {
@@ -978,6 +978,7 @@ public abstract class AbstractPushMonitor
 
   protected void handleCompletedPush(String topic) {
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
+    // customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(topic, this);
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
       LOGGER.warn("Could not find OfflinePushStatus for topic: {}, will skip push completion handling", topic);

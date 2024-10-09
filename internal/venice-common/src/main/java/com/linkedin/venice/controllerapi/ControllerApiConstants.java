@@ -3,6 +3,8 @@ package com.linkedin.venice.controllerapi;
 public class ControllerApiConstants {
   public static final String HOSTNAME = "hostname";
   public static final String CLUSTER = "cluster_name";
+  public static final String CLUSTER_ID = "cluster_id";
+
   public static final String CLUSTER_DEST = "cluster_name_dest";
   public static final String SOURCE_GRID_FABRIC = "source_grid_fabric";
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
@@ -25,6 +27,10 @@ public class ControllerApiConstants {
   public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
+
+  public static final String INSTANCES = "instances";
+  public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
+
   public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
