@@ -28,7 +28,7 @@ public class TestZkHelixAdminClient {
   private VeniceControllerMultiClusterConfig mockMultiClusterConfigs;
   private VeniceControllerClusterConfig mockClusterConfig;
 
-  private final String controllerClusterName = "venice-controllers";
+  private static final String controllerClusterName = "venice-controllers";
 
   @BeforeMethod
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
