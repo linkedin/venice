@@ -1,6 +1,5 @@
 package com.linkedin.venice.blobtransfer;
 
-import java.util.Collections;
 import java.util.List;
 
 
@@ -32,9 +31,6 @@ public class BlobPeersDiscoveryResponse {
   }
 
   public List<String> getDiscoveryResult() {
-    if (this.hostNameList != null && !this.hostNameList.isEmpty()) {
-      Collections.shuffle(this.hostNameList);
-    }
     return this.hostNameList;
   }
 

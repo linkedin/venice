@@ -6,7 +6,7 @@ import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VenicePeersCannotConnectException;
+import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.time.Duration;
@@ -89,15 +89,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
     Instant startTime = Instant.now();
     for (String peer: discoverPeers) {
+      String chosenHost = peer.split("_")[0];
       int retryCount = 0;
       while (retryCount < MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST) {
         try {
           // instanceName comes as a format of <hostName>_<applicationPort>
-          String chosenHost = peer.split("_")[0];
           LOGGER.info("Attempt {} to connect to host: {}", retryCount + 1, chosenHost);
-          CompletionStage<InputStream> inputStreamStage = nettyClient.get(chosenHost, storeName, version, partition);
-          CompletableFuture<InputStream> inputStreamFuture = inputStreamStage.toCompletableFuture();
-
+          CompletableFuture<InputStream> inputStreamFuture =
+              nettyClient.get(chosenHost, storeName, version, partition).toCompletableFuture();
           InputStream inputStream = inputStreamFuture.get(MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN, TimeUnit.MINUTES);
           LOGGER.info(
               "Successfully fetched blob from peer {} for store {} partition {} version {} in {} seconds",
@@ -108,13 +107,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
               Duration.between(startTime, Instant.now()).getSeconds());
           return CompletableFuture.completedFuture(inputStream);
         } catch (Exception e) {
-          if (e.getCause() instanceof VenicePeersCannotConnectException) {
+          if (e.getCause() instanceof VenicePeersConnectionException) {
             // error case 2: failed to connect to the peer,
             // solution: retry connecting to the peer again up to MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST times
             LOGGER.warn(
-                "Get error when connect to peer: {} for store {} partition {}, retrying {}/{}",
+                "Get error when connect to peer: {} for store {} version {} partition {}, retrying {}/{}",
                 peer,
                 storeName,
+                version,
                 partition,
                 retryCount + 1,
                 MAX_RETRIES_FOR_BLOB_TRANSFER_PER_HOST,
@@ -124,9 +124,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
             // error case 3: the connected host does not have the requested file,
             // solution: move to next possible host
             LOGGER.warn(
-                "Peer {} does not have the requested blob for store {} partition {}, moving to next possible host.",
+                "Peer {} does not have the requested blob for store {} version {} partition {}, moving to next possible host.",
                 peer,
                 storeName,
+                version,
                 partition,
                 e);
             break;

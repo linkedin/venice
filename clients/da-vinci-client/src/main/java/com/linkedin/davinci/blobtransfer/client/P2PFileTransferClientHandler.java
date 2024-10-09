@@ -63,14 +63,16 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
     if (msg instanceof HttpResponse) {
       HttpResponse response = (HttpResponse) msg;
-      if (response.status().equals(HttpResponseStatus.NOT_FOUND)) {
-        throw new VeniceBlobTransferFileNotFoundException(
-            "Request files from remote peer are not found. Response: " + response.status());
-      }
 
       if (!response.status().equals(HttpResponseStatus.OK)) {
-        throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+        if (response.status().equals(HttpResponseStatus.NOT_FOUND)) {
+          throw new VeniceBlobTransferFileNotFoundException(
+              "Requested files from remote peer are not found. Response: " + response.status());
+        } else {
+          throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+        }
       }
+
       // redirect the message to the next handler if it's a metadata transfer
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {

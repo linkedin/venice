@@ -1,7 +1,7 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.venice.exceptions.VenicePeersCannotConnectException;
+import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -99,7 +99,7 @@ public class NettyFileTransferClient {
           version,
           partition);
       LOGGER.error(errorMsg, e);
-      throw new VenicePeersCannotConnectException(errorMsg, e);
+      throw new VenicePeersConnectionException(errorMsg, e);
     }
   }
 }
