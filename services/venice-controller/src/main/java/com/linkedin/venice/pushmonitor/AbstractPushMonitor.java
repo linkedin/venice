@@ -375,6 +375,10 @@ public abstract class AbstractPushMonitor
       PushStatusStoreReader pushStatusStoreReader,
       int numberOfPartitions,
       int replicationFactor) {
+    LOGGER.debug(
+        "Querying incremental push status from PS3 for storeVersion: {}, incrementalPushVersion: {}",
+        kafkaTopic,
+        incrementalPushVersion);
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int storeVersion = Version.parseVersionFromVersionTopicName(kafkaTopic);
     Map<Integer, Map<CharSequence, Integer>> pushStatusMap =

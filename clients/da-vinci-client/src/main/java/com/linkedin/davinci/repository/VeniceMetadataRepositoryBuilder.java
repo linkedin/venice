@@ -142,11 +142,7 @@ public class VeniceMetadataRepositoryBuilder {
     // Load existing store config and setup watches
     storeRepo.refresh();
 
-    storeConfigRepo = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        adapter,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
     storeConfigRepo.refresh();
 
     readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
