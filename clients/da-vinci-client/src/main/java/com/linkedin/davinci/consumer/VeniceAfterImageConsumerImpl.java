@@ -1,5 +1,7 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -34,7 +36,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
   final private Lazy<VeniceChangelogConsumerImpl<K, V>> internalSeekConsumer;
-  private Thread versionSwapDetectionThread;
+  private final ScheduledExecutorService versionSwapExecutorService = Executors.newSingleThreadScheduledExecutor();
+  boolean versionSwapThreadScheduled = false;
 
   public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
     this(
@@ -53,22 +56,29 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       PubSubConsumerAdapter consumer,
       Lazy<VeniceChangelogConsumerImpl<K, V>> seekConsumer) {
     super(changelogClientConfig, consumer);
-    versionSwapDetectionThread = new VersionSwapDetectionThread();
     internalSeekConsumer = seekConsumer;
     versionSwapDetectionIntervalTimeInMs = changelogClientConfig.getVersionSwapDetectionIntervalTimeInMs();
   }
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
-    if (!versionSwapDetectionThread.isAlive()) {
-      versionSwapDetectionThread.start();
-    }
     return internalPoll(timeoutInMs, "");
   }
 
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     return internalSeekToTimestamps(timestamps, "");
+  }
+
+  @Override
+  public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    if (!versionSwapThreadScheduled) {
+      // schedule the version swap thread
+      versionSwapExecutorService
+          .schedule(new VersionSwapDetectionThread(), versionSwapDetectionIntervalTimeInMs, TimeUnit.MILLISECONDS);
+      versionSwapThreadScheduled = true;
+    }
+    return super.subscribe(partitions);
   }
 
   @Override
@@ -152,66 +162,49 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
-    if (!versionSwapDetectionThread.isAlive()) {
-      versionSwapDetectionThread.start();
-    }
     return super.internalSeek(partitions, targetTopic, seekAction);
   }
 
-  private class VersionSwapDetectionThread extends Thread {
-    VersionSwapDetectionThread() {
-      super("Version-Swap-Detection-Thread");
-    }
-
+  private class VersionSwapDetectionThread implements Runnable {
     @Override
     public void run() {
-      while (!Thread.interrupted()) {
-        try {
-          TimeUnit.MILLISECONDS.sleep(versionSwapDetectionIntervalTimeInMs);
-        } catch (InterruptedException e) {
-          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
-          break;
+      // Check the current version of the server
+      int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
+
+      // Check the current ingested version
+      Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
+      Set<Integer> partitions = new HashSet<>();
+      synchronized (subscriptions) {
+        if (subscriptions.isEmpty()) {
+          return;
+        }
+        int maxVersion = -1;
+        for (PubSubTopicPartition topicPartition: subscriptions) {
+          int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+          if (version >= maxVersion) {
+            maxVersion = version;
+          }
         }
 
-        // Check the current version of the server
-        int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
-
-        // Check the current ingested version
-        Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
-        Set<Integer> partitions = new HashSet<>();
-        synchronized (subscriptions) {
-          if (subscriptions.isEmpty()) {
-            continue;
+        // Seek to end of push
+        if (currentVersion != maxVersion) {
+          // get current subscriptions and seek to endOfPush
+          for (PubSubTopicPartition partitionSubscription: subscriptions) {
+            partitions.add(partitionSubscription.getPartitionNumber());
           }
-          int maxVersion = -1;
-          for (PubSubTopicPartition topicPartition: subscriptions) {
-            int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
-            if (version >= maxVersion) {
-              maxVersion = version;
-            }
-          }
-
-          // Seek to end of push
-          if (currentVersion != maxVersion) {
-            // get current subscriptions and seek to endOfPush
-            for (PubSubTopicPartition partitionSubscription: subscriptions) {
-              partitions.add(partitionSubscription.getPartitionNumber());
-            }
-          }
-          try {
-            LOGGER.info(
-                "New Version detected!  Seeking consumer to version: " + currentVersion
-                    + " in VersionSwaDetectionThread: " + this.getId());
-            seekToEndOfPush(partitions).get();
-          } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error(
-                "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions
-                    + " on VersionSwapDetectionThread: " + this.getId() + "will retry...",
-                e);
-          }
+        }
+        try {
+          LOGGER.info(
+              "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: "
+                  + changelogClientConfig.getConsumerName());
+          seekToEndOfPush(partitions).get();
+        } catch (InterruptedException | ExecutionException e) {
+          LOGGER.error(
+              "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " on consumer: "
+                  + changelogClientConfig.getConsumerName() + "will retry...",
+              e);
         }
       }
-      LOGGER.info("VersionSwapDetectionThread thread #" + this.getId() + "interrupted!  Shutting down...");
     }
   }
 }

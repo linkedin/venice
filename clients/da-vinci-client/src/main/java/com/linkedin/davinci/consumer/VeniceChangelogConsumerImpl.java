@@ -198,7 +198,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return internalSubscribe(partitions, null);
   }
 
-  public CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
+  protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
     return CompletableFuture.supplyAsync(() -> {
       try {
         storeRepository.start();
