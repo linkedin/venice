@@ -101,37 +101,39 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           }
 
           // poll until we get EOP for all partitions
-          while (true) {
-            polledResults = consumerAdapter.poll(5000L);
-            // Loop through all polled messages
-            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
-                .entrySet()) {
-              PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
-              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
-                if (message.getKey().isControlMessage()) {
-                  ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
-                  ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-                  if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
-                    // note down the partition and offset and mark that we've got the thing
-                    endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
-                    VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
-                        pubSubTopicPartition.getPubSubTopic().getName(),
-                        new ApacheKafkaOffsetPosition(message.getOffset()),
-                        pubSubTopicPartition.getPartitionNumber());
-                    checkpoints.add(coordinate);
-                    Set<Integer> unsubSet = new HashSet<>();
-                    unsubSet.add(pubSubTopicPartition.getPartitionNumber());
-                    internalSeekConsumer.get().unsubscribe(unsubSet);
-                    // No need to look at the rest of the messages for this partition that we might have polled
-                    break;
+          synchronized (consumerAdapter) {
+            while (true) {
+              polledResults = consumerAdapter.poll(5000L);
+              // Loop through all polled messages
+              for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
+                  .entrySet()) {
+                PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+                List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
+                for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+                  if (message.getKey().isControlMessage()) {
+                    ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+                    ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+                    if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
+                      // note down the partition and offset and mark that we've got the thing
+                      endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
+                      VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
+                          pubSubTopicPartition.getPubSubTopic().getName(),
+                          new ApacheKafkaOffsetPosition(message.getOffset()),
+                          pubSubTopicPartition.getPartitionNumber());
+                      checkpoints.add(coordinate);
+                      Set<Integer> unsubSet = new HashSet<>();
+                      unsubSet.add(pubSubTopicPartition.getPartitionNumber());
+                      internalSeekConsumer.get().unsubscribe(unsubSet);
+                      // No need to look at the rest of the messages for this partition that we might have polled
+                      break;
+                    }
                   }
                 }
               }
-            }
-            if (endOfPushConsumedPerPartitionMap.values().stream().allMatch(e -> e)) {
-              // We polled all EOP messages, stop polling!
-              break;
+              if (endOfPushConsumedPerPartitionMap.values().stream().allMatch(e -> e)) {
+                // We polled all EOP messages, stop polling!
+                break;
+              }
             }
           }
           this.seekToCheckpoint(checkpoints).get();
@@ -172,7 +174,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         }
 
         // Check the current version of the server
-        storeRepository.refresh();
         int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
 
         // Check the current ingested version

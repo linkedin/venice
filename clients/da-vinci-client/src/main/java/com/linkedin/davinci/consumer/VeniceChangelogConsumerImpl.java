@@ -80,6 +80,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   protected final int partitionCount;
+  protected long subscribeTime = Long.MAX_VALUE;
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
 
@@ -193,6 +194,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     for (int partition: partitions) {
       getPartitionToBootstrapState().put(partition, false);
     }
+    subscribeTime = System.currentTimeMillis();
     return internalSubscribe(partitions, null);
   }
 
@@ -209,7 +211,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
-      storeRepository.refresh();
 
       PubSubTopic topicToSubscribe;
       if (topic == null) {
@@ -366,7 +367,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   private PubSubTopic getCurrentServingVersionTopic() {
-    storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
     return pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, currentVersion));
@@ -411,7 +411,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // Offset the seek to next operation inside venice pub sub consumer adapter subscription logic.
     long targetOffset = offset == OffsetRecord.LOWEST_OFFSET ? OffsetRecord.LOWEST_OFFSET : offset - 1;
     try {
-      pubSubConsumer.subscribe(topicPartition, targetOffset);
+      synchronized (pubSubConsumer) {
+        pubSubConsumer.subscribe(topicPartition, targetOffset);
+      }
     } catch (PubSubTopicDoesNotExistException ex) {
       throw new VeniceCoordinateOutOfRangeException(
           "Version does not exist! Checkpoint contained version: " + topicPartition.getTopicName() + " for partition "
@@ -437,7 +439,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, String topicSuffix) {
     // Get the latest change capture topic
-    storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
     String topicName = Version.composeKafkaTopic(storeName, currentVersion) + topicSuffix;
@@ -614,8 +615,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   void maybeUpdatePartitionToBootstrapMap(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
       PubSubTopicPartition pubSubTopicPartition) {
-    if (System.currentTimeMillis() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES
-        .toMillis(1)) {
+    if (subscribeTime - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
       getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
     }
   }
@@ -941,7 +941,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Set<PubSubTopicPartition> getTopicAssignment() {
-    return Collections.synchronizedSet(pubSubConsumer.getAssignment());
+    synchronized (pubSubConsumer) {
+      return Collections.synchronizedSet(pubSubConsumer.getAssignment());
+    }
   }
 
   protected boolean switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
@@ -968,7 +970,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public void close() {
     this.unsubscribeAll();
-    pubSubConsumer.close();
+    synchronized (pubSubConsumer) {
+      LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+      pubSubConsumer.close();
+    }
   }
 
   @VisibleForTesting
@@ -992,11 +997,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         throw new VeniceException(
             "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
       }
-      long offset = pubSubConsumer.endOffset(topicPartition.get()) - 1;
-      return new VeniceChangeCoordinate(
-          topicPartition.get().getPubSubTopic().getName(),
-          new ApacheKafkaOffsetPosition(offset),
-          partition);
+      synchronized (pubSubConsumer) {
+        long offset = pubSubConsumer.endOffset(topicPartition.get()) - 1;
+        return new VeniceChangeCoordinate(
+            topicPartition.get().getPubSubTopic().getName(),
+            new ApacheKafkaOffsetPosition(offset),
+            partition);
+      }
     }
   }
 

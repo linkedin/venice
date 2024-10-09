@@ -156,9 +156,12 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
           throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
         }
 
+        Long earliestOffset = null;
         PubSubTopicPartition topicPartition = getTopicPartition(partition);
-        Long earliestOffset =
-            pubSubConsumer.beginningOffset(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
+        synchronized (pubSubConsumer) {
+          earliestOffset =
+              pubSubConsumer.beginningOffset(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
+        }
         VeniceChangeCoordinate earliestCheckpoint = earliestOffset == null
             ? null
             : new VeniceChangeCoordinate(
