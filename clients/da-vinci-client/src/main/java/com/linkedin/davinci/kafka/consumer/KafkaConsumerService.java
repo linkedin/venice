@@ -71,7 +71,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   /**
    * Waiting for the next poll() after unsubscribing, indicating that all previous inflight messages were processed
    */
-  public static final long DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
+  public static final long DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(3);
   /**
    * A shorter timeout wait during shutdown / termination to avoid blocking the shutdown process
    */
