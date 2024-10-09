@@ -161,10 +161,7 @@ public class HelixParticipationService extends AbstractVeniceService
     return helixStateTransitionThreadPool;
   }
 
-  @Override
-  public boolean startInner() {
-    LOGGER.info("Attempting to start HelixParticipation service");
-    VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
+  public HelixManagerProperty buildHelixManagerProperty(VeniceServerConfig config) {
     InstanceConstants.InstanceOperation instanceOperation;
     if (config.getHelixJoinAsUnknown()) {
       instanceOperation = InstanceConstants.InstanceOperation.UNKNOWN;
@@ -174,8 +171,14 @@ public class HelixParticipationService extends AbstractVeniceService
     InstanceConfig.Builder defaultInstanceConfigBuilder =
         new InstanceConfig.Builder().setInstanceOperation(instanceOperation)
             .setPort(Integer.toString(config.getListenerPort()));
-    HelixManagerProperty helixManagerProperty =
-        new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
+    return new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
+  }
+
+  @Override
+  public boolean startInner() {
+    LOGGER.info("Attempting to start HelixParticipation service");
+    VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
+    HelixManagerProperty helixManagerProperty = buildHelixManagerProperty(config);
     helixManager = new SafeHelixManager(
         new ZKHelixManager(
             clusterName,
