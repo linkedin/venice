@@ -51,8 +51,11 @@ public class DaVinciBlobFinder implements BlobFinder {
     // Shuffle the list to avoid always picking the same host
     BlobPeersDiscoveryResponse response = futureResponse.join();
     List<String> discoveryResult = response.getDiscoveryResult();
-    Collections.shuffle(discoveryResult);
-    response.setDiscoveryResult(discoveryResult);
+    if (discoveryResult != null && !discoveryResult.isEmpty()) {
+      Collections.shuffle(discoveryResult);
+      response.setDiscoveryResult(discoveryResult);
+    }
+
     return response;
   }
 

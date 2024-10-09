@@ -35,7 +35,9 @@ public class ServerBlobFinder implements BlobFinder {
           .map(Instance::getHost)
           .collect(Collectors.toList());
       // Shuffle the list to avoid always picking the same host
-      Collections.shuffle(hostNames);
+      if (hostNames != null && !hostNames.isEmpty()) {
+        Collections.shuffle(hostNames);
+      }
       response.setDiscoveryResult(hostNames);
     } catch (VeniceException | InterruptedException | ExecutionException e) {
       response.setError(true);
