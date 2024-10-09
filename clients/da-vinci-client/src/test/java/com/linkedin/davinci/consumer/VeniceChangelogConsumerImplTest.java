@@ -332,6 +332,81 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testConsumeAfterImageWithCompaction() throws ExecutionException, InterruptedException {
+    D2ControllerClient d2ControllerClient = mock(D2ControllerClient.class);
+    StoreResponse storeResponse = mock(StoreResponse.class);
+    StoreInfo storeInfo = mock(StoreInfo.class);
+    doReturn(1).when(storeInfo).getCurrentVersion();
+    doReturn(2).when(storeInfo).getPartitionCount();
+    doReturn(storeInfo).when(storeResponse).getStore();
+    doReturn(storeResponse).when(d2ControllerClient).getStore(storeName);
+    MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
+    doReturn(rmdSchema.toString()).when(rmdSchemaFromMultiSchemaResponse).getSchemaStr();
+    doReturn(new MultiSchemaResponse.Schema[] { rmdSchemaFromMultiSchemaResponse }).when(multiRMDSchemaResponse)
+        .getSchemas();
+    doReturn(multiRMDSchemaResponse).when(d2ControllerClient).getAllReplicationMetadataSchemas(storeName);
+
+    PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+    PubSubTopic oldChangeCaptureTopic =
+        pubSubTopicRepository.getTopic(oldVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    ChangelogClientConfig changelogClientConfig =
+        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
+            .setSchemaReader(schemaReader)
+            .setStoreName(storeName)
+            .setShouldCompactMessages(true)
+            .setViewName("");
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
+    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    Store store = mock(Store.class);
+    Version mockVersion = new VersionImpl(storeName, 1, "foo");
+    Mockito.when(store.getCurrentVersion()).thenReturn(1);
+    Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
+    Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
+    verify(mockPubSubConsumer).subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), OffsetRecord.LOWEST_OFFSET);
+
+    List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
+    for (int i = 0; i < 5; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
+      Utf8 messageStr = pubSubMessage.getValue().getCurrentValue();
+      Assert.assertEquals(messageStr.toString(), "newValue" + i);
+    }
+    prepareChangeCaptureRecordsToBePolled(
+        0L,
+        10L,
+        mockPubSubConsumer,
+        oldChangeCaptureTopic,
+        0,
+        oldVersionTopic,
+        null,
+        false);
+    pubSubMessages =
+        (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
+    Assert.assertFalse(pubSubMessages.isEmpty());
+    Assert.assertEquals(pubSubMessages.size(), 10);
+    for (int i = 0; i < 10; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
+      Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
+      Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
+    }
+
+    veniceChangelogConsumer.close();
+    verify(mockPubSubConsumer, times(2)).batchUnsubscribe(any());
+    verify(mockPubSubConsumer).close();
+  }
+
+  @Test
   public void testMetricReportingThread() throws InterruptedException {
     D2ControllerClient d2ControllerClient = mock(D2ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
