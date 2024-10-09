@@ -25,6 +25,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.helix.HelixException;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -89,13 +91,13 @@ public class TestPushStatusNotifier {
     statusNotifier.progress(topic, 1, 1, "");
   }
 
-  @DataProvider(name = "startOfIncrementalPushCases")
-  public Object[][] startOfIncrementalPushCases() {
+  @DataProvider(name = "pushStatusWriteModes")
+  public Object[][] pushStatusWriteModes() {
     return new Object[][] { { ZOOKEEPER_ONLY, true, false }, { PUSH_STATUS_SYSTEM_STORE_ONLY, false, true },
         { DUAL, true, true } };
   }
 
-  @Test(dataProvider = "startOfIncrementalPushCases")
+  @Test(dataProvider = "pushStatusWriteModes")
   public void testStartOfIncrementalPushReceived(
       IncrementalPushStatusWriteMode mode,
       boolean expectZookeeper,
@@ -133,13 +135,7 @@ public class TestPushStatusNotifier {
     }
   }
 
-  @DataProvider(name = "endOfIncrementalPushCases")
-  public Object[][] endOfIncrementalPushCases() {
-    return new Object[][] { { ZOOKEEPER_ONLY, true, false }, { PUSH_STATUS_SYSTEM_STORE_ONLY, false, true },
-        { DUAL, true, true } };
-  }
-
-  @Test(dataProvider = "endOfIncrementalPushCases")
+  @Test(dataProvider = "pushStatusWriteModes")
   public void testEndOfIncrementalPushReceived(
       IncrementalPushStatusWriteMode mode,
       boolean expectZookeeper,
@@ -165,6 +161,50 @@ public class TestPushStatusNotifier {
 
     if (expectPushStatusStore) {
       verify(pushStatusStoreWriter, times(1)).writePushStatus(
+          eq(STORE_NAME),
+          eq(STORE_VERSION),
+          eq(PARTITION_ID),
+          eq(END_OF_INCREMENTAL_PUSH_RECEIVED),
+          any(),
+          any());
+    } else {
+      verify(pushStatusStoreWriter, never())
+          .writePushStatus(anyString(), anyInt(), anyInt(), any(ExecutionStatus.class), any());
+    }
+  }
+
+  @Test(dataProvider = "pushStatusWriteModes")
+  public void testBatchEndOfIncrementalPushReceived(
+      IncrementalPushStatusWriteMode mode,
+      boolean expectZookeeper,
+      boolean expectPushStatusStore) {
+
+    notifier = new PushStatusNotifier(
+        offlinePushAccessor,
+        helixPartitionStatusAccessor,
+        pushStatusStoreWriter,
+        storeRepository,
+        INSTANCE_ID,
+        mode);
+
+    List<String> incPushVersions = new ArrayList<>();
+    incPushVersions.add("inc_push_version_1");
+    incPushVersions.add("inc_push_version_2");
+    incPushVersions.add("inc_push_version_3");
+    incPushVersions.add("inc_push_version_4");
+
+    notifier.batchEndOfIncrementalPushReceived(TOPIC, PARTITION_ID, OFFSET, incPushVersions);
+
+    if (expectZookeeper) {
+      verify(offlinePushAccessor, times(1))
+          .batchUpdateReplicaIncPushStatus(TOPIC, PARTITION_ID, INSTANCE_ID, OFFSET, incPushVersions);
+    } else {
+      verify(offlinePushAccessor, never())
+          .batchUpdateReplicaIncPushStatus(anyString(), anyInt(), anyString(), anyLong(), any());
+    }
+
+    if (expectPushStatusStore) {
+      verify(pushStatusStoreWriter, times(4)).writePushStatus(
           eq(STORE_NAME),
           eq(STORE_VERSION),
           eq(PARTITION_ID),
