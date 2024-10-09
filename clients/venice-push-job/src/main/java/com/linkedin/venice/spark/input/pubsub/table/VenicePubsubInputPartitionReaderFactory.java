@@ -32,5 +32,4 @@ public class VenicePubsubInputPartitionReaderFactory implements PartitionReaderF
   public boolean supportColumnarReads(InputPartition partition) {
     return false;
   }
-
 }

@@ -2,6 +2,7 @@ package com.linkedin.venice.spark.input.pubsub.table;
 
 import static com.linkedin.venice.spark.SparkConstants.*;
 
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.Set;
@@ -18,21 +19,19 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
 public class VenicePubsubInputTable implements SupportsRead {
   static final String INPUT_TABLE_NAME = "venice_pubsub_table";
-  private final Properties properties;
+  private final VeniceProperties jobConfig;
 
-  public VenicePubsubInputTable(Properties properties) {
-    this.properties = properties;
-    // infer pubsub consumer properties from the properties
+  public VenicePubsubInputTable(VeniceProperties jobConfig) {
+    this.jobConfig = jobConfig;
     //
   }
 
   @Override
   public ScanBuilder newScanBuilder(CaseInsensitiveStringMap options) {
-    // convert the options to properties
-    Properties properties = new Properties();
+    Properties properties = jobConfig.getPropertiesCopy();
     properties.putAll(options.asCaseSensitiveMap());
 
-    return new VenicePubsubInputScanBuilder(properties);
+    return new VenicePubsubInputScanBuilder(properties); // should we flip this to VeniceProperties?
   }
 
   @Override
@@ -42,7 +41,7 @@ public class VenicePubsubInputTable implements SupportsRead {
 
   @Override
   public StructType schema() {
-    return DEFAULT_SCHEMA;
+    return KAFKA_INPUT_TABLE_SCHEMA;
   }
 
   @Override

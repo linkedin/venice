@@ -2,6 +2,7 @@ package com.linkedin.venice.spark.input.pubsub.table;
 
 import static com.linkedin.venice.spark.SparkConstants.*;
 
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.spark.sql.connector.catalog.Table;
@@ -13,11 +14,13 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
 public class VenicePubsubSource implements TableProvider {
   public StructType inferSchema(CaseInsensitiveStringMap options) {
+    // there is no inference, the table is always created with the same schema
     return KAFKA_INPUT_TABLE_SCHEMA;
   }
 
   @Override
   public Transform[] inferPartitioning(CaseInsensitiveStringMap options) {
+    // we don't support partitioning, it comes from the kafka topic.
     return TableProvider.super.inferPartitioning(options);
   }
 
@@ -32,7 +35,8 @@ public class VenicePubsubSource implements TableProvider {
 
     // VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(properties);
 
-    return new VenicePubsubInputTable(properties);
+    // if we want to break the bag-chain , this is the place !
+    return new VenicePubsubInputTable(new VeniceProperties(properties));
   }
 
   @Override
