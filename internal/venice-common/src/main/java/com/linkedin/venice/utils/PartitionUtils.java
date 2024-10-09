@@ -63,12 +63,16 @@ public class PartitionUtils {
     } else if (partitionCount < minPartitionCount) {
       partitionCount = minPartitionCount;
     }
+
+    int returnPartitionCount = partitionCount <= 0 ? 1 : (int) partitionCount;
+
     LOGGER.info(
         "Assign partition count: {} calculated by storage quota: {} to the new version of store: {}",
-        partitionCount,
+        returnPartitionCount,
         storageQuota,
         storeName);
-    return (int) partitionCount;
+
+    return returnPartitionCount;
   }
 
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {
