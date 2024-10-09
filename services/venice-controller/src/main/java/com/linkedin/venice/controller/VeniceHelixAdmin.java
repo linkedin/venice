@@ -7964,6 +7964,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     for (Version version: versions) {
+      if (version.getStatus() == ERROR) {
+        continue;
+      }
       int versionNumber = version.getNumber();
       String topic = Version.composeKafkaTopic(regularStoreName, versionNumber);
       int partitionCount = version.getPartitionCount();
