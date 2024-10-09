@@ -7958,44 +7958,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         "Wrote value schemas to meta system store for venice store: {} in cluster: {}",
         regularStoreName,
         clusterName);
-    // replica status for all the available versions
-    List<Version> versions = store.getVersions();
-    if (versions.isEmpty()) {
-      return;
-    }
-    for (Version version: versions) {
-      if (version.getStatus() == ERROR) {
-        continue;
-      }
-      int versionNumber = version.getNumber();
-      String topic = Version.composeKafkaTopic(regularStoreName, versionNumber);
-      int partitionCount = version.getPartitionCount();
-      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository =
-          getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-      for (int curPartitionId = 0; curPartitionId < partitionCount; ++curPartitionId) {
-        List<Instance> readyToServeInstances =
-            customizedViewOfflinePushRepository.getReadyToServeInstances(topic, curPartitionId);
-        metaStoreWriter.get()
-            .writeReadyToServerStoreReplicas(
-                clusterName,
-                regularStoreName,
-                versionNumber,
-                curPartitionId,
-                readyToServeInstances);
-        LOGGER.info(
-            "Wrote the following ready-to-serve instance: {} for store: {}, version: {}, partition id: {} in cluster: {}",
-            readyToServeInstances.toString(),
-            regularStoreName,
-            versionNumber,
-            curPartitionId,
-            clusterName);
-      }
-      LOGGER.info(
-          "Wrote replica status snapshot for version: {} to meta system store for venice store: {} in cluster: {}",
-          versionNumber,
-          regularStoreName,
-          clusterName);
-    }
   }
 
   private boolean isAmplificationFactorUpdateOnly(
