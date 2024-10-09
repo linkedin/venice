@@ -1,5 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub.table;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -48,7 +49,7 @@ public class VenicePubsubInputScan implements Scan, Batch {
       // surround by retries from retryUtils or something
       List<PubSubTopicPartitionInfo> listOfPartitions = pubSubConsumer.partitionsFor(pubSubTopic);
 
-      int numPartitions = listOfPartitions.size(); // number of partitions in the topic
+      // int numPartitions = listOfPartitions.size(); // number of partitions in the topic in case.
 
       // need a map of int to long,long to store the start and end offsets for each partition
       Map<Integer, List<Long>> partitionOffsetsMap = new HashMap<>();
@@ -66,15 +67,11 @@ public class VenicePubsubInputScan implements Scan, Batch {
       }
 
       Map<Integer, List<List<Long>>> splits = PartitionSplitters.segmentCountSplitter(partitionOffsetsMap, splitCount);
-      InputPartition[] inputPartitions =
-          PartitionSplitters.convertToInputPartitions(regionName, topicName, splits).toArray(new InputPartition[0]);
-      return (inputPartitions);
+      return PartitionSplitters.convertToInputPartitions(regionName, topicName, splits).toArray(new InputPartition[0]);
     } catch (Exception e) {
-      // handle exception
+      throw new VeniceException("Could not get FileSystem", e);// handle exception
       // something broke in the process of getting the splits
-      return null; // ? how do I tell spart that this is a failure?
     }
-
   }
 
   @Override

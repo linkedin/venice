@@ -72,7 +72,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
         jobConfig,
         inputPartition,
         new PubSubClientsFactory(new VeniceProperties(jobConfig)).getConsumerAdapterFactory() // need to review the
-                                                                                              // properties bag ...
+            // properties bag ...
             .create(
                 new VeniceProperties(jobConfig),
                 false,
@@ -116,6 +116,10 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
     // pubSubConsumer.seek(startingOffset); // do we need this? or should we rely on the starting offset passed to
     // subscribe ?
 
+    initialize(); // see, MET05-J asked for this !
+  }
+
+  private void initialize() {
     next(); // get the first record ready to go.
   }
 
