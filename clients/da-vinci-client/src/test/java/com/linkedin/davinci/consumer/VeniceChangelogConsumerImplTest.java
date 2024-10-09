@@ -123,6 +123,7 @@ public class VeniceChangelogConsumerImplTest {
         partition,
         oldVersionTopic,
         newVersionTopic,
+        false,
         false);
     ChangelogClientConfig changelogClientConfig =
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
@@ -203,7 +204,16 @@ public class VeniceChangelogConsumerImplTest {
     VeniceChangelogConsumerImpl mockInternalSeekConsumer = Mockito.mock(VeniceChangelogConsumerImpl.class);
     Mockito.when(mockInternalSeekConsumer.subscribe(any())).thenReturn(CompletableFuture.completedFuture(null));
     Mockito.when(mockInternalSeekConsumer.getPubSubConsumer()).thenReturn(mockPubSubConsumer);
-    prepareChangeCaptureRecordsToBePolled(0L, 10L, mockPubSubConsumer, oldVersionTopic, 0, oldVersionTopic, null, true);
+    prepareChangeCaptureRecordsToBePolled(
+        0L,
+        10L,
+        mockPubSubConsumer,
+        oldVersionTopic,
+        0,
+        oldVersionTopic,
+        null,
+        true,
+        false);
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,
@@ -315,6 +325,7 @@ public class VeniceChangelogConsumerImplTest {
         0,
         oldVersionTopic,
         null,
+        false,
         false);
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
@@ -376,7 +387,7 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer).subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), OffsetRecord.LOWEST_OFFSET);
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
+        new ArrayList<>(veniceChangelogConsumer.poll(100));
     for (int i = 0; i < 5; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
       Utf8 messageStr = pubSubMessage.getValue().getCurrentValue();
@@ -390,9 +401,9 @@ public class VeniceChangelogConsumerImplTest {
         0,
         oldVersionTopic,
         null,
-        false);
-    pubSubMessages =
-        (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
+        false,
+        true);
+    pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
     Assert.assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
     for (int i = 0; i < 10; i++) {
@@ -459,7 +470,8 @@ public class VeniceChangelogConsumerImplTest {
       int partition,
       PubSubTopic oldVersionTopic,
       PubSubTopic newVersionTopic,
-      boolean addEndOfPushMessage) {
+      boolean addEndOfPushMessage,
+      boolean repeatMessages) {
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessageList = new ArrayList<>();
 
     // Add a start of push message
@@ -476,6 +488,19 @@ public class VeniceChangelogConsumerImplTest {
           "key" + i,
           Arrays.asList(i, i));
       pubSubMessageList.add(pubSubMessage);
+    }
+
+    if (repeatMessages) {
+      for (long i = startIdx; i < endIdx; i++) {
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = constructChangeCaptureConsumerRecord(
+            changeCaptureTopic,
+            partition,
+            "oldValue" + i,
+            "newValue" + i,
+            "key" + i,
+            Arrays.asList(i, i));
+        pubSubMessageList.add(pubSubMessage);
+      }
     }
 
     if (addEndOfPushMessage) {

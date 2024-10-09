@@ -612,7 +612,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
         tempMap.put(message.getKey(), message);
       }
-      return new ArrayList<>(tempMap.values());
+      return tempMap.values();
     }
     return pubSubMessages;
   }
