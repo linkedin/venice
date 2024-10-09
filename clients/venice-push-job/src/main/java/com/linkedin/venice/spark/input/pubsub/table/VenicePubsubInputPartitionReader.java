@@ -71,7 +71,8 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
     this(
         jobConfig,
         inputPartition,
-        new PubSubClientsFactory(new VeniceProperties(jobConfig)).getConsumerAdapterFactory()
+        new PubSubClientsFactory(new VeniceProperties(jobConfig)).getConsumerAdapterFactory() // need to review the
+                                                                                              // properties bag ...
             .create(
                 new VeniceProperties(jobConfig),
                 false,
@@ -93,7 +94,6 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
     startingOffset = inputPartition.getSegmentStartOffset();
     endingOffset = inputPartition.getSegmentEndOffset();
     offsetLength = endingOffset - startingOffset;
-    VeniceProperties veniceProperties = new VeniceProperties(jobConfig);
 
     this.pubSubConsumer = consumer;
 
