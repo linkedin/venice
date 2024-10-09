@@ -159,6 +159,8 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   /**
    * This function will skip all the Control Messages right now.
+   * This method gets 2 objects, a key and a value, and fills them with
+   * the next key and value from the Kafka topic partition.
    */
   @Override
   public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
