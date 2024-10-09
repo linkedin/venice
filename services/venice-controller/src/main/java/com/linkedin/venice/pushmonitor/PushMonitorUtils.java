@@ -60,10 +60,8 @@ public class PushMonitorUtils {
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     int version = Version.parseVersionFromVersionTopicName(topicName);
     Map<CharSequence, Integer> instances = null;
-    if (!incrementalPushVersion.isPresent()) {
-      // For batch pushes, try to read from version level status key first.
-      instances = reader.getVersionStatus(storeName, version);
-    }
+    // Try to read from version level status key first.
+    instances = reader.getVersionStatus(storeName, version, incrementalPushVersion);
     if (instances == null) {
       // Fallback to partition level status key if version level status key is not found.
       return getDaVinciPartitionLevelPushStatusAndDetails(
@@ -77,9 +75,11 @@ public class PushMonitorUtils {
     } else {
       // DaVinci starts using new status key format, which contains status for all partitions in one key.
       // Only batch pushes will use this key; incremental pushes will still use partition level status key.
-      LOGGER.info("Getting Da Vinci version level push status for topic: {}", topicName);
+      LOGGER.info("Got Da Vinci version level push status for topic: {}", topicName);
       final int totalInstanceCount = instances.size();
-      ExecutionStatus completeStatus = ExecutionStatus.COMPLETED;
+      ExecutionStatus completeStatus = incrementalPushVersion.isPresent()
+          ? ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED
+          : ExecutionStatus.COMPLETED;
       int completedInstanceCount = 0;
       boolean allInstancesCompleted = true;
       int liveInstanceCount = 0;
@@ -170,6 +170,12 @@ public class PushMonitorUtils {
       }
       String statusDetail = statusDetailStringBuilder.toString();
       if (allInstancesCompleted) {
+        LOGGER.info(
+            "All {} live Da Vinci instances are at {} state for topic: {}, and there are {} offline instances based on version level push status.",
+            liveInstanceCount,
+            completeStatus,
+            topicName,
+            offlineInstanceCount);
         // In case Da Vinci instances are partially upgraded to the release that produces version level status key,
         // we should always try to query the partition level status key for the old instances.
         ExecutionStatusWithDetails partitionLevelStatus = getDaVinciPartitionLevelPushStatusAndDetails(
@@ -180,6 +186,11 @@ public class PushMonitorUtils {
             maxOfflineInstanceCount,
             maxOfflineInstanceRatio,
             useDaVinciSpecificExecutionStatusForError);
+        LOGGER.info(
+            "Always query partition level status for topic: {} after version level status key is found."
+                + " Push status result from partition level key: {}",
+            topicName,
+            partitionLevelStatus.getStatus());
         if (partitionLevelStatus.getStatus() != ExecutionStatus.COMPLETED) {
           // Do not report COMPLETED, instead, report status from the partition level status key.
           statusDetailStringBuilder.append(
