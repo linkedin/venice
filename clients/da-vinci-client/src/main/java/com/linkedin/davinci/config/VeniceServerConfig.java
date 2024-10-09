@@ -90,6 +90,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INITIAL_WINDOW_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_CONCURRENT_STREAMS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_FRAME_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_HEADER_LIST_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
@@ -507,6 +508,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int metaStoreWriterCloseConcurrency;
 
   private final boolean batchReportEOIPEnabled;
+  private final IncrementalPushStatusWriteMode incrementalPushStatusWriteMode;
   private final long ingestionHeartbeatIntervalMs;
   private final boolean leaderCompleteStateCheckInFollowerEnabled;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
@@ -834,7 +836,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getLong(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
     batchReportEOIPEnabled =
         serverProperties.getBoolean(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, false);
-
+    incrementalPushStatusWriteMode =
+        extractIncPushStatusWriteMode(serverProperties.getString(SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE, "DUAL"));
     stuckConsumerRepairEnabled = serverProperties.getBoolean(SERVER_STUCK_CONSUMER_REPAIR_ENABLED, true);
     stuckConsumerRepairIntervalSecond = serverProperties.getInt(SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND, 60);
     stuckConsumerDetectionRepairThresholdSecond =
@@ -1476,6 +1479,30 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean getBatchReportEOIPEnabled() {
     return batchReportEOIPEnabled;
+  }
+
+  public enum IncrementalPushStatusWriteMode {
+    /** Write incremental push status to Zookeeper only */
+    ZOOKEEPER_ONLY,
+
+    /** Write incremental push status to push status system store only */
+    PUSH_STATUS_SYSTEM_STORE_ONLY,
+
+    /** Write incremental push status to both Zookeeper and push status system store */
+    DUAL
+  }
+
+  public IncrementalPushStatusWriteMode extractIncPushStatusWriteMode(String mode) {
+    try {
+      return IncrementalPushStatusWriteMode.valueOf(mode);
+    } catch (IllegalArgumentException e) {
+      LOGGER.error("Invalid incremental push status write mode: {}. Defaulting to DUAL", mode);
+      return IncrementalPushStatusWriteMode.DUAL;
+    }
+  }
+
+  public IncrementalPushStatusWriteMode getIncrementalPushStatusWriteMode() {
+    return incrementalPushStatusWriteMode;
   }
 
   public boolean isLeaderCompleteStateCheckInFollowerEnabled() {

@@ -779,6 +779,11 @@ public class ConfigKeys {
       "server.batch.report.end.of.incremental.push.status.enabled";
 
   /**
+   * This config dictates where the server should write the end of incremental push status.
+   */
+  public static final String SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE = "server.incremental.push.status.write.mode";
+
+  /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
    * verify it against the key/values saved in the database persistency layer.

@@ -381,7 +381,8 @@ public class HelixParticipationService extends AbstractVeniceService
           partitionPushStatusAccessor,
           statusStoreWriter,
           helixReadOnlyStoreRepository,
-          instance.getNodeId());
+          instance.getNodeId(),
+          veniceServerConfig.getIncrementalPushStatusWriteMode());
 
       ingestionBackend.getStoreIngestionService().addIngestionNotifier(pushStatusNotifier);
 
