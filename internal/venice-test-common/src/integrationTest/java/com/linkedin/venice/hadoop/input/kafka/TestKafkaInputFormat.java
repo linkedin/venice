@@ -58,7 +58,7 @@ public class TestKafkaInputFormat {
     pubSubBrokerWrapper.close();
   }
 
-  public String getTopic(int numRecord, int numPartition) {
+  public String getNewTopicContainingRecords(int numRecord, int numPartition) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
@@ -122,7 +122,7 @@ public class TestKafkaInputFormat {
   @Test
   public void testGetSplits() throws IOException {
     KafkaInputFormat kafkaInputFormat = new KafkaInputFormat();
-    String topic = getTopic(1000, 3);
+    String topic = getNewTopicContainingRecords(1000, 3);
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_INPUT_TOPIC, topic);
