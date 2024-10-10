@@ -1,7 +1,9 @@
 package com.linkedin.davinci.storage;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -27,6 +29,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -41,6 +44,8 @@ import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
 import org.mockito.internal.util.collections.Sets;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -145,10 +150,11 @@ public class StorageServiceTest {
 
     String resourceName = "test_store_v1";
     String storeName = "test_store";
+
     when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
+    abstractStorageEngine.addStoragePartition(0);
     abstractStorageEngine.addStoragePartition(1);
     abstractStorageEngine.addStoragePartition(2);
-    abstractStorageEngine.addStoragePartition(3);
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
@@ -166,10 +172,18 @@ public class StorageServiceTest {
     when(manager.getHelixDataAccessor()).thenReturn(helixDataAccessor);
     IdealState idealState = mock(IdealState.class);
     when(helixDataAccessor.getProperty((PropertyKey) any())).thenReturn(idealState);
-    Set<String> helixPartitionSet = new HashSet<>(Arrays.asList("test_store_v1_1", "test_store_v1_2"));
+    Set<String> helixPartitionSet = new HashSet<>(Arrays.asList("test_store_v1_0", "test_store_v1_1"));
     when(idealState.getPartitionSet()).thenReturn(helixPartitionSet);
-    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
+    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1, 2));
     when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
+    doAnswer(new Answer() {
+      @Override
+      public Object answer(InvocationOnMock invocation) throws Throwable {
+        int partitionId = invocation.getArgument(0);
+        abstractStorageEngine.getPartitionIds().remove(partitionId);
+        return null;
+      }
+    }).when(abstractStorageEngine).dropPartition(anyInt());
 
     Field storageEngineRepositoryField = StorageService.class.getDeclaredField("storageEngineRepository");
     storageEngineRepositoryField.setAccessible(true);
@@ -183,7 +197,13 @@ public class StorageServiceTest {
     partitionListField.setAccessible(true);
     partitionListField.set(abstractStorageEngine, abstractStorageEngine.getPartitionList());
 
+    Set<Integer> idealStatePartitionIds = new HashSet<>();
+    idealState.getPartitionSet().stream().forEach(partitionDbName -> {
+      idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
+    });
+
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+    Assert.assertEquals(abstractStorageEngine.getPartitionIds(), idealStatePartitionIds);
   }
 }
