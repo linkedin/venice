@@ -615,7 +615,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   void maybeUpdatePartitionToBootstrapMap(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
       PubSubTopicPartition pubSubTopicPartition) {
-    if (subscribeTime - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
+    if (getSubscribeTime() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
       getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
     }
   }
@@ -1026,6 +1026,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected ChangelogClientConfig getChangelogClientConfig() {
     return changelogClientConfig;
+  }
+
+  protected Long getSubscribeTime() {
+    return this.subscribeTime;
   }
 
   protected HeartbeatReporterThread getHeartbeatReporterThread() {

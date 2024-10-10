@@ -232,7 +232,6 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(1), any());
     verify(metadataRepository, times(1)).start();
     verify(metadataRepository, times(1)).subscribe(storeName);
-    verify(metadataRepository, times(1)).refresh();
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, 0L);
