@@ -253,14 +253,24 @@ public class TopicCleanupService extends AbstractVeniceService {
           }
           boolean canDelete = true;
           for (Map.Entry<String, Map<String, Integer>> mapEntry: multiDataCenterStoreToVersionTopicCount.entrySet()) {
-            if (mapEntry.getValue().containsKey(topic.getStoreName())) {
-              canDelete = false;
-              LOGGER.info(
-                  "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
-                  topic.getName(),
-                  mapEntry.getValue().get(topic.getStoreName()),
-                  mapEntry.getKey());
-              break;
+            String storeName = topic.getStoreName();
+            String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+            Store store = admin.getStore(clusterDiscovered, storeName);
+            if (mapEntry.getValue().containsKey(storeName)) {
+              if (store.isHybrid()) {
+                canDelete = false;
+                LOGGER.info(
+                    "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
+                    topic.getName(),
+                    mapEntry.getValue().get(topic.getStoreName()),
+                    mapEntry.getKey());
+                break;
+              } else {
+                LOGGER.info(
+                    "Not delaying topic deletion for topic: {}, because store {} is not hybrid.",
+                    topic.getName(),
+                    storeName);
+              }
             }
           }
           if (!canDelete) {
