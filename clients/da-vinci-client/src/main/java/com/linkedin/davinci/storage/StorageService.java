@@ -17,6 +17,8 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
@@ -25,6 +27,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
@@ -42,6 +45,8 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDBException;
@@ -369,6 +374,37 @@ public class StorageService extends AbstractVeniceService {
         topicName,
         LatencyUtils.getElapsedTimeFromNSToMS(startTimeInBuildingNewEngine));
     return engine;
+  }
+
+  public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
+    if (manager == null) {
+      return;
+    }
+    for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
+      String storageEngineName = storageEngine.getStoreVersionName();
+      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
+      PropertyKey.Builder propertyKeyBuilder =
+          new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
+      SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
+      IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
+
+      if (idealState == null) {
+        continue;
+      } else {
+        Set<Integer> idealStatePartitionIds = new HashSet<>();
+        idealState.getPartitionSet().stream().forEach(partitionDbName -> {
+          idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
+        });
+
+        for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
+          if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
+            continue;
+          }
+          storageEngine.dropPartition(storageEnginePartitionId);
+        }
+      }
+    }
   }
 
   /**
