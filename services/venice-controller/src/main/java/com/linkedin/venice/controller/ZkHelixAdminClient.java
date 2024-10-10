@@ -103,7 +103,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
         if (commonConfig.isControllerClusterHelixCloudEnabled()) {
-          setCloudConfig(commonConfig);
+          setCloudConfig(controllerClusterName, commonConfig);
         }
       }
       return true;
@@ -130,7 +130,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
 
         VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
         if (config.isStorageClusterHelixCloudEnabled()) {
-          setCloudConfig(config);
+          setCloudConfig(clusterName, config);
         }
       }
       return true;
@@ -327,7 +327,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin.addInstanceTag(clusterName, instanceName, tag);
   }
 
-  public void setCloudConfig(VeniceControllerClusterConfig config) {
+  public void setCloudConfig(String clusterName, VeniceControllerClusterConfig config) {
     String cloudId = config.getHelixCloudId();
     List<String> cloudInfoSources = config.getHelixCloudInfoSources();
     String cloudInfoProcessorName = config.getHelixCloudInfoProcessorName();
@@ -345,6 +345,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     if (!cloudInfoProcessorName.isEmpty()) {
       cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
     }
-    helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
+    helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
   }
 }
