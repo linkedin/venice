@@ -142,7 +142,7 @@ public class DaVinciClientMemoryLimitTest {
     return venicePropertyBuilder.build();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 20, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
   public void testDaVinciMemoryLimitShouldFailLargeDataPush(
       boolean ingestionIsolationEnabledInDaVinci,
       boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
@@ -587,7 +587,7 @@ public class DaVinciClientMemoryLimitTest {
     }
   }
 
-  private void prepareMetaSystemStore(String storeName) throws Exception {
+  private void prepareMetaSystemStore(String storeName) {
     final String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicPushCompletion(
