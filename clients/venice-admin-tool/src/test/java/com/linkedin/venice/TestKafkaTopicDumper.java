@@ -30,7 +30,6 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -205,7 +204,6 @@ public class TestKafkaTopicDumper {
     GenericRecord updateRecord = new UpdateBuilderImpl(updateSchema).setNewFieldValue("firstName", "f2").build();
 
     // Test PUT with and without RMD
-    LogManager.getLogger(TestKafkaTopicDumper.class).info("DEBUGGING: {} {}", rmdRecord, rmdSchema);
     byte[] serializedValue = valueSerializer.serialize(valueRecord);
     byte[] serializedRmd = rmdSerializer.serialize(rmdRecord);
     byte[] serializedUpdate = updateSerializer.serialize(updateRecord);
