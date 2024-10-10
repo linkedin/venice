@@ -47,7 +47,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -591,14 +590,8 @@ public class DaVinciClientMemoryLimitTest {
   private void prepareMetaSystemStore(String storeName) throws Exception {
     final String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     veniceCluster.useControllerClient(controllerClient -> {
-      VersionCreationResponse metaSystemStoreVersionCreationResponse =
-          controllerClient.emptyPush(metaSystemStoreName, "test_bootstrap_meta_system_store", 10000);
-      assertFalse(
-          metaSystemStoreVersionCreationResponse.isError(),
-          "New version creation for meta system store failed with error: "
-              + metaSystemStoreVersionCreationResponse.getError());
       TestUtils.waitForNonDeterministicPushCompletion(
-          metaSystemStoreVersionCreationResponse.getKafkaTopic(),
+          Version.composeKafkaTopic(metaSystemStoreName, 1),
           controllerClient,
           30,
           TimeUnit.SECONDS);
