@@ -52,10 +52,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
+import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -158,13 +161,33 @@ public class HelixParticipationService extends AbstractVeniceService
     return helixStateTransitionThreadPool;
   }
 
+  public HelixManagerProperty buildHelixManagerProperty(VeniceServerConfig config) {
+    InstanceConstants.InstanceOperation instanceOperation;
+    if (config.getHelixJoinAsUnknown()) {
+      instanceOperation = InstanceConstants.InstanceOperation.UNKNOWN;
+    } else {
+      instanceOperation = InstanceConstants.InstanceOperation.ENABLE;
+    }
+    InstanceConfig.Builder defaultInstanceConfigBuilder =
+        new InstanceConfig.Builder().setInstanceOperation(instanceOperation)
+            .setPort(Integer.toString(config.getListenerPort()));
+    return new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
+  }
+
   @Override
   public boolean startInner() {
     LOGGER.info("Attempting to start HelixParticipation service");
-    helixManager = new SafeHelixManager(
-        HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
-
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
+    HelixManagerProperty helixManagerProperty = buildHelixManagerProperty(config);
+    helixManager = new SafeHelixManager(
+        new ZKHelixManager(
+            clusterName,
+            this.participantName,
+            InstanceType.PARTICIPANT,
+            zkAddress,
+            null,
+            helixManagerProperty));
+
     leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
         config.getMaxLeaderFollowerStateTransitionThreadNumber(),
         "Venice-L/F-state-transition");

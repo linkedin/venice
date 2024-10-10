@@ -452,6 +452,10 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
+  /**
+   * Whether to join a Helix cluster in an UNKNOWN state
+   */
+  public static final String SERVER_HELIX_JOIN_AS_UNKNOWN = "server.helix.join.as.unknown";
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
