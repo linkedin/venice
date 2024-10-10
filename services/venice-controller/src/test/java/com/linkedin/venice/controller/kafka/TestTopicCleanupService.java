@@ -1,19 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
@@ -43,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -190,12 +177,14 @@ public class TestTopicCleanupService {
   }
 
   @Test
-  public void testCleanupVeniceTopics() throws ExecutionException {
+  public void testCleanupVeniceTopics() {
     String storeName1 = Utils.getUniqueString("store1");
     String storeName2 = Utils.getUniqueString("store2");
     String storeName3 = Utils.getUniqueString("store3");
     String storeName4 = Utils.getUniqueString("store4");
     String storeName5 = Utils.getUniqueString("store5");
+    String storeName6 = Utils.getUniqueString("store6");
+
     Map<PubSubTopic, Long> storeTopics = new HashMap<>();
     storeTopics.put(getPubSubTopic(storeName1, "_v1"), 1000L);
     storeTopics.put(getPubSubTopic(storeName1, "_v2"), 1000L);
@@ -208,6 +197,8 @@ public class TestTopicCleanupService {
     storeTopics.put(getPubSubTopic(storeName3, "_v100"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName4, "_rt"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName5, "_v1"), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic(storeName6, "_rt"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName6, "_v1"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(PubSubTopicType.ADMIN_TOPIC_PREFIX, "_cluster"), Long.MAX_VALUE);
 
     Map<PubSubTopic, Long> storeTopics2 = new HashMap<>();
@@ -220,6 +211,7 @@ public class TestTopicCleanupService {
     remoteTopics.put(getPubSubTopic(storeName2, "_rt"), 1000L);
     remoteTopics.put(getPubSubTopic(storeName3, "_rt"), 1000L);
     remoteTopics.put(getPubSubTopic(storeName3, "_v1"), 1000L);
+    remoteTopics.put(getPubSubTopic(storeName6, "_v1"), 1000L);
 
     Map<PubSubTopic, Long> remoteTopics2 = new HashMap<>();
     remoteTopics2.put(getPubSubTopic(storeName2, "_rt"), 1000L);
@@ -247,20 +239,29 @@ public class TestTopicCleanupService {
     topicCleanupService.setSourceOfTruthPubSubAdminAdapter(apacheKafkaAdminAdapter);
     String clusterName = "clusterName";
     Pair<String, String> pair = new Pair<>(clusterName, "");
-    doReturn(pair).when(admin).discoverCluster(storeName3);
-    doReturn(pair).when(admin).discoverCluster(storeName4);
+    doReturn(pair).when(admin).discoverCluster(anyString());
     doThrow(new VeniceNoStoreException(storeName5)).when(admin).discoverCluster(storeName5);
 
+    Store store2 = mock(Store.class);
+    doReturn(true).when(store2).isHybrid();
+
     Store store3 = mock(Store.class);
+    doReturn(true).when(store3).isHybrid();
     doReturn(false).when(store3).containsVersion(100);
 
     Store store4 = mock(Store.class);
     doReturn(false).when(store4).isHybrid();
+
+    Store store6 = mock(Store.class);
+    doReturn(false).when(store6).isHybrid();
+
     Version version = mock(Version.class);
     doReturn(null).when(version).getHybridStoreConfig();
 
+    doReturn(store2).when(admin).getStore(clusterName, storeName2);
     doReturn(store3).when(admin).getStore(clusterName, storeName3);
     doReturn(store4).when(admin).getStore(clusterName, storeName4);
+    doReturn(store6).when(admin).getStore(clusterName, storeName6);
     doReturn(pubSubTopicSet).when(apacheKafkaAdminAdapter).listAllTopics();
 
     topicCleanupService.cleanupVeniceTopics();
@@ -271,11 +272,12 @@ public class TestTopicCleanupService {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v4"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_v1"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName6, "_rt"));
     // Delete should be blocked by local VT
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_rt"));
     // Delete should be blocked by remote VT
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
-    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(8);
+    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(9);
     verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
     verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeleted();
 
