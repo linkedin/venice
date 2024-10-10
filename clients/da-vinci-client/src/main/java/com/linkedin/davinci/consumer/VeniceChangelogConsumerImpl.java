@@ -66,7 +66,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -961,7 +960,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     unsubscribe(partitions);
     try {
       internalSubscribe(partitions, mergedTopicName).get();
-    } catch (InterruptedException | ExecutionException e) {
+    } catch (Exception e) {
       throw new VeniceException("Subscribe to new topic:" + mergedTopicName + " is not successful, error: " + e);
     }
     return true;
