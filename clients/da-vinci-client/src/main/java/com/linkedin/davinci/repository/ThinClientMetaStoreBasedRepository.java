@@ -23,7 +23,7 @@ import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -91,7 +91,7 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
         icProvider == null ? supplier : () -> icProvider.call(getClass().getCanonicalName(), supplier);
     StoreMetaValue value = RetryUtils.executeWithMaxAttempt(() -> {
       try {
-        return wrappedSupplier.call().get(1, TimeUnit.SECONDS);
+        return wrappedSupplier.call().get(5, TimeUnit.SECONDS);
       } catch (ServiceDiscoveryException e) {
         throw e;
       } catch (Exception e) {
@@ -99,7 +99,7 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
             "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
             e);
       }
-    }, 5, Duration.ofSeconds(1), Arrays.asList(VeniceRetriableException.class));
+    }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
 
     if (value == null) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());
