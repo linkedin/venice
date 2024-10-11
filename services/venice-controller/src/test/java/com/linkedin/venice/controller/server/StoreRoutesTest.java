@@ -1,12 +1,16 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
 import static com.linkedin.venice.exceptions.ErrorType.INCORRECT_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.STORE_NOT_FOUND;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -21,10 +25,12 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import javax.servlet.http.HttpServletRequest;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
@@ -216,4 +222,43 @@ public class StoreRoutesTest {
             StoreResponse.class);
     Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), testMaxRecordSizeBytesValue);
   }
+
+  @Test
+  public void testDeleteStoreAclChecking() throws Exception {
+    final Store testStore = new ZKStore(
+        TEST_STORE_NAME,
+        "owner",
+        System.currentTimeMillis(),
+        PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    final int testMaxRecordSizeBytesValue = 33333;
+    final Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+    doReturn(testStore).when(mockAdmin).getStore(TEST_CLUSTER, TEST_STORE_NAME);
+
+    final Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParamOrDefault(eq(ControllerApiConstants.NAME), eq("STORE_UNKNOWN"));
+    HttpServletRequest rawRequest = mock(HttpServletRequest.class);
+    doReturn(rawRequest).when(request).raw();
+    X509Certificate[] certificates = new X509Certificate[1];
+    doReturn(certificates).when(rawRequest).getAttribute(eq(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME));
+
+    DynamicAccessController accessController = mock(DynamicAccessController.class);
+
+    doReturn(false).when(accessController).isAllowlistUsersForStoreDeletion(any(), eq(TEST_STORE_NAME), eq(HTTP_GET));
+
+    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.of(accessController), pubSubTopicRepository);
+    final StoreResponse response = ObjectMapperFactory.getInstance()
+        .readValue(
+            storesRoutes.deleteStore(mockAdmin).handle(request, mock(Response.class)).toString(),
+            StoreResponse.class);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().startsWith(VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX));
+  }
+
 }
