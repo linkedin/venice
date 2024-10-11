@@ -6,7 +6,6 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.time.Clock;
-import java.util.Iterator;
 import java.util.Map;
 
 
@@ -18,18 +17,19 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
   public NativeMetadataRepositoryStats(MetricsRepository metricsRepository, String name, Clock clock) {
     super(metricsRepository, name);
     this.clock = clock;
-    this.storeMetadataStalenessSensor = registerSensor(new AsyncGauge((ignored1, ignored2) -> {
-      if (this.metadataCacheTimestampMapInMs.isEmpty()) {
-        return Double.NaN;
-      } else {
-        Iterator<Long> iterator = metadataCacheTimestampMapInMs.values().iterator();
-        long oldest = iterator.next();
-        while (iterator.hasNext()) {
-          oldest = Math.min(oldest, iterator.next());
-        }
-        return clock.millis() - oldest;
-      }
-    }, "store_metadata_staleness_high_watermark_ms"));
+    this.storeMetadataStalenessSensor = registerSensor(
+        new AsyncGauge(
+            (ignored1, ignored2) -> getMetadataStalenessHighWatermarkMs(),
+            "store_metadata_staleness_high_watermark_ms"));
+  }
+
+  final double getMetadataStalenessHighWatermarkMs() {
+    if (this.metadataCacheTimestampMapInMs.isEmpty()) {
+      return Double.NaN;
+    } else {
+      long oldest = metadataCacheTimestampMapInMs.values().stream().min(Long::compareTo).get();
+      return clock.millis() - oldest;
+    }
   }
 
   public void updateCacheTimestamp(String storeName, long cacheTimeStampInMs) {

@@ -50,6 +50,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -383,7 +384,8 @@ public class MetaSystemStoreTest {
     return ClientConfig.defaultSpecificClientConfig(storeName, StoreMetaValue.class)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setD2Client(d2Client)
-        .setVeniceURL(veniceLocalCluster.getZk().getAddress());
+        .setVeniceURL(veniceLocalCluster.getZk().getAddress())
+        .setMetricsRepository(new MetricsRepository());
   }
 
   private void verifyRepository(NativeMetadataRepository nativeMetadataRepository, String regularVeniceStoreName)
