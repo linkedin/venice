@@ -1104,7 +1104,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nettyWorkerThreadCount;
   }
 
-  public boolean getHelixJoinAsUnknown() {
+  public boolean isHelixJoinAsUnknownEnabled() {
     return helixJoinAsUnknown;
   }
 

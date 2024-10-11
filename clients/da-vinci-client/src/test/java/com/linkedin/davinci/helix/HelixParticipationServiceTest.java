@@ -49,7 +49,7 @@ public class HelixParticipationServiceTest {
     HelixParticipationService mockHelixParticipationService = mock(HelixParticipationService.class);
     VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
 
-    when(mockServerConfig.getHelixJoinAsUnknown()).thenReturn(true);
+    when(mockServerConfig.isHelixJoinAsUnknownEnabled()).thenReturn(true);
 
     doCallRealMethod().when(mockHelixParticipationService).buildHelixManagerProperty(mockServerConfig);
     mockHelixParticipationService.buildHelixManagerProperty(mockServerConfig);
