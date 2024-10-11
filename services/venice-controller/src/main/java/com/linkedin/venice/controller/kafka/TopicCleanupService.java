@@ -257,7 +257,7 @@ public class TopicCleanupService extends AbstractVeniceService {
             String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
             Store store = admin.getStore(clusterDiscovered, storeName);
             if (mapEntry.getValue().containsKey(storeName)) {
-              if (store.isHybrid()) {
+              if (Version.containsHybridVersion(store.getVersions())) {
                 canDelete = false;
                 LOGGER.info(
                     "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
@@ -267,7 +267,7 @@ public class TopicCleanupService extends AbstractVeniceService {
                 break;
               } else {
                 LOGGER.info(
-                    "Not delaying topic deletion for topic: {}, because store {} is not hybrid.",
+                    "Not delaying topic deletion for topic: {}, because store {} has at least one hybrid version.",
                     topic.getName(),
                     storeName);
               }

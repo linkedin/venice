@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -199,6 +200,7 @@ public class TestTopicCleanupService {
     storeTopics.put(getPubSubTopic(storeName5, "_v1"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName6, "_rt"), 1000L);
     storeTopics.put(getPubSubTopic(storeName6, "_v1"), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic(storeName6, "_v2"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(PubSubTopicType.ADMIN_TOPIC_PREFIX, "_cluster"), Long.MAX_VALUE);
 
     Map<PubSubTopic, Long> storeTopics2 = new HashMap<>();
@@ -211,7 +213,6 @@ public class TestTopicCleanupService {
     remoteTopics.put(getPubSubTopic(storeName2, "_rt"), 1000L);
     remoteTopics.put(getPubSubTopic(storeName3, "_rt"), 1000L);
     remoteTopics.put(getPubSubTopic(storeName3, "_v1"), 1000L);
-    remoteTopics.put(getPubSubTopic(storeName6, "_v1"), 1000L);
 
     Map<PubSubTopic, Long> remoteTopics2 = new HashMap<>();
     remoteTopics2.put(getPubSubTopic(storeName2, "_rt"), 1000L);
@@ -243,26 +244,30 @@ public class TestTopicCleanupService {
     doThrow(new VeniceNoStoreException(storeName5)).when(admin).discoverCluster(storeName5);
 
     Store store2 = mock(Store.class);
-    doReturn(true).when(store2).isHybrid();
-
     Store store3 = mock(Store.class);
-    doReturn(true).when(store3).isHybrid();
     doReturn(false).when(store3).containsVersion(100);
 
     Store store4 = mock(Store.class);
     doReturn(false).when(store4).isHybrid();
 
     Store store6 = mock(Store.class);
-    doReturn(false).when(store6).isHybrid();
 
-    Version version = mock(Version.class);
-    doReturn(null).when(version).getHybridStoreConfig();
+    Version batchVersion = mock(Version.class);
+    doReturn(null).when(batchVersion).getHybridStoreConfig();
 
     doReturn(store2).when(admin).getStore(clusterName, storeName2);
     doReturn(store3).when(admin).getStore(clusterName, storeName3);
     doReturn(store4).when(admin).getStore(clusterName, storeName4);
     doReturn(store6).when(admin).getStore(clusterName, storeName6);
+    doReturn(mock(Store.class)).when(admin).getStore(clusterName, storeName6);
     doReturn(pubSubTopicSet).when(apacheKafkaAdminAdapter).listAllTopics();
+
+    Version hybridVersion = mock(Version.class);
+    doReturn(mock(HybridStoreConfig.class)).when(hybridVersion).getHybridStoreConfig();
+
+    doReturn(Collections.singletonList(hybridVersion)).when(store2).getVersions();
+    doReturn(Collections.singletonList(hybridVersion)).when(store3).getVersions();
+    doReturn(Collections.singletonList(batchVersion)).when(store6).getVersions();
 
     topicCleanupService.cleanupVeniceTopics();
 
