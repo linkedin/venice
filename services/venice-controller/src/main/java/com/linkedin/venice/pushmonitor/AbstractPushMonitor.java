@@ -309,9 +309,12 @@ public abstract class AbstractPushMonitor
 
   protected void updateOfflinePush(String topic) {
     String store = Version.parseStoreFromKafkaTopicName(topic);
+    OfflinePushStatus offlinePushStatus;
     try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
-      OfflinePushStatus offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
+      offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
       topicToPushMap.put(topic, offlinePushStatus);
+    }
+    if (offlinePushStatus != null) {
       LOGGER.info(
           "Update offline push status from ZK for topic: {}, current status: {}",
           topic,
