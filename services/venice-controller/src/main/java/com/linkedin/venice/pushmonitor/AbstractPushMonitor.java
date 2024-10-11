@@ -151,7 +151,7 @@ public abstract class AbstractPushMonitor
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
-          // topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
+          topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
           /**
