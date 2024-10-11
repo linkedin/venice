@@ -202,6 +202,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       try {
         storeRepository.start();
         storeRepository.subscribe(storeName);
+        storeRepository.refresh();
         if (changeCaptureStats != null) {
           if (!heartbeatReporterThread.isAlive()) {
             heartbeatReporterThread.start();
