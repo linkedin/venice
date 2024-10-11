@@ -162,15 +162,13 @@ public class HelixParticipationService extends AbstractVeniceService
   }
 
   public HelixManagerProperty buildHelixManagerProperty(VeniceServerConfig config) {
-    InstanceConstants.InstanceOperation instanceOperation;
-    if (config.getHelixJoinAsUnknown()) {
-      instanceOperation = InstanceConstants.InstanceOperation.UNKNOWN;
-    } else {
-      instanceOperation = InstanceConstants.InstanceOperation.ENABLE;
-    }
     InstanceConfig.Builder defaultInstanceConfigBuilder =
-        new InstanceConfig.Builder().setInstanceOperation(instanceOperation)
-            .setPort(Integer.toString(config.getListenerPort()));
+        new InstanceConfig.Builder().setPort(Integer.toString(config.getListenerPort()));
+
+    if (config.getHelixJoinAsUnknown()) {
+      defaultInstanceConfigBuilder.setInstanceOperation(InstanceConstants.InstanceOperation.UNKNOWN);
+    }
+
     return new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
   }
 
