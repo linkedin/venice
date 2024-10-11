@@ -165,6 +165,9 @@ public class HelixParticipationService extends AbstractVeniceService
     InstanceConfig.Builder defaultInstanceConfigBuilder =
         new InstanceConfig.Builder().setPort(Integer.toString(config.getListenerPort()));
 
+    // For a participant to auto-register with Helix without causing a rebalance everytime a new participant joins
+    // the cluster (i.e. during deployment), we need to set the instance operation to UNKNOWN. Then these participants
+    // would be ENABLED in a batch, so it only rebalances once.
     if (config.getHelixJoinAsUnknown()) {
       defaultInstanceConfigBuilder.setInstanceOperation(InstanceConstants.InstanceOperation.UNKNOWN);
     }
