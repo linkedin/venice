@@ -43,6 +43,7 @@ import java.util.Set;
 import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.mockito.internal.util.collections.Sets;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -174,6 +175,22 @@ public class StorageServiceTest {
     when(helixDataAccessor.getProperty((PropertyKey) any())).thenReturn(idealState);
     Set<String> helixPartitionSet = new HashSet<>(Arrays.asList("test_store_v1_0", "test_store_v1_1"));
     when(idealState.getPartitionSet()).thenReturn(helixPartitionSet);
+    ZNRecord record = new ZNRecord("0");
+    Map<String, Map<String, String>> mapFields = new HashMap<>();
+    Map<String, String> testPartitionZero = new HashMap<>();
+    Map<String, String> testPartitionOne = new HashMap<>();
+    testPartitionZero.put("lor1-app56585.prod.linkedin.com_1690", "LEADER");
+    testPartitionZero.put("lor1-app56614.prod.linkedin.com_1690", "STANDBY");
+    testPartitionZero.put("lor1-app110448.prod.linkedin.com_1690", "STANDBY");
+    testPartitionOne.put("lor1-app56586.prod.linkedin.com_1690", "LEADER");
+    testPartitionOne.put("lor1-app71895.prod.linkedin.com_1690", "STANDBY");
+    testPartitionOne.put("lor1-app111181.prod.linkedin.com_1690", "STANDBY");
+    mapFields.put("test_store_v1_0", testPartitionZero);
+    mapFields.put("test_store_v1_1", testPartitionOne);
+    record.setMapFields(mapFields);
+    when(idealState.getRecord()).thenReturn(record);
+    when(manager.getInstanceName()).thenReturn("lor1-app56586.prod.linkedin.com_1690");
+
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1, 2));
     when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
     doAnswer(new Answer() {
@@ -204,6 +221,6 @@ public class StorageServiceTest {
 
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
-    Assert.assertEquals(abstractStorageEngine.getPartitionIds(), idealStatePartitionIds);
+    Assert.assertFalse(idealState.getRecord().getMapFields().containsKey("test_store_v1_0"));
   }
 }

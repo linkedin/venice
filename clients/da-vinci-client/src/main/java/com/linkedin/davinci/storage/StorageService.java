@@ -388,20 +388,33 @@ public class StorageService extends AbstractVeniceService {
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
       SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
+      String listenerHostName = manager.getInstanceName();
 
-      if (idealState == null) {
-        continue;
-      } else {
+      if (idealState != null) {
         Set<Integer> idealStatePartitionIds = new HashSet<>();
-        idealState.getPartitionSet().stream().forEach(partitionDbName -> {
+        Set<String> partitionSet = idealState.getPartitionSet();
+        partitionSet.stream().forEach(partitionDbName -> {
           idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
         });
 
-        for (Integer storageEnginePartitionId: storageEnginePartitionIds) {
-          if (idealStatePartitionIds.contains(storageEnginePartitionId)) {
+        Map<String, Map<String, String>> recordMapFields = idealState.getRecord().getMapFields();
+        for (String partitionDbName: recordMapFields.keySet()) {
+          boolean keepPartition = false;
+          int partitionId = RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName);
+          if (!storageEnginePartitionIds.contains(partitionId)) {
             continue;
           }
-          storageEngine.dropPartition(storageEnginePartitionId);
+          for (String hostName: recordMapFields.get(partitionDbName).keySet()) {
+            if (hostName.equals(listenerHostName)) {
+              keepPartition = true;
+              break;
+            }
+          }
+          if (!keepPartition) {
+            storageEngine.dropPartition(partitionId);
+            partitionSet.remove(partitionDbName);
+            recordMapFields.remove(partitionDbName);
+          }
         }
       }
     }
