@@ -151,7 +151,7 @@ public abstract class AbstractPushMonitor
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
-          topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
+          // topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
           routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
           /**
@@ -893,12 +893,15 @@ public abstract class AbstractPushMonitor
       LOGGER.warn("Resource is remaining in the ideal state. Ignore the deletion in the external view.");
       return;
     }
-    OfflinePushStatus pushStatus;
-    pushStatus = getOfflinePush(kafkaTopic);
-    if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
-      String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
-      LOGGER.info(statusDetails);
-      handleTerminalOfflinePushUpdate(pushStatus, new ExecutionStatusWithDetails(ERROR, statusDetails));
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+      OfflinePushStatus pushStatus;
+      pushStatus = getOfflinePush(kafkaTopic);
+      if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+        String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
+        LOGGER.info(statusDetails);
+        handleTerminalOfflinePushUpdate(pushStatus, new ExecutionStatusWithDetails(ERROR, statusDetails));
+      }
     }
   }
 
