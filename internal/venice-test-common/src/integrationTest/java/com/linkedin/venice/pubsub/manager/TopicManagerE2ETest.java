@@ -216,7 +216,7 @@ public class TopicManagerE2ETest {
     // get offset by time for a non-existent topic
     Runnable t16 = () -> assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, tsOfLastDataMessage));
+        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, tsOfLastDataMessage, 1));
 
     // get offset by time for an existing topic: first message
     Runnable t17 = () -> assertEquals(topicManager.getOffsetByTime(topicPartition, timeBeforeProduce), 0);
@@ -256,7 +256,7 @@ public class TopicManagerE2ETest {
     PubSubTopicPartitionImpl nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, System.currentTimeMillis()));
+        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, System.currentTimeMillis(), 1));
     assertThrows(
         PubSubTopicDoesNotExistException.class,
         () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(nonExistentTopicPartition, 1));
