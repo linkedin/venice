@@ -29,7 +29,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -155,7 +154,6 @@ public class StorageServiceTest {
     when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
     abstractStorageEngine.addStoragePartition(0);
     abstractStorageEngine.addStoragePartition(1);
-    abstractStorageEngine.addStoragePartition(2);
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
@@ -175,7 +173,7 @@ public class StorageServiceTest {
     when(helixDataAccessor.getProperty((PropertyKey) any())).thenReturn(idealState);
     Set<String> helixPartitionSet = new HashSet<>(Arrays.asList("test_store_v1_0", "test_store_v1_1"));
     when(idealState.getPartitionSet()).thenReturn(helixPartitionSet);
-    ZNRecord record = new ZNRecord("0");
+    ZNRecord record = new ZNRecord("testId");
     Map<String, Map<String, String>> mapFields = new HashMap<>();
     Map<String, String> testPartitionZero = new HashMap<>();
     Map<String, String> testPartitionOne = new HashMap<>();
@@ -191,7 +189,7 @@ public class StorageServiceTest {
     when(idealState.getRecord()).thenReturn(record);
     when(manager.getInstanceName()).thenReturn("lor1-app56586.prod.linkedin.com_1690");
 
-    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1, 2));
+    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1));
     when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
     doAnswer(new Answer() {
       @Override
@@ -214,13 +212,8 @@ public class StorageServiceTest {
     partitionListField.setAccessible(true);
     partitionListField.set(abstractStorageEngine, abstractStorageEngine.getPartitionList());
 
-    Set<Integer> idealStatePartitionIds = new HashSet<>();
-    idealState.getPartitionSet().stream().forEach(partitionDbName -> {
-      idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
-    });
-
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
-    Assert.assertFalse(idealState.getRecord().getMapFields().containsKey("test_store_v1_0"));
+    Assert.assertFalse(abstractStorageEngine.containsPartition(0));
   }
 }

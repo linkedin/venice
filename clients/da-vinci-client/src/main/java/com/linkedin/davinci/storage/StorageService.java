@@ -397,14 +397,15 @@ public class StorageService extends AbstractVeniceService {
           idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
         });
 
-        Map<String, Map<String, String>> recordMapFields = idealState.getRecord().getMapFields();
-        for (String partitionDbName: recordMapFields.keySet()) {
+        Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
+        for (Map.Entry<String, Map<String, String>> entry: mapFields.entrySet()) {
           boolean keepPartition = false;
+          String partitionDbName = entry.getKey();
           int partitionId = RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName);
           if (!storageEnginePartitionIds.contains(partitionId)) {
             continue;
           }
-          for (String hostName: recordMapFields.get(partitionDbName).keySet()) {
+          for (String hostName: entry.getValue().keySet()) {
             if (hostName.equals(listenerHostName)) {
               keepPartition = true;
               break;
@@ -412,8 +413,6 @@ public class StorageService extends AbstractVeniceService {
           }
           if (!keepPartition) {
             storageEngine.dropPartition(partitionId);
-            partitionSet.remove(partitionDbName);
-            recordMapFields.remove(partitionDbName);
           }
         }
       }
