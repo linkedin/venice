@@ -12,9 +12,12 @@ dependencies {
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.commonsCli
-  implementation libraries.kafka
+  implementation(libraries.kafka) {
+    exclude group: 'com.linkedin.zookeeper'
+  }
   implementation libraries.log4j2api
   implementation libraries.log4j2core
+  implementation libraries.zstd
   implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }

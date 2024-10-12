@@ -101,7 +101,10 @@ dependencies {
   }
   implementation libraries.httpAsyncClient
   implementation libraries.javax
-  implementation libraries.kafka
+  implementation(libraries.kafka) {
+    exclude group: 'com.linkedin.zookeeper'
+  }
+
   implementation libraries.kafkaClients
   implementation libraries.kafkaClientsTest
   implementation libraries.mockito
@@ -109,6 +112,7 @@ dependencies {
   implementation libraries.samzaApi
   implementation libraries.spark
   implementation libraries.testng
+  implementation libraries.zstd
 
   implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'

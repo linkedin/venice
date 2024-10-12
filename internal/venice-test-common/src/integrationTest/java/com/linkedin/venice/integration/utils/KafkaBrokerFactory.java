@@ -62,8 +62,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
 
       // Essential configs
       configMap.put(KafkaConfig.ZkConnectProp(), zkServerWrapper.getAddress());
-      configMap.put(KafkaConfig.PortProp(), port);
-      configMap.put(KafkaConfig.HostNameProp(), DEFAULT_HOST_NAME);
+      configMap.put(KafkaConfig.ListenersProp(), DEFAULT_HOST_NAME + ":" + port);
       configMap.put(KafkaConfig.LogDirProp(), dir.getAbsolutePath());
       configMap.put(KafkaConfig.AutoCreateTopicsEnableProp(), false);
       configMap.put(KafkaConfig.DeleteTopicEnableProp(), true);
@@ -91,10 +90,9 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = KafkaBrokerWrapper.instantiateNewKafkaServer(kafkaConfig, configs.getMockTime());
       LOGGER.info(
-          "KafkaBroker for region:{} url: {}:{}",
+          "KafkaBroker for region:{} url: {}",
           configs.getRegionName(),
-          kafkaServer.config().hostName(),
-          kafkaServer.config().port());
+          kafkaServer.config().listeners().head().connectionString());
       return new KafkaBrokerWrapper(
           kafkaConfig,
           kafkaServer,
@@ -172,12 +170,12 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
 
     @Override
     public String getHost() {
-      return kafkaServer.config().hostName();
+      return kafkaServer.config().listeners().head().host();
     }
 
     @Override
     public int getPort() {
-      return kafkaServer.config().port();
+      return kafkaServer.config().listeners().head().port();
     }
 
     @Override
@@ -234,7 +232,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
       // We cannot get a kafka.utils.Time out of an Optional<TestMockTime>, even though TestMockTime implements it.
       org.apache.kafka.common.utils.Time time =
           mockTime == null ? SystemTime.SYSTEM : new KafkaMockTimeWrapper(mockTime);
-      int port = kafkaConfig.getInt(KafkaConfig.PortProp());
+      int port = kafkaConfig.listeners().head().port();
       // Scala's Some (i.e.: the non-empty Optional) needs to be instantiated via Some's object (i.e.: static companion
       // class)
       Option<String> threadNamePrefix = scala.Some$.MODULE$.apply("kafka-broker-port-" + port);
