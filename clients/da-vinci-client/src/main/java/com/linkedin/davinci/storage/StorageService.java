@@ -391,12 +391,6 @@ public class StorageService extends AbstractVeniceService {
       String instanceHostName = manager.getInstanceName();
 
       if (idealState != null) {
-        Set<Integer> idealStatePartitionIds = new HashSet<>();
-        Set<String> partitionSet = idealState.getPartitionSet();
-        partitionSet.stream().forEach(partitionDbName -> {
-          idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
-        });
-
         Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
         for (Map.Entry<String, Map<String, String>> entry: mapFields.entrySet()) {
           String partitionDbName = entry.getKey();
