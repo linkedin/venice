@@ -388,7 +388,7 @@ public class StorageService extends AbstractVeniceService {
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
       SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
-      String listenerHostName = manager.getInstanceName();
+      String instanceHostName = manager.getInstanceName();
 
       if (idealState != null) {
         Set<Integer> idealStatePartitionIds = new HashSet<>();
@@ -399,19 +399,12 @@ public class StorageService extends AbstractVeniceService {
 
         Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
         for (Map.Entry<String, Map<String, String>> entry: mapFields.entrySet()) {
-          boolean keepPartition = false;
           String partitionDbName = entry.getKey();
           int partitionId = RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName);
           if (!storageEnginePartitionIds.contains(partitionId)) {
             continue;
           }
-          for (String hostName: entry.getValue().keySet()) {
-            if (hostName.equals(listenerHostName)) {
-              keepPartition = true;
-              break;
-            }
-          }
-          if (!keepPartition) {
+          if (!entry.getValue().containsKey(instanceHostName)) {
             storageEngine.dropPartition(partitionId);
           }
         }

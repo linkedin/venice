@@ -177,17 +177,17 @@ public class StorageServiceTest {
     Map<String, Map<String, String>> mapFields = new HashMap<>();
     Map<String, String> testPartitionZero = new HashMap<>();
     Map<String, String> testPartitionOne = new HashMap<>();
-    testPartitionZero.put("lor1-app56585.prod.linkedin.com_1690", "LEADER");
-    testPartitionZero.put("lor1-app56614.prod.linkedin.com_1690", "STANDBY");
-    testPartitionZero.put("lor1-app110448.prod.linkedin.com_1690", "STANDBY");
-    testPartitionOne.put("lor1-app56586.prod.linkedin.com_1690", "LEADER");
-    testPartitionOne.put("lor1-app71895.prod.linkedin.com_1690", "STANDBY");
-    testPartitionOne.put("lor1-app111181.prod.linkedin.com_1690", "STANDBY");
+    testPartitionZero.put("host_1430", "LEADER");
+    testPartitionZero.put("host_1435", "STANDBY");
+    testPartitionZero.put("host_1440", "STANDBY");
+    testPartitionOne.put("host_1520", "LEADER");
+    testPartitionOne.put("host_1525", "STANDBY");
+    testPartitionOne.put("host_1530", "STANDBY");
     mapFields.put("test_store_v1_0", testPartitionZero);
     mapFields.put("test_store_v1_1", testPartitionOne);
     record.setMapFields(mapFields);
     when(idealState.getRecord()).thenReturn(record);
-    when(manager.getInstanceName()).thenReturn("lor1-app56586.prod.linkedin.com_1690");
+    when(manager.getInstanceName()).thenReturn("host_1520");
 
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1));
     when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
@@ -214,6 +214,7 @@ public class StorageServiceTest {
 
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+    verify(abstractStorageEngine).dropPartition(0);
     Assert.assertFalse(abstractStorageEngine.containsPartition(0));
   }
 }
