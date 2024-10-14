@@ -18,6 +18,10 @@ public class VeniceException extends RuntimeException {
     super(s);
   }
 
+  public VeniceException(String s, boolean fillInStacktrace) {
+    super(s, null, true, fillInStacktrace);
+  }
+
   public VeniceException(String s, ErrorType errorType) {
     super(s);
     this.errorType = errorType;

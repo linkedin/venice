@@ -8,7 +8,7 @@ import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
-import static org.testng.Assert.assertFalse;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -113,8 +113,7 @@ public class TestBlobDiscovery {
         PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
-      assertFalse(
-          parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, INT_VALUE_SCHEMA).isError());
+      assertCommand(parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, INT_VALUE_SCHEMA));
 
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
           .get(clusterName)

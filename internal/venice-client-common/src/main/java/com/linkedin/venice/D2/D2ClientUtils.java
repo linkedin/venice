@@ -62,6 +62,9 @@ public class D2ClientUtils {
   }
 
   public static void shutdownClient(D2Client client, long timeoutInMs) {
+    if (client == null) {
+      return;
+    }
     long startTime = System.currentTimeMillis();
     CompletableFuture<Void> future = new CompletableFuture<>();
 

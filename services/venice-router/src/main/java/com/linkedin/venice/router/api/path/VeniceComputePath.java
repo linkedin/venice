@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -139,7 +140,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     }
 
     // deserialize the second part of the request content using the same decoder
-    Iterable<ByteBuffer> keys = COMPUTE_REQUEST_CLIENT_KEY_V1_DESERIALIZER.deserializeObjects(decoder);
+    List<ByteBuffer> keys = COMPUTE_REQUEST_CLIENT_KEY_V1_DESERIALIZER.deserializeObjects(decoder);
 
     initialize(storeName, resourceName, keys, partitionFinder, maxKeyCount, null);
   }

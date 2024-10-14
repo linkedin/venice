@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
@@ -22,6 +23,8 @@ import org.apache.logging.log4j.Logger;
  *
  * TODO: If later on DDS router could support a better way to register a handler to handle the exceptional cases,
  * we should update the logic here.
+ *
+ * TODO: Remove all {@link Optional} from this class.
  */
 
 public class RouterExceptionAndTrackingUtils {
@@ -30,11 +33,12 @@ public class RouterExceptionAndTrackingUtils {
     SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT, RESOURCE_NOT_FOUND, RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA
   }
 
-  private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
-
   private static RouterStats<AggRouterHttpRequestStats> ROUTER_STATS;
 
   private static final Logger LOGGER = LogManager.getLogger(RouterExceptionAndTrackingUtils.class);
+
+  /** We do not fill in the stacktrace at all for "expected exceptions" (quota, etc) */
+  private static final boolean DO_NOT_FILL_IN_STACKTRACE = false;
 
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -50,13 +54,17 @@ public class RouterExceptionAndTrackingUtils {
       String msg,
       FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
-    RouterException e =
-        new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
-    // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)
-        || failureType == FailureType.RESOURCE_NOT_FOUND) {
-      e.setStackTrace(emptyStackTrace);
-    }
+    RouterException e = isExpected(responseStatus, failureType)
+        ? new RouterException(
+            HttpResponseStatus.class,
+            responseStatus,
+            responseStatus.code(),
+            msg,
+            false,
+            null,
+            true,
+            DO_NOT_FILL_IN_STACKTRACE)
+        : new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!EXCEPTION_FILTER.isRedundantException(name, String.valueOf(e.code()))) {
       if (responseStatus == BAD_REQUEST) {
@@ -71,6 +79,17 @@ public class RouterExceptionAndTrackingUtils {
       }
     }
     return e;
+  }
+
+  /**
+   * Some error conditions are "expected". They are common, and we would like to treat them as efficiently as possible,
+   * e.g. by not logging or even filling in the stacktrace.
+   *
+   * This includes user errors, and hardware failures. It does NOT include anything that would be related to a "bug".
+   */
+  private static boolean isExpected(HttpResponseStatus responseStatus, FailureType failureType) {
+    return responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)
+        || responseStatus.equals(REQUEST_ENTITY_TOO_LARGE) || failureType == FailureType.RESOURCE_NOT_FOUND;
   }
 
   public static RouterException newRouterExceptionAndTracking(
@@ -98,12 +117,11 @@ public class RouterExceptionAndTrackingUtils {
       FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
     String name = storeName.isPresent() ? storeName.get() : "";
-    VeniceException e = new VeniceException(msg);
+    VeniceException e = isExpected(responseStatus, failureType)
+        // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
+        ? new VeniceException(msg, DO_NOT_FILL_IN_STACKTRACE)
+        : new VeniceException(msg);
 
-    // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)) {
-      e.setStackTrace(emptyStackTrace);
-    }
     if (!EXCEPTION_FILTER.isRedundantException(name, e)) {
       LOGGER.warn("Got an exception for store: {}", name, e);
     }
