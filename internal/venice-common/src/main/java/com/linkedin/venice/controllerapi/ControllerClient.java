@@ -918,11 +918,11 @@ public class ControllerClient implements Closeable {
 
   public StoppableNodeStatusResponse getAggregatedHealthStatus(
       String clusterName,
-      String instances,
-      String toBeStoppedInstances) {
+      List<String> instances,
+      List<String> toBeStoppedInstances) {
     QueryParams params = newParams().add(CLUSTER_ID, clusterName)
-        .add(INSTANCES, instances)
-        .add(TO_BE_STOPPED_INSTANCES, toBeStoppedInstances);
+        .add(INSTANCES, String.join(",", instances))
+        .add(TO_BE_STOPPED_INSTANCES, String.join(",", toBeStoppedInstances));
 
     return request(ControllerRoute.AGGREGATED_HEALTH_STATUS, params, StoppableNodeStatusResponse.class);
   }

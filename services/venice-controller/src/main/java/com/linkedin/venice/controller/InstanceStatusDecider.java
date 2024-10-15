@@ -51,7 +51,7 @@ public class InstanceStatusDecider {
   static List<NodeRemovableResult> getInstanceStoppableStatuses(
       HelixVeniceClusterResources resources,
       String clusterName,
-      Set<String> instances,
+      List<String> instances,
       List<String> toBeStoppedInstances) {
     return getNodeRemovableResult(resources, clusterName, instances, toBeStoppedInstances, true);
   }
@@ -72,8 +72,12 @@ public class InstanceStatusDecider {
       String instanceId,
       List<String> lockedNodes,
       boolean isInstanceView) {
-    List<NodeRemovableResult> list =
-        getNodeRemovableResult(resources, clusterName, Collections.singleton(instanceId), lockedNodes, isInstanceView);
+    List<NodeRemovableResult> list = getNodeRemovableResult(
+        resources,
+        clusterName,
+        Collections.singletonList(instanceId),
+        lockedNodes,
+        isInstanceView);
     if (list.isEmpty()) {
       throw new VeniceException("Error in finding isRemovable call for instance " + instanceId);
     }
@@ -83,7 +87,7 @@ public class InstanceStatusDecider {
   private static List<NodeRemovableResult> getNodeRemovableResult(
       HelixVeniceClusterResources resources,
       String clusterName,
-      Set<String> instanceIds,
+      List<String> instanceIds,
       List<String> lockedNodes,
       boolean isInstanceView) {
     List<NodeRemovableResult> removableResults = new ArrayList<>();
@@ -93,7 +97,7 @@ public class InstanceStatusDecider {
       try {
         // If instance is not alive, it's removable.
         if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
-          nonStoppableNodes.add(instanceId);
+          lockedNodes.add(instanceId);
           removableResults.add(
               NodeRemovableResult.removableResult(
                   instanceId,

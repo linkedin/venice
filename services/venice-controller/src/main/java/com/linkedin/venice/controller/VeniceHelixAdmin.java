@@ -6551,7 +6551,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
-      Set<String> instances,
+      List<String> instances,
       List<String> toBeStoppedInstances) {
     InstanceRemovableStatuses statuses = new InstanceRemovableStatuses();
 
@@ -6563,7 +6563,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     Map<String, String> nonStoppableInstances = new HashMap<>();
-    List<String> stoppableInstances = new ArrayList<>(toBeStoppedInstances);
+    List<String> stoppableInstances = new ArrayList<>();
     statuses.setNonStoppableInstances(nonStoppableInstances);
     statuses.setStoppableInstances(stoppableInstances);
 

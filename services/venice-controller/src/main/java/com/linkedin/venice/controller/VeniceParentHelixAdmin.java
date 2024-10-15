@@ -3840,9 +3840,9 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
-      Set<String> instances,
+      List<String> instances,
       List<String> toBeStoppedInstances) {
-    throw new VeniceException("getReplicasOfStorageNode is not supported!");
+    throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus is not supported!");
   }
 
   /**

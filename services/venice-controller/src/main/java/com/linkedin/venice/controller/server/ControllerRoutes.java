@@ -31,11 +31,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import spark.Request;
@@ -202,22 +199,24 @@ public class ControllerRoutes extends AbstractRoute {
         if (StringUtils.isEmpty(instances)) {
           responseObject.setError("Empty instances list");
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          response.status(HttpStatus.SC_BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
-        Set<String> instanceSet = Arrays.stream(instances.split(",")).map(String::trim).collect(Collectors.toSet());
+
+        List<String> instanceList = Utils.parseCommaSeparatedStringToList(instances);
         List<String> toBeStoppedInstanceList;
         if (!StringUtils.isEmpty(toBeStoppedInstances)) {
-          toBeStoppedInstanceList = Arrays.stream(instances.split(",")).map(String::trim).collect(Collectors.toList());
+          toBeStoppedInstanceList = Utils.parseCommaSeparatedStringToList(toBeStoppedInstances);
         } else {
           toBeStoppedInstanceList = new ArrayList<>();
         }
         responseObject.setCluster(cluster);
         InstanceRemovableStatuses statuses =
-            admin.getAggregatedHealthStatus(cluster, instanceSet, toBeStoppedInstanceList);
+            admin.getAggregatedHealthStatus(cluster, instanceList, toBeStoppedInstanceList);
         if (statuses.getRedirectUrl() != null) {
-          response.redirect(statuses.getRedirectUrl(), HttpStatus.SC_MOVED_TEMPORARILY);
+          response.redirect(statuses.getRedirectUrl() + "/aggregatedHealthStatus", HttpStatus.SC_MOVED_TEMPORARILY);
         } else {
-          responseObject.setNonStoppableInstances(statuses.getNonStoppableInstances());
+          responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstances());
           responseObject.setStoppableInstances(statuses.getStoppableInstances());
         }
       } catch (Throwable e) {

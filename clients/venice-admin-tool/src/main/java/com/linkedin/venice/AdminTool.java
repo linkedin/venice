@@ -3104,7 +3104,10 @@ public class AdminTool {
     String instances = getRequiredArgument(cmd, Arg.INSTANCES);
     String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
 
-    ControllerResponse response = controllerClient.getAggregatedHealthStatus(clusterName, instances, toBeStoppedNodes);
+    ControllerResponse response = controllerClient.getAggregatedHealthStatus(
+        clusterName,
+        Utils.parseCommaSeparatedStringToList(instances),
+        Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
     printObject(response);
 
   }
