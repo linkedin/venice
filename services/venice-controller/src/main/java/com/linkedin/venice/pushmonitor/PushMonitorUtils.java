@@ -178,8 +178,12 @@ public class PushMonitorUtils {
             completeStatus,
             topicName,
             offlineInstanceCount);
+        // To cover edge case that some instances are not upgraded to new config yet:
         // In case Da Vinci instances are partially upgraded to the release that produces version level status key,
         // we should always try to query the partition level status key for the old instances.
+        // To cover edge case that some instances finish upgrades recently:
+        // Besides, for instances that start reporting version level status key, they might have reported partition
+        // level status key before, and we should also ignore the partition level status key for them.
         ExecutionStatusWithDetails partitionLevelStatus = getDaVinciPartitionLevelPushStatusAndDetails(
             reader,
             topicName,
