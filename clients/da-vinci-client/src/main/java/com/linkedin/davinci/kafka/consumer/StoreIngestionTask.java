@@ -1175,24 +1175,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
-      if (!shouldProcessRecord(record)) {
-        partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
-        continue;
+      partitionConsumptionState.getLeaderFollowerStateLock().readLock().lock();
+      try {
+        if (!shouldProcessRecord(record)) {
+          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+          return;
+        }
+
+        // Check schema id availability before putting consumer record to drainer queue
+        waitReadyToProcessRecord(record);
+
+        totalBytesRead += handleSingleMessage(
+            new PubSubMessageProcessedResultWrapper<>(record),
+            topicPartition,
+            partitionConsumptionState,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs,
+            metricsEnabled,
+            elapsedTimeForPuttingIntoQueue);
+      } finally {
+        partitionConsumptionState.getLeaderFollowerStateLock().readLock().unlock();
       }
-
-      // Check schema id availability before putting consumer record to drainer queue
-      waitReadyToProcessRecord(record);
-
-      totalBytesRead += handleSingleMessage(
-          new PubSubMessageProcessedResultWrapper<>(record),
-          topicPartition,
-          partitionConsumptionState,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingPerRecordTimestampNs,
-          beforeProcessingBatchRecordsTimestampMs,
-          metricsEnabled,
-          elapsedTimeForPuttingIntoQueue);
     }
 
     /**
@@ -1235,18 +1240,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
       if (partitionConsumptionState != null) {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
+        partitionConsumptionState.getLeaderFollowerStateLock().readLock().lock();
       }
-      if (!shouldProcessRecord(record)) {
-        if (partitionConsumptionState != null) {
-          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+      try {
+        if (!shouldProcessRecord(record)) {
+          if (partitionConsumptionState != null) {
+            partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+          }
+          continue;
         }
-        continue;
-      }
-      waitReadyToProcessRecord(record);
-      ongoingBatch.add(record);
-      if (ongoingBatch.size() == batchSize) {
-        batches.add(ongoingBatch);
-        ongoingBatch = new ArrayList<>(batchSize);
+        waitReadyToProcessRecord(record);
+        ongoingBatch.add(record);
+        if (ongoingBatch.size() == batchSize) {
+          batches.add(ongoingBatch);
+          ongoingBatch = new ArrayList<>(batchSize);
+        }
+      } finally {
+        if (partitionConsumptionState != null) {
+          partitionConsumptionState.getLeaderFollowerStateLock().readLock().unlock();
+        }
       }
     }
     if (!ongoingBatch.isEmpty()) {

@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -59,7 +61,37 @@ public class PartitionConsumptionState {
   private boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
-  private LeaderFollowerStateType leaderFollowerState;
+
+  final class LeaderFollowerState {
+    LeaderFollowerStateType state; // TODO: does this also need volatile?
+    final ReadWriteLock rwLock;
+
+    LeaderFollowerState() {
+      this.state = LeaderFollowerStateType.STANDBY;
+      this.rwLock = new ReentrantReadWriteLock();
+    }
+
+    void set(LeaderFollowerStateType state) {
+      rwLock.writeLock().lock();
+      try {
+        this.state = state;
+      } finally {
+        rwLock.writeLock().unlock();
+      }
+    }
+
+    LeaderFollowerStateType get() {
+      rwLock.readLock().lock();
+      try {
+        return this.state;
+      } finally {
+        rwLock.readLock().unlock();
+      }
+    }
+  }
+
+  // private volatile LeaderFollowerStateType leaderFollowerState;
+  private volatile LeaderFollowerState leaderFollowerState; // or final?
 
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
@@ -223,7 +255,7 @@ public class PartitionConsumptionState {
     this.completionReported = false;
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
-    this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
+    this.leaderFollowerState = new LeaderFollowerState();
     this.expectedSSTFileChecksum = null;
     /**
      * Initialize the latest consumed time with current time; otherwise, it's 0 by default
@@ -390,7 +422,7 @@ public class PartitionConsumptionState {
         .append(", processedRecordSizeSinceLastSync=")
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
-        .append(leaderFollowerState)
+        .append(leaderFollowerState.get())
         .append("}")
         .toString();
   }
@@ -408,11 +440,17 @@ public class PartitionConsumptionState {
   }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {
-    this.leaderFollowerState = state;
+    this.leaderFollowerState.set(state);
+    // this.leaderFollowerState = state;
   }
 
   public final LeaderFollowerStateType getLeaderFollowerState() {
-    return this.leaderFollowerState;
+    return this.leaderFollowerState.get();
+    // return this.leaderFollowerState;
+  }
+
+  public final ReadWriteLock getLeaderFollowerStateLock() {
+    return this.leaderFollowerState.rwLock;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {
