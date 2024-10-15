@@ -27,6 +27,10 @@ public class AvroSpecificStoreDeserializerCache<V extends SpecificRecord> implem
     this(id -> schemaRepository.getValueSchema(storeName, id).getSchema(), valueClass);
   }
 
+  public AvroSpecificStoreDeserializerCache(Schema valueSchema, Class<V> valueClass) {
+    this(id -> valueSchema, valueClass);
+  }
+
   private AvroSpecificStoreDeserializerCache(IntFunction<Schema> schemaGetter, Class<V> valueClass) {
     this.schemaGetter = schemaGetter;
     this.cache = new SparseConcurrentList<>();
