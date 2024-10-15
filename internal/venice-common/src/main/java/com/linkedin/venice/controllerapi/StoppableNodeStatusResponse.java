@@ -12,7 +12,7 @@ public class StoppableNodeStatusResponse extends ControllerResponse {
     return nonStoppableInstancesWithReasons;
   }
 
-  public void setNonStoppableInstances(Map<String, String> nonStoppableInstancesWithReasons) {
+  public void setNonStoppableInstancesWithReason(Map<String, String> nonStoppableInstancesWithReasons) {
     this.nonStoppableInstancesWithReasons = nonStoppableInstancesWithReasons;
   }
 

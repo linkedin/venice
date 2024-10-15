@@ -25,7 +25,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -34,11 +33,7 @@ public class TestInstanceRemovable {
   int partitionSize = 1000;
   int replicaFactor = 3;
 
-  @BeforeMethod
-  public void setUp() {
-  }
-
-  private void setCluster(int numberOfServer) {
+  private void setupCluster(int numberOfServer) {
     int numberOfController = 1;
     int numberOfRouter = 1;
 
@@ -59,7 +54,7 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableDuringPush() {
-    setCluster(3);
+    setupCluster(3);
     String storeName = Utils.getUniqueString("testIsInstanceRemovableDuringPush");
     int partitionCount = 2;
     long storageQuota = (long) partitionCount * partitionSize;
@@ -100,7 +95,7 @@ public class TestInstanceRemovable {
         String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
         String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
         StoppableNodeStatusResponse statuses =
-            client.getAggregatedHealthStatus(clusterName, server2 + "," + server1, "");
+            client.getAggregatedHealthStatus(clusterName, Arrays.asList(server2, server1), Collections.emptyList());
         Assert.assertEquals(statuses.getStoppableInstances().size(), 2);
         /*
          * This is the same scenario as we would do later in the following test steps.
@@ -154,7 +149,7 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableAfterPush() {
-    setCluster(3);
+    setupCluster(3);
     String storeName = Utils.getUniqueString("testIsInstanceRemovableAfterPush");
     int partitionCount = 2;
     long storageQuota = (long) partitionCount * partitionSize;
@@ -200,10 +195,12 @@ public class TestInstanceRemovable {
       String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
       String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
 
-      StoppableNodeStatusResponse statuses = client.getAggregatedHealthStatus(clusterName, server1, "");
+      StoppableNodeStatusResponse statuses =
+          client.getAggregatedHealthStatus(clusterName, Collections.singletonList(server1), Collections.emptyList());
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
 
-      statuses = client.getAggregatedHealthStatus(clusterName, server1 + "," + server2, "");
+      statuses =
+          client.getAggregatedHealthStatus(clusterName, Arrays.asList(server1, server2), Collections.emptyList());
       System.out.println("stat1 " + statuses);
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
       Assert.assertTrue(statuses.getNonStoppableInstances().containsKey(server2));
@@ -296,7 +293,7 @@ public class TestInstanceRemovable {
 
   @Test
   public void testIsInstanceRemovableOnOldVersion() throws Exception {
-    setCluster(1);
+    setupCluster(1);
     int partitionCount = 2;
     int replicaCount = 1;
     long storageQuota = (long) partitionCount * partitionSize;
@@ -366,7 +363,7 @@ public class TestInstanceRemovable {
 
   @Test
   public void testIsInstanceRemovable() throws Exception {
-    setCluster(2);
+    setupCluster(2);
     int partitionCount = 2;
     int replicationFactor = 2;
     String storeName = "testMovable";

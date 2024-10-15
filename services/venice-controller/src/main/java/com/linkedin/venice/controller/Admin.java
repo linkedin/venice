@@ -534,7 +534,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
-      Set<String> instances,
+      List<String> instances,
       List<String> toBeStoppedInstances);
 
   /**
