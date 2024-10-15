@@ -2245,7 +2245,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           throw new VeniceException("Found latest offset -1");
         }
         return offset;
-      }, 10, Duration.ofSeconds(10), Collections.singletonList(VeniceException.class));
+      }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
       LOGGER.error("Could not find latest offset for {} even after 5 retries", pubSubTopic.getName());
       return -1;
