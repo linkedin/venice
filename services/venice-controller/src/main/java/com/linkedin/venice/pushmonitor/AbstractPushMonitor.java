@@ -276,7 +276,6 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
-      // customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
       if (pushStatus.getCurrentStatus().isError() && !isForcedDelete) {
         retireOldErrorPushes(storeName);
       } else {
@@ -1002,7 +1001,6 @@ public abstract class AbstractPushMonitor
 
   protected void handleCompletedPush(String topic) {
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
-    // customizedViewOfflinePushRepository.unSubscribeRoutingDataChange(topic, this);
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
       LOGGER.warn("Could not find OfflinePushStatus for topic: {}, will skip push completion handling", topic);

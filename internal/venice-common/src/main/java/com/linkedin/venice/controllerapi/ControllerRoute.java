@@ -138,7 +138,7 @@ public enum ControllerRoute {
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
   ),
   AGGREGATED_HEALTH_STATUS(
-      "/aggregatedHealthStatus", HttpMethod.GET, Arrays.asList(CLUSTER_ID, INSTANCES, TO_BE_STOPPED_INSTANCES)
+      "/aggregatedHealthStatus", HttpMethod.POST, Arrays.asList(CLUSTER_ID, INSTANCES, TO_BE_STOPPED_INSTANCES)
   ),
   ROLL_FORWARD_TO_FUTURE_VERSION(
       "/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
