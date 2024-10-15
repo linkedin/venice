@@ -154,10 +154,7 @@ public class StorageServiceTest {
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
-    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     VeniceClusterConfig mockClusterConfig = mock(VeniceClusterConfig.class);
-    when(mockServerConfig.getDataBasePath()).thenReturn("/tmp");
-    when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     when(mockVeniceConfigLoader.getVeniceClusterConfig()).thenReturn(mockClusterConfig);
     when(mockVeniceConfigLoader.getVeniceClusterConfig().getClusterName()).thenReturn(clusterName);
 
@@ -207,6 +204,6 @@ public class StorageServiceTest {
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     verify(abstractStorageEngine).dropPartition(0);
-    Assert.assertFalse(abstractStorageEngine.containsPartition(0));
+    Assert.assertFalse(abstractStorageEngine.getPartitionIds().contains(0));
   }
 }

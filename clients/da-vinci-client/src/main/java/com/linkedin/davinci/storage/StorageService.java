@@ -382,11 +382,11 @@ public class StorageService extends AbstractVeniceService {
     for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
       String storeName = storageEngine.getStoreVersionName();
       Set<Integer> storageEnginePartitionIds = new HashSet<>(storageEngine.getPartitionIds());
+      String instanceHostName = manager.getInstanceName();
       PropertyKey.Builder propertyKeyBuilder =
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
       SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
-      String instanceHostName = manager.getInstanceName();
 
       if (idealState != null) {
         Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
