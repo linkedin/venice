@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -71,7 +72,8 @@ public class PushMonitorUtils {
           incrementalPushVersion,
           maxOfflineInstanceCount,
           maxOfflineInstanceRatio,
-          useDaVinciSpecificExecutionStatusForError);
+          useDaVinciSpecificExecutionStatusForError,
+          Collections.EMPTY_SET);
     } else {
       // DaVinci starts using new status key format, which contains status for all partitions in one key.
       // Only batch pushes will use this key; incremental pushes will still use partition level status key.
@@ -185,7 +187,8 @@ public class PushMonitorUtils {
             incrementalPushVersion,
             maxOfflineInstanceCount,
             maxOfflineInstanceRatio,
-            useDaVinciSpecificExecutionStatusForError);
+            useDaVinciSpecificExecutionStatusForError,
+            instances.keySet());
         LOGGER.info(
             "Always query partition level status for topic: {} after version level status key is found."
                 + " Push status result from partition level key: {}",
@@ -226,7 +229,8 @@ public class PushMonitorUtils {
       Optional<String> incrementalPushVersion,
       int maxOfflineInstanceCount,
       double maxOfflineInstanceRatio,
-      boolean useDaVinciSpecificExecutionStatusForError) {
+      boolean useDaVinciSpecificExecutionStatusForError,
+      Set<CharSequence> instancesToIgnore) {
     if (reader == null) {
       throw new VeniceException("PushStatusStoreReader is null");
     }
@@ -260,6 +264,17 @@ public class PushMonitorUtils {
       boolean allInstancesCompleted = true;
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
+        // Ignore the instance that are in the ignore set
+        if (instancesToIgnore.contains(entry.getKey())) {
+          totalReplicaCount--;
+          // Log about this decision
+          LOGGER.debug(
+              "Skipping ingestion status report from instance: {} for topic: {}, partition: {}",
+              entry.getKey().toString(),
+              topicName,
+              partitionId);
+          continue;
+        }
         String instanceName = entry.getKey().toString();
         PushStatusStoreReader.InstanceStatus instanceStatus = instanceLivenessCache
             .computeIfAbsent(instanceName, ignored -> reader.getInstanceStatus(storeName, instanceName));
