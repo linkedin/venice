@@ -164,7 +164,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           AutoRebalanceStrategy.class.getName());
       VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
-      idealState.setMinActiveReplicas(controllerClusterReplicaCount - 1);
+      idealState.setMinActiveReplicas(Math.max(controllerClusterReplicaCount - 1, 1));
       idealState.setRebalancerClassName(WagedRebalancer.class.getName());
 
       String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
