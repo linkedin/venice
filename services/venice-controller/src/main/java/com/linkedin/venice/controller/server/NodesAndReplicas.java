@@ -1,13 +1,6 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCE_VIEW;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
@@ -34,8 +27,8 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -173,9 +166,9 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
 
-        String lockedNodeIds = AdminSparkServer.getOptionalParameterValue(request, LOCKED_STORAGE_NODE_IDS);
+        String lockedNodeIds = AdminSparkServer.getOptionalParameterValue(request, TO_BE_STOPPED_INSTANCES);
         List<String> lockedNodes = lockedNodeIds == null
-            ? Collections.emptyList()
+            ? new ArrayList<>()
             : Arrays.asList(lockedNodeIds.split(LOCKED_NODE_ID_LIST_SEPARATOR))
                 .stream()
                 .map(String::trim)
