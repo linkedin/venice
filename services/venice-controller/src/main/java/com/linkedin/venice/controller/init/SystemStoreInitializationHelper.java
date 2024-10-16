@@ -178,7 +178,7 @@ public final class SystemStoreInitializationHelper {
       LOGGER.info("Updated internal store " + systemStoreName + " in cluster " + clusterName);
     }
 
-    if (store.getCurrentVersion() <= 0) {
+    if (store.getVersions().isEmpty()) {
       int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions();
       int replicationFactor = admin.getReplicationFactor(clusterName, systemStoreName);
       Version version = admin.incrementVersionIdempotent(
