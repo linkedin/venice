@@ -8,7 +8,7 @@ public class StoppableNodeStatusResponse extends ControllerResponse {
   private List<String> stoppableInstances;
   private Map<String, String> nonStoppableInstancesWithReasons;
 
-  public Map<String, String> getNonStoppableInstances() {
+  public Map<String, String> getNonStoppableInstancesWithReasons() {
     return nonStoppableInstancesWithReasons;
   }
 

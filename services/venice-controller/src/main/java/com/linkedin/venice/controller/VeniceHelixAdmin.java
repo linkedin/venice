@@ -6566,17 +6566,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<String> stoppableInstances = new ArrayList<>();
     statuses.setNonStoppableInstances(nonStoppableInstances);
     statuses.setStoppableInstances(stoppableInstances);
-
-    // Check for maintenance, for ongoing maintenance none can be removed.
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(cluster);
-    MaintenanceSignal maintenanceSignal = HelixUtils.getClusterMaintenanceSignal(cluster, resources.getHelixManager());
-
-    if (maintenanceSignal != null) {
-      for (String instanceId: instances) {
-        nonStoppableInstances.put(instanceId, InstanceRemovableStatuses.NonStoppableReason.ONGOING_MAINTENANCE.name());
-      }
-      return statuses;
-    }
 
     List<NodeRemovableResult> removableResults =
         InstanceStatusDecider.getInstanceStoppableStatuses(resources, cluster, instances, toBeStoppedInstances);

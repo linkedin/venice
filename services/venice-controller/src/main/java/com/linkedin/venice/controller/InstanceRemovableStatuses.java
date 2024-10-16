@@ -7,7 +7,6 @@ import java.util.Map;
 public class InstanceRemovableStatuses {
   private List<String> stoppableInstances;
   private Map<String, String> nonStoppableInstancesWithReasons;
-
   private String redirectUrl;
 
   public void setRedirectUrl(String redirectUrl) {
@@ -18,7 +17,7 @@ public class InstanceRemovableStatuses {
     return redirectUrl;
   }
 
-  public Map<String, String> getNonStoppableInstances() {
+  public Map<String, String> getNonStoppableInstancesWithReasons() {
     return nonStoppableInstancesWithReasons;
   }
 
