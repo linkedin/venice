@@ -69,6 +69,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -78,6 +79,7 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
+  private static final int MAX_SUBSCRIBE_RETRIES = 5;
   protected final int partitionCount;
   protected long subscribeTime = Long.MAX_VALUE;
 
@@ -201,7 +203,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return CompletableFuture.supplyAsync(() -> {
       try {
         storeRepository.start();
-        storeRepository.subscribe(storeName);
+        for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
+          try {
+            storeRepository.subscribe(storeName);
+            break;
+          } catch (Exception ex) {
+            if (i < MAX_SUBSCRIBE_RETRIES) {
+              LOGGER.error("Store Repository subscription failed!  Will Retry...", ex);
+            } else {
+              LOGGER.error("Store Repository subscription failed! Aborting!!", ex);
+              throw ex;
+            }
+          }
+        }
         storeRepository.refresh();
         if (changeCaptureStats != null) {
           if (!heartbeatReporterThread.isAlive()) {
@@ -398,6 +412,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   void checkLiveVersion(String topicName) {
+    storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     try {
       store.getVersionOrThrow(Version.parseVersionFromVersionTopicName(topicName));
@@ -425,11 +440,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribeAll() {
-    Set<Integer> allPartitions = new HashSet<>();
-    for (int partition = 0; partition < partitionCount; partition++) {
-      allPartitions.add(partition);
-    }
-    return this.subscribe(allPartitions);
+    return this.subscribe(IntStream.range(0, partitionCount).boxed().collect(Collectors.toSet()));
   }
 
   @Override
