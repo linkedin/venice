@@ -31,8 +31,6 @@ public class ControllerApiConstants {
 
   public static final String INSTANCES = "instances";
   public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
-
-  public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
