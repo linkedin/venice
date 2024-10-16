@@ -2801,7 +2801,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
       if (viewName.contains(VERSION_SEPARATOR)) {
         throw new VeniceException(
-            String.format("Re-partition View name cannot contain version separator: %s", VERSION_SEPARATOR));
+            String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
       viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name(), viewName);

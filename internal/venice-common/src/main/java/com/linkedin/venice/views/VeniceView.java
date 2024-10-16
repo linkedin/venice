@@ -100,6 +100,9 @@ public abstract class VeniceView {
 
   // TODO: see above TODO for isViewTopic function, same applies here
   public static int parseVersionFromViewTopic(String topicName) {
+    if (!isViewTopic(topicName)) {
+      throw new VeniceException("Cannot parse version because this is not a view topic, topic name: " + topicName);
+    }
     int versionStartIndex = Version.getLastIndexOfVersionSeparator(topicName) + Version.VERSION_SEPARATOR.length();
     int versionEndIndex = versionStartIndex + topicName.substring(versionStartIndex).indexOf(VIEW_TOPIC_SEPARATOR);
     return Integer.parseInt(topicName.substring(versionStartIndex, versionEndIndex));

@@ -3,6 +3,7 @@ package com.linkedin.venice.views;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
@@ -12,7 +13,7 @@ import java.util.Properties;
 
 public class MaterializedView extends VeniceView {
   public static final String MATERIALIZED_VIEW_TOPIC_SUFFIX = "_mv";
-  private static final String MISSING_PARAMETER_MESSAGE = "%s is required for re-partition view!";
+  private static final String MISSING_PARAMETER_MESSAGE = "%s is required for materialized view!";
 
   public MaterializedView(Properties props, Store store, Map<String, String> viewParameters) {
     super(props, store, viewParameters);
@@ -42,16 +43,41 @@ public class MaterializedView extends VeniceView {
       throw new VeniceException(
           String.format(MISSING_PARAMETER_MESSAGE, ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
     }
+    if (store.getViewConfigs().containsKey(viewName)) {
+      throw new VeniceException("A view config with the same view name already exist, view name: " + viewName);
+    }
     String partitionCountString = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name());
-    boolean samePartitionCount =
-        partitionCountString == null || store.getPartitionCount() == Integer.parseInt(partitionCountString);
-    // A re-partition view with the exact same partitioner and partition count makes no sense
-    String partitioner = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
-    boolean samePartitioner =
-        partitioner == null || partitioner.equals(store.getPartitionerConfig().getPartitionerClass());
-    if (samePartitioner && samePartitionCount) {
+    int viewPartitionCount =
+        partitionCountString == null ? store.getPartitionCount() : Integer.parseInt(partitionCountString);
+    String viewPartitioner = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
+    if (viewPartitioner == null) {
+      viewPartitioner = store.getPartitionerConfig().getPartitionerClass();
+    }
+    // A materialized view with the exact same partitioner and partition count as the store is not allwoed
+    if (store.getPartitionCount() == viewPartitionCount
+        && store.getPartitionerConfig().getPartitionerClass().equals(viewPartitioner)) {
       throw new VeniceException(
-          "A re-partition view with the same partitioner and partition count as the original store is not allowed!");
+          "A materialized view with the same partitioner and partition count as the original store is not allowed!");
+    }
+    // Check if there is already a materialized view with identical configs
+    for (Map.Entry<String, ViewConfig> viewConfigEntries: store.getViewConfigs().entrySet()) {
+      ViewConfig viewConfig = viewConfigEntries.getValue();
+      if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
+        String configPartitioner =
+            viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
+        if (configPartitioner == null) {
+          configPartitioner = store.getPartitionerConfig().getPartitionerClass();
+        }
+        String configPartitionCountString =
+            viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name());
+        int configPartitionCount = configPartitionCountString == null
+            ? store.getPartitionCount()
+            : Integer.parseInt(configPartitionCountString);
+        if (configPartitionCount == viewPartitionCount && configPartitioner.equals(viewPartitioner)) {
+          throw new VeniceException(
+              "A view with identical view configs already exist, view name: " + viewConfigEntries.getKey());
+        }
+      }
     }
   }
 }

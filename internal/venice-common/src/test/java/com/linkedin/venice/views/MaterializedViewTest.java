@@ -8,10 +8,12 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -39,6 +41,32 @@ public class MaterializedViewTest {
     new MaterializedView(properties, testStore, viewParams).validateConfigs();
     viewParams.remove(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
     viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "24");
+    // Pass, same partitioner but different partition count
+    new MaterializedView(properties, testStore, viewParams).validateConfigs();
+
+    viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "12");
+    viewParams.put(
+        ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
+        ConstantVenicePartitioner.class.getCanonicalName());
+    Store storeWithExistingViews = getMockStore("test-store-existing-config", 12);
+    ViewConfig viewConfig = mock(ViewConfig.class);
+    doReturn(Collections.singletonMap("test-view", viewConfig)).when(storeWithExistingViews).getViewConfigs();
+    // Fail due to same view name
+    assertThrows(() -> new MaterializedView(properties, storeWithExistingViews, viewParams).validateConfigs());
+    Map<String, String> existingViewConfigParams = new HashMap<>();
+    existingViewConfigParams.put(
+        ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
+        ConstantVenicePartitioner.class.getCanonicalName());
+    existingViewConfigParams.put(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(12));
+    doReturn(existingViewConfigParams).when(viewConfig).getViewParameters();
+    doReturn(MaterializedView.class.getCanonicalName()).when(viewConfig).getViewClassName();
+    doReturn(Collections.singletonMap("old-view", viewConfig)).when(storeWithExistingViews).getViewConfigs();
+    // Fail due to existing identical view config
+    assertThrows(() -> new MaterializedView(properties, storeWithExistingViews, viewParams).validateConfigs());
+    existingViewConfigParams.remove(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name());
+    // Fail since the existing view config partition count resolves to 12 which is identical to the new view config
+    assertThrows(() -> new MaterializedView(properties, storeWithExistingViews, viewParams).validateConfigs());
+    existingViewConfigParams.put(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(36));
     // Pass, same partitioner but different partition count
     new MaterializedView(properties, testStore, viewParams).validateConfigs();
   }
