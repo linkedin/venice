@@ -196,6 +196,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.PubSubHelper;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -4252,27 +4253,12 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "aaConfigProvider")
   public void testProduceToStoreBufferServiceOrKafka(AAConfig aaConfig) throws Exception {
-    byte[] keyBytes = new byte[1];
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
-    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
-    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
-    Put put = new Put();
-    put.putValue = ByteBuffer.allocate(10);
-    put.putValue.position(4);
-    put.replicationMetadataPayload = ByteBuffer.allocate(10);
-    kafkaMessageEnvelope.payloadUnion = put;
-    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
-        new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, topicPartition, 0, 0, 0);
+    PubSubHelper.MutablePubSubMessage pubSubMessage = PubSubHelper.getDummyPubSubMessage(false);
+    pubSubMessage.setTopicPartition(topicPartition);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedMessages = Arrays.asList(pubSubMessage);
 
-    HostLevelIngestionStats stats = mock(HostLevelIngestionStats.class);
-    when(mockAggStoreIngestionStats.getStoreStats(anyString())).thenReturn(stats);
-
-    String rtTopic = Version.composeRealTimeTopic(storeNameWithoutVersionInfo);
-    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
-    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
-    doReturn(rtPubSubTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo));
 
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
@@ -4280,43 +4266,54 @@ public abstract class StoreIngestionTaskTest {
           TimeUnit.SECONDS,
           () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedMessages = new ArrayList<>();
-      consumedMessages.add(pubSubMessage);
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessageWrapper =
-          new PubSubMessageProcessedResultWrapper<>(pubSubMessage);
       VeniceWriter writer = getVeniceWriter(topic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
       doReturn(writer).when(mockWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
-      Runnable produce = () -> {
-        try {
-          storeIngestionTaskUnderTest.produceToStoreBufferServiceOrKafka(
-              consumedMessages,
-              topicPartition,
-              localKafkaConsumerService.kafkaUrl,
-              0);
-        } catch (InterruptedException e) {
-          throw new VeniceException(e);
-        }
-      };
+
       Thread t = new Thread(() -> {
-        Utils.sleep(100L);
+        Utils.sleep(1000L);
         PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
         doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, 0);
+        pcs.getOffsetRecord().setLeaderTopic(rtTopic);
         pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
       });
       t.start();
-      produce.run();
+
       try {
+        storeIngestionTaskUnderTest.produceToStoreBufferServiceOrKafka(
+            consumedMessages,
+            topicPartition,
+            localKafkaConsumerService.kafkaUrl,
+            0);
         TestUtils.shutdownThread(t);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
 
-      Utils.sleep(100L);
+      // Utils.sleep(1000L);
 
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO)));
+      PartitionExceptionInfo pe = storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO);
+      Assert.assertNull(pe);
+      // if (pe == null) {
+      // Assert.assertNull(pe);
+      // } else {
+      // Assert.assertTrue(pe.getException().getMessage().contains("is consuming from local version topic and producing
+      // back to local version topic"));
+      // }
+
+      // TestUtils.waitForNonDeterministicAssertion(
+      // 5,
+      // TimeUnit.SECONDS,
+      // () -> {
+      // PartitionExceptionInfo pe =
+      // storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO);
+      // if (pe == null) {
+      // Assert.assertNull(pe);
+      // } else {
+      // Assert.assertTrue(pe.getException().getMessage().contains("is consuming from local version topic and producing
+      // back to local version topic"));
+      // }
+      // }
+      // );
     }, aaConfig);
   }
 
