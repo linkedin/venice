@@ -23,6 +23,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -200,10 +201,10 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
 
-    // Verify the metadata is retrieved twice
-    Mockito.verify(storageMetadataService, Mockito.times(2))
+    // Verify the metadata is retrieved
+    Mockito.verify(storageMetadataService, Mockito.times(1))
         .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(storageMetadataService, Mockito.times(2)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
+    Mockito.verify(storageMetadataService, Mockito.times(1)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
 
     // Verify the record is updated
     Mockito.verify(storageMetadataService, Mockito.times(1))
@@ -283,10 +284,10 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
 
-    // Verify the metadata is retrieved twice
-    Mockito.verify(storageMetadataService, Mockito.times(2))
+    // Verify the metadata is retrieved
+    Mockito.verify(storageMetadataService, Mockito.times(1))
         .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(storageMetadataService, Mockito.times(2)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
+    Mockito.verify(storageMetadataService, Mockito.times(1)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
 
     // Verify the record is updated
     Mockito.verify(storageMetadataService, Mockito.times(1))
@@ -342,8 +343,6 @@ public class TestNettyP2PBlobTransferManager {
     for (long written = 0; written < size; written += dummyData.length) {
       Files.write(file2.toAbsolutePath(), dummyData, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
-    // file2 content
-    byte[] file2Content = Files.readAllBytes(file2);
 
     // both files don't exist in the partition directory
     Assert.assertTrue(Files.notExists(destFile1));
@@ -358,15 +357,11 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Files.exists(destFile1));
     Assert.assertTrue(Files.exists(destFile2));
     Assert.assertTrue(Files.exists(destFile3));
-    // the server snapshot should be deleted
-    Assert.assertTrue(Files.notExists(file1));
-    Assert.assertTrue(Files.notExists(file2));
-    Assert.assertTrue(Files.notExists(file3));
 
     // same content
-    Assert.assertTrue(Arrays.equals(Files.readAllBytes(destFile1), "helloworld".getBytes()));
-    Assert.assertTrue(Arrays.equals(Files.readAllBytes(destFile2), file2Content));
-    Assert.assertTrue(Arrays.equals(Files.readAllBytes(destFile3), "helloworldtwice".getBytes()));
+    Assert.assertTrue(Arrays.equals(Files.readAllBytes(file1), Files.readAllBytes(destFile1)));
+    Assert.assertTrue(Arrays.equals(Files.readAllBytes(file2), Files.readAllBytes(destFile2)));
+    Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
 
     // Verify the metadata is retrieved one time,
     // which is the first time preparing the snapshot before new snapshot is created.
@@ -383,12 +378,18 @@ public class TestNettyP2PBlobTransferManager {
         .computeStoreVersionState(Mockito.anyString(), Mockito.any());
 
     // Verify the createSnapshot is called
-    Mockito.verify(blobSnapshotManager, Mockito.times(1)).recreateSnapshotForHybrid(Mockito.any());
+    Mockito.verify(blobSnapshotManager, Mockito.times(1)).recreateSnapshotForHybrid(Mockito.any(), Mockito.any());
     Mockito.verify(blobSnapshotManager, Mockito.times(1)).createSnapshot(TEST_STORE + "_v" + TEST_VERSION, 0);
 
     // Verify the concurrent user of this partition is 0 as it should firstly be 1 and after the file is sent,
     // it should decrease to 0
     long concurrentUser = blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0);
     Assert.assertEquals(concurrentUser, 0);
+
+    // Verify offset record is tracked
+    BlobTransferPartitionMetadata offsetRecord =
+        blobSnapshotManager.getTransferredSnapshotMetadata(TEST_STORE + "_v" + TEST_VERSION, 0);
+    Assert.assertNotNull(offsetRecord);
+    Assert.assertEquals(offsetRecord.getOffsetRecord(), ByteBuffer.wrap(expectOffsetRecord.toBytes()));
   }
 }

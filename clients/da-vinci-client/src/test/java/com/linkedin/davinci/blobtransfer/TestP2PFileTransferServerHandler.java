@@ -25,6 +25,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.IdleStateEvent;
@@ -108,17 +109,6 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 404);
-  }
-
-  @Test
-  public void testWhenMetadataCreateError() {
-    // prepare the file request
-    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
-
-    ch.writeInbound(request);
-
-    FullHttpResponse response = ch.readOutbound();
-    Assert.assertEquals(response.status().code(), 500);
   }
 
   @Test
@@ -276,5 +266,38 @@ public class TestP2PFileTransferServerHandler {
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
+  }
+
+  @Test
+  public void testWhenMetadataCreateError() throws IOException {
+    // prepare the file request
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Path file1 = snapshotDir.resolve("file1");
+    Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+
+    ch.writeInbound(request);
+
+    // start of file1
+    Object response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
+    Assert.assertEquals(
+        httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
+        "attachment; filename=\"file1\"");
+    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
+    // send the content in one chunk
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultFileRegion);
+    // the last empty response for file1
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof LastHttpContent);
+    // end of file1
+
+    // metadata in server side has error
+    response = ch.readOutbound();
+    Assert.assertTrue(response instanceof DefaultHttpResponse);
+    Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
   }
 }

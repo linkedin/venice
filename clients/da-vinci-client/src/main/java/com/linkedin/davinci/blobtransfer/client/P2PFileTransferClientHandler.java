@@ -101,7 +101,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       Files.createDirectories(partitionDir);
 
       // Prepare the file, remove it if it exists
-      Files.deleteIfExists(partitionDir.resolve(fileName));
+      if (Files.deleteIfExists(partitionDir.resolve(fileName))) {
+        LOGGER.info(
+            "File {} already exists for topic {} partition {}. Overwriting it.",
+            fileName,
+            payload.getTopicName(),
+            payload.getPartition());
+      }
+
       Path file = Files.createFile(partitionDir.resolve(fileName));
 
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
