@@ -216,7 +216,7 @@ public class ControllerRoutes extends AbstractRoute {
         if (statuses.getRedirectUrl() != null) {
           response.redirect(statuses.getRedirectUrl() + "/aggregatedHealthStatus", HttpStatus.SC_MOVED_TEMPORARILY);
         } else {
-          responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstances());
+          responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstancesWithReasons());
           responseObject.setStoppableInstances(statuses.getStoppableInstances());
         }
       } catch (Throwable e) {

@@ -409,7 +409,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.sendHeartbeatToSystemStore(admin)));
-    httpService.get(
+    httpService.post(
         AGGREGATED_HEALTH_STATUS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.getAggregatedHealthStatus(admin)));
     httpService.get(
