@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -63,7 +64,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -259,6 +262,72 @@ public abstract class AbstractPushMonitorTest {
           monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i).getCurrentStatus(),
           ExecutionStatus.COMPLETED);
     }
+  }
+
+  @Test
+  public void testLoadAllPushesWithPartitionChangeNotification() {
+    int statusCount = 3;
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic("testLoadAllPushes_v3");
+    PartitionAssignment partitionAssignment = mock(PartitionAssignment.class);
+    doReturn(false).when(partitionAssignment).isMissingAssignedPartitions();
+    Partition partition = mock(Partition.class);
+    doReturn(partition).when(partitionAssignment).getPartition(0);
+    Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+    instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+    instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+    instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
+    when(partition.getInstanceToHelixStateMap()).thenReturn(instanceToStateMap);
+    doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments("testLoadAllPushes_v3");
+
+    List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
+    for (int i = 1; i <= statusCount; i++) {
+      String kafkaTopic = "testLoadAllPushes_v" + i;
+      OfflinePushStatus pushStatus = new OfflinePushStatus(
+          kafkaTopic,
+          numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      if (i == 3) {
+        pushStatus.setCurrentStatus(ExecutionStatus.STARTED);
+      } else {
+        pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
+      }
+
+      statusList.add(pushStatus);
+    }
+    doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
+      String kafkaTopic = invocation.getArgument(0);
+      for (OfflinePushStatus status: statusList) {
+        if (status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
+
+    OfflinePushStatus v3NewStatus = statusList.get(2).clonePushStatus();
+    doAnswer((Answer<Void>) invocation -> {
+      /**
+       * This is where we make the test case: We want to make sure ZK status changes after initial refresh.
+       * Previously, the offline push status manual refresh happened before subscribing to ZK changes, so there is race
+       * condition when server update ZK status during these two action.
+       * Now push status will be manually refreshed after ZK change subscription, so it should capture this change.
+       */
+      v3NewStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
+      return null;
+    }).when(mockAccessor).subscribePartitionStatusChange(statusList.get(2), monitor);
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses("testLoadAllPushes_v3")).thenReturn(v3NewStatus);
+
+    monitor.loadAllPushes();
+
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      for (int i = 1; i <= statusCount; i++) {
+        Assert.assertEquals(
+            monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i).getCurrentStatus(),
+            ExecutionStatus.COMPLETED);
+      }
+    });
   }
 
   @Test

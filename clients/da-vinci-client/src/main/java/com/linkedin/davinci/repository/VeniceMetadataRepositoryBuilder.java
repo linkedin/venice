@@ -59,6 +59,9 @@ public class VeniceMetadataRepositoryBuilder {
       boolean isIngestionIsolation) {
     this.configLoader = configLoader;
     this.clientConfig = clientConfig;
+    if (clientConfig != null) {
+      clientConfig.setMetricsRepository(metricsRepository);
+    }
     this.metricsRepository = metricsRepository;
     this.isIngestionIsolation = isIngestionIsolation;
     this.icProvider = icProvider;

@@ -260,6 +260,9 @@ public class TopicMetadataFetcherTest {
     assertEquals(res.size(), offsetsMap.size());
     assertEquals(res.get(0), 111L);
     assertEquals(res.get(1), 222L);
+    assertEquals(
+        topicMetadataFetcher.getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
+        -1);
 
     verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
     verify(consumerMock, times(1)).endOffsets(eq(offsetsMap.keySet()), any(Duration.class));

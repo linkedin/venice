@@ -731,6 +731,11 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.getLatestOffsetCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
   }
 
+  public long getLatestOffsetCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
+    return topicMetadataFetcher
+        .getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  }
+
   public long getProducerTimestampOfLastDataMessageWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return topicMetadataFetcher.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, retries);
   }
