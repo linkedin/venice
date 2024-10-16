@@ -241,6 +241,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     long refreshTime = System.currentTimeMillis();
     while (!allTopics.isEmpty()) {
       PubSubTopic topic = allTopics.poll();
+      String storeName = topic.getStoreName();
       try {
         if (topic.isRealTime() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
           // Only delete realtime topic in child fabrics if all version topics are deleted in all child fabrics.
@@ -252,27 +253,31 @@ public class TopicCleanupService extends AbstractVeniceService {
             continue;
           }
           boolean canDelete = true;
-          for (Map.Entry<String, Map<String, Integer>> mapEntry: multiDataCenterStoreToVersionTopicCount.entrySet()) {
-            String storeName = topic.getStoreName();
+          try {
             String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
-            Store store = admin.getStore(clusterDiscovered, storeName);
-            if (mapEntry.getValue().containsKey(storeName)) {
-              if (Version.containsHybridVersion(store.getVersions())) {
-                canDelete = false;
-                LOGGER.info(
-                    "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
-                    topic.getName(),
-                    mapEntry.getValue().get(topic.getStoreName()),
-                    mapEntry.getKey());
-                break;
-              } else {
-                LOGGER.info(
-                    "Not delaying topic deletion for topic: {}, because store {} has at least one hybrid version.",
-                    topic.getName(),
-                    storeName);
+            for (Map.Entry<String, Map<String, Integer>> mapEntry: multiDataCenterStoreToVersionTopicCount.entrySet()) {
+              Store store = admin.getStore(clusterDiscovered, storeName);
+              if (mapEntry.getValue().containsKey(storeName)) {
+                if (Version.containsHybridVersion(store.getVersions())) {
+                  canDelete = false;
+                  LOGGER.info(
+                      "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
+                      topic.getName(),
+                      mapEntry.getValue().get(topic.getStoreName()),
+                      mapEntry.getKey());
+                  break;
+                } else {
+                  LOGGER.info(
+                      "Not delaying topic deletion for topic: {}, because store {} has at least one hybrid version.",
+                      topic.getName(),
+                      storeName);
+                }
               }
             }
+          } catch (VeniceNoStoreException e) {
+            LOGGER.info("Could not discover cluster for store {}. it might be already deleted.", storeName);
           }
+
           if (!canDelete) {
             continue;
           }
