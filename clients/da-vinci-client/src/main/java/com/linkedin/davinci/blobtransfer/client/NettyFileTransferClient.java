@@ -1,6 +1,7 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -52,9 +53,10 @@ public class NettyFileTransferClient {
 
   public CompletionStage<InputStream> get(String host, String storeName, int version, int partition) {
     CompletionStage<InputStream> inputStream = new CompletableFuture<>();
-    // Connects to the remote host
     try {
-      Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
+      // Connects to the remote host
+      Channel ch = connectToHost(host, storeName, version, partition);
+
       // Request to get the blob file and metadata
       // Attach the file handler to the pipeline
       // Attach the metadata handler to the pipeline
@@ -65,7 +67,6 @@ public class NettyFileTransferClient {
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition));
     } catch (Exception e) {
-      LOGGER.error("Failed to connect to the host: {}", host, e);
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);
       }
@@ -82,5 +83,23 @@ public class NettyFileTransferClient {
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
         String.format("/%s/%d/%d", storeName, version, partition));
+  }
+
+  /**
+   * Connects to the host
+   */
+  private Channel connectToHost(String host, String storeName, int version, int partition) {
+    try {
+      return clientBootstrap.connect(host, serverPort).sync().channel();
+    } catch (Exception e) {
+      String errorMsg = String.format(
+          "Failed to connect to the host: %s for blob transfer for store: %s, version: %d, partition: %d",
+          host,
+          storeName,
+          version,
+          partition);
+      LOGGER.error(errorMsg, e);
+      throw new VenicePeersConnectionException(errorMsg, e);
+    }
   }
 }

@@ -28,6 +28,8 @@ public class TestZkHelixAdminClient {
   private VeniceControllerMultiClusterConfig mockMultiClusterConfigs;
   private VeniceControllerClusterConfig mockClusterConfig;
 
+  private static final String controllerClusterName = "venice-controllers";
+
   @BeforeMethod
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
     zkHelixAdminClient = mock(ZkHelixAdminClient.class);
@@ -78,8 +80,8 @@ public class TestZkHelixAdminClient {
     when(mockClusterConfig.getHelixCloudInfoSources()).thenReturn(cloudInfoSources);
     when(mockClusterConfig.getHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
-    zkHelixAdminClient.setCloudConfig(mockClusterConfig);
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(controllerClusterName, mockClusterConfig);
+    zkHelixAdminClient.setCloudConfig(controllerClusterName, mockClusterConfig);
 
     verify(mockHelixAdmin).addCloudConfig(any(), any());
   }
@@ -92,8 +94,10 @@ public class TestZkHelixAdminClient {
     when(mockClusterConfig.getHelixCloudInfoSources()).thenReturn(Collections.emptyList());
     when(mockClusterConfig.getHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
-    assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(controllerClusterName, mockClusterConfig);
+    assertThrows(
+        HelixException.class,
+        () -> zkHelixAdminClient.setCloudConfig(controllerClusterName, mockClusterConfig));
   }
 
   @Test
@@ -107,7 +111,9 @@ public class TestZkHelixAdminClient {
     when(mockClusterConfig.getHelixCloudInfoSources()).thenReturn(cloudInfoSources);
     when(mockClusterConfig.getHelixCloudInfoProcessorName()).thenReturn("");
 
-    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(mockClusterConfig);
-    assertThrows(HelixException.class, () -> zkHelixAdminClient.setCloudConfig(mockClusterConfig));
+    doCallRealMethod().when(zkHelixAdminClient).setCloudConfig(controllerClusterName, mockClusterConfig);
+    assertThrows(
+        HelixException.class,
+        () -> zkHelixAdminClient.setCloudConfig(controllerClusterName, mockClusterConfig));
   }
 }
