@@ -43,7 +43,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
@@ -164,7 +163,7 @@ public enum ControllerRoute {
   NODE_REPLICAS("/storage_node_replicas", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   NODE_REMOVABLE(
       "/node_removable", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID), INSTANCE_VIEW,
-      LOCKED_STORAGE_NODE_IDS
+      TO_BE_STOPPED_INSTANCES
   ), NODE_REPLICAS_READINESS("/node_replicas_readiness", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   ALLOW_LIST_ADD_NODE("/allow_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   ALLOW_LIST_REMOVE_NODE("/allow_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),

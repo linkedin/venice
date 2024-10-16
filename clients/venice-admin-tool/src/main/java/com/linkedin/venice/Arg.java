@@ -276,8 +276,8 @@ public enum Arg {
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
   BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
-  INSTANCES("instances", "in", true, "Input list of storage nodes to check if they can removed or not"),
-  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of nodes assumed to be stopped");
+  INSTANCES("instances", "in", true, "Input list of Helix node Ids to check if they can removed or not"),
+  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of Helix node Ids assumed to be stopped");
 
   private final String argName;
   private final String first;
