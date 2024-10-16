@@ -51,9 +51,12 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -70,6 +73,7 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -181,7 +185,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *    {@link Lazy} to initialize it in a thread safe way and to ensure that only one instance is created for the
    *    entire ingestion task.
    */
-  protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
+  protected Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
+
+  protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTime;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
@@ -193,6 +199,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessingLazy;
+  private final Version version;
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -217,6 +224,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         getRecordTransformer,
         builder.getLeaderFollowerNotifiers());
+    this.version = version;
     this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
@@ -283,13 +291,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
      * different in some test cases which reuse the same VeniceWriter.
      */
-    VeniceWriterOptions writerOptions =
-        new VeniceWriterOptions.Builder(getVersionTopic().getName()).setPartitioner(venicePartitioner)
-            .setChunkingEnabled(isChunked)
-            .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
-            .setPartitionCount(storeVersionPartitionCount)
-            .build();
-    this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
+    String versionTopicName = getVersionTopic().getName();
+    this.veniceWriter = Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, versionTopicName, version, true, 1));
+    if (getServerConfig().isNearlineWorkloadProducerThroughputOptimizationEnabled() && isHybridMode()
+        && (!store.isNearlineProducerCompressionEnabled() || store.getNearlineProducerCountPerWriter() > 1)) {
+      this.veniceWriterForRealTime = Lazy.of(() -> {
+        LOGGER.info(
+            "Constructing a VeniceWriter with producer compression: {} and producer count:{} for topic: {} for nearline workload",
+            store.isNearlineProducerCompressionEnabled(),
+            store.getNearlineProducerCountPerWriter(),
+            versionTopicName);
+        return constructVeniceWriter(
+            veniceWriterFactory,
+            versionTopicName,
+            version,
+            store.isNearlineProducerCompressionEnabled(),
+            store.getNearlineProducerCountPerWriter());
+      });
+    } else {
+      this.veniceWriterForRealTime = this.veniceWriter;
+    }
+
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
@@ -332,10 +354,33 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     });
   }
 
+  public static VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
+      VeniceWriterFactory veniceWriterFactory,
+      String topic,
+      Version version,
+      boolean producerCompressionEnabled,
+      int producerCnt) {
+    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
+    VenicePartitioner venicePartitioner = partitionerConfig == null
+        ? new DefaultVenicePartitioner()
+        : PartitionUtils.getVenicePartitioner(partitionerConfig);
+    return veniceWriterFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setPartitioner(venicePartitioner)
+            .setChunkingEnabled(version.isChunkingEnabled())
+            .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
+            .setPartitionCount(version.getPartitionCount())
+            .setProducerCompressionEnabled(producerCompressionEnabled)
+            .setProducerCount(producerCnt)
+            .build());
+  }
+
   @Override
   public void closeVeniceWriters(boolean doFlush) {
     if (veniceWriter.isPresent()) {
       veniceWriter.get().close(doFlush);
+    }
+    if (veniceWriterForRealTime.isPresent()) {
+      veniceWriterForRealTime.get().close(doFlush);
     }
   }
 
@@ -349,14 +394,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected IngestionBatchProcessor getIngestionBatchProcessor() {
     return ingestionBatchProcessingLazy.get();
-  }
-
-  /**
-   * Close a DIV segment for a version topic partition.
-   */
-  private void endSegment(int partition) {
-    // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
-    veniceWriter.ifPresent(vw -> vw.closePartition(partition));
   }
 
   @Override
@@ -507,7 +544,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
          */
-        endSegment(partition);
+        // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
+        partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partition));
         break;
       default:
         processCommonConsumerAction(message);
@@ -578,6 +616,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * consuming from version topic. Now it is becoming the leader. So the VT becomes its leader topic.
                */
               offsetRecord.setLeaderTopic(versionTopic);
+            }
+
+            // Setup venice writer reference for producing
+            if (partitionConsumptionState.isEndOfPushReceived()) {
+              partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
+            } else {
+              partitionConsumptionState.setVeniceWriterLazyRef(veniceWriter);
             }
 
             /**
@@ -698,6 +743,51 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LOGGER.error(errorMsg);
       throw new VeniceTimeoutException(errorMsg);
     }
+
+    checkWhetherToCloseUnusedVeniceWriter(veniceWriter, veniceWriterForRealTime, partitionConsumptionStateMap, () -> {
+      veniceWriter =
+          Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
+    }, getVersionTopic().getName());
+  }
+
+  protected static boolean checkWhetherToCloseUnusedVeniceWriter(
+      Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazy,
+      Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTimeLazy,
+      Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
+      Runnable reInitializeVeniceWriterLazyRunnable,
+      String versionTopicName) {
+    if (!veniceWriterLazy.isPresent() || !veniceWriterForRealTimeLazy.isPresent()) {
+      // There is at most one valid Venice writer, so we don't need to clean up anything here.
+      return false;
+    }
+    if (veniceWriterLazy.get().equals(veniceWriterForRealTimeLazy.get())) {
+      // Both Venice writers point to the same instance, so no cleanup
+      return false;
+    }
+    /**
+     * Now, {@link #veniceWriterForRealTime} is referring to a different instance from {@link #veniceWriter},
+     * and we need to check whether we can close {@link #veniceWriter} or not.
+     * The criteria are that all the leader partitions in the current node have finished the producing of the batch data.
+     */
+    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      if (isLeader(partitionConsumptionState) && !partitionConsumptionState.isEndOfPushReceived()) {
+        /**
+         * There are some leader partitions, which are still consuming batch data.
+         */
+        return false;
+      }
+    }
+    /**
+     * Now, we can close the VeniceWriter, which is used to produce batch data to free up resources,
+     * and here, we will re-initialize {@link #veniceWriter} to handle some edge cases, which would
+     * re-produce the batch data to the local Kafka cluster.
+     */
+    veniceWriterLazy.get().close(true);
+    LOGGER.info(
+        "Closed VeniceWriter for batch data producing to free up resource for store version: {}",
+        versionTopicName);
+    reInitializeVeniceWriterLazyRunnable.run();
+    return true;
   }
 
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
@@ -1164,7 +1254,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return (!versionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
   }
 
-  protected boolean isLeader(PartitionConsumptionState partitionConsumptionState) {
+  protected static boolean isLeader(PartitionConsumptionState partitionConsumptionState) {
     return Objects.equals(partitionConsumptionState.getLeaderFollowerState(), LEADER);
   }
 
@@ -2127,7 +2217,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(getVersionTopic(), partitionConsumptionState.getPartition());
-    sendIngestionHeartbeatToVT(topicPartition, callback, leaderMetadataWrapper, leaderCompleteState, producerTimeStamp);
+    sendIngestionHeartbeatToVT(
+        partitionConsumptionState,
+        topicPartition,
+        callback,
+        leaderMetadataWrapper,
+        leaderCompleteState,
+        producerTimeStamp);
   }
 
   @Override
@@ -2296,6 +2392,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             controlMessage,
             consumerRecord.getPubSubMessageHeaders(),
             partitionConsumptionState);
+        /**
+         * For the local consumption, the batch data won't be produce to the local VT again, so we will switch
+         * to real-time writer upon EOP here and for the remote consumption of VT, the switch will be handled
+         * in the following section as it needs to flush the messages and then switch.
+         */
+        if (isLeader(partitionConsumptionState) && ControlMessageType.valueOf(controlMessage).equals(END_OF_PUSH)
+            && !partitionConsumptionState.consumeRemotely()) {
+          LOGGER.info(
+              "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
+              getVersionTopic().getName(),
+              partition);
+          partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
+        }
       }
 
       /**
@@ -2362,7 +2471,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 consumerRecord,
                 partitionConsumptionState,
                 leaderProducedRecordContext,
-                (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
                     .put(
                         consumerRecord.getKey(),
                         consumerRecord.getValue(),
@@ -2373,6 +2483,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 kafkaUrl,
                 kafkaClusterId,
                 beforeProcessingPerRecordTimestampNs);
+            partitionConsumptionState.getVeniceWriterLazyRef().get().flush();
+            // Switch the writer for real-time workload
+            LOGGER.info(
+                "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
+                getVersionTopic().getName(),
+                partition);
+            partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -2396,7 +2513,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   consumerRecord,
                   partitionConsumptionState,
                   leaderProducedRecordContext,
-                  (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                  (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                      .get()
                       .put(
                           consumerRecord.getKey(),
                           consumerRecord.getValue(),
@@ -2456,7 +2574,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 consumerRecord,
                 partitionConsumptionState,
                 leaderProducedRecordContext,
-                (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
                     .asyncSendControlMessage(
                         controlMessage,
                         versionTopicPartitionToBeProduced,
@@ -2486,7 +2605,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 consumerRecord,
                 partitionConsumptionState,
                 leaderProducedRecordContext,
-                (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -2926,7 +3046,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     /**
      * Leader of the user partition should close all subPartitions it is producing to.
      */
-    veniceWriter.ifPresent(vw -> vw.closePartition(partitionId));
+    if (partitionConsumptionState.getVeniceWriterLazyRef() != null) {
+      partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));
+    }
   }
 
   @Override
@@ -3211,7 +3333,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                */
 
               if (!partitionConsumptionState.isEndOfPushReceived()) {
-                veniceWriter.get()
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
                     .put(
                         kafkaKey,
                         kafkaValue,
@@ -3219,7 +3342,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         consumerRecord.getTopicPartition().getPartitionNumber(),
                         leaderMetadataWrapper);
               } else {
-                veniceWriter.get()
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
                     .put(
                         keyBytes,
                         ByteUtils.extractByteArray(newPut.putValue),
@@ -3242,7 +3366,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, newPut);
         BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
-            (callback, leaderMetadataWrapper) -> veniceWriter.get()
+            (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                .get()
                 .put(
                     keyBytes,
                     ByteUtils.extractByteArray(newPut.getPutValue()),
@@ -3277,7 +3402,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * DIV pass-through for DELETE messages before EOP.
                */
               if (!partitionConsumptionState.isEndOfPushReceived()) {
-                veniceWriter.get()
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
                     .delete(
                         kafkaKey,
                         kafkaValue,
@@ -3285,7 +3411,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         consumerRecord.getTopicPartition().getPartitionNumber(),
                         leaderMetadataWrapper);
               } else {
-                veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper);
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .delete(keyBytes, callback, leaderMetadataWrapper);
               }
             },
             partition,
@@ -3477,8 +3605,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
   }
 
-  protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
-    return veniceWriter;
+  protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
+      PartitionConsumptionState partitionConsumptionState) {
+    return partitionConsumptionState.getVeniceWriterLazyRef();
   }
 
   // test method
@@ -3511,6 +3640,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(PubSubTopicPartition topicPartition) {
     return sendIngestionHeartbeat(
+        partitionConsumptionStateMap.get(topicPartition.getPartitionNumber()),
         topicPartition,
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
@@ -3521,12 +3651,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private void sendIngestionHeartbeatToVT(
+      PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
     sendIngestionHeartbeat(
+        partitionConsumptionState,
         topicPartition,
         callback,
         leaderMetadataWrapper,
@@ -3537,6 +3669,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
+      PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -3546,7 +3679,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long originTimeStampMs) {
     CompletableFuture<PubSubProduceResult> heartBeatFuture;
     try {
-      heartBeatFuture = veniceWriter.get()
+      heartBeatFuture = partitionConsumptionState.getVeniceWriterLazyRef()
+          .get()
           .sendHeartbeat(
               topicPartition,
               callback,
