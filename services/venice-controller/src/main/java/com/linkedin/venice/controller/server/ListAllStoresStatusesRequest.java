@@ -3,14 +3,14 @@ package com.linkedin.venice.controller.server;
 import java.util.Optional;
 
 
-public class ListStoresRequest {
+public class ListAllStoresStatusesRequest {
   private String cluster;
   private String storeName;
   private String includeSystemStores;
   private Optional<String> storeConfigNameFilter;
   private Optional<String> storeConfigValueFilter;
 
-  public ListStoresRequest(
+  public ListAllStoresStatusesRequest(
       String cluster,
       String storeName,
       String includeSystemStores,
@@ -23,7 +23,7 @@ public class ListStoresRequest {
     this.storeConfigValueFilter = storeConfigValueFilter;
   }
 
-  public ListStoresRequest() {
+  public ListAllStoresStatusesRequest() {
   }
 
   public String getCluster() {

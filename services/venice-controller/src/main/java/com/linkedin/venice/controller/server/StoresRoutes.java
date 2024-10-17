@@ -258,17 +258,17 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, CLUSTER_HEALTH_STORES.getParams(), admin);
-        ListStoresRequest listStoresRequest = new ListStoresRequest();
-        listStoresRequest.setCluster(request.queryParams(CLUSTER));
+        ListAllStoresStatusesRequest listAllStoresStatusesRequest = new ListAllStoresStatusesRequest();
+        listAllStoresStatusesRequest.setCluster(request.queryParams(CLUSTER));
 
-        MultiStoreStatusResponse multiStoreStatusResponse = listAllStoresStatuses(listStoresRequest, admin);
+        MultiStoreStatusResponse multiStoreStatusResponse = listAllStoresStatuses(listAllStoresStatusesRequest, admin);
         veniceResponse.setCluster(multiStoreStatusResponse.getCluster());
         veniceResponse.setStoreStatusMap(multiStoreStatusResponse.getStoreStatusMap());
       }
     };
   }
 
-  private MultiStoreStatusResponse listAllStoresStatuses(ListStoresRequest request, Admin admin) {
+  private MultiStoreStatusResponse listAllStoresStatuses(ListAllStoresStatusesRequest request, Admin admin) {
     MultiStoreStatusResponse veniceResponse = new MultiStoreStatusResponse();
     veniceResponse.setCluster(request.getCluster());
     Map<String, String> storeStatusMap = admin.getAllStoreStatuses(request.getCluster());
