@@ -28,9 +28,9 @@ public class ControllerApiConstants {
 
   // We need the following 3 constants for Helix API aggregatedHealthStatus
   public static final String CLUSTER_ID = "cluster_id";
-
   public static final String INSTANCES = "instances";
   public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
+
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
@@ -241,4 +241,6 @@ public class ControllerApiConstants {
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
+
+  public static final String AGGR_HEALTH_STATUS_URI = "/aggregatedHealthStatus";
 }

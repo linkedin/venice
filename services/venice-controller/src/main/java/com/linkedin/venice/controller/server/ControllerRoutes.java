@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AGGR_HEALTH_STATUS_URI;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCES;
@@ -214,7 +215,7 @@ public class ControllerRoutes extends AbstractRoute {
         InstanceRemovableStatuses statuses =
             admin.getAggregatedHealthStatus(cluster, instanceList, toBeStoppedInstanceList);
         if (statuses.getRedirectUrl() != null) {
-          response.redirect(statuses.getRedirectUrl() + "/aggregatedHealthStatus", HttpStatus.SC_MOVED_TEMPORARILY);
+          response.redirect(statuses.getRedirectUrl() + AGGR_HEALTH_STATUS_URI, HttpStatus.SC_MOVED_TEMPORARILY);
         } else {
           responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstancesWithReasons());
           responseObject.setStoppableInstances(statuses.getStoppableInstances());
