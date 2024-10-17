@@ -261,9 +261,9 @@ public class StoresRoutes extends AbstractRoute {
         ListStoresRequest listStoresRequest = new ListStoresRequest();
         listStoresRequest.setCluster(request.queryParams(CLUSTER));
 
-        MultiStoreStatusResponse duplicateVeniceResponse = listAllStoresStatuses(listStoresRequest, admin);
-        veniceResponse.setCluster(duplicateVeniceResponse.getCluster());
-        veniceResponse.setStoreStatusMap(duplicateVeniceResponse.getStoreStatusMap());
+        MultiStoreStatusResponse multiStoreStatusResponse = listAllStoresStatuses(listStoresRequest, admin);
+        veniceResponse.setCluster(multiStoreStatusResponse.getCluster());
+        veniceResponse.setStoreStatusMap(multiStoreStatusResponse.getStoreStatusMap());
       }
     };
   }
