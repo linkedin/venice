@@ -29,14 +29,18 @@ message GetStoresInClusterGrpcResponse {
 }
 
 message CreateStoreGrpcRequest {
-  string storeName = 1;
-  string keySchema = 2;
-  string valueSchema = 3;
-  optional string owner = 4;
+  string clusterName = 1;
+  string storeName = 2;
+  string keySchema = 3;
+  string valueSchema = 4;
+  string owner = 5;
+  bool isSystemStore = 6;
+  optional string accessPermission = 7;
 }
 
 message CreateStoreGrpcResponse {
-  string owner = 1;
+  int32 statusCode = 1;
+  string statusMessage = 2;
 }
 
 message QueryJobStatusGrpcRequest {

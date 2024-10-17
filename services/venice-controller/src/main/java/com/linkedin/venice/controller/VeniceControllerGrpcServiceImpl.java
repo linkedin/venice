@@ -1,19 +1,11 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc.getCreateStoreMethod;
-import static com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc.getGetJobStatusMethod;
-import static com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc.getListStoresMethod;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
-import com.linkedin.venice.protocols.GetJobStatusGrpcRequest;
-import com.linkedin.venice.protocols.GetJobStatusGrpcResponse;
-import com.linkedin.venice.protocols.ListStoresGrpcRequest;
-import com.linkedin.venice.protocols.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -76,15 +68,27 @@ public class VeniceControllerGrpcServiceImpl
     LOGGER.info("VeniceControllerGrpcServiceImpl created with enforceSSL: {}, sslEnabled: {}", enforceSSL, sslEnabled);
   }
 
-  public void listStores(ListStoresGrpcRequest request, StreamObserver<ListStoresGrpcResponse> responseObserver) {
-    io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(getListStoresMethod(), responseObserver);
-  }
-
   public void createStore(CreateStoreGrpcRequest request, StreamObserver<CreateStoreGrpcResponse> responseObserver) {
-    io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(getCreateStoreMethod(), responseObserver);
-  }
-
-  public void getJobStatus(GetJobStatusGrpcRequest request, StreamObserver<GetJobStatusGrpcResponse> responseObserver) {
-    io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(getGetJobStatusMethod(), responseObserver);
+    String clusterName = request.getClusterName();
+    String storeName = request.getStoreName();
+    String keySchema = request.getKeySchema();
+    String valueSchema = request.getValueSchema();
+    boolean isSystemStore = request.getIsSystemStore();
+    String owner = request.getOwner();
+    Optional<String> accessPermissions = Optional.empty();
+    if (request.hasAccessPermission()) {
+      accessPermissions = Optional.of(request.getAccessPermission());
+    }
+    CreateStoreGrpcResponse.Builder responseBuilder = CreateStoreGrpcResponse.newBuilder();
+    try {
+      admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+      responseBuilder.setStatusCode(200);
+    } catch (Exception e) {
+      LOGGER.error("Error creating store", e);
+      responseBuilder.setStatusCode(500);
+      responseBuilder.setStatusMessage("Error creating store: " + e.getMessage());
+    }
+    responseObserver.onNext(responseBuilder.build());
+    responseObserver.onCompleted();
   }
 }
