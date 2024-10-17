@@ -65,6 +65,31 @@ public class StoreRoutesTest {
   }
 
   @Test
+  public void testGetAllStoresStatuses() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockAdmin).getStore(TEST_CLUSTER, TEST_STORE_NAME);
+
+    Map<String, String> storeStatusMap = Collections.singletonMap("dc-0", "1");
+    doReturn(storeStatusMap).when(mockAdmin).getAllStoreStatuses(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    Route getAllStoresStatusesRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getAllStoresStatuses(mockAdmin);
+    MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            getAllStoresStatusesRoute.handle(request, mock(Response.class)).toString(),
+            MultiStoreStatusResponse.class);
+    Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(multiStoreStatusResponse.getStoreStatusMap(), storeStatusMap);
+  }
+
+  @Test
   public void testRollForwardToFutureVersion() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);

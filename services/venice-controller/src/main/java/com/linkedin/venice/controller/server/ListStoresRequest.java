@@ -4,11 +4,11 @@ import java.util.Optional;
 
 
 public class ListStoresRequest {
-  String cluster;
-  String storeName;
-  String includeSystemStores;
-  Optional<String> storeConfigNameFilter;
-  Optional<String> storeConfigValueFilter;
+  private String cluster;
+  private String storeName;
+  private String includeSystemStores;
+  private Optional<String> storeConfigNameFilter;
+  private Optional<String> storeConfigValueFilter;
 
   public ListStoresRequest(
       String cluster,
@@ -19,6 +19,8 @@ public class ListStoresRequest {
     this.cluster = cluster;
     this.storeName = storeName;
     this.includeSystemStores = includeSystemStores;
+    this.storeConfigNameFilter = storeConfigNameFilter;
+    this.storeConfigValueFilter = storeConfigValueFilter;
   }
 
   public ListStoresRequest() {
