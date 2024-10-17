@@ -112,6 +112,8 @@ import com.linkedin.venice.utils.ValueHolder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -142,6 +144,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -1172,8 +1175,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * which this message is processed. This lock protects against any state transitions where the SIT needs to
        * acquire the write lock to modify the leader-follower state, since it would need to wait for this to finish.
        */
-      partitionConsumptionState.getLeaderFollowerStateLock().readLock().lock();
-      try {
+      final ReadWriteLock leaderFollowerStateLock = partitionConsumptionState.getLeaderFollowerStateLock();
+      try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(leaderFollowerStateLock.readLock())) {
         if (!shouldProcessRecord(record)) {
           partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
           return;
@@ -1192,8 +1195,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             beforeProcessingBatchRecordsTimestampMs,
             metricsEnabled,
             elapsedTimeForPuttingIntoQueue);
-      } finally {
-        partitionConsumptionState.getLeaderFollowerStateLock().readLock().unlock();
       }
     }
 
@@ -1222,6 +1223,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       String kafkaUrl,
       int kafkaClusterId) throws InterruptedException {
+    if (partitionConsumptionState == null) {
+      throw new VeniceException(
+          "PartitionConsumptionState should present for store version: " + kafkaVersionTopic + ", partition: "
+              + topicPartition.getPartitionNumber());
+    }
+
     long totalBytesRead = 0;
     ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
     boolean metricsEnabled = emitMetrics.get();
@@ -1233,18 +1240,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     List<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> batches = new ArrayList<>();
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> ongoingBatch = new ArrayList<>(batchSize);
     Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
-    while (iter.hasNext()) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
-      if (partitionConsumptionState != null) {
+
+    /*
+     * Acquire the read lock to ensure that the result of shouldProcessRecord() holds for the entire duration for
+     * which this message is processed. This lock protects against any state transitions where the SIT needs to
+     * acquire the write lock to modify the leader-follower state, since it would need to wait for this to finish.
+     */
+    final ReadWriteLock leaderFollowerStateLock = partitionConsumptionState.getLeaderFollowerStateLock();
+    try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(leaderFollowerStateLock.readLock())) {
+      while (iter.hasNext()) {
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
-        partitionConsumptionState.getLeaderFollowerStateLock().readLock().lock();
-        // see comment in produceToStoreBufferServiceOrKafka about why the lock is needed here
-      }
-      try {
         if (!shouldProcessRecord(record)) {
-          if (partitionConsumptionState != null) {
-            partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
-          }
+          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
           continue;
         }
         waitReadyToProcessRecord(record);
@@ -1253,54 +1261,50 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           batches.add(ongoingBatch);
           ongoingBatch = new ArrayList<>(batchSize);
         }
-      } finally {
-        if (partitionConsumptionState != null) {
-          partitionConsumptionState.getLeaderFollowerStateLock().readLock().unlock();
-        }
       }
-    }
-    if (!ongoingBatch.isEmpty()) {
-      batches.add(ongoingBatch);
-    }
-    if (batches.isEmpty()) {
-      return;
-    }
-    IngestionBatchProcessor ingestionBatchProcessor = getIngestionBatchProcessor();
-    if (ingestionBatchProcessor == null) {
-      throw new VeniceException(
-          "IngestionBatchProcessor object should present for store version: " + kafkaVersionTopic);
-    }
-    /**
-     * Process records batch by batch.
-     */
-    for (List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> batch: batches) {
-      List<ReentrantLock> locks = ingestionBatchProcessor.lockKeys(batch);
-      try {
-        long beforeProcessingPerRecordTimestampNs = System.nanoTime();
-        List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> processedResults =
-            ingestionBatchProcessor.process(
-                batch,
+      if (!ongoingBatch.isEmpty()) {
+        batches.add(ongoingBatch);
+      }
+      if (batches.isEmpty()) {
+        return;
+      }
+      IngestionBatchProcessor ingestionBatchProcessor = getIngestionBatchProcessor();
+      if (ingestionBatchProcessor == null) {
+        throw new VeniceException(
+            "IngestionBatchProcessor object should present for store version: " + kafkaVersionTopic);
+      }
+      /**
+       * Process records batch by batch.
+       */
+      for (List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> batch: batches) {
+        List<ReentrantLock> locks = ingestionBatchProcessor.lockKeys(batch);
+        try {
+          long beforeProcessingPerRecordTimestampNs = System.nanoTime();
+          List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> processedResults =
+              ingestionBatchProcessor.process(
+                  batch,
+                  partitionConsumptionState,
+                  topicPartition.getPartitionNumber(),
+                  kafkaUrl,
+                  kafkaClusterId,
+                  beforeProcessingPerRecordTimestampNs,
+                  beforeProcessingBatchRecordsTimestampMs);
+
+          for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
+            totalBytesRead += handleSingleMessage(
+                processedRecord,
+                topicPartition,
                 partitionConsumptionState,
-                topicPartition.getPartitionNumber(),
                 kafkaUrl,
                 kafkaClusterId,
                 beforeProcessingPerRecordTimestampNs,
-                beforeProcessingBatchRecordsTimestampMs);
-
-        for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
-          totalBytesRead += handleSingleMessage(
-              processedRecord,
-              topicPartition,
-              partitionConsumptionState,
-              kafkaUrl,
-              kafkaClusterId,
-              beforeProcessingPerRecordTimestampNs,
-              beforeProcessingBatchRecordsTimestampMs,
-              metricsEnabled,
-              elapsedTimeForPuttingIntoQueue);
+                beforeProcessingBatchRecordsTimestampMs,
+                metricsEnabled,
+                elapsedTimeForPuttingIntoQueue);
+          }
+        } finally {
+          ingestionBatchProcessor.unlockKeys(batch, locks);
         }
-      } finally {
-        ingestionBatchProcessor.unlockKeys(batch, locks);
       }
     }
 
