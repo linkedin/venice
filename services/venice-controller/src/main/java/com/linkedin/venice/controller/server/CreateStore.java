@@ -43,20 +43,15 @@ public class CreateStore extends AbstractRoute {
         if (owner == null) {
           owner = "";
         }
-
-        NewStoreResponse duplicateVeniceResponse = createStore(createStoreRequest, owner, admin);
-        veniceResponse.setCluster(duplicateVeniceResponse.getCluster());
-        veniceResponse.setName(duplicateVeniceResponse.getName());
-        veniceResponse.setOwner(duplicateVeniceResponse.getOwner());
+        veniceResponse.setCluster(createStoreRequest.getClusterName());
+        veniceResponse.setName(createStoreRequest.getStoreName());
+        veniceResponse.setOwner(owner);
+        createStore(createStoreRequest, owner, admin);
       }
     };
   }
 
-  private NewStoreResponse createStore(CreateStoreRequest request, String owner, Admin admin) {
-    NewStoreResponse response = new NewStoreResponse();
-    response.setCluster(request.getClusterName());
-    response.setName(request.getStoreName());
-    response.setOwner(owner);
+  private void createStore(CreateStoreRequest request, String owner, Admin admin) {
     admin.createStore(
         request.getClusterName(),
         request.getStoreName(),
@@ -65,7 +60,6 @@ public class CreateStore extends AbstractRoute {
         request.getValueSchema(),
         request.isSystemStore(),
         Optional.ofNullable(request.getAccessPerm()));
-    return response;
   }
 
   /**
