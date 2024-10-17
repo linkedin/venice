@@ -20,6 +20,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_S
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -46,8 +47,11 @@ import spark.Route;
 
 
 public class SchemaRoutes extends AbstractRoute {
-  public SchemaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public SchemaRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

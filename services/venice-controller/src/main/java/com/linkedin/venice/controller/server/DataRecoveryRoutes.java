@@ -14,6 +14,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.PREPARE_DATA_REC
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -31,8 +32,11 @@ import spark.Route;
 public class DataRecoveryRoutes extends AbstractRoute {
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
 
-  public DataRecoveryRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public DataRecoveryRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

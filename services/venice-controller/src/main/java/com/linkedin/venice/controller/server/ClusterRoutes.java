@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
@@ -23,8 +24,11 @@ import spark.Route;
 
 
 public class ClusterRoutes extends AbstractRoute {
-  public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public ClusterRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

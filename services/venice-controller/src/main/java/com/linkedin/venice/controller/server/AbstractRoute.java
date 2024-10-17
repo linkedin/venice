@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
@@ -33,6 +34,7 @@ public class AbstractRoute {
 
   private final boolean sslEnabled;
   private final Optional<DynamicAccessController> accessController;
+  protected final VeniceControllerRequestHandler requestHandler;
 
   /**
    * Default constructor for different controller request routes.
@@ -41,9 +43,13 @@ public class AbstractRoute {
    * through this constructor; make sure Nuage is also in the allowlist so that they can create stores
    * @param accessController the access client that check whether a certificate can access a resource
    */
-  public AbstractRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public AbstractRoute(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
     this.sslEnabled = sslEnabled;
     this.accessController = accessController;
+    this.requestHandler = requestHandler;
   }
 
   /**

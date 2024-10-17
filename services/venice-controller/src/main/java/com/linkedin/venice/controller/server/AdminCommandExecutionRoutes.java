@@ -10,6 +10,7 @@ import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import java.util.Optional;
@@ -17,8 +18,11 @@ import spark.Route;
 
 
 public class AdminCommandExecutionRoutes extends AbstractRoute {
-  public AdminCommandExecutionRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public AdminCommandExecutionRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

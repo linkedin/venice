@@ -15,6 +15,8 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
@@ -109,6 +111,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final boolean isParent;
   private final int port;
   private final int securePort;
+  private final int adminGrpcPort;
   private final String zkAddress;
   private final List<ServiceDiscoveryAnnouncer> d2ServerList;
   private final MetricsRepository metricsRepository;
@@ -121,6 +124,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceController service,
       int port,
       int securePort,
+      int adminGrpcPort,
       List<VeniceProperties> configs,
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
@@ -132,6 +136,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.isParent = isParent;
     this.port = port;
     this.securePort = securePort;
+    this.adminGrpcPort = adminGrpcPort;
     this.zkAddress = zkAddress;
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
@@ -142,6 +147,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return (serviceName, dataDirectory) -> {
       int adminPort = TestUtils.getFreePort();
       int adminSecurePort = TestUtils.getFreePort();
+      int adminGrpcPort = TestUtils.getFreePort();
+      int adminSecureGrpcPort = TestUtils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
       VeniceProperties extraProps = new VeniceProperties(options.getExtraProperties());
@@ -182,6 +189,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DEFAULT_REPLICA_FACTOR, options.getReplicationFactor())
             .put(ADMIN_PORT, adminPort)
             .put(ADMIN_SECURE_PORT, adminSecurePort)
+            .put(CONTROLLER_ADMIN_GRPC_PORT, adminGrpcPort)
+            .put(CONTROLLER_ADMIN_SECURE_GRPC_PORT, adminSecureGrpcPort)
             .put(DEFAULT_PARTITION_SIZE, options.getPartitionSize())
             .put(DEFAULT_NUMBER_OF_PARTITION, options.getNumberOfPartitions())
             .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, options.getMaxNumberOfPartitions())
@@ -375,6 +384,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           veniceController,
           adminPort,
           adminSecurePort,
+          adminGrpcPort,
           propertiesList,
           options.isParent(),
           d2ServerList,
@@ -399,6 +409,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public int getSecurePort() {
     return securePort;
+  }
+
+  public int getAdminGrpcPort() {
+    return adminGrpcPort;
+  }
+
+  public String getControllerGrpcUrl() {
+    return getHost() + ":" + getAdminGrpcPort();
   }
 
   public String getControllerUrl() {

@@ -14,12 +14,12 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -37,8 +37,9 @@ public class ControllerRoutes extends AbstractRoute {
   public ControllerRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      PubSubTopicRepository pubSubTopicRepository) {
-    super(sslEnabled, accessController);
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
     this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
@@ -51,14 +52,7 @@ public class ControllerRoutes extends AbstractRoute {
       LeaderControllerResponse responseObject = new LeaderControllerResponse();
       try {
         AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        responseObject.setCluster(cluster);
-        Instance leaderController = admin.getLeaderController(cluster);
-        responseObject.setUrl(leaderController.getUrl(isSslEnabled()));
-        if (leaderController.getPort() != leaderController.getSslPort()) {
-          // Controller is SSL Enabled
-          responseObject.setSecureUrl(leaderController.getUrl(true));
-        }
+        requestHandler.getLeaderController(request.queryParams(CLUSTER), responseObject);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

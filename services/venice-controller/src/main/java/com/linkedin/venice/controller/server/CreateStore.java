@@ -15,17 +15,22 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
 
 
 public class CreateStore extends AbstractRoute {
-  public CreateStore(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public CreateStore(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**
@@ -57,7 +62,16 @@ public class CreateStore extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         veniceResponse.setOwner(owner);
-        admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+
+        NewStoreRequest storeRequest = new NewStoreRequest(
+            clusterName,
+            storeName,
+            owner,
+            keySchema,
+            valueSchema,
+            accessPermissions.orElse(null),
+            isSystemStore);
+        requestHandler.createStore(storeRequest);
       }
     };
   }

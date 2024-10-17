@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ROUTERS_CLUS
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.utils.Utils;
@@ -19,8 +20,11 @@ import spark.Route;
 
 
 public class RoutersClusterConfigRoutes extends AbstractRoute {
-  public RoutersClusterConfigRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public RoutersClusterConfigRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

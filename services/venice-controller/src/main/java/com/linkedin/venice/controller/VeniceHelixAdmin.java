@@ -6655,7 +6655,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               id,
               Utils.parseHostFromHelixNodeIdentifier(id),
               Utils.parsePortFromHelixNodeIdentifier(id),
-              multiClusterConfigs.getAdminSecurePort());
+              multiClusterConfigs.getAdminSecurePort(),
+              multiClusterConfigs.getAdminGrpcPort(),
+              multiClusterConfigs.getAdminSecureGrpcPort());
         }
       }
       if (attempt < maxAttempts) {
