@@ -559,6 +559,7 @@ public class TestUtils {
     properties.put(ConfigKeys.DEFAULT_NUMBER_OF_PARTITION, "1");
     properties.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
     properties.put(ConfigKeys.ADMIN_SECURE_PORT, TestUtils.getFreePort());
+    properties.put(ConfigKeys.ADMIN_GRPC_PORT, TestUtils.getFreePort());
     return properties;
   }
 

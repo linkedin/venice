@@ -3,19 +3,14 @@ package com.linkedin.venice.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.controller.spark.VeniceSparkServerFactory;
-import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import spark.embeddedserver.EmbeddedServers;
 
 
 public class VeniceControllerApiHandler {
@@ -28,9 +23,6 @@ public class VeniceControllerApiHandler {
   private final Optional<DynamicAccessController> accessController;
 
   protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-  final private Map<String, SparkServerStats> statsMap;
-  final private SparkServerStats nonclusterSpecificStats;
-
   private static String REQUEST_START_TIME = "startTime";
   private static String REQUEST_SUCCEED = "succeed";
 
@@ -52,7 +44,7 @@ public class VeniceControllerApiHandler {
       boolean checkReadMethodForKafka,
       Optional<DynamicAccessController> accessController,
       List<ControllerRoute> disabledRoutes,
-      VeniceProperties jettyConfigOverrides,
+      VeniceProperties veniceProperties,
       boolean disableParentRequestTopicForStreamPushes,
       PubSubTopicRepository pubSubTopicRepository) {
     this.port = port;
@@ -64,16 +56,6 @@ public class VeniceControllerApiHandler {
     // Note: admin is passed in as a reference. The expectation is the source of the admin will
     // close it so we don't close it in stopInner()
     this.admin = admin;
-    statsMap = new HashMap<>(clusters.size());
-    String statsPrefix = sslEnabled ? "secure_" : "";
-    for (String cluster: clusters) {
-      statsMap.put(
-          cluster,
-          new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
-    }
-    nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
-    EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
-
     this.disabledRoutes = disabledRoutes;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
     this.pubSubTopicRepository = pubSubTopicRepository;

@@ -1,0 +1,33 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+option java_multiple_files = true;
+
+service VeniceControllerGrpcService {
+  rpc listStores (ListStoresGrpcRequest) returns (ListStoresGrpcResponse) {}
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
+  rpc getJobStatus(GetJobStatusGrpcRequest) returns (GetJobStatusGrpcResponse) {}
+}
+
+message ListStoresGrpcRequest {
+  string clusterName = 1;
+}
+
+message ListStoresGrpcResponse {
+}
+
+message CreateStoreGrpcRequest {
+  string clusterName = 1;
+  string storeName = 2;
+}
+
+message CreateStoreGrpcResponse {
+}
+
+message GetJobStatusGrpcRequest {
+  string clusterName = 1;
+  string jobName = 2;
+}
+
+message GetJobStatusGrpcResponse {
+}
