@@ -79,12 +79,23 @@ public class VeniceControllerGrpcServiceImpl
     if (request.hasAccessPermission()) {
       accessPermissions = Optional.of(request.getAccessPermission());
     }
+
+    LOGGER.info(
+        "gRPC:: Received gRPC request to create store: clusterName={}, storeName={}, keySchema={}, valueSchema={}, isSystemStore={}, owner={}, accessPermissions={}",
+        clusterName,
+        storeName,
+        keySchema,
+        valueSchema,
+        isSystemStore,
+        owner,
+        accessPermissions);
     CreateStoreGrpcResponse.Builder responseBuilder = CreateStoreGrpcResponse.newBuilder();
     try {
       admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+      LOGGER.info("gRPC:: Store created successfully store: {} in cluster: {}", storeName, clusterName);
       responseBuilder.setStatusCode(200);
     } catch (Exception e) {
-      LOGGER.error("Error creating store", e);
+      LOGGER.error("####: Error creating store", e);
       responseBuilder.setStatusCode(500);
       responseBuilder.setStatusMessage("Error creating store: " + e.getMessage());
     }
