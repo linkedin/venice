@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -68,6 +69,7 @@ public class SystemStoreInitializationHelperTest {
     int partitionCount = 10;
     int replicationFactor = 3;
     doReturn(1).when(firstVersion).getNumber();
+    doReturn(VersionStatus.ONLINE).when(firstVersion).getStatus();
 
     Store storeForTest = mock(Store.class);
 
@@ -120,51 +122,52 @@ public class SystemStoreInitializationHelperTest {
           updateStoreQueryParams,
           admin,
           multiClusterConfigs);
-    }
 
-    /**
-     * getStore should be called 5 times:
-     *
-     * 1. at the beginning
-     * 2. after store creation
-     * 3. after store update
-     * 4. after version creation
-     * 5. at the beginning of the second attempt
-     */
-    verify(admin, times(5)).getStore(clusterName, systemStoreName);
+      /**
+       * getStore should be called either 4 or 5 times:
+       *
+       * 1. at the beginning of each attempt
+       * 2. after store creation of the 1st attempt only
+       * 3. after store update of the 1st attempt only
+       * 4. after version creation of the 1st attempt only
+       */
+      verify(admin, times(4 + i)).getStore(clusterName, systemStoreName);
 
-    verify(admin, times(1)).createStore(
-        clusterName,
-        systemStoreName,
-        VeniceConstants.SYSTEM_STORE_OWNER,
-        expectedKeySchemaStr,
-        protocolSchemaMap.get(1).toString(),
-        true);
+      // The rest of the APIs below should be called only once (during the first attempt).
 
-    verify(admin, times(1)).updateStore(clusterName, systemStoreName, updateStoreQueryParams);
-
-    // First value schema should always get added during store creation
-    verify(admin, never()).addValueSchema(
-        clusterName,
-        systemStoreName,
-        protocolSchemaMap.get(1).toString(),
-        1,
-        DirectionalSchemaCompatibilityType.NONE);
-    for (int i = 2; i <= protocolDefinition.getCurrentProtocolVersion(); i++) {
-      verify(admin, times(1)).addValueSchema(
+      verify(admin, times(1)).createStore(
           clusterName,
           systemStoreName,
-          protocolSchemaMap.get(i).toString(),
-          i,
-          DirectionalSchemaCompatibilityType.NONE);
-    }
+          VeniceConstants.SYSTEM_STORE_OWNER,
+          expectedKeySchemaStr,
+          protocolSchemaMap.get(1).toString(),
+          true);
 
-    verify(admin, times(1)).incrementVersionIdempotent(
-        eq(clusterName),
-        eq(systemStoreName),
-        any(),
-        eq(partitionCount),
-        eq(replicationFactor));
+      verify(admin, times(1)).updateStore(clusterName, systemStoreName, updateStoreQueryParams);
+
+      // First value schema should always get added during store creation
+      verify(admin, never()).addValueSchema(
+          clusterName,
+          systemStoreName,
+          protocolSchemaMap.get(1).toString(),
+          1,
+          DirectionalSchemaCompatibilityType.NONE);
+      for (int j = 2; j <= protocolDefinition.getCurrentProtocolVersion(); j++) {
+        verify(admin, times(1)).addValueSchema(
+            clusterName,
+            systemStoreName,
+            protocolSchemaMap.get(j).toString(),
+            j,
+            DirectionalSchemaCompatibilityType.NONE);
+      }
+
+      verify(admin, times(1)).incrementVersionIdempotent(
+          eq(clusterName),
+          eq(systemStoreName),
+          any(),
+          eq(partitionCount),
+          eq(replicationFactor));
+    }
   }
 
   /**
@@ -188,6 +191,7 @@ public class SystemStoreInitializationHelperTest {
     Version firstVersion = mock(Version.class);
     int versionNumber = 1;
     doReturn(1).when(firstVersion).getNumber();
+    doReturn(VersionStatus.ONLINE).when(firstVersion).getStatus();
 
     Store storeToTest = mock(Store.class);
     doReturn(true).when(storeToTest).isHybrid();

@@ -48,6 +48,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMode;
@@ -94,7 +95,16 @@ public class DaVinciClientMemoryLimitTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 10L);
     // To allow more times for DaVinci clients to report status
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 15);
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfRouters(1)
+        .numberOfServers(2)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToKafka(false)
+        .sslToStorageNodes(false)
+        .extraProperties(clusterConfig)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     d2Client = new D2ClientBuilder().setZkHosts(veniceCluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
@@ -222,6 +232,8 @@ public class DaVinciClientMemoryLimitTest {
   /**
    * N.B.: Because of the flakiness of the test-retry Gradle plugin in conjunction with test permutations, we're doing
    * the permutations manually instead. TODO: Remove this once we fix the flakiness in that test or within test-retry.
+   *
+   * See: https://github.com/linkedin/venice/issues/1249
    */
   private void testDaVinciMemoryLimitShouldFailLargeDataPush(
       boolean ingestionIsolationEnabledInDaVinci,
