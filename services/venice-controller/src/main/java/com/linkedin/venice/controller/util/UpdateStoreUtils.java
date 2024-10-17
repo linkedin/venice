@@ -58,7 +58,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
-import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -95,6 +94,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
@@ -126,29 +126,24 @@ public class UpdateStoreUtils {
       boolean checkRegionFilter) {
     VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
 
+    // Check whether the command affects this region.
+    Set<String> regionsFilter =
+        params.getRegionsFilter().map(RegionUtils::parseRegionsFilterList).orElse(Collections.emptySet());
+    if (checkRegionFilter && !regionsFilter.isEmpty() && !regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+      LOGGER.info(
+          "UpdateStore command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+              + " which doesn't include the current region: {}",
+          storeName,
+          clusterName,
+          regionsFilter,
+          multiClusterConfigs.getRegionName());
+      return null;
+    }
+
     // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
     // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
     // if the regions filter only specifies one region, which is the parent region.
-    boolean onlyParentRegionFilter = false;
-
-    // Check whether the command affects this region.
-    if (params.getRegionsFilter().isPresent()) {
-      Set<String> regionsFilter = parseRegionsFilterList(params.getRegionsFilter().get());
-      if (checkRegionFilter && !regionsFilter.contains(multiClusterConfigs.getRegionName())) {
-        LOGGER.info(
-            "UpdateStore command will be skipped for store: {} in cluster: {}, because the region filter is {}"
-                + " which doesn't include the current region: {}",
-            storeName,
-            clusterName,
-            regionsFilter,
-            multiClusterConfigs.getRegionName());
-        return null;
-      }
-
-      if (admin.isParent() && regionsFilter.size() == 1) {
-        onlyParentRegionFilter = true;
-      }
-    }
+    boolean onlyParentRegionFilter = admin.isParent() && regionsFilter.size() == 1;
 
     Store originalStore = admin.getStore(clusterName, storeName);
     if (originalStore == null) {
@@ -803,11 +798,11 @@ public class UpdateStoreUtils {
             ErrorType.INVALID_CONFIG);
       }
 
-      DataReplicationPolicy dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy();
-      // Incremental push + !AA + NON_AGGREGATE DRP is not supported in multi-region mode
-      if (controllerConfig.isMultiRegion() && store.isIncrementalPushEnabled()
-          && !store.isActiveActiveReplicationEnabled()
-          && dataReplicationPolicy == DataReplicationPolicy.NON_AGGREGATE) {
+      boolean isIncrementalPushSupported = !AdminUtils.isIncrementalPushSupported(
+          controllerConfig.isMultiRegion(),
+          store.isActiveActiveReplicationEnabled(),
+          hybridStoreConfig);
+      if (store.isIncrementalPushEnabled() && !isIncrementalPushSupported) {
         throw new VeniceHttpException(
             HttpStatus.SC_BAD_REQUEST,
             errorMessagePrefix
@@ -815,6 +810,7 @@ public class UpdateStoreUtils {
             ErrorType.INVALID_CONFIG);
       }
 
+      DataReplicationPolicy dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy();
       // ACTIVE_ACTIVE DRP is only supported when activeActiveReplicationEnabled = true
       if (dataReplicationPolicy == DataReplicationPolicy.ACTIVE_ACTIVE && !store.isActiveActiveReplicationEnabled()) {
         throw new VeniceHttpException(
@@ -1070,11 +1066,10 @@ public class UpdateStoreUtils {
 
     int minPartitionNum = clusterConfig.getMinNumberOfPartitions();
     if (newPartitionCount < minPartitionNum && newPartitionCount != 0) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "Partition count must be at least " + minPartitionNum + " for store: " + storeName
-              + ". If a specific partition count is not required, set it to 0.",
-          ErrorType.INVALID_CONFIG);
+      String errorMessage = errorMessagePrefix + "Partition count must be at least " + minPartitionNum
+          + ". If a specific partition count is not required, set it to 0.";
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
 
     int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
@@ -1165,12 +1160,11 @@ public class UpdateStoreUtils {
       return oldStore.getPartitionerConfig();
     }
 
-    PartitionerConfig originalPartitionerConfig;
-    if (oldStore.getPartitionerConfig() == null) {
+    PartitionerConfig originalPartitionerConfig = oldStore.getPartitionerConfig();
+    if (originalPartitionerConfig == null) {
       originalPartitionerConfig = new PartitionerConfigImpl();
-    } else {
-      originalPartitionerConfig = oldStore.getPartitionerConfig();
     }
+
     return new PartitionerConfigImpl(
         partitionerClass.orElse(originalPartitionerConfig.getPartitionerClass()),
         partitionerParams.orElse(originalPartitionerConfig.getPartitionerParams()),
