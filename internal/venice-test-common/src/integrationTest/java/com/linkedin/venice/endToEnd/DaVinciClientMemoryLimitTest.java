@@ -159,7 +159,6 @@ public class DaVinciClientMemoryLimitTest {
     return venicePropertyBuilder.build();
   }
 
-<<<<<<< HEAD
   /**
    * TODO: If we deflake the 2 disabled tests in this class, we should make them leverage the stores setup here, or else
    * move them to another class...
@@ -168,13 +167,6 @@ public class DaVinciClientMemoryLimitTest {
   public void storeSetup() throws IOException {
     this.storeName = Utils.getUniqueString("davinci_memory_limit_test");
     this.storeNameWithoutMemoryEnforcement = Utils.getUniqueString("store_without_memory_enforcement");
-=======
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
-  public void testDaVinciMemoryLimitShouldFailLargeDataPush(
-      boolean ingestionIsolationEnabledInDaVinci,
-      boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
-    String storeName = Utils.getUniqueString("davinci_memory_limit_test");
->>>>>>> 46fdc7900 (updated retry limits)
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();

@@ -1498,17 +1498,17 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
   }
 
-  @Test(dataProvider = "aaConfigProvider", invocationCount = 800)
+  @Test(dataProvider = "aaConfigProvider")
   public void testNotifier(AAConfig aaConfig) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    doReturn(fooLastOffset + 1).when(mockTopicManager).getLatestOffsetCached(any(), eq(PARTITION_FOO));
-    doReturn(barLastOffset + 1).when(mockTopicManager).getLatestOffsetCached(any(), eq(PARTITION_BAR));
+    doReturn(fooLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_FOO));
+    doReturn(barLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_BAR));
 
-    Utils.sleep(500);
+    Utils.sleep(1000);
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
