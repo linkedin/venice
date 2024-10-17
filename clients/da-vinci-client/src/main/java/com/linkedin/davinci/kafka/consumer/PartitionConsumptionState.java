@@ -62,8 +62,15 @@ public class PartitionConsumptionState {
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
 
+  /**
+   * The lock is mainly to protect the consumer thread (while processing inflight messages) from the SIT thread trying
+   * to update the state during a state transition. The read lock is acquired in the consumer thread for the entirety
+   * of one message's processing in {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka}, and the SIT must wait
+   * for the release of the read lock before it can acquire the write lock and update the state. That is the only
+   * lengthy acquisition of the lock.
+   */
   final class LeaderFollowerState {
-    LeaderFollowerStateType state; // TODO: does this also need volatile?
+    LeaderFollowerStateType state;
     final ReadWriteLock rwLock;
 
     LeaderFollowerState() {
@@ -90,8 +97,7 @@ public class PartitionConsumptionState {
     }
   }
 
-  // private volatile LeaderFollowerStateType leaderFollowerState;
-  private volatile LeaderFollowerState leaderFollowerState; // or final?
+  private final LeaderFollowerState leaderFollowerState;
 
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
@@ -441,12 +447,10 @@ public class PartitionConsumptionState {
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {
     this.leaderFollowerState.set(state);
-    // this.leaderFollowerState = state;
   }
 
   public final LeaderFollowerStateType getLeaderFollowerState() {
     return this.leaderFollowerState.get();
-    // return this.leaderFollowerState;
   }
 
   public final ReadWriteLock getLeaderFollowerStateLock() {

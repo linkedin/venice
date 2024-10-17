@@ -4251,13 +4251,30 @@ public abstract class StoreIngestionTaskTest {
     verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
   }
 
+  /**
+   * Tests that the following scenario no longer occurs after adding a lock on {@link LeaderFollowerStateType}:
+   * 1. Consumer thread calls {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} to process polled messages
+   * 2. Execution reaches {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord}, which compares the message's
+   * topic with the topic that should be consumed from, according to {@link PartitionConsumptionState}
+   * 3. The origin topic matches the intended topic, so the Consumer continues to process this message
+   * 4. The StoreIngestionTask thread modifies the PCS leader-follower state due to a Helix state transition
+   * 5. The Consumer thread continues to process the message, but the mismatch in the PCS leader-follower state causes
+   * sanity check failures (e.g. {@link LeaderFollowerStoreIngestionTask#validateRecordBeforeProducingToLocalKafka})
+   * 6. This eventually results in the SIT being killed, which can only be recovered by manually restarting the Venice
+   * server, which results in a massive spike in ingestion latency
+   * <p>
+   * Specifically, this tests the follower to leader transition. Followers should always consume from local VT, but
+   * leaders should never consume from local VT, and an ingestion exception will be emitted from
+   * {@link LeaderFollowerStoreIngestionTask#validateRecordBeforeProducingToLocalKafka} if this happens.
+   * By adding a reader lock to the entire section after {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord},
+   * the PCS state can never be modified while the Consumer thread is processing messages.
+   */
   @Test(dataProvider = "aaConfigProvider")
-  public void testProduceToStoreBufferServiceOrKafka(AAConfig aaConfig) throws Exception {
+  public void testShouldProcessRecord(AAConfig aaConfig) throws Exception {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     PubSubHelper.MutablePubSubMessage pubSubMessage = PubSubHelper.getDummyPubSubMessage(false);
     pubSubMessage.setTopicPartition(topicPartition);
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedMessages = Arrays.asList(pubSubMessage);
-
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo));
 
     runTest(Collections.singleton(PARTITION_FOO), () -> {
@@ -4267,53 +4284,41 @@ public abstract class StoreIngestionTaskTest {
           () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
       VeniceWriter writer = getVeniceWriter(topic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
-      doReturn(writer).when(mockWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
+      doReturn(writer).when(mockWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class)); // prevents NPE
 
-      Thread t = new Thread(() -> {
+      Thread stateTransitionThread = new Thread(() -> {
+        /*
+         * Waits for the main test thread to go past shouldProcessRecord() to wait at waitUntilValueSchemaAvailable()
+         * inside waitReadyToProcessRecord(), then frees the main test thread by making the value schema available
+         */
         Utils.sleep(1000L);
-        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
         doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, 0);
+
+        /*
+         * Simulates a Helix state transition where the SIT modifies the leader-follower state in the PCS. Since
+         * setLeaderFollowerState() now requires the write lock, this has to wait until after the main test thread is
+         * done. Otherwise, validateRecordBeforeProducingToLocalKafka() would fail and induce an ingestion exception.
+         */
+        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
         pcs.getOffsetRecord().setLeaderTopic(rtTopic);
         pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
       });
-      t.start();
+      stateTransitionThread.start();
 
       try {
+        // Act as the consumer thread processing a batch of polled messages while there is another thread modifying PCS
         storeIngestionTaskUnderTest.produceToStoreBufferServiceOrKafka(
             consumedMessages,
             topicPartition,
             localKafkaConsumerService.kafkaUrl,
             0);
-        TestUtils.shutdownThread(t);
+        TestUtils.shutdownThread(stateTransitionThread);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
 
-      // Utils.sleep(1000L);
-
-      PartitionExceptionInfo pe = storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO);
-      Assert.assertNull(pe);
-      // if (pe == null) {
-      // Assert.assertNull(pe);
-      // } else {
-      // Assert.assertTrue(pe.getException().getMessage().contains("is consuming from local version topic and producing
-      // back to local version topic"));
-      // }
-
-      // TestUtils.waitForNonDeterministicAssertion(
-      // 5,
-      // TimeUnit.SECONDS,
-      // () -> {
-      // PartitionExceptionInfo pe =
-      // storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO);
-      // if (pe == null) {
-      // Assert.assertNull(pe);
-      // } else {
-      // Assert.assertTrue(pe.getException().getMessage().contains("is consuming from local version topic and producing
-      // back to local version topic"));
-      // }
-      // }
-      // );
+      // This exception appears if the PCS is in leader state, but the processed message is from local VT
+      Assert.assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO));
     }, aaConfig);
   }
 

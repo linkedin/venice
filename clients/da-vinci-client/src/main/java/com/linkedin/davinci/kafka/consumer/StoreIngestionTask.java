@@ -1175,6 +1175,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
+      /*
+       * Acquire the read lock to ensure that the result of shouldProcessRecord() holds for the entire duration for
+       * which this message is processed. This lock protects against any state transitions where the SIT needs to
+       * acquire the write lock to modify the leader-follower state, since it would need to wait for this to finish.
+       */
       partitionConsumptionState.getLeaderFollowerStateLock().readLock().lock();
       try {
         if (!shouldProcessRecord(record)) {
@@ -1241,6 +1246,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (partitionConsumptionState != null) {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
         partitionConsumptionState.getLeaderFollowerStateLock().readLock().lock();
+        // see comment in produceToStoreBufferServiceOrKafka about why the lock is needed here
       }
       try {
         if (!shouldProcessRecord(record)) {
