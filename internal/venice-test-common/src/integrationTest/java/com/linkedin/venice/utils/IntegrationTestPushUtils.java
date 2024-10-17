@@ -252,11 +252,27 @@ public class IntegrationTestPushUtils {
     return veniceProducer;
   }
 
+  public static String getKeySchemaString(Schema recordSchema, Properties props) {
+    return getSchemaString(recordSchema, props, KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+  }
+
+  public static String getValueSchemaString(Schema recordSchema, Properties props) {
+    return getSchemaString(recordSchema, props, VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+  }
+
+  private static String getSchemaString(Schema recordSchema, Properties props, String field, String fallbackField) {
+    return recordSchema.getField(props.getProperty(field, fallbackField)).schema().toString();
+  }
+
+  /**
+   * Consider using {@link VeniceClusterWrapper#createStoreForJob(Schema, Properties)} if you do not need the controller
+   * client returned by this function.
+   */
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
     return createStoreForJob(
         veniceClusterName,
-        recordSchema.getField(props.getProperty(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP)).schema().toString(),
-        recordSchema.getField(props.getProperty(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP)).schema().toString(),
+        getKeySchemaString(recordSchema, props),
+        getValueSchemaString(recordSchema, props),
         props,
         CompressionStrategy.NO_OP,
         false,

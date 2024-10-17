@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,6 +39,7 @@ public class TestPushJobStatusStats {
   public void testEmitPushJobStatusMetrics(boolean isIncrementalPush, boolean useUserProvidedUserErrorCheckpoints) {
     Set<PushJobCheckpoints> userErrorCheckpoints =
         useUserProvidedUserErrorCheckpoints ? CUSTOM_USER_ERROR_CHECKPOINTS : DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
+    PushJobStatusRecordKey key = new PushJobStatusRecordKey("test", 1);
     PushJobDetails pushJobDetails = mock(PushJobDetails.class);
     Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
     pushJobConfigs.put(new Utf8("incremental.push"), String.valueOf(isIncrementalPush));
@@ -65,7 +67,7 @@ public class TestPushJobStatusStats {
 
       for (PushJobCheckpoints checkpoint: PushJobCheckpoints.values()) {
         when(pushJobDetails.getPushJobLatestCheckpoint()).thenReturn(checkpoint.getValue());
-        emitPushJobStatusMetrics(pushJobStatusStatsMap, pushJobDetails, userErrorCheckpoints);
+        emitPushJobStatusMetrics(pushJobStatusStatsMap, key, pushJobDetails, userErrorCheckpoints);
         boolean isUserError = userErrorCheckpoints.contains(checkpoint);
 
         if (isUserError) {

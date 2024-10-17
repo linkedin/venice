@@ -83,12 +83,15 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_HELIX_JOIN_AS_UNKNOWN;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INITIAL_WINDOW_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_CONCURRENT_STREAMS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_FRAME_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_HEADER_LIST_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
@@ -336,6 +339,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * number of worker threads for the netty listener.  If not specified, netty uses twice cpu count.
    */
   private final int nettyWorkerThreadCount;
+  private final boolean helixJoinAsUnknown;
   private final int grpcWorkerThreadCount;
 
   private final long databaseSyncBytesIntervalForTransactionalMode;
@@ -506,6 +510,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int metaStoreWriterCloseConcurrency;
 
   private final boolean batchReportEOIPEnabled;
+  private final IncrementalPushStatusWriteMode incrementalPushStatusWriteMode;
   private final long ingestionHeartbeatIntervalMs;
   private final boolean leaderCompleteStateCheckInFollowerEnabled;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
@@ -542,6 +547,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int channelOptionWriteBufferHighBytes;
   private final boolean aaWCWorkloadParallelProcessingEnabled;
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
+  private final boolean isGlobalRtDivEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -614,6 +620,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         .getInt(PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE, topicManagerMetadataFetcherConsumerPoolSize);
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30);
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
+    helixJoinAsUnknown = serverProperties.getBoolean(SERVER_HELIX_JOIN_AS_UNKNOWN, false);
     grpcWorkerThreadCount =
         serverProperties.getInt(GRPC_SERVER_WORKER_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
@@ -832,7 +839,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getLong(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
     batchReportEOIPEnabled =
         serverProperties.getBoolean(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, false);
-
+    incrementalPushStatusWriteMode =
+        extractIncPushStatusWriteMode(serverProperties.getString(SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE, "DUAL"));
     stuckConsumerRepairEnabled = serverProperties.getBoolean(SERVER_STUCK_CONSUMER_REPAIR_ENABLED, true);
     stuckConsumerRepairIntervalSecond = serverProperties.getInt(SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND, 60);
     stuckConsumerDetectionRepairThresholdSecond =
@@ -897,9 +905,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
     nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond =
         serverProperties.getInt(SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+
+    // default 64KB
     channelOptionWriteBufferHighBytes = (int) serverProperties
-        .getSizeInBytes(SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES, WriteBufferWaterMark.DEFAULT.high()); // default
-                                                                                                                       // 64KB
+        .getSizeInBytes(SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES, WriteBufferWaterMark.DEFAULT.high());
+
+    this.isGlobalRtDivEnabled = serverProperties.getBoolean(SERVER_GLOBAL_RT_DIV_ENABLED, false);
     if (channelOptionWriteBufferHighBytes <= 0) {
       throw new VeniceException("Invalid channel option write buffer high bytes: " + channelOptionWriteBufferHighBytes);
     }
@@ -1091,6 +1102,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNettyWorkerThreadCount() {
     return nettyWorkerThreadCount;
+  }
+
+  public boolean isHelixJoinAsUnknownEnabled() {
+    return helixJoinAsUnknown;
   }
 
   public int getGrpcWorkerThreadCount() {
@@ -1473,6 +1488,30 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return batchReportEOIPEnabled;
   }
 
+  public enum IncrementalPushStatusWriteMode {
+    /** Write incremental push status to Zookeeper only */
+    ZOOKEEPER_ONLY,
+
+    /** Write incremental push status to push status system store only */
+    PUSH_STATUS_SYSTEM_STORE_ONLY,
+
+    /** Write incremental push status to both Zookeeper and push status system store */
+    DUAL
+  }
+
+  public IncrementalPushStatusWriteMode extractIncPushStatusWriteMode(String mode) {
+    try {
+      return IncrementalPushStatusWriteMode.valueOf(mode);
+    } catch (IllegalArgumentException e) {
+      LOGGER.error("Invalid incremental push status write mode: {}. Defaulting to DUAL", mode);
+      return IncrementalPushStatusWriteMode.DUAL;
+    }
+  }
+
+  public IncrementalPushStatusWriteMode getIncrementalPushStatusWriteMode() {
+    return incrementalPushStatusWriteMode;
+  }
+
   public boolean isLeaderCompleteStateCheckInFollowerEnabled() {
     return leaderCompleteStateCheckInFollowerEnabled;
   }
@@ -1623,5 +1662,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getAAWCWorkloadParallelProcessingThreadPoolSize() {
     return aaWCWorkloadParallelProcessingThreadPoolSize;
+  }
+
+  public boolean isGlobalRtDivEnabled() {
+    return isGlobalRtDivEnabled;
   }
 }

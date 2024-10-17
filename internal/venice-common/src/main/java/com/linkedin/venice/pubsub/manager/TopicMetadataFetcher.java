@@ -379,6 +379,25 @@ class TopicMetadataFetcher implements Closeable {
         .supplyAsync(() -> getLatestOffsetWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
   }
 
+  long getLatestOffsetCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<Long> cachedValue;
+    cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+    updateCacheAsync(
+        pubSubTopicPartition,
+        cachedValue,
+        latestOffsetCache,
+        () -> getLatestOffsetWithRetriesAsync(
+            pubSubTopicPartition,
+            DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
+    if (cachedValue == null) {
+      cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+      if (cachedValue == null) {
+        return -1;
+      }
+    }
+    return cachedValue.getValue();
+  }
+
   long getLatestOffsetCached(PubSubTopicPartition pubSubTopicPartition) {
     ValueAndExpiryTime<Long> cachedValue;
     try {

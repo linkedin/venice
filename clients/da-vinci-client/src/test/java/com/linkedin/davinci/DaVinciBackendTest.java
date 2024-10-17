@@ -4,6 +4,10 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
@@ -11,6 +15,9 @@ import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -117,6 +124,19 @@ public class DaVinciBackendTest {
           DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
           ERROR);
     }
+  }
+
+  @Test
+  public void testBootstrappingAwareCompletableFuture()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    DaVinciBackend backend = mock(DaVinciBackend.class);
+
+    when(backend.hasCurrentVersionBootstrapping()).thenReturn(true).thenReturn(false);
+
+    DaVinciBackend.BootstrappingAwareCompletableFuture future =
+        new DaVinciBackend.BootstrappingAwareCompletableFuture(backend);
+    future.getBootstrappingFuture().get(10, TimeUnit.SECONDS);
+    verify(backend, times(2)).hasCurrentVersionBootstrapping();
   }
 
 }

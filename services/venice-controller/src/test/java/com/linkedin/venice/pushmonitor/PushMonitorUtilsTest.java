@@ -21,22 +21,32 @@ public class PushMonitorUtilsTest {
   @Test
   public void testCompleteStatusCanBeReportedWithOfflineInstancesBelowFailFastThreshold() {
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
+    PushMonitorUtils.setDVCDeadInstanceTime("store_v1", System.currentTimeMillis());
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
     /**
       * Instance a is offline and its push status is not completed.
       * Instance b,c,d are online and their push status is completed.
       * In this case, the overall DaVinci push status can be COMPLETED as long as 1 is below the fail fast threshold.
       */
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("a"));
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("b"));
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("c"));
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("d"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("a"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("b"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("c"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("d"));
+    // Bootstrapping nodes should be ignored
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("e"));
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("f"));
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("g"));
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("h"));
 
     Map<CharSequence, Integer> map = new HashMap<>();
     map.put("a", 2);
     map.put("b", 10);
     map.put("c", 10);
     map.put("d", 10);
+    map.put("e", 2);
+    map.put("f", 2);
+    map.put("g", 2);
+    map.put("h", 2);
 
     // Test partition level key first
     doReturn(null).when(reader).getVersionStatus("store", 1);
@@ -56,10 +66,10 @@ public class PushMonitorUtilsTest {
   public void testDaVinciPushStatusScan(boolean useDaVinciSpecificExecutionStatusForError) {
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("b"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("c"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("d"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("a"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("b"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("c"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("d"));
 
     Map<CharSequence, Integer> map = new HashMap<>();
     map.put("a", 3);

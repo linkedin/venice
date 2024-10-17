@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.utils.AvroRecordUtils;
+import java.util.Objects;
 
 
 /**
@@ -87,5 +88,33 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
     clonedStoreConfig.setMigrationSrcCluster(getMigrationSrcCluster());
     clonedStoreConfig.setMigrationDestCluster(getMigrationDestCluster());
     return clonedStoreConfig;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        storeClusterConfig.storeName,
+        storeClusterConfig.cluster,
+        storeClusterConfig.deleting,
+        storeClusterConfig.migrationSrcCluster,
+        storeClusterConfig.migrationDestCluster);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    StoreConfig that = (StoreConfig) o;
+
+    return storeClusterConfig.deleting == that.storeClusterConfig.deleting
+        && storeClusterConfig.storeName.equals(that.storeClusterConfig.storeName)
+        && storeClusterConfig.cluster.equals(that.storeClusterConfig.cluster)
+        && (Objects.equals(storeClusterConfig.migrationSrcCluster, that.storeClusterConfig.migrationSrcCluster))
+        && (Objects.equals(storeClusterConfig.migrationDestCluster, that.storeClusterConfig.migrationDestCluster));
   }
 }

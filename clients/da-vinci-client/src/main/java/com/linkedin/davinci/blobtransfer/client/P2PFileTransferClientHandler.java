@@ -5,6 +5,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
+import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -62,9 +63,16 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
     if (msg instanceof HttpResponse) {
       HttpResponse response = (HttpResponse) msg;
+
       if (!response.status().equals(HttpResponseStatus.OK)) {
-        throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+        if (response.status().equals(HttpResponseStatus.NOT_FOUND)) {
+          throw new VeniceBlobTransferFileNotFoundException(
+              "Requested files from remote peer are not found. Response: " + response.status());
+        } else {
+          throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+        }
       }
+
       // redirect the message to the next handler if it's a metadata transfer
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
@@ -155,7 +163,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    LOGGER.error("Exception caught in when transferring files for {}", payload.getFullResourceName());
+    LOGGER.error(
+        "Exception caught in when transferring files for {} with cause {}",
+        payload.getFullResourceName(),
+        cause);
     inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     ctx.close();
   }

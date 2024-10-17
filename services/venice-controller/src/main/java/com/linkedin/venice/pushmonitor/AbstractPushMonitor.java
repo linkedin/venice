@@ -149,30 +149,16 @@ public abstract class AbstractPushMonitor
     pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
-      // Subscribe to changes first
-      List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
-      for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
-        try {
-          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-
-          /**
-           * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
-           * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
-           * to changes in the data.
-           */
-          refreshedOfflinePushStatusList
-              .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
-        } catch (Exception e) {
-          LOGGER.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
-        }
-
-      }
-      offlinePushStatusList = refreshedOfflinePushStatusList;
-
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
+          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
+          /**
+           * This update call is necessary it won't miss updates between initial offline push retrival and update subscription.
+           * This call uses the same store-level lock as partition status update listener callback.
+           */
+          updateOfflinePush(offlinePushStatus.getKafkaTopic());
 
           // Check the status for running pushes. In case controller missed some notification during the failover, we
           // need to update it based on current routing data.
@@ -321,6 +307,21 @@ public abstract class AbstractPushMonitor
     return topicToPushMap.get(topic);
   }
 
+  protected void updateOfflinePush(String topic) {
+    String store = Version.parseStoreFromKafkaTopicName(topic);
+    OfflinePushStatus offlinePushStatus;
+    try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
+      offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
+      topicToPushMap.put(topic, offlinePushStatus);
+    }
+    if (offlinePushStatus != null) {
+      LOGGER.info(
+          "Update offline push status from ZK for topic: {}, current status: {}",
+          topic,
+          offlinePushStatus.getCurrentStatus());
+    }
+  }
+
   public ExecutionStatus getPushStatus(String topic) {
     return getPushStatusAndDetails(topic).getStatus();
   }
@@ -375,6 +376,10 @@ public abstract class AbstractPushMonitor
       PushStatusStoreReader pushStatusStoreReader,
       int numberOfPartitions,
       int replicationFactor) {
+    LOGGER.debug(
+        "Querying incremental push status from PS3 for storeVersion: {}, incrementalPushVersion: {}",
+        kafkaTopic,
+        incrementalPushVersion);
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int storeVersion = Version.parseVersionFromVersionTopicName(kafkaTopic);
     Map<Integer, Map<CharSequence, Integer>> pushStatusMap =
@@ -888,12 +893,15 @@ public abstract class AbstractPushMonitor
       LOGGER.warn("Resource is remaining in the ideal state. Ignore the deletion in the external view.");
       return;
     }
-    OfflinePushStatus pushStatus;
-    pushStatus = getOfflinePush(kafkaTopic);
-    if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
-      String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
-      LOGGER.info(statusDetails);
-      handleTerminalOfflinePushUpdate(pushStatus, new ExecutionStatusWithDetails(ERROR, statusDetails));
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+      OfflinePushStatus pushStatus;
+      pushStatus = getOfflinePush(kafkaTopic);
+      if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+        String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
+        LOGGER.info(statusDetails);
+        handleTerminalOfflinePushUpdate(pushStatus, new ExecutionStatusWithDetails(ERROR, statusDetails));
+      }
     }
   }
 

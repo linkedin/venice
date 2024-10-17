@@ -109,7 +109,8 @@ public class PushStatusCollectorTest {
         .thenReturn(startedInstancePushStatus, dvcTooManyDeadInstancesErrorInstancePushStatus);
     when(pushStatusStoreReader.getPartitionStatus(daVinciStoreName, 11, 0, Optional.empty()))
         .thenReturn(startedInstancePushStatus, dvcOtherErrorInstancePushStatus);
-    when(pushStatusStoreReader.isInstanceAlive(daVinciStoreName, "instance")).thenReturn(true);
+    when(pushStatusStoreReader.getInstanceStatus(daVinciStoreName, "instance"))
+        .thenReturn(PushStatusStoreReader.InstanceStatus.ALIVE);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV1, 1);
     Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV1));
 
@@ -241,7 +242,8 @@ public class PushStatusCollectorTest {
         .thenReturn(Collections.emptyMap(), startedInstancePushStatus, dvcTooManyDeadInstancesErrorInstancePushStatus);
     when(pushStatusStoreReader.getPartitionStatus(daVinciStoreName, 6, 0, Optional.empty()))
         .thenReturn(Collections.emptyMap(), startedInstancePushStatus, dvcOtherErrorInstancePushStatus);
-    when(pushStatusStoreReader.isInstanceAlive(daVinciStoreName, "instance")).thenReturn(true);
+    when(pushStatusStoreReader.getInstanceStatus(daVinciStoreName, "instance"))
+        .thenReturn(PushStatusStoreReader.InstanceStatus.ALIVE);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV1, 1);
     Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV1));
 
@@ -330,7 +332,8 @@ public class PushStatusCollectorTest {
 
     when(pushStatusStoreReader.getPartitionStatus(daVinciStoreName, 2, 0, Optional.empty()))
         .thenReturn(Collections.emptyMap());
-    when(pushStatusStoreReader.isInstanceAlive(daVinciStoreName, "instance")).thenReturn(true);
+    when(pushStatusStoreReader.getInstanceStatus(daVinciStoreName, "instance"))
+        .thenReturn(PushStatusStoreReader.InstanceStatus.ALIVE);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV1, 1);
     Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV1));
 

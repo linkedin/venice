@@ -1,5 +1,10 @@
 package com.linkedin.venice.offsets;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -13,6 +18,17 @@ import org.testng.annotations.Test;
 public class TestOffsetRecord {
   private static final String TEST_KAFKA_URL1 = "test-1";
   private static final String TEST_KAFKA_URL2 = "test-2";
+  private OffsetRecord offsetRecord;
+  private GUID guid;
+  private ProducerPartitionState state;
+  private String kafkaUrl;
+
+  TestOffsetRecord() {
+    offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    guid = new GUID();
+    state = new ProducerPartitionState();
+    kafkaUrl = "test_kafka_url";
+  }
 
   @Test
   public void testToBytes() {
@@ -48,5 +64,28 @@ public class TestOffsetRecord {
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
     offsetRecord.setPendingReportIncPushVersionList(Arrays.asList("a", "b", "c"));
     Assert.assertEquals(offsetRecord.getPendingReportIncPushVersionList(), Arrays.asList("a", "b", "c"));
+  }
+
+  @Test
+  public void testSetRealtimeTopicProducerState() {
+    // Call the method
+    offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, state);
+
+    // Verify that the state was set correctly
+    ProducerPartitionState result = offsetRecord.getRealTimeProducerState(kafkaUrl, guid);
+    assertEquals(result, state, "The state should match the expected value");
+  }
+
+  @Test
+  public void testRemoveRealTimeTopicProducerState() {
+    // Set up the state
+    offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, state);
+
+    // Call the method to remove the state
+    offsetRecord.removeRealTimeTopicProducerState(kafkaUrl, guid);
+
+    // Verify that the state was removed correctly
+    ProducerPartitionState result = offsetRecord.getRealTimeProducerState(kafkaUrl, guid);
+    assertNull(result, "The state should be null after removal");
   }
 }

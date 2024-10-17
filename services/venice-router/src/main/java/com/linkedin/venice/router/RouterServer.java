@@ -349,11 +349,7 @@ public class RouterServer extends AbstractVeniceService {
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
-    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        adapter,
-        config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs());
+    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
     this.pushStatusStoreReader = new PushStatusStoreReader(

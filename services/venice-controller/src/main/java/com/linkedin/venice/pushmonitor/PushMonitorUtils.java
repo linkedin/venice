@@ -89,6 +89,15 @@ public class PushMonitorUtils {
       Set<String> incompleteInstanceList = new HashSet<>();
       ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
+        PushStatusStoreReader.InstanceStatus instanceStatus =
+            reader.getInstanceStatus(storeName, entry.getKey().toString());
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
+          LOGGER.info(
+              "Skipping ingestion status report from bootstrapping instance: {} for topic: {}",
+              entry.getKey().toString(),
+              topicName);
+          continue;
+        }
         ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
         // We will skip completed instances, as they have stopped emitting heartbeats and will not be counted as live
         // instances.
@@ -96,8 +105,7 @@ public class PushMonitorUtils {
           completedInstanceCount++;
           continue;
         }
-        boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
-        if (!isInstanceAlive) {
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
           offlineInstanceCount++;
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
@@ -234,13 +242,27 @@ public class PushMonitorUtils {
     /**
      * This cache is used to reduce the duplicate calls for liveness check as one host can host multiple partitions.
      */
-    Map<String, Boolean> instanceLivenessCache = new HashMap<>();
+    Map<String, PushStatusStoreReader.InstanceStatus> instanceLivenessCache = new HashMap<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances =
           reader.getPartitionStatus(storeName, version, partitionId, incrementalPushVersion);
       boolean allInstancesCompleted = true;
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
+        String instanceName = entry.getKey().toString();
+        PushStatusStoreReader.InstanceStatus instanceStatus = instanceLivenessCache
+            .computeIfAbsent(instanceName, ignored -> reader.getInstanceStatus(storeName, instanceName));
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
+          // Don't count bootstrapping instance status report.
+          totalReplicaCount--;
+          LOGGER.info(
+              "Skipping ingestion status report from bootstrapping node: {} for topic: {}, partition: {}",
+              entry.getKey().toString(),
+              topicName,
+              partitionId);
+          continue;
+        }
+
         ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
         // We will skip completed replicas, as they have stopped emitting heartbeats and will not be counted as live
         // replicas.
@@ -248,10 +270,7 @@ public class PushMonitorUtils {
           completedReplicaCount++;
           continue;
         }
-        String instanceName = entry.getKey().toString();
-        boolean isInstanceAlive = instanceLivenessCache
-            .computeIfAbsent(instanceName, ignored -> reader.isInstanceAlive(storeName, instanceName));
-        if (!isInstanceAlive) {
+        if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
             offlineInstanceList.add(entry.getKey().toString());
@@ -356,5 +375,10 @@ public class PushMonitorUtils {
 
   static void setDaVinciErrorInstanceWaitTime(int time) {
     daVinciErrorInstanceWaitTime = time;
+  }
+
+  // For testing purpose
+  static void setDVCDeadInstanceTime(String topicName, long timestamp) {
+    storeVersionToDVCDeadInstanceTimeMap.put(topicName, timestamp);
   }
 }

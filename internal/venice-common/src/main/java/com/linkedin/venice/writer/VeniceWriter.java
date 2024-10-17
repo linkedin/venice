@@ -390,7 +390,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
       heartBeatMessage = generateHeartbeatMessage(checkSumType);
     } catch (Exception e) {
-      logger.error("VeniceWriter cannot be constructed with the props: {}", props);
+      logger.error("VeniceWriter cannot be constructed with the props: {}", props, e);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
   }

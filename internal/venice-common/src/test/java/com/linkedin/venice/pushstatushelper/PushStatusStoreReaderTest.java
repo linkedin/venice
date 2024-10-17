@@ -6,6 +6,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertEqualsDeep;
 import static org.testng.Assert.assertNotEquals;
 
@@ -364,5 +366,23 @@ public class PushStatusStoreReaderTest {
 
     // Test that push status store reader will also return null instead of empty map in this case
     Assert.assertNull(storeReaderSpy.getVersionStatus(storeName, storeVersion));
+  }
+
+  @Test
+  public void testGetInstanceStatus() {
+    PushStatusStoreReader mockReader = mock(PushStatusStoreReader.class);
+    doCallRealMethod().when(mockReader).getInstanceStatus(any(), any());
+
+    doReturn(-1l).when(mockReader).getHeartbeat("store_1", "instance_1");
+    assertEquals(
+        mockReader.getInstanceStatus("store_1", "instance_1"),
+        PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING);
+
+    doReturn(1000l).when(mockReader).getHeartbeat("store_1", "instance_1");
+    doReturn(true).when(mockReader).isInstanceAlive(anyLong());
+    assertEquals(mockReader.getInstanceStatus("store_1", "instance_1"), PushStatusStoreReader.InstanceStatus.ALIVE);
+
+    doReturn(false).when(mockReader).isInstanceAlive(anyLong());
+    assertEquals(mockReader.getInstanceStatus("store_1", "instance_1"), PushStatusStoreReader.InstanceStatus.DEAD);
   }
 }

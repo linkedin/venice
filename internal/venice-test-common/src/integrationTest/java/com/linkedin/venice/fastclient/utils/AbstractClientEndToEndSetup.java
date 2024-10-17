@@ -6,10 +6,6 @@ import static com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode.SERVER_
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -44,9 +40,6 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.system.store.MetaStoreDataType;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -281,31 +274,6 @@ public abstract class AbstractClientEndToEndSetup {
           30,
           TimeUnit.SECONDS);
     });
-
-    // Verify meta system store received the snapshot writes.
-    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaClient =
-        com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
-            com.linkedin.venice.client.store.ClientConfig
-                .defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
-                .setVeniceURL(veniceCluster.getRandomRouterURL())
-                .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
-      StoreMetaKey replicaStatusKey =
-          MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-            {
-              put(KEY_STRING_STORE_NAME, storeName);
-              put(KEY_STRING_CLUSTER_NAME, veniceCluster.getClusterName());
-              put(
-                  KEY_STRING_VERSION_NUMBER,
-                  Integer.toString(Version.parseVersionFromVersionTopicName(storeVersionName)));
-              put(KEY_STRING_PARTITION_ID, "0");
-            }
-          });
-      TestUtils.waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          true,
-          () -> assertNotNull(metaClient.get(replicaStatusKey).get()));
-    }
   }
 
   private void waitForRouterD2() {

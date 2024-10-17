@@ -43,4 +43,13 @@ public class MainTopicIngestionStatus {
   public String getTopicName() {
     return topicName;
   }
+
+  public boolean hasPartitionIngestingInIsolatedProcess() {
+    for (Map.Entry<Integer, MainPartitionIngestionStatus> entry: ingestionStatusMap.entrySet()) {
+      if (entry.getValue().equals(MainPartitionIngestionStatus.ISOLATED)) {
+        return true;
+      }
+    }
+    return false;
+  }
 }

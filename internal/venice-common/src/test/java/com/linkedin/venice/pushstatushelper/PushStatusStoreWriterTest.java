@@ -144,4 +144,13 @@ public class PushStatusStoreWriterTest {
     verify(veniceWriterMock)
         .update(eq(statusKey), eq(getHeartbeatRecord(heartbeat)), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
   }
+
+  @Test
+  public void testWriteHeartbeatForBootstrappingInstance() {
+    PushStatusKey statusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
+    pushStatusStoreWriter.writeHeartbeatForBootstrappingInstance(storeName);
+    verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
+    verify(veniceWriterMock)
+        .update(eq(statusKey), eq(getHeartbeatRecord(-1)), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
+  }
 }

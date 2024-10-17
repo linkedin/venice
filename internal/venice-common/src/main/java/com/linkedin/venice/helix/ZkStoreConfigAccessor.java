@@ -46,21 +46,7 @@ public class ZkStoreConfigAccessor {
   }
 
   public List<String> getAllStores() {
-    return dataAccessor.getChildNames(ROOT_PATH, AccessOption.PERSISTENT);
-  }
-
-  public List<StoreConfig> getAllStoreConfigs(
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs) {
-    // Only return not null configs.
-    List<StoreConfig> configs = HelixUtils
-        .getChildren(dataAccessor, ROOT_PATH, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs)
-        .stream()
-        .filter(storeConfig -> storeConfig != null)
-        .collect(Collectors.toList());
-
-    LOGGER.info("Read {} store configs from path: {}.", configs.size(), ROOT_PATH);
-    return configs;
+    return HelixUtils.listPathContents(dataAccessor, ROOT_PATH);
   }
 
   public synchronized boolean containsConfig(String store) {

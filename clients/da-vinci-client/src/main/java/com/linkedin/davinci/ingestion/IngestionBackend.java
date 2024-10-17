@@ -54,4 +54,9 @@ public interface IngestionBackend extends Closeable {
 
   // setStorageEngineReference is used by Da Vinci exclusively to speed up storage engine retrieval for read path.
   void setStorageEngineReference(String topicName, AtomicReference<AbstractStorageEngine> storageEngineReference);
+
+  /**
+   * Check whether there are any current version bootstrapping or not.
+   */
+  boolean hasCurrentVersionBootstrapping();
 }

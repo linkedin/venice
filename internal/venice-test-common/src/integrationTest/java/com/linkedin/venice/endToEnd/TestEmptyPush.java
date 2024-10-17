@@ -57,6 +57,7 @@ public class TestEmptyPush {
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfRouters(1)
         .numberOfServers(2)
+        .replicationFactor(2)
         .sslToKafka(false)
         .sslToStorageNodes(false)
         .build();

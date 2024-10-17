@@ -16,7 +16,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
-import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -47,14 +46,16 @@ public class ReplicaStatus {
     this.statusHistory = enableStatusHistory ? new LinkedList<>() : null;
   }
 
-  public void updateStatus(ExecutionStatus newStatus) {
-    currentStatus = newStatus;
-    addHistoricStatus(newStatus);
-  }
-
   public void updateStatus(ExecutionStatus newStatus, String incrementalPushVersion) {
     setIncrementalPushVersion(incrementalPushVersion);
-    updateStatus(newStatus);
+    if (!isIncrementalPushStatus(newStatus)) {
+      setCurrentStatus(newStatus);
+    }
+    addHistoricStatus(newStatus, incrementalPushVersion);
+  }
+
+  void updateStatus(ExecutionStatus newStatus) {
+    updateStatus(newStatus, "");
   }
 
   public String getInstanceId() {
@@ -97,7 +98,7 @@ public class ReplicaStatus {
     this.statusHistory = statusHistory;
   }
 
-  private void addHistoricStatus(ExecutionStatus status) {
+  private void addHistoricStatus(ExecutionStatus status, String incrementalPushVersion) {
     if (statusHistory == null) {
       // Status history is disabled
       return;
@@ -120,7 +121,7 @@ public class ReplicaStatus {
     removeOldStatuses();
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
-    if (!StringUtils.isEmpty(incrementalPushVersion)) {
+    if (isIncrementalPushStatus(status)) {
       snapshot.setIncrementalPushVersion(incrementalPushVersion);
     }
     statusHistory.add(snapshot);

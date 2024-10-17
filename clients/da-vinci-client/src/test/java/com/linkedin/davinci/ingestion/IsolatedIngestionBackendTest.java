@@ -10,11 +10,14 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -31,11 +34,13 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -268,5 +273,50 @@ public class IsolatedIngestionBackendTest {
       verify(monitorService, times(2)).cleanupTopicPartitionState(topic, partition);
       Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), NOT_EXIST);
     }
+  }
+
+  @Test
+  public void testHasCurrentVersionBootstrapping() {
+    IsolatedIngestionBackend mockBackend = mock(IsolatedIngestionBackend.class);
+    MainIngestionMonitorService mockMonitorService = mock(MainIngestionMonitorService.class);
+
+    Map<String, MainTopicIngestionStatus> ingestionStatusMap = new HashMap<>();
+    MainTopicIngestionStatus store1V1IngestionStatus = new MainTopicIngestionStatus("store1_v1");
+    MainTopicIngestionStatus store1V2IngestionStatus = new MainTopicIngestionStatus("store1_v2");
+    MainTopicIngestionStatus store2V2IngestionStatus = new MainTopicIngestionStatus("store2_v2");
+    ingestionStatusMap.put("store1_v1", store1V1IngestionStatus);
+    ingestionStatusMap.put("store1_v2", store1V2IngestionStatus);
+    ingestionStatusMap.put("store2_v2", store2V2IngestionStatus);
+
+    doReturn(ingestionStatusMap).when(mockMonitorService).getTopicIngestionStatusMap();
+    store1V1IngestionStatus.setPartitionIngestionStatusToIsolatedIngestion(1);
+    store1V1IngestionStatus.setPartitionIngestionStatusToLocalIngestion(2);
+    store1V2IngestionStatus.setPartitionIngestionStatusToLocalIngestion(1);
+    store1V2IngestionStatus.setPartitionIngestionStatusToLocalIngestion(2);
+    store2V2IngestionStatus.setPartitionIngestionStatusToLocalIngestion(1);
+
+    Function<String, Integer> currentVersionSupplier = s -> {
+      if (s.equals("store1")) {
+        return 1;
+      }
+      if (s.equals("store2")) {
+        return 2;
+      }
+      return 3;
+    };
+    doReturn(currentVersionSupplier).when(mockBackend).getCurrentVersionSupplier();
+    doReturn(mockMonitorService).when(mockBackend).getMainIngestionMonitorService();
+
+    KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
+    doReturn(false).when(mockIngestionService).hasCurrentVersionBootstrapping();
+    doReturn(mockIngestionService).when(mockBackend).getStoreIngestionService();
+
+    doCallRealMethod().when(mockBackend).hasCurrentVersionBootstrapping();
+
+    assertTrue(mockBackend.hasCurrentVersionBootstrapping());
+
+    // Move current version ingestion to main process
+    store1V1IngestionStatus.setPartitionIngestionStatusToLocalIngestion(1);
+    assertFalse(mockBackend.hasCurrentVersionBootstrapping());
   }
 }
