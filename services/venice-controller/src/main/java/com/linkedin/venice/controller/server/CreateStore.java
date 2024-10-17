@@ -1,16 +1,7 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ACL;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ACL;
-import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -40,26 +31,41 @@ public class CreateStore extends AbstractRoute {
           return;
         }
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String keySchema = request.queryParams(KEY_SCHEMA);
-        String valueSchema = request.queryParams(VALUE_SCHEMA);
-        boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
+        CreateStoreRequest createStoreRequest = new CreateStoreRequest();
+        createStoreRequest.setClusterName(request.queryParams(CLUSTER));
+        createStoreRequest.setStoreName(request.queryParams(NAME));
+        createStoreRequest.setKeySchema(request.queryParams(KEY_SCHEMA));
+        createStoreRequest.setValueSchema(request.queryParams(VALUE_SCHEMA));
+        createStoreRequest.setSystemStore(Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE)));
+        createStoreRequest.setAccessPerm(request.queryParams(ACCESS_PERMISSION));
 
         String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
         if (owner == null) {
           owner = "";
         }
 
-        String accessPerm = request.queryParams(ACCESS_PERMISSION);
-        Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
-
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        veniceResponse.setOwner(owner);
-        admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+        NewStoreResponse duplicateVeniceResponse = createStore(createStoreRequest, owner, admin);
+        veniceResponse.setCluster(duplicateVeniceResponse.getCluster());
+        veniceResponse.setName(duplicateVeniceResponse.getName());
+        veniceResponse.setOwner(duplicateVeniceResponse.getOwner());
       }
     };
+  }
+
+  private NewStoreResponse createStore(CreateStoreRequest request, String owner, Admin admin) {
+    NewStoreResponse response = new NewStoreResponse();
+    response.setCluster(request.getClusterName());
+    response.setName(request.getStoreName());
+    response.setOwner(owner);
+    admin.createStore(
+        request.getClusterName(),
+        request.getStoreName(),
+        owner,
+        request.getKeySchema(),
+        request.getValueSchema(),
+        request.isSystemStore(),
+        Optional.ofNullable(request.getAccessPerm()));
+    return response;
   }
 
   /**
@@ -155,5 +161,4 @@ public class CreateStore extends AbstractRoute {
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     };
   }
-
 }
