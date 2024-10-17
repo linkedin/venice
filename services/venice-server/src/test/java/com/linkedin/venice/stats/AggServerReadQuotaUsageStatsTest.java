@@ -9,7 +9,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class AggServerQuotaUsageStatsTest {
+public class AggServerReadQuotaUsageStatsTest {
   @Test
   public void testAggServerQuotaUsageStats() {
     Time mockTime = mock(Time.class);
@@ -19,29 +19,39 @@ public class AggServerQuotaUsageStatsTest {
     AggServerQuotaUsageStats aggServerQuotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
     String storeName = "testStore";
     String storeName2 = "testStore2";
-    String readQuotaRequestedQPSString = "." + storeName + "--quota_request.Rate";
-    String readQuotaRequestedKPSString = "." + storeName + "--quota_request_key_count.Rate";
-    String readQuotaRequestedQPSString2 = "." + storeName2 + "--quota_request.Rate";
-    String readQuotaRequestedKPSString2 = "." + storeName2 + "--quota_request_key_count.Rate";
-    String totalReadQuotaRequestedQPSString = ".total--quota_request.Rate";
-    String totalReadQuotaRequestedKPSString = ".total--quota_request_key_count.Rate";
+    String currentReadQuotaRequestedQPSString = "." + storeName + "--current_quota_request.Gauge";
+    String currentReadQuotaRequestedKPSString = "." + storeName + "--current_quota_request_key_count.Gauge";
+    String backupReadQuotaRequestedQPSString = "." + storeName + "--backup_quota_request.Gauge";
+    String backupReadQuotaRequestedKPSString = "." + storeName + "--backup_quota_request_key_count.Gauge";
+    String quotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
+    String readQuotaRequestedQPSString2 = "." + storeName2 + "--current_quota_request.Gauge";
+    String readQuotaRequestedKPSString2 = "." + storeName2 + "--current_quota_request_key_count.Gauge";
+    String totalReadQuotaRequestedQPSString = ".total--current_quota_request.Gauge";
+    String totalReadQuotaRequestedKPSString = ".total--current_quota_request_key_count.Gauge";
     long batchSize = 100;
     long batchSize2 = 200;
-    aggServerQuotaUsageStats.recordAllowed(storeName, batchSize);
-    aggServerQuotaUsageStats.recordAllowed(storeName, batchSize);
-    aggServerQuotaUsageStats.recordAllowed(storeName2, batchSize2);
+    aggServerQuotaUsageStats.setCurrentVersion(storeName, 1);
+    aggServerQuotaUsageStats.setCurrentVersion(storeName, 2);
+    aggServerQuotaUsageStats.setCurrentVersion(storeName2, 1);
+    aggServerQuotaUsageStats.recordAllowed(storeName, 1, batchSize);
+    aggServerQuotaUsageStats.recordAllowed(storeName, 2, batchSize);
+    aggServerQuotaUsageStats.recordAllowed(storeName, 2, batchSize);
+    aggServerQuotaUsageStats.recordAllowed(storeName2, 1, batchSize2);
+    aggServerQuotaUsageStats.setNodeQuotaResponsibility(storeName, 1, 100);
+    aggServerQuotaUsageStats.setNodeQuotaResponsibility(storeName, 2, 200);
 
     // Rate metric is amortized over a 30s window
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedQPSString).value(), 2d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(currentReadQuotaRequestedQPSString).value(), 2d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(backupReadQuotaRequestedQPSString).value(), 1d / 30d, 0.01);
     Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedQPSString2).value(), 1d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedKPSString).value(), 200d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(currentReadQuotaRequestedKPSString).value(), 200d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(backupReadQuotaRequestedKPSString).value(), 100d / 30d, 0.01);
     Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedKPSString2).value(), 200d / 30d, 0.01);
-    double totalQPS = metricsRepository.getMetric(readQuotaRequestedQPSString).value()
-        + metricsRepository.getMetric(readQuotaRequestedQPSString2).value();
-    double totalKPS = metricsRepository.getMetric(readQuotaRequestedKPSString).value()
-        + metricsRepository.getMetric(readQuotaRequestedKPSString2).value();
+    double totalQPS = 4d / 30d;
+    double totalKPS = (batchSize2 + batchSize * 3) / 30d;
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedQPSString).value(), totalQPS, 0.01);
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedKPSString).value(), totalKPS, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(quotaUsageRatio).value(), (200d / 30d) / 200d, 0.001);
 
     String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_request.Rate";
     String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_key_count.Rate";
@@ -49,9 +59,9 @@ public class AggServerQuotaUsageStatsTest {
     String readQuotaRejectedKPSString2 = "." + storeName2 + "--quota_rejected_key_count.Rate";
     String totalReadQuotaRejectedQPSString = ".total--quota_rejected_request.Rate";
     String totalReadQuotaRejectedKPSString = ".total--quota_rejected_key_count.Rate";
-    aggServerQuotaUsageStats.recordRejected(storeName, batchSize);
-    aggServerQuotaUsageStats.recordRejected(storeName2, batchSize2);
-    aggServerQuotaUsageStats.recordRejected(storeName2, batchSize2);
+    aggServerQuotaUsageStats.recordRejected(storeName, 1, batchSize);
+    aggServerQuotaUsageStats.recordRejected(storeName2, 1, batchSize2);
+    aggServerQuotaUsageStats.recordRejected(storeName2, 1, batchSize2);
 
     Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString).value(), 1d / 30d, 0.01);
     Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString2).value(), 2d / 30d, 0.01);
