@@ -1,7 +1,16 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ACL;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ACL;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
