@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import java.util.Map;
 
@@ -9,10 +10,12 @@ public class InstanceRemovableStatuses {
   private Map<String, String> nonStoppableInstancesWithReasons;
   private String redirectUrl;
 
+  @JsonIgnore
   public void setRedirectUrl(String redirectUrl) {
     this.redirectUrl = redirectUrl;
   }
 
+  @JsonIgnore
   public String getRedirectUrl() {
     return redirectUrl;
   }
