@@ -71,6 +71,7 @@ public class OffsetRecord {
     emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.separateTopicUpstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
     emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
