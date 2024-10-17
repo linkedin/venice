@@ -1,7 +1,10 @@
-package com.linkedin.venice.controller.server;
+package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 import com.linkedin.venice.acl.AclException;
@@ -15,20 +18,20 @@ import org.apache.logging.log4j.Logger;
 import spark.Request;
 
 
-public class AbstractRoute {
-  private static final Logger LOGGER = LogManager.getLogger(AbstractRoute.class);
+public class VeniceControllerAccessControlService {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerAccessControlService.class);
 
   private static final String USER_UNKNOWN = "USER_UNKNOWN";
   private static final String STORE_UNKNOWN = "STORE_UNKNOWN";
 
   // A singleton of acl check function against store resource
-  private static final ResourceAclCheck GET_ACCESS_TO_STORE =
+  private static final com.linkedin.venice.controller.server.AbstractRoute.ResourceAclCheck GET_ACCESS_TO_STORE =
       (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, HTTP_GET);
   // A singleton of acl check function against topic resource
-  private static final ResourceAclCheck WRITE_ACCESS_TO_TOPIC =
+  private static final com.linkedin.venice.controller.server.AbstractRoute.ResourceAclCheck WRITE_ACCESS_TO_TOPIC =
       (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Write");
 
-  private static final ResourceAclCheck READ_ACCESS_TO_TOPIC =
+  private static final com.linkedin.venice.controller.server.AbstractRoute.ResourceAclCheck READ_ACCESS_TO_TOPIC =
       (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
 
   private final boolean sslEnabled;
@@ -41,7 +44,7 @@ public class AbstractRoute {
    * through this constructor; make sure Nuage is also in the allowlist so that they can create stores
    * @param accessController the access client that check whether a certificate can access a resource
    */
-  public AbstractRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public VeniceControllerAccessControlService(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
     this.sslEnabled = sslEnabled;
     this.accessController = accessController;
   }
@@ -50,7 +53,9 @@ public class AbstractRoute {
    * Check whether the user certificate in request has access to the store specified in
    * the request.
    */
-  private boolean hasAccess(Request request, ResourceAclCheck aclCheckFunction) {
+  private boolean hasAccess(
+      Request request,
+      com.linkedin.venice.controller.server.AbstractRoute.ResourceAclCheck aclCheckFunction) {
     if (!isAclEnabled()) {
       /**
        * Grant access if it's not required to check ACL.
@@ -183,7 +188,7 @@ public class AbstractRoute {
    * A function that would check whether a principal has access to a resource.
    */
   @FunctionalInterface
-  public interface ResourceAclCheck {
+  interface ResourceAclCheck {
     boolean apply(X509Certificate clientCert, String resource, DynamicAccessController accessController)
         throws AclException;
   }
