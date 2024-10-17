@@ -2024,7 +2024,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testInsertRePartitionViewConfig() {
+  public void testInsertMaterializedViewConfig() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = setupForStoreViewConfigUpdateTest(storeName);
     store.setViewConfigs(

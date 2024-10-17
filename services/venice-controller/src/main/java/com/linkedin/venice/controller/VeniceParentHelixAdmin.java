@@ -67,6 +67,7 @@ import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -2805,6 +2806,26 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
       viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name(), viewName);
+      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name())) {
+        viewParams.put(
+            ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
+            store.getPartitionerConfig().getPartitionerClass());
+        if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
+          try {
+            viewParams.put(
+                ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name(),
+                ObjectMapperFactory.getInstance()
+                    .writeValueAsString(store.getPartitionerConfig().getPartitionerParams()));
+          } catch (JsonProcessingException e) {
+            throw new VeniceException("Failed to convert store partitioner params to string", e);
+          }
+        }
+      }
+      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
+        viewParams.put(
+            ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+            Integer.toString(store.getPartitionCount()));
+      }
       viewConfig.setViewParameters(viewParams);
     }
     VeniceView view =

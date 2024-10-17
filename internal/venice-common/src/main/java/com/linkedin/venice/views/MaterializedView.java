@@ -46,13 +46,22 @@ public class MaterializedView extends VeniceView {
     if (store.getViewConfigs().containsKey(viewName)) {
       throw new VeniceException("A view config with the same view name already exist, view name: " + viewName);
     }
-    String partitionCountString = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name());
-    int viewPartitionCount =
-        partitionCountString == null ? store.getPartitionCount() : Integer.parseInt(partitionCountString);
     String viewPartitioner = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
     if (viewPartitioner == null) {
-      viewPartitioner = store.getPartitionerConfig().getPartitionerClass();
+      throw new VeniceException(
+          String.format(MISSING_PARAMETER_MESSAGE, ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name()));
     }
+    try {
+      Class.forName(viewPartitioner);
+    } catch (ClassNotFoundException e) {
+      throw new VeniceException("Cannot find partitioner class: " + viewPartitioner);
+    }
+    String partitionCountString = viewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name());
+    if (partitionCountString == null) {
+      throw new VeniceException(
+          String.format(MISSING_PARAMETER_MESSAGE, ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()));
+    }
+    int viewPartitionCount = Integer.parseInt(partitionCountString);
     // A materialized view with the exact same partitioner and partition count as the store is not allwoed
     if (store.getPartitionCount() == viewPartitionCount
         && store.getPartitionerConfig().getPartitionerClass().equals(viewPartitioner)) {
