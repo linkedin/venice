@@ -22,4 +22,26 @@ public class TestHybridStoreConfig {
     Assert.assertEquals(fasterXml.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(fasterXml.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
   }
+
+  @Test
+  public void testIsHybrid() {
+    HybridStoreConfig hybridStoreConfig;
+    hybridStoreConfig = new HybridStoreConfigImpl(-1, -1, -1, null, null);
+    Assert.assertFalse(hybridStoreConfig.isHybrid());
+
+    hybridStoreConfig = new HybridStoreConfigImpl(100, -1, -1, null, null);
+    Assert.assertFalse(hybridStoreConfig.isHybrid());
+
+    hybridStoreConfig = new HybridStoreConfigImpl(100, 100, -1, null, null);
+    Assert.assertTrue(hybridStoreConfig.isHybrid());
+
+    hybridStoreConfig = new HybridStoreConfigImpl(100, 100, 100, null, null);
+    Assert.assertTrue(hybridStoreConfig.isHybrid());
+
+    hybridStoreConfig = new HybridStoreConfigImpl(100, -1, 100, null, null);
+    Assert.assertTrue(hybridStoreConfig.isHybrid());
+
+    hybridStoreConfig = new HybridStoreConfigImpl(-1, -1, 100, null, null);
+    Assert.assertFalse(hybridStoreConfig.isHybrid());
+  }
 }

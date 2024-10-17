@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -37,6 +38,7 @@ public class VeniceMultiClusterCreateOptions {
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Properties childControllerProperties;
   private final Properties extraProperties;
+  private final SupersetSchemaGenerator supersetSchemaGenerator;
 
   public String getRegionName() {
     return regionName;
@@ -122,6 +124,10 @@ public class VeniceMultiClusterCreateOptions {
     return extraProperties;
   }
 
+  public SupersetSchemaGenerator getSupersetSchemaGenerator() {
+    return supersetSchemaGenerator;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -187,6 +193,9 @@ public class VeniceMultiClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
+        .append(", ")
+        .append("supersetSchemaGenerator:")
+        .append(supersetSchemaGenerator)
         .toString();
   }
 
@@ -212,6 +221,7 @@ public class VeniceMultiClusterCreateOptions {
     extraProperties = builder.extraProperties;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
+    supersetSchemaGenerator = builder.supersetSchemaGenerator;
   }
 
   public static class Builder {
@@ -236,6 +246,7 @@ public class VeniceMultiClusterCreateOptions {
     private PubSubBrokerWrapper pubSubBrokerWrapper;
     private Properties childControllerProperties;
     private Properties extraProperties;
+    private SupersetSchemaGenerator supersetSchemaGenerator;
 
     public Builder numberOfClusters(int numberOfClusters) {
       this.numberOfClusters = numberOfClusters;
@@ -343,6 +354,11 @@ public class VeniceMultiClusterCreateOptions {
 
     public Builder extraProperties(Properties extraProperties) {
       this.extraProperties = extraProperties;
+      return this;
+    }
+
+    public Builder supersetSchemaGenerator(SupersetSchemaGenerator supersetSchemaGenerator) {
+      this.supersetSchemaGenerator = supersetSchemaGenerator;
       return this;
     }
 
