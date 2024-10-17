@@ -58,10 +58,6 @@ public class PushStatusStoreReader implements Closeable {
     this.heartbeatExpirationTimeInSeconds = heartbeatExpirationTimeInSeconds;
   }
 
-  public Map<CharSequence, Integer> getVersionStatus(String storeName, int version) {
-    return getVersionStatus(storeName, version, Optional.empty());
-  }
-
   public Map<CharSequence, Integer> getVersionStatus(
       String storeName,
       int version,
