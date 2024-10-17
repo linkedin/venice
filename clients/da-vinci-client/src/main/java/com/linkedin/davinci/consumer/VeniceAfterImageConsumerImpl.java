@@ -201,7 +201,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                   + changelogClientConfig.getConsumerName());
           seekToEndOfPush(partitions).get();
         }
-      } catch (InterruptedException | ExecutionException e) {
+      } catch (Exception e) {
         LOGGER.error(
             "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " on consumer: "
                 + changelogClientConfig.getConsumerName() + "will retry...",
