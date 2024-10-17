@@ -169,6 +169,11 @@ public class AbstractVeniceStats {
     sensors.clear();
   }
 
+  protected void unregisterSensor(String sensorName) {
+    metricsRepository.removeSensor(sensorName);
+    sensors.remove(sensorName);
+  }
+
   protected Sensor registerSensorWithAggregate(String sensorName, Supplier<MeasurableStat[]> stats) {
     return registerSensorWithAggregate(sensorName, null, stats);
   }

@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.atMostOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -646,6 +647,47 @@ public class ReadQuotaEnforcementHandlerTest {
     assertNull(bucketForInvalidStore);
   }
 
+  @Test
+  public void testNodeResponsibility() {
+    String storeName = Utils.getUniqueString("test-store");
+    int currentVersion = 1;
+    String topic = Version.composeKafkaTopic(storeName, currentVersion);
+    String nextTopic = Version.composeKafkaTopic(storeName, currentVersion + 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Version nextVersion = mock(Version.class);
+    doReturn(nextTopic).when(nextVersion).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Arrays.asList(version, nextVersion), 10, true);
+    doReturn(store).when(storeRepository).getStore(eq(storeName));
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
+    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(10L));
+    Instance instance2 = mock(Instance.class);
+    doReturn("node2").when(instance2).getNodeId();
+    Partition nextVersionPartition = setUpPartitionMock(topic, Arrays.asList(thisInstance, instance2), true, 0);
+    PartitionAssignment nextVersionPa =
+        setUpPartitionAssignmentMock(nextTopic, Collections.singletonList(nextVersionPartition));
+    quotaEnforcementHandler.onCustomizedViewChange(nextVersionPa);
+    // Partition assignment change for the next version should not change store stats node responsibility
+    verify(stats, never()).setNodeQuotaResponsibility(eq(storeName), eq(5L));
+    Instance instance3 = mock(Instance.class);
+    doReturn("node3").when(instance3).getNodeId();
+    partition = setUpPartitionMock(topic, Arrays.asList(thisInstance, instance2, instance3), true, 0);
+    pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
+    // Partition assignment change for the current version should change store stats node responsibility
+    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(4L));
+    doReturn(2).when(store).getCurrentVersion();
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(eq(topic));
+    doReturn(nextVersionPa).when(customizedViewRepository).getPartitionAssignments(eq(nextTopic));
+    quotaEnforcementHandler.handleStoreChanged(store);
+    // Current version change should update the node responsibility accordingly
+    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(5L));
+  }
+
   /**
    * After appropriate setup, this test ensures we can read the initial capacity of the TokenBucket, cannot read
    * beyond that, then increments time to allow for a bucket refill, and again ensures we can read the amount that was
@@ -730,6 +772,27 @@ public class ReadQuotaEnforcementHandlerTest {
       doReturn(Collections.singletonList(instance)).when(partition).getReadyToServeInstances();
     }
     replicaStates.add(thisReplicaState);
+    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
+    return partition;
+  }
+
+  private Partition setUpPartitionMock(
+      String topic,
+      List<Instance> instances,
+      boolean isReadyToServe,
+      int partitionId) {
+    Partition partition = mock(Partition.class);
+    doReturn(partitionId).when(partition).getId();
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    for (Instance instance: instances) {
+      ReplicaState thisReplicaState = mock(ReplicaState.class);
+      doReturn(instance.getNodeId()).when(thisReplicaState).getParticipantId();
+      doReturn(isReadyToServe).when(thisReplicaState).isReadyToServe();
+      replicaStates.add(thisReplicaState);
+    }
+    if (isReadyToServe) {
+      doReturn(instances).when(partition).getReadyToServeInstances();
+    }
     when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
     return partition;
   }

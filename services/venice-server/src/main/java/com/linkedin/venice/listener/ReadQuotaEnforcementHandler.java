@@ -49,6 +49,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   public static final String INVALID_REQUEST_RESOURCE_MSG = "Invalid request resource: ";
 
   private final ConcurrentMap<String, VeniceRateLimiter> storeVersionRateLimiters = new VeniceConcurrentHashMap<>();
+  private final ConcurrentMap<String, Long> storeVersionNodeResponsibility = new VeniceConcurrentHashMap<>();
   private final ReadOnlyStoreRepository storeRepository;
   private final String thisNodeId;
   private final AggServerQuotaUsageStats stats;
@@ -312,6 +313,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: {}",
           topic);
       storeVersionRateLimiters.remove(topic);
+      storeVersionNodeResponsibility.remove(topic);
       return;
     }
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -328,7 +330,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           clock);
 
       if (rateLimiter != v) {
-        stats.setNodeQuotaResponsibility(storeName, (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
+        storeVersionNodeResponsibility.put(topic, (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
+        if (storeRepository.getStore(storeName).getCurrentVersion() == Version.parseVersionFromKafkaTopicName(topic)) {
+          stats.setNodeQuotaResponsibility(storeName, storeVersionNodeResponsibility.get(topic));
+        }
       }
       return rateLimiter;
     });
@@ -379,6 +384,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {
     storeVersionRateLimiters.remove(kafkaTopic);
+    storeVersionNodeResponsibility.remove(kafkaTopic);
   }
 
   @Override
@@ -413,7 +419,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          * During a new push, a new version is added to the version list of the Store metadata before the push actually
          * starts, so this function (ReadQuotaEnforcementHandler#handleStoreChanged()) is invoked before the new
          * resource assignment shows up in the external view, so calling customizedViewRepository.getPartitionAssignments() for
-         * a the future version will fail in most cases, because the new topic is not in the external view at all.
+         * a future version will fail in most cases, because the new topic is not in the external view at all.
          *
          */
         this.onCustomizedViewChange(customizedViewRepository.getPartitionAssignments(topic));
@@ -452,6 +458,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
+    // Ensure node responsibility is up-to-date in case there was a current version change
+    stats.setNodeQuotaResponsibility(
+        store.getName(),
+        storeVersionNodeResponsibility.get(Version.composeKafkaTopic(store.getName(), store.getCurrentVersion())));
   }
 
   private Set<String> getStoreTopics(String storeName) {
@@ -465,6 +475,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     for (String topic: topicsToRemove) {
       customizedViewRepository.unSubscribeRoutingDataChange(topic, this);
       storeVersionRateLimiters.remove(topic);
+      storeVersionNodeResponsibility.remove(topic);
     }
   }
 
