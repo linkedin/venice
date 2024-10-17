@@ -167,7 +167,6 @@ public class DaVinciClientMemoryLimitTest {
   public void storeSetup() throws IOException {
     this.storeName = Utils.getUniqueString("davinci_memory_limit_test");
     this.storeNameWithoutMemoryEnforcement = Utils.getUniqueString("store_without_memory_enforcement");
-
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
