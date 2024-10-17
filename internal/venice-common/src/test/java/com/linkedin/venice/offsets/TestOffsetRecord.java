@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -23,7 +24,8 @@ public class TestOffsetRecord {
   private ProducerPartitionState state;
   private String kafkaUrl;
 
-  TestOffsetRecord() {
+  @BeforeMethod
+  public void setUp() {
     offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     guid = new GUID();
     state = new ProducerPartitionState();
@@ -47,6 +49,7 @@ public class TestOffsetRecord {
   @Test
   public void testResetUpstreamOffsetMap() {
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
+
     offsetRecord.setLeaderUpstreamOffset(TEST_KAFKA_URL1, 1L);
 
     Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), 1L);
