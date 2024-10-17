@@ -3842,7 +3842,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String cluster,
       List<String> instances,
       List<String> toBeStoppedInstances) {
-    throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus is not supported!");
+    throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus");
   }
 
   /**

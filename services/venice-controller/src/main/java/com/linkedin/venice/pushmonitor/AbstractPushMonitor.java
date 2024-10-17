@@ -149,24 +149,6 @@ public abstract class AbstractPushMonitor
     pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
-      // Subscribe to changes first
-      List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
-      for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
-        try {
-          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-          /**
-           * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
-           * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
-           * to changes in the data.
-           */
-          refreshedOfflinePushStatusList
-              .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
-        } catch (Exception e) {
-          LOGGER.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
-        }
-
-      }
-      offlinePushStatusList = refreshedOfflinePushStatusList;
 
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
