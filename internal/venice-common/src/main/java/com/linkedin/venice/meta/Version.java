@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import static java.lang.Character.isDigit;
+import static java.lang.Character.*;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
@@ -294,6 +294,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static String composeSeparateRealTimeTopic(String storeName) {
+    // maybe inc_push_rt
     return storeName + SEPARATE_REAL_TIME_TOPIC_SUFFIX;
   }
 
