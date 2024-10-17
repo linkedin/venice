@@ -31,6 +31,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -365,7 +366,7 @@ public class PushStatusStoreReaderTest {
     when(completableFutureMock.get(anyLong(), any())).thenReturn(null);
 
     // Test that push status store reader will also return null instead of empty map in this case
-    Assert.assertNull(storeReaderSpy.getVersionStatus(storeName, storeVersion));
+    Assert.assertNull(storeReaderSpy.getVersionStatus(storeName, storeVersion, Optional.empty()));
   }
 
   @Test
