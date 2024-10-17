@@ -47,14 +47,16 @@ public class ReplicaStatus {
     this.statusHistory = enableStatusHistory ? new LinkedList<>() : null;
   }
 
-  public void updateStatus(ExecutionStatus newStatus) {
-    currentStatus = newStatus;
+  public void updateStatus(ExecutionStatus newStatus, String incrementalPushVersion) {
+    setIncrementalPushVersion(incrementalPushVersion);
+    if (!isIncrementalPushStatus(newStatus)) {
+      setCurrentStatus(newStatus);
+    }
     addHistoricStatus(newStatus);
   }
 
-  public void updateStatus(ExecutionStatus newStatus, String incrementalPushVersion) {
-    setIncrementalPushVersion(incrementalPushVersion);
-    updateStatus(newStatus);
+  void updateStatus(ExecutionStatus newStatus) {
+    updateStatus(newStatus, "");
   }
 
   public String getInstanceId() {
