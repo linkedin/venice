@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -88,7 +89,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   public void initialize(
       String storeName,
       String resourceName,
-      Iterable<ByteBuffer> keys,
+      List<ByteBuffer> keys,
       VenicePartitionFinder partitionFinder,
       int maxKeyCount,
       RouterStats<AggRouterHttpRequestStats> stats) throws RouterException {
@@ -105,6 +106,25 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
           Optional.of(RequestType.COMPUTE),
           e.getHttpResponseStatus(),
           e.getMessage());
+    }
+
+    int keyCount = keys.size();
+    if (keyCount > maxKeyCount) {
+      throw new VeniceKeyCountLimitException(getStoreName(), getRequestType(), keyCount, maxKeyCount);
+    }
+    if (keyCount == 0) {
+      /**
+       * TODO: Right now, there is no good way to return empty response if the key set is empty.
+       * The logic to handle empty key here is different from client side, since the client will return empty map
+       * instead of throwing an exception.
+       *
+       * If application is using Venice client to send batch-get request, this piece of logic shouldn't be triggered.
+       */
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(getRequestType()),
+          BAD_REQUEST,
+          "Key count in multi-get request should not be zero");
     }
 
     for (ByteBuffer key: keys) {
@@ -124,25 +144,6 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       ++keyIdx;
     }
     setPartitionKeys(this.routerKeyMap.keySet());
-
-    int keyCount = getPartitionKeys().size();
-    if (keyCount > maxKeyCount) {
-      throw new VeniceKeyCountLimitException(getStoreName(), getRequestType(), keyCount, maxKeyCount);
-    }
-    if (keyCount == 0) {
-      /**
-       * TODO: Right now, there is no good way to return empty response if the key set is empty.
-       * The logic to handle empty key here is different from client side, since the client will return empty map
-       * instead of throwing an exception.
-       *
-       * If application is using Venice client to send batch-get request, this piece of logic shouldn't be triggered.
-       */
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
-          BAD_REQUEST,
-          "Key count in multi-get request should not be zero");
-    }
   }
 
   /**
