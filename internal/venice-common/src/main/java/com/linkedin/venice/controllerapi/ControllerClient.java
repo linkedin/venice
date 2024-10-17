@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VERSION_SWAP;
@@ -20,6 +21,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
@@ -27,7 +29,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -65,6 +66,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZ
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -890,7 +892,7 @@ public class ControllerClient implements Closeable {
 
   public NodeStatusResponse isNodeRemovable(String instanceId, List<String> lockedNodeIds) {
     QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId)
-        .add(LOCKED_STORAGE_NODE_IDS, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
+        .add(TO_BE_STOPPED_INSTANCES, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 
@@ -911,6 +913,17 @@ public class ControllerClient implements Closeable {
 
   public MultiNodeResponse listStorageNodes() {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
+  }
+
+  public StoppableNodeStatusResponse getAggregatedHealthStatus(
+      String clusterName,
+      List<String> instances,
+      List<String> toBeStoppedInstances) {
+    QueryParams params = newParams().add(CLUSTER_ID, clusterName)
+        .add(INSTANCES, String.join(",", instances))
+        .add(TO_BE_STOPPED_INSTANCES, String.join(",", toBeStoppedInstances));
+
+    return request(ControllerRoute.AGGREGATED_HEALTH_STATUS, params, StoppableNodeStatusResponse.class);
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {

@@ -12,6 +12,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
@@ -34,6 +35,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
@@ -41,7 +43,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
@@ -84,6 +85,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_Q
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -134,6 +136,9 @@ public enum ControllerRoute {
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
   ),
+  AGGREGATED_HEALTH_STATUS(
+      "/aggregatedHealthStatus", HttpMethod.POST, Arrays.asList(CLUSTER_ID, INSTANCES, TO_BE_STOPPED_INSTANCES)
+  ),
   ROLL_FORWARD_TO_FUTURE_VERSION(
       "/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
   ),
@@ -158,12 +163,13 @@ public enum ControllerRoute {
   NODE_REPLICAS("/storage_node_replicas", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   NODE_REMOVABLE(
       "/node_removable", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID), INSTANCE_VIEW,
-      LOCKED_STORAGE_NODE_IDS
+      TO_BE_STOPPED_INSTANCES
   ), NODE_REPLICAS_READINESS("/node_replicas_readiness", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   ALLOW_LIST_ADD_NODE("/allow_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   ALLOW_LIST_REMOVE_NODE("/allow_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
 
   REMOVE_NODE("/remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
+
   SKIP_ADMIN("/skip_admin_message", HttpMethod.POST, Collections.singletonList(OFFSET)),
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Collections.singletonList(NAME)),
