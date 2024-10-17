@@ -183,7 +183,7 @@ public class AbstractRoute {
    * A function that would check whether a principal has access to a resource.
    */
   @FunctionalInterface
-  public interface ResourceAclCheck {
+  interface ResourceAclCheck {
     boolean apply(X509Certificate clientCert, String resource, DynamicAccessController accessController)
         throws AclException;
   }

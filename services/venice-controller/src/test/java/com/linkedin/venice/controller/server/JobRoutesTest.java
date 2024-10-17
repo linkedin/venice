@@ -34,8 +34,8 @@ public class JobRoutesTest {
     String store = Utils.getUniqueString("store");
     int version = 5;
     JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
-    JobStatusQueryResponse response = jobRoutes.veniceControllerApiHandler
-        .populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null, null);
+    JobStatusQueryResponse response =
+        jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null, null);
 
     Map<String, String> extraInfo = response.getExtraInfo();
     LOGGER.info("extraInfo: {}", extraInfo);
