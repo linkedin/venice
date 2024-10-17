@@ -2239,13 +2239,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return offsetFromConsumer;
     }
     try {
-      return RetryUtils.executeWithMaxAttempt(() -> {
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
         if (offset == -1) {
           throw new VeniceException("Found latest offset -1");
         }
         return offset;
-      }, 10, Duration.ofMillis(200), Collections.singletonList(VeniceException.class));
+      },
+          10,
+          Duration.ofMillis(10),
+          Duration.ofMillis(500),
+          Duration.ofSeconds(5),
+          Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
       LOGGER.error("Could not find latest offset for {} even after 5 retries", pubSubTopic.getName());
       return -1;
