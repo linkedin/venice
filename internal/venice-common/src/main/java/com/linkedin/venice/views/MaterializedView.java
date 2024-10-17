@@ -74,14 +74,8 @@ public class MaterializedView extends VeniceView {
       if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
         String configPartitioner =
             viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name());
-        if (configPartitioner == null) {
-          configPartitioner = store.getPartitionerConfig().getPartitionerClass();
-        }
-        String configPartitionCountString =
-            viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name());
-        int configPartitionCount = configPartitionCountString == null
-            ? store.getPartitionCount()
-            : Integer.parseInt(configPartitionCountString);
+        int configPartitionCount = Integer
+            .parseInt(viewConfig.getViewParameters().get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()));
         if (configPartitionCount == viewPartitionCount && configPartitioner.equals(viewPartitioner)) {
           throw new VeniceException(
               "A view with identical view configs already exist, view name: " + viewConfigEntries.getKey());
