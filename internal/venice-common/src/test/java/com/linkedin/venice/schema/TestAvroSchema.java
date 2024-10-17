@@ -63,6 +63,7 @@ public class TestAvroSchema {
     Map<String, Long> upstreamOffsetMap = new HashMap<>();
     upstreamOffsetMap.put("fake_kafak_url", 100L);
     ps.upstreamOffsetMap = upstreamOffsetMap;
+    ps.separateTopicUpstreamOffsetMap = Collections.emptyMap();
     ps.producerStates = Collections.emptyMap();
     ps.previousStatuses = Collections.emptyMap();
     ps.pendingReportIncrementalPushVersions = Collections.emptyList();
