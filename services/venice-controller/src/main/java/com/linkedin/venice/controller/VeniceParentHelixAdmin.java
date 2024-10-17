@@ -61,11 +61,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -189,6 +191,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -230,6 +233,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -2339,8 +2343,9 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
           ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
-          validateStoreViewConfig(currStore, viewConfig);
-          updatedViewSettings = VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), viewConfig);
+          ViewConfig validatedViewConfig = validateAndDecorateStoreViewConfig(currStore, viewConfig, viewName.get());
+          updatedViewSettings =
+              VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), validatedViewConfig);
         } else {
           updatedViewSettings = VeniceHelixAdmin.removeViewConfigFromStoreViewConfigMap(currStore, viewName.get());
         }
@@ -2350,8 +2355,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if (storeViewConfig.isPresent()) {
         // Validate and overwrite store views if they're getting set
-        validateStoreViewConfigs(storeViewConfig.get(), currStore);
-        setStore.views = StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(storeViewConfig.get());
+        Map<String, ViewConfig> validatedViewConfigs =
+            validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
+        setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
         updatedConfigsList.add(STORE_VIEW);
       }
 
@@ -2780,18 +2786,52 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void validateStoreViewConfigs(Map<String, String> stringMap, Store store) {
+  private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(Map<String, String> stringMap, Store store) {
     Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfigMap(stringMap);
+    Map<String, ViewConfig> validatedConfigs = new HashMap<>();
     for (Map.Entry<String, ViewConfig> viewConfigEntry: configs.entrySet()) {
-      validateStoreViewConfig(store, viewConfigEntry.getValue());
+      ViewConfig validatedViewConfig =
+          validateAndDecorateStoreViewConfig(store, viewConfigEntry.getValue(), viewConfigEntry.getKey());
+      validatedConfigs.put(viewConfigEntry.getKey(), validatedViewConfig);
     }
+    return validatedConfigs;
   }
 
-  private void validateStoreViewConfig(Store store, ViewConfig viewConfig) {
+  private ViewConfig validateAndDecorateStoreViewConfig(Store store, ViewConfig viewConfig, String viewName) {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
+    if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
+      if (viewName.contains(VERSION_SEPARATOR)) {
+        throw new VeniceException(
+            String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
+      }
+      Map<String, String> viewParams = viewConfig.getViewParameters();
+      viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name(), viewName);
+      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name())) {
+        viewParams.put(
+            ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
+            store.getPartitionerConfig().getPartitionerClass());
+        if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
+          try {
+            viewParams.put(
+                ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name(),
+                ObjectMapperFactory.getInstance()
+                    .writeValueAsString(store.getPartitionerConfig().getPartitionerParams()));
+          } catch (JsonProcessingException e) {
+            throw new VeniceException("Failed to convert store partitioner params to string", e);
+          }
+        }
+      }
+      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
+        viewParams.put(
+            ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+            Integer.toString(store.getPartitionCount()));
+      }
+      viewConfig.setViewParameters(viewParams);
+    }
     VeniceView view =
         ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
     view.validateConfigs();
+    return viewConfig;
   }
 
   private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
