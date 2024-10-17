@@ -1,7 +1,9 @@
 package com.linkedin.venice.controller.init;
 
 import static com.linkedin.venice.controller.init.SystemStoreInitializationHelper.DEFAULT_KEY_SCHEMA_STR;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
