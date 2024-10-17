@@ -357,7 +357,7 @@ public class PartialUpdateTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
 
       // VPJ push

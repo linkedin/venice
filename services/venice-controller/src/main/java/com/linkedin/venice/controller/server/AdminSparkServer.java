@@ -170,6 +170,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final VeniceControllerRequestHandler requestHandler;
 
   public AdminSparkServer(
       int port,
@@ -183,13 +184,15 @@ public class AdminSparkServer extends AbstractVeniceService {
       List<ControllerRoute> disabledRoutes,
       VeniceProperties jettyConfigOverrides,
       boolean disableParentRequestTopicForStreamPushes,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
     this.sslConfig = sslConfig;
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.accessController = accessController;
+    this.requestHandler = requestHandler;
     // Note: admin is passed in as a reference. The expectation is the source of the admin will
     // close it so we don't close it in stopInner()
     this.admin = admin;
@@ -279,7 +282,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
-    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository);
+    ControllerRoutes controllerRoutes =
+        new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
     StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
@@ -362,7 +366,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, createVersion.addVersionAndStartIngestion(admin)));
     httpService.post(
         NEW_STORE.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.createStore(admin)));
+        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.createStore(admin, requestHandler)));
     httpService.get(
         CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION.getPath(),
         new VeniceParentControllerRegionStateHandler(
@@ -529,7 +533,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         CLUSTER_DISCOVERY.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(admin)));
+        new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(admin, requestHandler)));
     httpService.get(
         LIST_BOOTSTRAPPING_VERSIONS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, versionRoute.listBootstrappingVersions(admin)));

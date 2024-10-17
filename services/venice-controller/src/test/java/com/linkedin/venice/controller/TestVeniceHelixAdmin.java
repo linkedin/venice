@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.meta.Version.PushType.*;
+import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
+import static com.linkedin.venice.meta.Version.PushType.STREAM;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;

@@ -1,13 +1,12 @@
 package com.linkedin.venice.grpc;
 
-import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
-import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
+import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -19,16 +18,15 @@ import org.testng.annotations.Test;
 
 
 public class VeniceGrpcServerTest {
+  private static final int NUM_THREADS = 2;
   private VeniceGrpcServer grpcServer;
   private VeniceGrpcServerConfig.Builder serverConfig;
-  private VeniceServerGrpcRequestProcessor grpcRequestProcessor;
 
   @BeforeMethod
   void setUp() {
-    grpcRequestProcessor = mock(VeniceServerGrpcRequestProcessor.class);
     serverConfig = new VeniceGrpcServerConfig.Builder().setPort(TestUtils.getFreePort())
-        .setNumThreads(10)
-        .setService(new VeniceReadServiceImpl(grpcRequestProcessor));
+        .setService(new VeniceControllerGrpcServiceTestImpl())
+        .setNumThreads(NUM_THREADS);
   }
 
   @Test
@@ -36,10 +34,12 @@ public class VeniceGrpcServerTest {
     grpcServer = new VeniceGrpcServer(serverConfig.build());
 
     grpcServer.start();
+    assertNotNull(grpcServer.getServer());
+    assertTrue(grpcServer.isRunning());
     assertFalse(grpcServer.isTerminated());
 
     grpcServer.stop();
-    assertTrue(grpcServer.isShutdown());
+    assertFalse(grpcServer.isRunning());
   }
 
   @Test
@@ -65,7 +65,7 @@ public class VeniceGrpcServerTest {
     Thread.sleep(500);
 
     grpcServer.stop();
-    assertTrue(grpcServer.isShutdown());
+    assertFalse(grpcServer.isRunning());
 
     Thread.sleep(500);
 
@@ -88,5 +88,9 @@ public class VeniceGrpcServerTest {
 
     assertFalse(serverCredentials instanceof TlsServerCredentials);
     assertTrue(serverCredentials instanceof InsecureServerCredentials);
+  }
+
+  public static class VeniceControllerGrpcServiceTestImpl
+      extends VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceImplBase {
   }
 }

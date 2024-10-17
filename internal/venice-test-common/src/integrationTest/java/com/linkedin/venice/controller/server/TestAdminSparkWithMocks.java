@@ -7,9 +7,11 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.ParentControllerRegionState;
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -44,6 +46,7 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -53,10 +56,20 @@ import org.testng.annotations.Test;
  * verifying any state changes that would be triggered by the admin.
  */
 public class TestAdminSparkWithMocks {
+  private VeniceControllerRequestHandler requestHandler;
+  private Admin admin;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    admin = Mockito.mock(Admin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(admin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
+
   @Test
   public void testGetRealTimeTopicForStreamPushJobUsesAdmin() throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         "store",
         "owner",
@@ -90,8 +103,11 @@ public class TestAdminSparkWithMocks {
     doReturn(hybridVersion).when(admin).getReferenceVersionForStreamingWrites(anyString(), anyString(), any());
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(
+        admin,
+        "clustername",
+        Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA),
+        requestHandler);
     int port = server.getPort();
 
     // build request
@@ -127,7 +143,6 @@ public class TestAdminSparkWithMocks {
   @Test
   public void testBannedRoutesAreRejected() throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         "store",
         "owner",
@@ -149,8 +164,8 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC));
+    AdminSparkServer server = ServiceFactory
+        .getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC), requestHandler);
     int port = server.getPort();
 
     // build request
@@ -197,7 +212,6 @@ public class TestAdminSparkWithMocks {
     Optional<String> optionalemergencySourceRegion = Optional.empty();
     Optional<String> optionalSourceGridSourceFabric = Optional.empty();
 
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         storeName,
         "owner",
@@ -271,8 +285,11 @@ public class TestAdminSparkWithMocks {
 
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(
+        admin,
+        "clustername",
+        Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA),
+        requestHandler);
     int port = server.getPort();
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
@@ -309,7 +326,6 @@ public class TestAdminSparkWithMocks {
   public void testSamzaReplicationPolicyMode(boolean samzaPolicy, boolean storePolicy, boolean aaEnabled)
       throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         "store",
         "owner",
@@ -354,8 +370,11 @@ public class TestAdminSparkWithMocks {
 
     // Add a banned route not relevant to the test just to make sure there is coverage for unbanned routes still be
     // accessible
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(
+        admin,
+        "clustername",
+        Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA),
+        requestHandler);
     int port = server.getPort();
 
     // build request

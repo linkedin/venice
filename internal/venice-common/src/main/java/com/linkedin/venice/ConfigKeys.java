@@ -225,6 +225,27 @@ public class ConfigKeys {
   // What tags to assign to a controller instance
   public static final String CONTROLLER_INSTANCE_TAG_LIST = "controller.instance.tag.list";
 
+  /**
+   * Whether to enable gRPC server in controller or not.
+   */
+  public static final String CONTROLLER_GRPC_SERVER_ENABLED = "controller.grpc.server.enabled";
+
+  /**
+   * A port for the controller to listen on for incoming requests. On this port, the controller will
+   * server non-ssl requests.
+   */
+  public static final String CONTROLLER_ADMIN_GRPC_PORT = "controller.admin.grpc.port";
+  /**
+   * A port for the controller to listen on for incoming requests. On this port, the controller will
+   * only serve ssl requests.
+   */
+  public static final String CONTROLLER_ADMIN_SECURE_GRPC_PORT = "controller.admin.secure.grpc.port";
+
+  /**
+   * Number of threads to use for the gRPC server in controller.
+   */
+  public static final String CONTROLLER_GRPC_SERVER_THREAD_COUNT = "controller.grpc.server.thread.count";
+
   /** List of forbidden admin paths */
   public static final String CONTROLLER_DISABLED_ROUTES = "controller.cluster.disabled.routes";
 

@@ -112,18 +112,18 @@ public class VeniceGrpcServerConfig {
 
     private void verifyAndAddDefaults() {
       if (port == null) {
-        throw new IllegalArgumentException("Port must be set");
+        throw new IllegalArgumentException("Port value is required to create the gRPC server but was not provided.");
       }
       if (service == null) {
-        throw new IllegalArgumentException("Service must be set");
+        throw new IllegalArgumentException("A non-null gRPC service instance is required to create the server.");
+      }
+      if (numThreads <= 0 && executor == null) {
+        throw new IllegalArgumentException(
+            "gRPC server creation requires a valid number of threads (numThreads > 0) or a non-null executor.");
       }
       if (interceptors == null) {
         interceptors = Collections.emptyList();
       }
-      if (numThreads <= 0 && executor == null) {
-        throw new IllegalArgumentException("Either numThreads or executor must be set");
-      }
-
       if (executor == null) {
         executor = Executors.newFixedThreadPool(numThreads);
       }
