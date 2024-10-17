@@ -16,7 +16,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
-import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -122,8 +121,8 @@ public class ReplicaStatus {
     removeOldStatuses();
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
-    if (!StringUtils.isEmpty(incrementalPushVersion)) {
-      snapshot.setIncrementalPushVersion(incrementalPushVersion);
+    if (isIncrementalPushStatus(status)) {
+      snapshot.setIncrementalPushVersion(status.toString());
     }
     statusHistory.add(snapshot);
   }
