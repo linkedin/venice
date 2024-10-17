@@ -1,12 +1,13 @@
 package com.linkedin.venice.controller.server;
 
 public class CreateStoreRequest {
-  String clusterName;
-  String storeName;
-  String keySchema;
-  String valueSchema;
-  boolean isSystemStore;
-  String accessPerm;
+  private String clusterName;
+  private String storeName;
+  private String keySchema;
+  private String valueSchema;
+  private boolean isSystemStore;
+  private String owner;
+  private String accessPerm;
 
   public CreateStoreRequest(
       String clusterName,
@@ -64,6 +65,14 @@ public class CreateStoreRequest {
 
   public void setSystemStore(boolean isSystemStore) {
     this.isSystemStore = isSystemStore;
+  }
+
+  public String getOwner() {
+    return owner;
+  }
+
+  public void setOwner(String owner) {
+    this.owner = owner;
   }
 
   public String getAccessPerm() {
