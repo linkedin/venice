@@ -1,0 +1,172 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+import "google/protobuf/timestamp.proto";  // Import for timestamp handling
+
+option java_multiple_files = true;
+
+enum DataReplicationPolicyGrpc {
+  NON_AGGREGATE = 0;
+  AGGREGATE = 1;
+  NONE = 2;
+  ACTIVE_ACTIVE = 3;
+}
+
+enum BufferReplayPolicyGrpc {
+  REWIND_FROM_EOP = 0;
+  REWIND_FROM_SOP = 1;
+}
+
+message HybridStoreConfigGrpc {
+  int64 rewindTimeInSeconds = 1;
+  int64 offsetLagThresholdToGoOnline = 2;
+  int64 producerTimestampLagThresholdToGoOnlineInSeconds = 3;
+  DataReplicationPolicyGrpc dataReplicationPolicy = 4;
+  BufferReplayPolicyGrpc bufferReplayPolicy = 5;
+}
+
+enum CompressionStrategyGrpc {
+  NO_OP = 0;
+  GZIP = 1;
+  ZSTD = 2;
+  ZSTD_WITH_DICT = 3;
+}
+
+enum BackupStrategyGrpc {
+  KEEP_MIN_VERSIONS = 0;
+  DELETE_ON_NEW_PUSH_START = 1;
+}
+
+message ETLStoreConfigGrpc {
+  string etledUserProxyAccount = 1;
+  bool regularVersionETLEnabled = 2;
+  bool futureVersionETLEnabled = 3;
+}
+
+message PartitionerConfigGrpc {
+  string partitionerClass = 1;
+  map<string, string> partitionerParams = 2;
+}
+
+message ViewConfigGrpc {
+  string viewClassName = 1;
+  map<string, string> viewParameters = 2;
+}
+
+message DataRecoveryVersionConfigGrpc {
+  string dataRecoverySourceFabric = 1;
+  bool dataRecoveryComplete = 2;
+  int32 dataRecoverySourceVersionNumber = 3;
+}
+
+enum PushTypeGrpc {
+  BATCH = 0;
+  STREAM_REPROCESSING = 1;
+  STREAM = 2;
+  INCREMENTAL = 3;
+}
+
+enum VersionStatusGrpc {
+  NOT_CREATED = 0;
+  STARTED = 1;
+  PUSHED = 2;        // Version has been pushed to Venice but not ready for reads (writes disabled).
+  ONLINE = 3;        // Version is pushed and ready to serve read requests.
+  ERROR = 4;         // Version encountered an error.
+  CREATED = 5;       // Version is created and persisted, but not fully prepared yet.
+  PARTIALLY_ONLINE = 6;  // Version is online in some regions, failed in others (parent version only).
+  KILLED = 7;        // This version has been killed.
+}
+
+// Protobuf message for Store Info
+message StoreInfoGrpc {
+  string name = 1;
+  string owner = 2;
+  int32 partitionCount = 3;
+  int32 currentVersion = 4;
+  int32 reservedVersion = 5;
+  int64 lowWatermark = 6;
+  bool enableStoreWrites = 7;
+  bool enableStoreReads = 8;
+  int64 storageQuotaInByte = 9;
+  bool hybridStoreOverheadBypass = 10;
+  int64 readQuotaInCU = 11;
+  bool accessControlled = 12;
+  bool chunkingEnabled = 13;
+  bool rmdChunkingEnabled = 14;
+  bool singleGetRouterCacheEnabled = 15;
+  bool batchGetRouterCacheEnabled = 16;
+  int32 batchGetLimit = 17;
+  int32 largestUsedVersionNumber = 18;
+  bool incrementalPushEnabled = 19;
+  bool clientDecompressionEnabled = 20;
+  int32 numVersionsToPreserve = 21;
+  bool migrating = 22;
+  bool writeComputationEnabled = 23;
+  int32 replicationMetadataVersionId = 24;
+  bool readComputationEnabled = 25;
+  int32 bootstrapToOnlineTimeoutInHours = 26;
+  bool nativeReplicationEnabled = 27;
+  string pushStreamSourceAddress = 28;
+  bool schemaAutoRegisterFromPushJobEnabled = 29;
+  bool superSetSchemaAutoGenerationForReadComputeEnabled = 30;
+  int32 latestSuperSetValueSchemaId = 31;
+  bool hybridStoreDiskQuotaEnabled = 32;
+  int64 backupVersionRetentionMs = 33;
+  int32 replicationFactor = 34;
+  bool migrationDuplicateStore = 35;
+  string nativeReplicationSourceFabric = 36;
+  bool storeMetadataSystemStoreEnabled = 37;
+  bool storeMetaSystemStoreEnabled = 38;
+  bool daVinciPushStatusStoreEnabled = 39;
+  bool activeActiveReplicationEnabled = 40;
+  string kafkaBrokerUrl = 41;
+  bool storageNodeReadQuotaEnabled = 42;
+  int64 minCompactionLagSeconds = 43;
+  int64 maxCompactionLagSeconds = 44;
+  int32 maxRecordSizeBytes = 45;
+  int32 maxNearlineRecordSizeBytes = 46;
+  bool unusedSchemaDeletionEnabled = 47;
+  bool blobTransferEnabled = 48;
+
+  map<string, int32> coloToCurrentVersions = 49;
+  repeated VersionGrpc versions = 50;
+  optional HybridStoreConfigGrpc hybridStoreConfig = 51;
+  CompressionStrategyGrpc compressionStrategy = 52;
+  BackupStrategyGrpc backupStrategy = 53;
+  optional ETLStoreConfigGrpc etlStoreConfig = 54;
+  PartitionerConfigGrpc partitionerConfig = 55;
+  map<string, ViewConfigGrpc> viewConfigs = 56;
+}
+
+message VersionGrpc {
+  string storeName = 1;
+  int32 number = 2;
+  int64 createdTime = 3;
+  VersionStatusGrpc status = 4;
+  string pushJobId = 5;
+  CompressionStrategyGrpc compressionStrategy = 6;
+  string pushStreamSourceAddress = 7;
+  bool chunkingEnabled = 8;
+  bool rmdChunkingEnabled = 9;
+  PushTypeGrpc pushType = 10;
+  int32 partitionCount = 11;
+  PartitionerConfigGrpc partitionerConfig = 12;
+  int32 replicationFactor = 13;
+  string nativeReplicationSourceFabric = 14;
+  bool incrementalPushEnabled = 15;
+  bool separateRealTimeTopicEnabled = 16;
+  bool blobTransferEnabled = 17;
+  bool useVersionLevelIncrementalPushEnabled = 18;
+  optional HybridStoreConfigGrpc hybridConfig = 19;
+  bool useVersionLevelHybridConfig = 20;
+  bool activeActiveReplicationEnabled = 21;
+  int32 timestampMetadataVersionId = 22;
+  optional DataRecoveryVersionConfigGrpc dataRecoveryConfig = 23;
+  bool deferVersionSwap = 24;
+  map<string, ViewConfigGrpc> viewConfigs = 25;
+  int32 repushSourceVersion = 26;
+  bool versionSwapDeferred = 27;
+}
+

@@ -536,6 +536,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             .collect(Collectors.joining(","));
   }
 
+  public final synchronized String getAllControllersGrpcURLs() {
+    return veniceControllerWrappers.isEmpty()
+        ? externalControllerDiscoveryURL
+        : veniceControllerWrappers.values()
+            .stream()
+            .map(VeniceControllerWrapper::getControllerGrpcUrl)
+            .collect(Collectors.joining(","));
+  }
+
   public VeniceControllerWrapper getLeaderVeniceController() {
     return getLeaderVeniceController(60 * Time.MS_PER_SECOND);
   }

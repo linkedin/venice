@@ -15,10 +15,13 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Optional;
 import org.apache.commons.httpclient.HttpStatus;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -29,17 +32,27 @@ import spark.Route;
 public class CreateStoreTest {
   private static String clusterName = Utils.getUniqueString("test-cluster");
 
+  private VeniceControllerRequestHandler requestHandler;
+  private Admin mockAdmin;
+
+  @BeforeMethod
+  public void setUp() {
+    mockAdmin = mock(VeniceParentHelixAdmin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(mockAdmin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
+
   @Test
   public void testCreateStoreWhenThrowsNPEInternally() throws Exception {
-    Admin admin = mock(Admin.class);
     Request request = mock(Request.class);
     Response response = mock(Response.class);
 
     String fakeMessage = "fake_message";
 
-    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(clusterName);
     // Throws NPE here
-    doThrow(new NullPointerException(fakeMessage)).when(admin)
+    doThrow(new NullPointerException(fakeMessage)).when(mockAdmin)
         .createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
@@ -54,22 +67,21 @@ public class CreateStoreTest {
     doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
 
     CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
-    Route createStoreRouter = createStoreRoute.createStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(mockAdmin, requestHandler);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
   }
 
   @Test(expectedExceptions = Error.class)
   public void testCreateStoreWhenThrowsError() throws Exception {
-    Admin admin = mock(Admin.class);
     Request request = mock(Request.class);
     Response response = mock(Response.class);
 
     String fakeMessage = "fake_message";
 
-    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(clusterName);
     // Throws NPE here
-    doThrow(new Error(fakeMessage)).when(admin).createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+    doThrow(new Error(fakeMessage)).when(mockAdmin).createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap).toMap();
@@ -83,17 +95,16 @@ public class CreateStoreTest {
     doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
 
     CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
-    Route createStoreRouter = createStoreRoute.createStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(mockAdmin, requestHandler);
     createStoreRouter.handle(request, response);
   }
 
   @Test
   public void testCreateStoreWhenSomeParamNotPresent() throws Exception {
-    Admin admin = mock(Admin.class);
     Request request = mock(Request.class);
     Response response = mock(Response.class);
 
-    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(clusterName);
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap).toMap();
@@ -103,18 +114,17 @@ public class CreateStoreTest {
     doReturn(clusterName).when(request).queryParams(CLUSTER);
 
     CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
-    Route createStoreRouter = createStoreRoute.createStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(mockAdmin, requestHandler);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_BAD_REQUEST);
   }
 
   @Test
   public void testCreateStoreWhenNotLeaderController() throws Exception {
-    Admin admin = mock(Admin.class);
     Request request = mock(Request.class);
     Response response = mock(Response.class);
 
-    doReturn(false).when(admin).isLeaderControllerFor(clusterName);
+    doReturn(false).when(mockAdmin).isLeaderControllerFor(clusterName);
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap).toMap();
@@ -128,7 +138,7 @@ public class CreateStoreTest {
     doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
 
     CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
-    Route createStoreRouter = createStoreRoute.createStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(mockAdmin, requestHandler);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpConstants.SC_MISDIRECTED_REQUEST);
   }

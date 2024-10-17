@@ -1,0 +1,224 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+import "VeniceStore.proto";
+
+option java_multiple_files = true;
+
+
+service VeniceControllerGrpcService {
+  // ClusterDiscovery
+  rpc discoverClusterForStore(DiscoverClusterGrpcRequest) returns (DiscoverClusterGrpcResponse) {}
+
+  // ControllerRoutes
+  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+
+  // CreateStore
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
+}
+
+message EmptyPushGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string pushJobId = 2;
+}
+
+message EmptyPushGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  int32 version = 2;
+  int32 partitions = 3;
+  int32 replicas = 4;
+  string pubSubTopic = 5;
+  string pubSubBootstrapServers = 6;
+  bool enableSSL = 7;
+  CompressionStrategyGrpc compressionStrategy = 8;
+  string partitionerClass = 9;
+  map<string, string> partitionerParams = 10;
+  bool daVinciPushStatusStoreEnabled = 11;
+  optional string pubSubSourceRegion = 12;
+}
+
+message GetStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message GetStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  StoreInfoGrpc storeInfo = 2;
+}
+
+message ListStoresGrpcRequest {
+  string clusterName = 1;
+  optional bool includeSystemStores = 2;
+  optional string storeConfigNameFilter = 3;
+  optional string storeConfigValueFilter = 4;
+}
+
+message ListStoresGrpcResponse {
+  string clusterName = 1;
+  repeated string storeName = 2;
+}
+
+message ListBootstrappingVersionsGrpcRequest {
+  string clusterName = 1;
+}
+
+message BootstrappingVersion {
+  string storeVersionName = 1;
+  string versionStatus = 2;
+}
+
+message ListBootstrappingVersionsGrpcResponse {
+  string clusterName = 1;
+  repeated BootstrappingVersion bootstrappingVersions = 2;
+}
+
+message DiscoverClusterGrpcRequest {
+  string storeName = 1;
+}
+
+message DiscoverClusterGrpcResponse {
+  string clusterName = 1;
+  string storeName = 2;
+  string d2Service = 3;
+  string serverD2Service = 4;
+  string zkAddress = 5;
+  string pubSubBootstrapServers = 6;
+}
+
+message AdminTopicMetadataGrpcRequest {
+  string clusterName = 1;
+  optional string storeName = 2;
+}
+
+message AdminTopicMetadataGrpcResponse {
+  string clusterName = 1;
+  optional string storeName = 2;
+  int64 executionId = 3;
+  optional int64 offset = 4;
+  optional int64 upstreamOffset = 5;
+}
+
+message UpdateAdminTopicMetadataGrpcRequest {
+  string clusterName = 1;
+  optional string storeName = 2;
+  int64 executionId = 3;
+  optional int64 offset = 4;
+  optional int64 upstreamOffset = 5;
+}
+
+message UpdateAdminTopicMetadataGrpcResponse {
+  string clusterName = 1;
+  optional string storeName = 2;
+}
+
+message AdminCommandExecutionStatusGrpcRequest {
+  string clusterName = 1;
+  int64 adminCommandExecutionId = 2;
+}
+
+message AdminCommandExecutionStatusGrpcResponse {
+  string clusterName = 1;
+  int64 adminCommandExecutionId = 2;
+  string operation = 3;
+  string startTime = 4;
+  map<string, string> fabricToExecutionStatusMap = 5;
+}
+
+message LastSuccessfulAdminCommandExecutionGrpcRequest {
+  string clusterName = 1;
+}
+
+message LastSuccessfulAdminCommandExecutionGrpcResponse {
+  string clusterName = 1;
+  int64 lastSuccessfulAdminCommandExecutionId = 2;
+}
+
+
+message ClusterStoreGrpcInfo {
+  string clusterName = 1;
+  string storeName = 2;
+}
+
+message CreateStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string keySchema = 2;
+  string valueSchema = 3;
+  optional string owner = 4;
+  optional bool isSystemStore = 5;
+  optional string accessPermission = 6;
+}
+
+message CreateStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string owner = 2;
+}
+
+message UpdateAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string accessPermissions = 3;
+}
+
+message UpdateAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message GetAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message GetAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string accessPermissions = 2;
+}
+
+message DeleteAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message DeleteAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message CheckResourceCleanupForStoreCreationGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message CheckResourceCleanupForStoreCreationGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+enum ControllerGrpcErrorType {
+  UNKNOWN = 0;
+  INCORRECT_CONTROLLER = 1;
+  INVALID_SCHEMA = 2;
+  INVALID_CONFIG = 3;
+  STORE_NOT_FOUND = 4;
+  SCHEMA_NOT_FOUND = 5;
+  CONNECTION_ERROR = 6;
+  GENERAL_ERROR = 7;
+  BAD_REQUEST = 8;
+  CONCURRENT_BATCH_PUSH = 9;
+  RESOURCE_STILL_EXISTS = 10;
+}
+
+message VeniceControllerGrpcErrorInfo {
+  uint32 statusCode = 1;
+  string errorMessage = 2;
+  optional ControllerGrpcErrorType errorType = 3;
+  optional string clusterName = 4;
+  optional string storeName = 5;
+}
+
+message LeaderControllerGrpcRequest {
+  string clusterName = 1; // The cluster name
+}
+
+message LeaderControllerGrpcResponse {
+  string clusterName = 1;        // The cluster name
+  string httpUrl = 2;        // Leader controller URL
+  string httpsUrl = 3;       // SSL-enabled leader controller URL
+  string grpcUrl = 4;        // gRPC URL for leader controller
+  string secureGrpcUrl = 5;  // Secure gRPC URL for leader controller
+}
