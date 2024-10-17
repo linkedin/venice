@@ -51,7 +51,7 @@ public class ReplicaStatus {
     if (!isIncrementalPushStatus(newStatus)) {
       setCurrentStatus(newStatus);
     }
-    addHistoricStatus(newStatus);
+    addHistoricStatus(newStatus, incrementalPushVersion);
   }
 
   void updateStatus(ExecutionStatus newStatus) {
@@ -98,7 +98,7 @@ public class ReplicaStatus {
     this.statusHistory = statusHistory;
   }
 
-  private void addHistoricStatus(ExecutionStatus status) {
+  private void addHistoricStatus(ExecutionStatus status, String incrementalPushVersion) {
     if (statusHistory == null) {
       // Status history is disabled
       return;
@@ -122,7 +122,7 @@ public class ReplicaStatus {
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
     if (isIncrementalPushStatus(status)) {
-      snapshot.setIncrementalPushVersion(status.toString());
+      snapshot.setIncrementalPushVersion(incrementalPushVersion);
     }
     statusHistory.add(snapshot);
   }
