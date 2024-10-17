@@ -16,19 +16,19 @@ import org.testng.annotations.Test;
 
 
 public class ReplicaStatusTest {
-  private final String instanceId = "testInstance";
+  private static final String INSTANCE_ID = "testInstance";
 
   @Test
   public void testCreateReplicaStatus() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
-    Assert.assertEquals(replicaStatus.getInstanceId(), instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
+    Assert.assertEquals(replicaStatus.getInstanceId(), INSTANCE_ID);
     Assert.assertEquals(replicaStatus.getCurrentStatus(), STARTED);
     Assert.assertEquals(replicaStatus.getCurrentProgress(), 0);
   }
 
   private void testStatusesUpdate(ExecutionStatus from, ExecutionStatus... statuses) {
     for (ExecutionStatus status: statuses) {
-      ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+      ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
       replicaStatus.setCurrentStatus(from);
       replicaStatus.updateStatus(status);
       if (isIncrementalPushStatus(status)) {
@@ -80,7 +80,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testStatusHistory() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     replicaStatus.updateStatus(STARTED);
     replicaStatus.updateStatus(PROGRESS);
     replicaStatus.updateStatus(COMPLETED);
@@ -94,7 +94,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testStatusHistoryTooLong() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH * 2; i++) {
       replicaStatus.updateStatus(STARTED);
     }
@@ -103,7 +103,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testStatusHistorySaveLastValidStatus() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     replicaStatus.updateStatus(COMPLETED);
     replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED);
     for (int i = 0; i <= ReplicaStatus.MAX_HISTORY_LENGTH + 1; i++) {
@@ -124,7 +124,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testIncrementalPushStatesGotRemovedFirst() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     replicaStatus.updateStatus(STARTED);
     replicaStatus.updateStatus(END_OF_PUSH_RECEIVED);
     replicaStatus.updateStatus(COMPLETED);
@@ -160,7 +160,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testCurrentIncPushVersionStatusGotSaved() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     // update (max length + 1) statuses to the replica status history
     replicaStatus.updateStatus(STARTED);
     for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH; i++) {
@@ -174,7 +174,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testStatusHistoryWithLotsOfProgressStatus() {
-    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     replicaStatus.updateStatus(STARTED);
     for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH * 2; i++) {
       replicaStatus.updateStatus(PROGRESS);
