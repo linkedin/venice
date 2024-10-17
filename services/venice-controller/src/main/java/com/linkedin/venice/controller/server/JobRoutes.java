@@ -15,6 +15,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DE
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.server.endpoints.JobStatusRequest;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -53,20 +54,17 @@ public class JobRoutes extends AbstractRoute {
       try {
         // No ACL check for getting job metadata
         AdminSparkServer.validateParams(request, JOB.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String store = request.queryParams(NAME);
-        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
-        String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
-        String targetedRegions = request.queryParams(TARGETED_REGIONS);
-        String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
-        responseObject = populateJobStatus(
-            cluster,
-            store,
-            versionNumber,
-            admin,
-            Optional.ofNullable(incrementalPushVersion),
-            region,
-            targetedRegions);
+
+        JobStatusRequest jobStatusRequest = new JobStatusRequest();
+        jobStatusRequest.setCluster(request.queryParams(CLUSTER));
+        jobStatusRequest.setStore(request.queryParams(NAME));
+        jobStatusRequest.setVersionNumber(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
+        jobStatusRequest
+            .setIncrementalPushVersion(AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION));
+        jobStatusRequest.setTargetedRegions(request.queryParams(TARGETED_REGIONS));
+        jobStatusRequest.setRegion(AdminSparkServer.getOptionalParameterValue(request, FABRIC));
+
+        populateJobStatus(jobStatusRequest, admin, responseObject);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -75,20 +73,24 @@ public class JobRoutes extends AbstractRoute {
     };
   }
 
-  JobStatusQueryResponse populateJobStatus(
-      String cluster,
-      String store,
-      int versionNumber,
+  public JobStatusQueryResponse populateJobStatus(
+      JobStatusRequest jobStatusRequest,
       Admin admin,
-      Optional<String> incrementalPushVersion,
-      String region,
-      String targetedRegions) {
-    JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
+      JobStatusQueryResponse responseObject) {
+    String store = jobStatusRequest.getStore();
+    int versionNumber = jobStatusRequest.getVersionNumber();
+    String cluster = jobStatusRequest.getCluster();
+    String incrementalPushVersion = jobStatusRequest.getIncrementalPushVersion();
+    String region = jobStatusRequest.getRegion();
+    String targetedRegions = jobStatusRequest.getTargetedRegions();
 
     String kafkaTopicName = Version.composeKafkaTopic(store, versionNumber);
-
-    Admin.OfflinePushStatusInfo offlineJobStatus =
-        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);
+    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(
+        cluster,
+        kafkaTopicName,
+        Optional.ofNullable(incrementalPushVersion),
+        region,
+        targetedRegions);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
     responseObject.setStatusUpdateTimestamp(offlineJobStatus.getStatusUpdateTimestamp());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
