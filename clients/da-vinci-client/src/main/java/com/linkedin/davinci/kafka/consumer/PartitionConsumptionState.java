@@ -16,6 +16,8 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -70,30 +72,28 @@ public class PartitionConsumptionState {
    * lengthy acquisition of the lock.
    */
   final class LeaderFollowerState {
-    LeaderFollowerStateType state;
-    final ReadWriteLock rwLock;
+    private LeaderFollowerStateType state;
+    private final ReadWriteLock rwLock;
 
     LeaderFollowerState() {
       this.state = LeaderFollowerStateType.STANDBY;
       this.rwLock = new ReentrantReadWriteLock();
     }
 
-    void set(LeaderFollowerStateType state) {
-      rwLock.writeLock().lock();
-      try {
+    void setState(LeaderFollowerStateType state) {
+      try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(rwLock.writeLock())) {
         this.state = state;
-      } finally {
-        rwLock.writeLock().unlock();
       }
     }
 
-    LeaderFollowerStateType get() {
-      rwLock.readLock().lock();
-      try {
+    LeaderFollowerStateType getState() {
+      try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(rwLock.readLock())) {
         return this.state;
-      } finally {
-        rwLock.readLock().unlock();
       }
+    }
+
+    ReadWriteLock getLock() {
+      return rwLock;
     }
   }
 
@@ -428,7 +428,7 @@ public class PartitionConsumptionState {
         .append(", processedRecordSizeSinceLastSync=")
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
-        .append(leaderFollowerState.get())
+        .append(leaderFollowerState.getState())
         .append("}")
         .toString();
   }
@@ -446,15 +446,15 @@ public class PartitionConsumptionState {
   }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {
-    this.leaderFollowerState.set(state);
+    this.leaderFollowerState.setState(state);
   }
 
-  public final LeaderFollowerStateType getLeaderFollowerState() {
-    return this.leaderFollowerState.get();
+  public LeaderFollowerStateType getLeaderFollowerState() {
+    return this.leaderFollowerState.getState();
   }
 
-  public final ReadWriteLock getLeaderFollowerStateLock() {
-    return this.leaderFollowerState.rwLock;
+  public ReadWriteLock getLeaderFollowerStateLock() {
+    return this.leaderFollowerState.getLock();
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {
