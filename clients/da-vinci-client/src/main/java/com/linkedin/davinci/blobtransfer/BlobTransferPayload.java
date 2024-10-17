@@ -13,9 +13,11 @@ public class BlobTransferPayload {
   private final int partition;
   private final String topicName;
   private final String partitionDir;
+  private final String storeName;
 
   public BlobTransferPayload(String baseDir, String storeName, int version, int partition) {
     this.partition = partition;
+    this.storeName = storeName;
     this.topicName = storeName + "_v" + version;
     this.partitionDir = composePartitionDbDir(baseDir, topicName, partition);
   }
@@ -38,5 +40,9 @@ public class BlobTransferPayload {
 
   public int getPartition() {
     return partition;
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 }

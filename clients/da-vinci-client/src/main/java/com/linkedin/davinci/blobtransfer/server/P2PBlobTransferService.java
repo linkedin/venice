@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer.server;
 
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -31,7 +32,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   // TODO 5: add compression support
   // TODO 6: consider either increasing worker threads or have a dedicated thread pool to handle requests.
 
-  public P2PBlobTransferService(int port, String baseDir, StorageMetadataService storageMetadataService) {
+  public P2PBlobTransferService(
+      int port,
+      String baseDir,
+      StorageMetadataService storageMetadataService,
+      BlobSnapshotManager blobSnapshotManager) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
 
@@ -48,7 +53,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
 
     serverBootstrap.group(bossGroup, workerGroup)
         .channel(socketChannelClass)
-        .childHandler(new BlobTransferNettyChannelInitializer(baseDir, storageMetadataService))
+        .childHandler(new BlobTransferNettyChannelInitializer(baseDir, storageMetadataService, blobSnapshotManager))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
