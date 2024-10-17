@@ -100,7 +100,7 @@ public class TestEmptyPush {
     }
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(invocationCount = 10, timeOut = 120 * Time.MS_PER_SECOND)
   public void testEmptyPushByChangingCompressionStrategyForHybridStore() throws IOException {
     String storeName = Utils.getUniqueString("test_empty_push_store");
     try (
