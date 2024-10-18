@@ -61,8 +61,9 @@ public class TestP2PFileTransferServerHandler {
     readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
-    blobSnapshotManager = new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository);
-    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), storageMetadataService, blobSnapshotManager);
+    blobSnapshotManager =
+        new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
+    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
   }
 
@@ -268,6 +269,10 @@ public class TestP2PFileTransferServerHandler {
     // end of STATUS response
   }
 
+  /**
+   * Test when fail to get the metadata from storageMetadataService, it should return error to client.
+   * @throws IOException
+   */
   @Test
   public void testWhenMetadataCreateError() throws IOException {
     // prepare the file request
@@ -279,25 +284,9 @@ public class TestP2PFileTransferServerHandler {
 
     ch.writeInbound(request);
 
-    // start of file1
+    // metadata in server side has error
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
-    DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
-    Assert.assertEquals(
-        httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
-        "attachment; filename=\"file1\"");
-    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
-    // send the content in one chunk
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultFileRegion);
-    // the last empty response for file1
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
-    // end of file1
-
-    // metadata in server side has error
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultHttpResponse);
-    Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.NOT_FOUND);
   }
 }

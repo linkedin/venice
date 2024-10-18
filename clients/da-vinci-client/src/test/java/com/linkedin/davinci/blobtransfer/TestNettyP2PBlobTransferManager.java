@@ -23,7 +23,6 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -67,9 +66,10 @@ public class TestNettyP2PBlobTransferManager {
 
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
-    blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+    blobSnapshotManager =
+        Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
-    server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), storageMetadataService, blobSnapshotManager);
+    server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobSnapshotManager);
     client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
     finder = mock(BlobFinder.class);
 
@@ -378,18 +378,12 @@ public class TestNettyP2PBlobTransferManager {
         .computeStoreVersionState(Mockito.anyString(), Mockito.any());
 
     // Verify the createSnapshot is called
-    Mockito.verify(blobSnapshotManager, Mockito.times(1)).recreateSnapshotForHybrid(Mockito.any(), Mockito.any());
+    Mockito.verify(blobSnapshotManager, Mockito.times(1)).prepareMetadata(Mockito.any());
     Mockito.verify(blobSnapshotManager, Mockito.times(1)).createSnapshot(TEST_STORE + "_v" + TEST_VERSION, 0);
 
     // Verify the concurrent user of this partition is 0 as it should firstly be 1 and after the file is sent,
     // it should decrease to 0
     long concurrentUser = blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0);
     Assert.assertEquals(concurrentUser, 0);
-
-    // Verify offset record is tracked
-    BlobTransferPartitionMetadata offsetRecord =
-        blobSnapshotManager.getTransferredSnapshotMetadata(TEST_STORE + "_v" + TEST_VERSION, 0);
-    Assert.assertNotNull(offsetRecord);
-    Assert.assertEquals(offsetRecord.getOffsetRecord(), ByteBuffer.wrap(expectOffsetRecord.toBytes()));
   }
 }

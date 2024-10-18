@@ -36,7 +36,9 @@ public class BlobTransferUtil {
       ClientConfig clientConfig,
       StorageMetadataService storageMetadataService,
       ReadOnlyStoreRepository readOnlyStoreRepository,
-      StorageEngineRepository storageEngineRepository) {
+      StorageEngineRepository storageEngineRepository,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin) {
     return getP2PBlobTransferManagerForDVCAndStart(
         p2pTransferPort,
         p2pTransferPort,
@@ -44,7 +46,9 @@ public class BlobTransferUtil {
         clientConfig,
         storageMetadataService,
         readOnlyStoreRepository,
-        storageEngineRepository);
+        storageEngineRepository,
+        maxConcurrentSnapshotUser,
+        snapshotRetentionTimeInMin);
   }
 
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
@@ -54,14 +58,20 @@ public class BlobTransferUtil {
       ClientConfig clientConfig,
       StorageMetadataService storageMetadataService,
       ReadOnlyStoreRepository readOnlyStoreRepository,
-      StorageEngineRepository storageEngineRepository) {
+      StorageEngineRepository storageEngineRepository,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin) {
     try {
-      BlobSnapshotManager blobSnapshotManager =
-          new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository);
+      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
+          readOnlyStoreRepository,
+          storageEngineRepository,
+          storageMetadataService,
+          maxConcurrentSnapshotUser,
+          snapshotRetentionTimeInMin);
       AbstractAvroStoreClient storeClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService, blobSnapshotManager),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient));
       manager.start();
@@ -88,12 +98,18 @@ public class BlobTransferUtil {
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture,
       StorageMetadataService storageMetadataService,
       ReadOnlyStoreRepository readOnlyStoreRepository,
-      StorageEngineRepository storageEngineRepository) {
+      StorageEngineRepository storageEngineRepository,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin) {
     try {
-      BlobSnapshotManager blobSnapshotManager =
-          new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository);
+      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
+          readOnlyStoreRepository,
+          storageEngineRepository,
+          storageMetadataService,
+          maxConcurrentSnapshotUser,
+          snapshotRetentionTimeInMin);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService, blobSnapshotManager),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture));
       manager.start();

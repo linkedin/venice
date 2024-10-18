@@ -455,7 +455,9 @@ public class VeniceServer {
           customizedViewFuture,
           storageMetadataService,
           metadataRepo,
-          storageService.getStorageEngineRepository());
+          storageService.getStorageEngineRepository(),
+          serverConfig.getMaxConcurrentSnapshotUser(),
+          serverConfig.getSnapshotRetentionTimeInMin());
     } else {
       blobTransferManager = null;
     }

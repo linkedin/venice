@@ -13,12 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.request.RequestHelper;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -45,7 +40,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,19 +51,13 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
-  private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
-      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+
   private boolean useZeroCopy = false;
   private final String baseDir;
-  private StorageMetadataService storageMetadataService;
   private BlobSnapshotManager blobSnapshotManager;
 
-  public P2PFileTransferServerHandler(
-      String baseDir,
-      StorageMetadataService storageMetadataService,
-      BlobSnapshotManager blobSnapshotManager) {
+  public P2PFileTransferServerHandler(String baseDir, BlobSnapshotManager blobSnapshotManager) {
     this.baseDir = baseDir;
-    this.storageMetadataService = storageMetadataService;
     this.blobSnapshotManager = blobSnapshotManager;
   }
 
@@ -107,22 +95,16 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     }
     final BlobTransferPayload blobTransferRequest;
     final File snapshotDir;
-    boolean isHybridStore;
+    BlobTransferPartitionMetadata transferPartitionMetadata;
 
     try {
       blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
       snapshotDir = new File(blobTransferRequest.getSnapshotDir());
-      isHybridStore = blobSnapshotManager.isStoreHybrid(blobTransferRequest.getStoreName());
-
-      // recreate snapshot for hybrid store
-      if (isHybridStore) {
-        try {
-          BlobTransferPartitionMetadata metadataForHybrid = prepareMetadata(blobTransferRequest, ctx);
-          blobSnapshotManager.recreateSnapshotForHybrid(blobTransferRequest, metadataForHybrid);
-        } catch (Exception e) {
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
-          return;
-        }
+      try {
+        transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
+      } catch (Exception e) {
+        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+        return;
       }
 
       if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
@@ -153,12 +135,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       sendFile(file, ctx);
     }
 
-    // transfer metadata, use the metadata before the snapshot is generated for hybrid.
-    BlobTransferPartitionMetadata transferredMetadata = isHybridStore
-        ? blobSnapshotManager
-            .getTransferredSnapshotMetadata(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition())
-        : prepareMetadata(blobTransferRequest, ctx);
-    sendMetadata(ctx, transferredMetadata);
+    sendMetadata(ctx, transferPartitionMetadata);
 
     // end of transfer
     HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
@@ -171,7 +148,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       }
     });
 
-    blobSnapshotManager.removeConcurrentUserRestriction(isHybridStore, blobTransferRequest);
+    blobSnapshotManager.removeConcurrentUserRestriction(blobTransferRequest);
   }
 
   /**
@@ -197,6 +174,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
     setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage().getBytes(), false, ctx);
     ctx.close();
+  }
+
+  @Override
+  public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    // clean up the snapshot timestamp and metadata records and concurrent users
+    blobSnapshotManager.resetSnapshotTracking();
+    super.channelInactive(ctx);
   }
 
   private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {
@@ -235,40 +219,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         LOGGER.error("Failed to send last content for {}", file.getName());
       }
     });
-  }
-
-  /**
-   * Prepare metadata for the given blob transfer request
-   * @param blobTransferRequest the blob transfer request
-   * @param ctx the channel context
-   * @return the metadata for the given blob transfer request
-   */
-  private BlobTransferPartitionMetadata prepareMetadata(
-      BlobTransferPayload blobTransferRequest,
-      ChannelHandlerContext ctx) {
-    // prepare metadata
-    BlobTransferPartitionMetadata metadata = null;
-    try {
-      StoreVersionState storeVersionState =
-          storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());
-      java.nio.ByteBuffer storeVersionStateByte =
-          ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
-
-      OffsetRecord offsetRecord =
-          storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
-      java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
-
-      metadata = new BlobTransferPartitionMetadata(
-          blobTransferRequest.getTopicName(),
-          blobTransferRequest.getPartition(),
-          offsetRecordByte,
-          storeVersionStateByte);
-    } catch (Exception e) {
-      byte[] errBody = ("Failed to get metadata for " + blobTransferRequest.getTopicName()).getBytes();
-      setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, errBody, false, ctx);
-    }
-
-    return metadata;
   }
 
   /**

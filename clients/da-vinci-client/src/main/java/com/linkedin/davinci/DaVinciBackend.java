@@ -297,7 +297,9 @@ public class DaVinciBackend implements Closeable {
             clientConfig,
             storageMetadataService,
             readOnlyStoreRepository,
-            storageService.getStorageEngineRepository());
+            storageService.getStorageEngineRepository(),
+            backendConfig.getMaxConcurrentSnapshotUser(),
+            backendConfig.getSnapshotRetentionTimeInMin());
       } else {
         blobTransferManager = null;
       }

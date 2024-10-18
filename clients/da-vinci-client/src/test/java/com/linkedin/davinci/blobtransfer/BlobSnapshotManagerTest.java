@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer;
 import static org.mockito.Mockito.*;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -33,6 +34,7 @@ public class BlobSnapshotManagerTest {
   private static final String BASE_PATH = Utils.getUniqueTempPath("sstTest");
   private static final ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private static final StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+  private static final StorageMetadataService storageMetadataService = mock(StorageMetadataService.class);
   private static final BlobTransferPartitionMetadata blobTransferPartitionMetadata =
       new BlobTransferPartitionMetadata();
   private static final String DB_DIR = BASE_PATH + "/" + STORE_NAME + "_v" + VERSION_ID + "/"
@@ -54,12 +56,15 @@ public class BlobSnapshotManagerTest {
     when(mockStore.isHybrid()).thenReturn(true);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
-    blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+    BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
 
     // Due to the store is hybrid, it will re-create a new snapshot.
     verify(storagePartition, times(1)).createSnapshot();
+    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
   }
 
   @Test
@@ -70,7 +75,8 @@ public class BlobSnapshotManagerTest {
     when(mockStore.isHybrid()).thenReturn(true);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
@@ -79,12 +85,15 @@ public class BlobSnapshotManagerTest {
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
     // Create snapshot for the first time
-    blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+    BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 1);
+    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
 
     // Try to create snapshot again with concurrent users
-    blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+    actualBlobTransferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferPayload);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 2);
+    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
   }
 
   @Test
@@ -95,7 +104,8 @@ public class BlobSnapshotManagerTest {
     when(mockStore.isHybrid()).thenReturn(true);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
@@ -104,24 +114,26 @@ public class BlobSnapshotManagerTest {
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
     // Create snapshot
-    for (int tryCount = 0; tryCount < BlobSnapshotManager.MAX_CONCURRENT_USERS; tryCount++) {
-      blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+    for (int tryCount = 0; tryCount < BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS; tryCount++) {
+      BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
+          blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
     }
 
     // The last snapshot creation should fail
     try {
-      blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload);
     } catch (VeniceException e) {
       String errorMessage = String.format(
           "Exceeded the maximum number of concurrent users %d for topic %s partition %d",
-          BlobSnapshotManager.MAX_CONCURRENT_USERS,
+          BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS,
           TOPIC_NAME,
           PARTITION_ID);
       Assert.assertEquals(e.getMessage(), errorMessage);
     }
     Assert.assertEquals(
         blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID),
-        blobSnapshotManager.MAX_CONCURRENT_USERS);
+        BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS);
   }
 
   @Test
@@ -133,7 +145,8 @@ public class BlobSnapshotManagerTest {
     when(mockStore.isHybrid()).thenReturn(true);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
@@ -141,13 +154,16 @@ public class BlobSnapshotManagerTest {
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
-    BlobTransferPartitionMetadata blobTransferPartitionMetadata2 = Mockito.mock(BlobTransferPartitionMetadata.class);
-
     // first request for same payload but use offset 1
-    blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+    BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
 
     // second request for same payload but use offset 2
-    blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata2);
+    BlobTransferPartitionMetadata blobTransferPartitionMetadata2 = Mockito.mock(BlobTransferPartitionMetadata.class);
+    doReturn(blobTransferPartitionMetadata2).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
+    actualBlobTransferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
 
     // verify that the second offset record is not tracked, and the first offset record is still tracked
     Assert.assertEquals(
@@ -166,7 +182,8 @@ public class BlobSnapshotManagerTest {
     when(mockStore.isHybrid()).thenReturn(true);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository));
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
@@ -177,8 +194,10 @@ public class BlobSnapshotManagerTest {
     try {
       for (int i = 0; i < numberOfThreads; i++) {
         asyncExecutor.submit(() -> {
-          blobSnapshotManager.recreateSnapshotForHybrid(blobTransferPayload, blobTransferPartitionMetadata);
+          BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
+              blobSnapshotManager.getTransferMetadata(blobTransferPayload);
           blobSnapshotManager.decreaseConcurrentUserCount(blobTransferPayload.getTopicName(), PARTITION_ID);
+          Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
           latch.countDown();
         });
       }

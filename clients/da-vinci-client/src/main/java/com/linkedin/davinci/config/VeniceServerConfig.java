@@ -5,6 +5,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOT
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
@@ -530,6 +532,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
+  private final int snapshotRetentionTimeInMin;
+  private final int maxConcurrentSnapshotUser;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
@@ -569,6 +573,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
     blobTransferManagerEnabled = serverProperties.getBoolean(BLOB_TRANSFER_MANAGER_ENABLED, false);
+    snapshotRetentionTimeInMin = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 30);
+    maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 5);
     dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);
     dvcP2pBlobTransferClientPort =
         serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, dvcP2pBlobTransferServerPort);
@@ -1022,6 +1028,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isBlobTransferManagerEnabled() {
     return blobTransferManagerEnabled;
+  }
+
+  public int getMaxConcurrentSnapshotUser() {
+    return maxConcurrentSnapshotUser;
+  }
+
+  public int getSnapshotRetentionTimeInMin() {
+    return snapshotRetentionTimeInMin;
   }
 
   /**
