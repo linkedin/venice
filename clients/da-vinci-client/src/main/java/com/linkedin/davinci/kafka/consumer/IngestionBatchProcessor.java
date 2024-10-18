@@ -28,6 +28,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * resources to speed up the leader ingestion.
  */
 public class IngestionBatchProcessor {
+  public static final TreeMap EMPTY_TREE_MAP = new TreeMap();
+
   interface ProcessingFunction {
     PubSubMessageProcessedResult apply(
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
@@ -81,7 +83,8 @@ public class IngestionBatchProcessor {
    * When {@link #lockManager} is not null, this function will try to lock all the keys
    * (except Control Messages) passed by the params.
    */
-  public Map<ByteArrayKey, ReentrantLock> lockKeys(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
+  public TreeMap<ByteArrayKey, ReentrantLock> lockKeys(
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
     if (lockManager != null) {
       /**
        * Need to use a {@link TreeMap} to make sure the locking will be executed in a deterministic order, otherwise
@@ -89,7 +92,7 @@ public class IngestionBatchProcessor {
        * Considering there could be multiple consumers, which are executing this function concurrently, and if they
        * are trying to lock the same set of keys with different orders, deadlock can happen.
        */
-      Map<ByteArrayKey, ReentrantLock> keyLockMap =
+      TreeMap<ByteArrayKey, ReentrantLock> keyLockMap =
           new TreeMap<>((o1, o2) -> ByteUtils.compare(o1.getContent(), o2.getContent()));
       records.forEach(r -> {
         if (!r.getKey().isControlMessage()) {
@@ -99,12 +102,12 @@ public class IngestionBatchProcessor {
       keyLockMap.forEach((k, v) -> v.lock());
       return keyLockMap;
     }
-    return Collections.emptyMap();
+    return EMPTY_TREE_MAP;
   }
 
-  public void unlockKeys(Map<ByteArrayKey, ReentrantLock> keyLockMap) {
+  public void unlockKeys(TreeMap<ByteArrayKey, ReentrantLock> keyLockMap) {
     if (lockManager != null) {
-      keyLockMap.forEach((key, lock) -> {
+      keyLockMap.descendingMap().forEach((key, lock) -> {
         lock.unlock();
         lockManager.releaseLock(key);
       });
