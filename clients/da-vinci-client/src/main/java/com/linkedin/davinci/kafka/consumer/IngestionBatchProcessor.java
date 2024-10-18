@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -71,6 +72,11 @@ public class IngestionBatchProcessor {
     this.version = Version.parseVersionFromKafkaTopicName(storeVersionName);
   }
 
+  // For testing
+  KeyLevelLocksManager getLockManager() {
+    return this.lockManager;
+  }
+
   /**
    * When {@link #lockManager} is not null, this function will try to lock all the keys
    * (except Control Messages) passed by the params.
@@ -78,12 +84,23 @@ public class IngestionBatchProcessor {
   public List<ReentrantLock> lockKeys(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
     if (lockManager != null) {
       List<ReentrantLock> locks = new ArrayList<>(records.size());
+
+      /**
+       * Collect all the keys and sort them to avoid deadlock.
+       */
+      List<byte[]> keys = new ArrayList<>(records.size());
+
       records.forEach(r -> {
         if (!r.getKey().isControlMessage()) {
-          ReentrantLock lock = lockManager.acquireLockByKey(ByteArrayKey.wrap(r.getKey().getKey()));
-          locks.add(lock);
-          lock.lock();
+          keys.add(r.getKey().getKey());
         }
+      });
+      Collections.sort(keys, (o1, o2) -> ByteUtils.compare(o1, o2));
+
+      keys.forEach(key -> {
+        ReentrantLock lock = lockManager.acquireLockByKey(ByteArrayKey.wrap(key));
+        locks.add(lock);
+        lock.lock();
       });
       return locks;
     }

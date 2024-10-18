@@ -116,11 +116,15 @@ public class IngestionBatchProcessorTest {
         true,
         mock(AggVersionedIngestionStats.class),
         mock(HostLevelIngestionStats.class));
-    List<ReentrantLock> locks = batchProcessor.lockKeys(Arrays.asList(rtMessage1, rtMessage2));
+    /**
+     * Switch the input order to make sure the `lockKeys` function would sort them when locking.
+     */
+    List<ReentrantLock> locks = batchProcessor.lockKeys(Arrays.asList(rtMessage2, rtMessage1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key2));
     verify(lockForKey1).lock();
     verify(lockForKey2).lock();
+    // Verify the order
     assertEquals(locks.get(0), lockForKey1);
     assertEquals(locks.get(1), lockForKey2);
 
