@@ -6,6 +6,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -291,5 +292,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   // Only used for testing purposes
   public void setRocksDBServerConfig(RocksDBServerConfig rocksDBServerConfig) {
     this.rocksDBServerConfig = rocksDBServerConfig;
+  }
+
+  @Override
+  public AbstractStorageIterator getIterator(int partitionId) {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.getIterator();
   }
 }
