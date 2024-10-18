@@ -98,7 +98,7 @@ public class DaVinciClientMemoryLimitTest {
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfRouters(1)
         .numberOfServers(2)
-        .replicationFactor(2)
+        .replicationFactor(1)
         .partitionSize(100)
         .sslToKafka(false)
         .sslToStorageNodes(false)
