@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -10,6 +11,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.ValueHolder;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -75,9 +77,95 @@ public class StorePartitionDataReceiver
        * all the buffered messages for the paused partitions, but just slightly more complicate.
        *
        */
-      storeIngestionTask.produceToStoreBufferServiceOrKafka(consumedData, topicPartition, kafkaUrl, kafkaClusterId);
+      produceToStoreBufferServiceOrKafka(consumedData, topicPartition, kafkaUrl, kafkaClusterId);
     } catch (Exception e) {
       handleDataReceiverException(e);
+    }
+  }
+
+  /**
+   * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
+   *
+   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
+   *
+   * @param records : received consumer records
+   */
+  protected void produceToStoreBufferServiceOrKafka(
+      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      PubSubTopicPartition topicPartition,
+      String kafkaUrl,
+      int kafkaClusterId) throws InterruptedException {
+    final int partition = topicPartition.getPartitionNumber();
+    PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
+    if (partitionConsumptionState == null) {
+      throw new VeniceException(
+          "PartitionConsumptionState should present for store version: " + storeIngestionTask.getKafkaVersionTopic()
+              + ", partition: " + partition);
+    }
+
+    /**
+     * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
+     * the following batch processing logic won't spend useless efforts on duplicate messages.
+     */
+    records =
+        storeIngestionTask.validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
+
+    if (storeIngestionTask.shouldProduceInBatch(records)) {
+      storeIngestionTask.produceToStoreBufferServiceOrKafkaInBatch(
+          records,
+          topicPartition,
+          partitionConsumptionState,
+          kafkaUrl,
+          kafkaClusterId);
+      return;
+    }
+
+    long totalBytesRead = 0;
+    ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
+    boolean metricsEnabled = storeIngestionTask.isMetricsEmissionEnabled();
+    long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
+
+    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+      long beforeProcessingPerRecordTimestampNs = System.nanoTime();
+      partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
+      if (!storeIngestionTask.shouldProcessRecord(record)) {
+        partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+        continue;
+      }
+
+      // Check schema id availability before putting consumer record to drainer queue
+      storeIngestionTask.waitReadyToProcessRecord(record);
+
+      totalBytesRead += storeIngestionTask.handleSingleMessage(
+          new PubSubMessageProcessedResultWrapper<>(record),
+          topicPartition,
+          partitionConsumptionState,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingPerRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs,
+          metricsEnabled,
+          elapsedTimeForPuttingIntoQueue);
+    }
+
+    /**
+     * Even if the records list is empty, we still need to check quota to potentially resume partition
+     */
+    final StorageUtilizationManager storageUtilizationManager = storeIngestionTask.getStorageUtilizationManager();
+    storageUtilizationManager.enforcePartitionQuota(partition, totalBytesRead);
+
+    if (metricsEnabled) {
+      HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTask.getHostLevelIngestionStats();
+      if (totalBytesRead > 0) {
+        hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+      }
+      if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
+        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+            elapsedTimeForPuttingIntoQueue.getValue(),
+            beforeProcessingBatchRecordsTimestampMs);
+      }
+
+      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
 
