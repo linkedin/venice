@@ -208,34 +208,6 @@ public class DaVinciClientMemoryLimitTest {
     });
   }
 
-  /*
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithIIWithSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(true, true);
-  }
-  
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithIIWithoutSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(true, false);
-  }
-  
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithoutIIWithSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(false, true);
-  }
-  
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithoutIIWithoutSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(false, false);
-  } */
-
-  /**
-   * N.B.: Because of the flakiness of the test-retry Gradle plugin in conjunction with test permutations, we're doing
-   * the permutations manually instead. TODO: Remove this once we fix the flakiness in that test or within test-retry.
-   *
-   * See: https://github.com/linkedin/venice/issues/1249
-   */
-
   @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
   public void testDaVinciMemoryLimitShouldFailLargeDataPush(
       boolean ingestionIsolationEnabledInDaVinci,
