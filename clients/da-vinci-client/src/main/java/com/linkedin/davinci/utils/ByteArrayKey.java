@@ -31,6 +31,10 @@ public class ByteArrayKey {
     return Arrays.equals(content, that.content);
   }
 
+  public byte[] getContent() {
+    return this.content;
+  }
+
   @Override
   public int hashCode() {
     return this.hashCode;
