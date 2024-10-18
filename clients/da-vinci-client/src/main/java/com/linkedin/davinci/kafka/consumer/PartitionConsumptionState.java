@@ -15,6 +15,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -23,6 +25,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -57,7 +61,41 @@ public class PartitionConsumptionState {
   private boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
-  private LeaderFollowerStateType leaderFollowerState;
+
+  /**
+   * The lock is mainly to protect the consumer thread (while processing inflight messages) from the SIT thread trying
+   * to update the state during a state transition. The read lock is acquired in the consumer thread for the entirety
+   * of one message's processing in {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka}, and the SIT must wait
+   * for the release of the read lock before it can acquire the write lock and update the state. That is the only
+   * lengthy acquisition of the lock.
+   */
+  final class LeaderFollowerState {
+    private LeaderFollowerStateType state;
+    private final ReadWriteLock rwLock;
+
+    LeaderFollowerState() {
+      this.state = LeaderFollowerStateType.STANDBY;
+      this.rwLock = new ReentrantReadWriteLock(true); // TODO: would it be better if this was non-fair? I think no
+    }
+
+    void setState(LeaderFollowerStateType state) {
+      try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(rwLock.writeLock())) {
+        this.state = state;
+      }
+    }
+
+    LeaderFollowerStateType getState() {
+      try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(rwLock.readLock())) {
+        return this.state;
+      }
+    }
+
+    ReadWriteLock getLock() {
+      return rwLock;
+    }
+  }
+
+  private final LeaderFollowerState leaderFollowerState;
 
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
@@ -219,7 +257,7 @@ public class PartitionConsumptionState {
     this.completionReported = false;
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
-    this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
+    this.leaderFollowerState = new LeaderFollowerState();
     this.expectedSSTFileChecksum = null;
     /**
      * Initialize the latest consumed time with current time; otherwise, it's 0 by default
@@ -386,7 +424,7 @@ public class PartitionConsumptionState {
         .append(", processedRecordSizeSinceLastSync=")
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
-        .append(leaderFollowerState)
+        .append(leaderFollowerState.getState())
         .append("}")
         .toString();
   }
@@ -404,11 +442,15 @@ public class PartitionConsumptionState {
   }
 
   public void setLeaderFollowerState(LeaderFollowerStateType state) {
-    this.leaderFollowerState = state;
+    this.leaderFollowerState.setState(state);
   }
 
-  public final LeaderFollowerStateType getLeaderFollowerState() {
-    return this.leaderFollowerState;
+  public LeaderFollowerStateType getLeaderFollowerState() {
+    return this.leaderFollowerState.getState();
+  }
+
+  public ReadWriteLock getLeaderFollowerStateLock() {
+    return this.leaderFollowerState.getLock();
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {
