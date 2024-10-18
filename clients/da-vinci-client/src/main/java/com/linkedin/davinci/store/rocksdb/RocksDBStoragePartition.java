@@ -489,7 +489,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      BlobSnapshotManager.createSnapshotForBatch(rocksDB, fullPathForPartitionDBSnapshot);
+      BlobSnapshotManager.createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
   }
 

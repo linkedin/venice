@@ -7,9 +7,11 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTy
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -48,12 +50,20 @@ public class TestP2PFileTransferServerHandler {
   Path baseDir;
   StorageMetadataService storageMetadataService;
   P2PFileTransferServerHandler serverHandler;
+  BlobSnapshotManager blobSnapshotManager;
+  ReadOnlyStoreRepository readOnlyStoreRepository;
+  StorageEngineRepository storageEngineRepository;
 
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
-    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), storageMetadataService);
+    readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
+
+    blobSnapshotManager =
+        new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
+    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
   }
 
@@ -87,6 +97,15 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testRejectNonExistPath() {
+    // prepare response from metadata service for the metadata preparation
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
@@ -95,6 +114,15 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testFailOnAccessPath() throws IOException {
+    // prepare response from metadata service for the metadata preparation
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
     // create an empty snapshot dir
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);
@@ -114,7 +142,7 @@ public class TestP2PFileTransferServerHandler {
   }
 
   @Test
-  public void testTransferSingleFileAndSingleMetadata() throws IOException {
+  public void testTransferSingleFileAndSingleMetadataForBatchStore() throws IOException {
     // prepare response from metadata service
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
@@ -241,6 +269,10 @@ public class TestP2PFileTransferServerHandler {
     // end of STATUS response
   }
 
+  /**
+   * Test when fail to get the metadata from storageMetadataService, it should return error to client.
+   * @throws IOException
+   */
   @Test
   public void testWhenMetadataCreateError() throws IOException {
     // prepare the file request
@@ -252,25 +284,9 @@ public class TestP2PFileTransferServerHandler {
 
     ch.writeInbound(request);
 
-    // start of file1
+    // metadata in server side has error
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
-    DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
-    Assert.assertEquals(
-        httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
-        "attachment; filename=\"file1\"");
-    Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
-    // send the content in one chunk
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultFileRegion);
-    // the last empty response for file1
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
-    // end of file1
-
-    // metadata in server side has error
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultHttpResponse);
-    Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.NOT_FOUND);
   }
 }

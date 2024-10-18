@@ -4,6 +4,7 @@ import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
 import com.linkedin.venice.blobtransfer.ServerBlobFinder;
@@ -11,6 +12,7 @@ import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -32,13 +34,21 @@ public class BlobTransferUtil {
       int p2pTransferPort,
       String baseDir,
       ClientConfig clientConfig,
-      StorageMetadataService storageMetadataService) {
+      StorageMetadataService storageMetadataService,
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      StorageEngineRepository storageEngineRepository,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin) {
     return getP2PBlobTransferManagerForDVCAndStart(
         p2pTransferPort,
         p2pTransferPort,
         baseDir,
         clientConfig,
-        storageMetadataService);
+        storageMetadataService,
+        readOnlyStoreRepository,
+        storageEngineRepository,
+        maxConcurrentSnapshotUser,
+        snapshotRetentionTimeInMin);
   }
 
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
@@ -46,12 +56,22 @@ public class BlobTransferUtil {
       int p2pTransferClientPort,
       String baseDir,
       ClientConfig clientConfig,
-      StorageMetadataService storageMetadataService) {
+      StorageMetadataService storageMetadataService,
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      StorageEngineRepository storageEngineRepository,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin) {
     try {
+      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
+          readOnlyStoreRepository,
+          storageEngineRepository,
+          storageMetadataService,
+          maxConcurrentSnapshotUser,
+          snapshotRetentionTimeInMin);
       AbstractAvroStoreClient storeClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient));
       manager.start();
@@ -76,10 +96,20 @@ public class BlobTransferUtil {
       int p2pTransferClientPort,
       String baseDir,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture,
-      StorageMetadataService storageMetadataService) {
+      StorageMetadataService storageMetadataService,
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      StorageEngineRepository storageEngineRepository,
+      int maxConcurrentSnapshotUser,
+      int snapshotRetentionTimeInMin) {
     try {
+      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
+          readOnlyStoreRepository,
+          storageEngineRepository,
+          storageMetadataService,
+          maxConcurrentSnapshotUser,
+          snapshotRetentionTimeInMin);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, storageMetadataService),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture));
       manager.start();
