@@ -532,6 +532,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   TopicManager getTopicManager(String pubSubServerAddress);
 
+  boolean canDeleteRTTopic(String clusterName, String storeName);
+
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
    * either a parent controller or a child controller since a cluster must have a leader child controller and a leader
