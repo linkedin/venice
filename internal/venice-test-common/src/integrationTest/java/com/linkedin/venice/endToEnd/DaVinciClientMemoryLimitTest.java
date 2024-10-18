@@ -98,7 +98,7 @@ public class DaVinciClientMemoryLimitTest {
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfRouters(1)
         .numberOfServers(2)
-        .replicationFactor(2)
+        .replicationFactor(1)
         .partitionSize(100)
         .sslToKafka(false)
         .sslToStorageNodes(false)
@@ -167,7 +167,6 @@ public class DaVinciClientMemoryLimitTest {
   public void storeSetup() throws IOException {
     this.storeName = Utils.getUniqueString("davinci_memory_limit_test");
     this.storeNameWithoutMemoryEnforcement = Utils.getUniqueString("store_without_memory_enforcement");
-
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -209,33 +208,8 @@ public class DaVinciClientMemoryLimitTest {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithIIWithSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(true, true);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithIIWithoutSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(true, false);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithoutIIWithSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(false, true);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciMemoryLimitShouldFailLargeDataPushWithoutIIWithoutSpecificStatus() throws Exception {
-    testDaVinciMemoryLimitShouldFailLargeDataPush(false, false);
-  }
-
-  /**
-   * N.B.: Because of the flakiness of the test-retry Gradle plugin in conjunction with test permutations, we're doing
-   * the permutations manually instead. TODO: Remove this once we fix the flakiness in that test or within test-retry.
-   *
-   * See: https://github.com/linkedin/venice/issues/1249
-   */
-  private void testDaVinciMemoryLimitShouldFailLargeDataPush(
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testDaVinciMemoryLimitShouldFailLargeDataPush(
       boolean ingestionIsolationEnabledInDaVinci,
       boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
 
