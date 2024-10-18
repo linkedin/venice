@@ -258,12 +258,22 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, CLUSTER_HEALTH_STORES.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
-        veniceResponse.setStoreStatusMap(storeStatusMap);
+        ListAllStoresStatusesRequest listAllStoresStatusesRequest = new ListAllStoresStatusesRequest();
+        listAllStoresStatusesRequest.setCluster(request.queryParams(CLUSTER));
+
+        MultiStoreStatusResponse multiStoreStatusResponse = listAllStoresStatuses(listAllStoresStatusesRequest, admin);
+        veniceResponse.setCluster(multiStoreStatusResponse.getCluster());
+        veniceResponse.setStoreStatusMap(multiStoreStatusResponse.getStoreStatusMap());
       }
     };
+  }
+
+  private MultiStoreStatusResponse listAllStoresStatuses(ListAllStoresStatusesRequest request, Admin admin) {
+    MultiStoreStatusResponse veniceResponse = new MultiStoreStatusResponse();
+    veniceResponse.setCluster(request.getCluster());
+    Map<String, String> storeStatusMap = admin.getAllStoreStatuses(request.getCluster());
+    veniceResponse.setStoreStatusMap(storeStatusMap);
+    return veniceResponse;
   }
 
   public Route getInUseSchemaIds(Admin admin) {
@@ -276,7 +286,6 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         Set<Integer> schemaIds = admin.getInUseValueSchemaIds(clusterName, storeName);
         response.setInUseValueSchemaIds(schemaIds);
-
       }
     };
   }
