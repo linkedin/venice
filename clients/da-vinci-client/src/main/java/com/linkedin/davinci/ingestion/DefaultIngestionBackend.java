@@ -78,9 +78,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     };
-    // TODO: remove hybrid check after blob transfer in hybrid mode is fully supported
-    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || storeAndVersion.getFirst().isHybrid()
-        || blobTransferManager == null) {
+    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
       CompletionStage<Void> bootstrapFuture =

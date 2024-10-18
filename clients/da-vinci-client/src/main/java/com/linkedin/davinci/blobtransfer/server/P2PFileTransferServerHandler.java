@@ -93,62 +93,67 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           ctx);
       return;
     }
-    final BlobTransferPayload blobTransferRequest;
-    final File snapshotDir;
-    BlobTransferPartitionMetadata transferPartitionMetadata;
-
+    BlobTransferPayload blobTransferRequest = null;
     try {
-      blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
-      snapshotDir = new File(blobTransferRequest.getSnapshotDir());
+      final File snapshotDir;
+      BlobTransferPartitionMetadata transferPartitionMetadata;
+
       try {
-        transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
-      } catch (Exception e) {
-        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+        blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
+        snapshotDir = new File(blobTransferRequest.getSnapshotDir());
+        try {
+          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
+        } catch (Exception e) {
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+          return;
+        }
+
+        if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
+          byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+          return;
+        }
+      } catch (IllegalArgumentException e) {
+        setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
+        return;
+      } catch (SecurityException e) {
+        setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
         return;
       }
 
-      if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
-        byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
-        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+      File[] files = snapshotDir.listFiles();
+      if (files == null || files.length == 0) {
+        setupResponseAndFlush(
+            HttpResponseStatus.INTERNAL_SERVER_ERROR,
+            ("Failed to access files at " + snapshotDir).getBytes(),
+            false,
+            ctx);
         return;
       }
-    } catch (IllegalArgumentException e) {
-      setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
-      return;
-    } catch (SecurityException e) {
-      setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
-      return;
-    }
 
-    File[] files = snapshotDir.listFiles();
-    if (files == null || files.length == 0) {
-      setupResponseAndFlush(
-          HttpResponseStatus.INTERNAL_SERVER_ERROR,
-          ("Failed to access files at " + snapshotDir).getBytes(),
-          false,
-          ctx);
-      return;
-    }
-
-    // transfer files
-    for (File file: files) {
-      sendFile(file, ctx);
-    }
-
-    sendMetadata(ctx, transferPartitionMetadata);
-
-    // end of transfer
-    HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-    ctx.writeAndFlush(endOfTransfer).addListener(future -> {
-      if (future.isSuccess()) {
-        LOGGER.debug("All files sent successfully for {}", blobTransferRequest.getFullResourceName());
-      } else {
-        LOGGER.error("Failed to send all files for {}", blobTransferRequest.getFullResourceName(), future.cause());
+      // transfer files
+      for (File file: files) {
+        sendFile(file, ctx);
       }
-    });
 
-    blobSnapshotManager.removeConcurrentUserRestriction(blobTransferRequest);
+      sendMetadata(ctx, transferPartitionMetadata);
+
+      // end of transfer
+      HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+      endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+      String fullResourceName = blobTransferRequest.getFullResourceName();
+      ctx.writeAndFlush(endOfTransfer).addListener(future -> {
+        if (future.isSuccess()) {
+          LOGGER.debug("All files sent successfully for {}", fullResourceName);
+        } else {
+          LOGGER.error("Failed to send all files for {}", fullResourceName, future.cause());
+        }
+      });
+    } finally {
+      if (blobTransferRequest != null) {
+        blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
+      }
+    }
   }
 
   /**
@@ -174,13 +179,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
     setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage().getBytes(), false, ctx);
     ctx.close();
-  }
-
-  @Override
-  public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-    // clean up the snapshot timestamp and metadata records and concurrent users
-    blobSnapshotManager.resetSnapshotTracking();
-    super.channelInactive(ctx);
   }
 
   private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {

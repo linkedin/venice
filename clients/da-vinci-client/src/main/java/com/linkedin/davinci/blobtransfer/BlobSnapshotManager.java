@@ -103,33 +103,35 @@ public class BlobSnapshotManager {
 
   /**
    * Get the transfer metadata for a particular payload
-   * 1.  the store is not hybrid, it will prepare the metadata and return it
-   * 2.  the store is hybrid,
-   *   2. 1. throttle the request if many concurrent users
-   *   2. 2. check snapshot staleness
-   *      2. 2. 1. if stale, recreate the snapshot and metadata, then return the metadata
-   *      2. 2. 2. if not stale, directly return the metadata
+   * 0. pre-check: throttle the request if many concurrent users.
+   * 1. the store is not hybrid, it will prepare the metadata and return it.
+   * 2. the store is hybrid:
+   *   2. 1. check snapshot staleness
+   *      2. 1. 1. if stale, recreate the snapshot and metadata, then return the metadata
+   *      2. 1. 2. if not stale, directly return the metadata
    *
    * @param payload the blob transfer payload
    * @return the need transfer metadata to client
    */
   public BlobTransferPartitionMetadata getTransferMetadata(BlobTransferPayload payload) throws VeniceException {
+    String topicName = payload.getTopicName();
+    int partitionId = payload.getPartition();
+
+    // check if the concurrent user count exceeds the limit
+    checkIfConcurrentUserExceedsLimit(topicName, partitionId);
+    concurrentSnapshotUsers.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
+    concurrentSnapshotUsers.get(topicName).putIfAbsent(partitionId, new AtomicLong(0));
+
+    concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
+
     boolean isHybrid = isStoreHybrid(payload.getStoreName());
     if (!isHybrid) {
       return prepareMetadata(payload);
     } else {
-      String topicName = payload.getTopicName();
-      int partitionId = payload.getPartition();
-
       snapshotTimestamps.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
       snapshotMetadataRecords.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-      concurrentSnapshotUsers.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-      concurrentSnapshotUsers.get(topicName).putIfAbsent(partitionId, new AtomicLong(0));
 
       try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
-        // check if the concurrent user count exceeds the limit
-        checkIfConcurrentUserExceedsLimit(topicName, partitionId);
-
         // check if the snapshot is stale and need to be recreated
         if (isSnapshotStale(topicName, partitionId)) {
           // recreate the snapshot and metadata
@@ -140,7 +142,6 @@ public class BlobSnapshotManager {
               topicName,
               partitionId);
         }
-        concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
         return snapshotMetadataRecords.get(topicName).get(partitionId);
       }
     }
@@ -209,11 +210,14 @@ public class BlobSnapshotManager {
   /**
    * Decrease the count of hosts using the snapshot
    */
-  public void decreaseConcurrentUserCount(String topicName, int partitionId) {
+  public void decreaseConcurrentUserCount(BlobTransferPayload blobTransferRequest) {
+    String topicName = blobTransferRequest.getTopicName();
+    int partitionId = blobTransferRequest.getPartition();
     Map<Integer, AtomicLong> concurrentPartitionUsers = concurrentSnapshotUsers.get(topicName);
     if (concurrentPartitionUsers == null) {
       throw new VeniceException("No topic found: " + topicName);
     }
+
     AtomicLong concurrentUsers = concurrentPartitionUsers.get(partitionId);
     if (concurrentUsers == null) {
       throw new VeniceException(String.format("%d partition not found on topic %s", partitionId, topicName));
@@ -222,6 +226,8 @@ public class BlobSnapshotManager {
     if (result < 0) {
       throw new VeniceException("Concurrent user count cannot be negative");
     }
+
+    LOGGER.info("Concurrent user count for topic {} partition {} decreased to {}", topicName, partitionId, result);
   }
 
   protected long getConcurrentSnapshotUsers(String topicName, int partitionId) {
@@ -293,28 +299,6 @@ public class BlobSnapshotManager {
   }
 
   /**
-   * Decrease the user count for the snapshot to allow other hosts can use it.
-   * @param blobTransferRequest the blob transfer request
-   */
-  public void removeConcurrentUserRestriction(BlobTransferPayload blobTransferRequest) {
-    boolean isHybridStore = isStoreHybrid(blobTransferRequest.getStoreName());
-    if (!isHybridStore) {
-      LOGGER.info(
-          "Snapshot for topic {} partition {} is not new hybrid, skip reset user count",
-          blobTransferRequest.getTopicName(),
-          blobTransferRequest.getPartition());
-      return;
-    }
-
-    // decrease the user count for allowing other hosts can use it
-    decreaseConcurrentUserCount(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
-    LOGGER.info(
-        "Decreased user count for snapshot of topic {} partition {}",
-        blobTransferRequest.getTopicName(),
-        blobTransferRequest.getPartition());
-  }
-
-  /**
    * Get the snapshot metadata for a particular topic and partition
    * @param topicName the topic name
    * @param partitionId the partition id
@@ -325,23 +309,12 @@ public class BlobSnapshotManager {
   }
 
   /**
-   * cleanup the snapshot timestamp and metadata records and concurrent users
-   * @return
-   */
-  public void resetSnapshotTracking() {
-    snapshotTimestamps.clear();
-    snapshotMetadataRecords.clear();
-    concurrentSnapshotUsers.clear();
-  }
-
-  /**
    * Prepare the metadata for a blob transfer request
    * @param blobTransferRequest the blob transfer request
    * @return the metadata for the blob transfer request
    */
   public BlobTransferPartitionMetadata prepareMetadata(BlobTransferPayload blobTransferRequest) {
     // prepare metadata
-    BlobTransferPartitionMetadata metadata = null;
     StoreVersionState storeVersionState =
         storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());
     java.nio.ByteBuffer storeVersionStateByte =
@@ -351,12 +324,10 @@ public class BlobSnapshotManager {
         storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
     java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
 
-    metadata = new BlobTransferPartitionMetadata(
+    return new BlobTransferPartitionMetadata(
         blobTransferRequest.getTopicName(),
         blobTransferRequest.getPartition(),
         offsetRecordByte,
         storeVersionStateByte);
-
-    return metadata;
   }
 }

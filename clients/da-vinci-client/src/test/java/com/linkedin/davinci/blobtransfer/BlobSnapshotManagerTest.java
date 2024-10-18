@@ -1,6 +1,15 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -196,7 +205,7 @@ public class BlobSnapshotManagerTest {
         asyncExecutor.submit(() -> {
           BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
               blobSnapshotManager.getTransferMetadata(blobTransferPayload);
-          blobSnapshotManager.decreaseConcurrentUserCount(blobTransferPayload.getTopicName(), PARTITION_ID);
+          blobSnapshotManager.decreaseConcurrentUserCount(blobTransferPayload);
           Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
           latch.countDown();
         });
