@@ -42,7 +42,6 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -129,10 +128,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -150,7 +147,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -1304,104 +1300,104 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && IngestionBatchProcessor.isAllMessagesFromRTTopic(records);
   }
 
-  public void produceToStoreBufferServiceOrKafkaInBatch(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
-      PubSubTopicPartition topicPartition,
-      PartitionConsumptionState partitionConsumptionState,
-      String kafkaUrl,
-      int kafkaClusterId) throws InterruptedException {
-    long totalBytesRead = 0;
-    ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
-    boolean metricsEnabled = emitMetrics.get();
-    long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
-    /**
-     * Split the records into mini batches.
-     */
-    int batchSize = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
-    List<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> batches = new ArrayList<>();
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> ongoingBatch = new ArrayList<>(batchSize);
-    Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
-    while (iter.hasNext()) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
-      if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
-      }
-      if (!shouldProcessRecord(record)) {
-        if (partitionConsumptionState != null) {
-          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
-        }
-        continue;
-      }
-      waitReadyToProcessRecord(record);
-      ongoingBatch.add(record);
-      if (ongoingBatch.size() == batchSize) {
-        batches.add(ongoingBatch);
-        ongoingBatch = new ArrayList<>(batchSize);
-      }
-    }
-    if (!ongoingBatch.isEmpty()) {
-      batches.add(ongoingBatch);
-    }
-    if (batches.isEmpty()) {
-      return;
-    }
-    IngestionBatchProcessor ingestionBatchProcessor = getIngestionBatchProcessor();
-    if (ingestionBatchProcessor == null) {
-      throw new VeniceException(
-          "IngestionBatchProcessor object should present for store version: " + kafkaVersionTopic);
-    }
-    /**
-     * Process records batch by batch.
-     */
-    for (List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> batch: batches) {
-      NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap = ingestionBatchProcessor.lockKeys(batch);
-      try {
-        long beforeProcessingPerRecordTimestampNs = System.nanoTime();
-        List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> processedResults =
-            ingestionBatchProcessor.process(
-                batch,
-                partitionConsumptionState,
-                topicPartition.getPartitionNumber(),
-                kafkaUrl,
-                kafkaClusterId,
-                beforeProcessingPerRecordTimestampNs,
-                beforeProcessingBatchRecordsTimestampMs);
-
-        for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
-          totalBytesRead += handleSingleMessage(
-              processedRecord,
-              topicPartition,
-              partitionConsumptionState,
-              kafkaUrl,
-              kafkaClusterId,
-              beforeProcessingPerRecordTimestampNs,
-              beforeProcessingBatchRecordsTimestampMs,
-              metricsEnabled,
-              elapsedTimeForPuttingIntoQueue);
-        }
-      } finally {
-        ingestionBatchProcessor.unlockKeys(keyLockMap);
-      }
-    }
-
-    /**
-     * Even if the records list is empty, we still need to check quota to potentially resume partition
-     */
-    storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
-
-    if (metricsEnabled) {
-      if (totalBytesRead > 0) {
-        hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
-      }
-      if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-            elapsedTimeForPuttingIntoQueue.getValue(),
-            beforeProcessingBatchRecordsTimestampMs);
-      }
-
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
-  }
+  // public void produceToStoreBufferServiceOrKafkaInBatch(
+  // Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+  // PubSubTopicPartition topicPartition,
+  // PartitionConsumptionState partitionConsumptionState,
+  // String kafkaUrl,
+  // int kafkaClusterId) throws InterruptedException {
+  // long totalBytesRead = 0;
+  // ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
+  // boolean metricsEnabled = emitMetrics.get();
+  // long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
+  // /**
+  // * Split the records into mini batches.
+  // */
+  // int batchSize = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
+  // List<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> batches = new ArrayList<>();
+  // List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> ongoingBatch = new ArrayList<>(batchSize);
+  // Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
+  // while (iter.hasNext()) {
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
+  // if (partitionConsumptionState != null) {
+  // partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
+  // }
+  // if (!shouldProcessRecord(record)) {
+  // if (partitionConsumptionState != null) {
+  // partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+  // }
+  // continue;
+  // }
+  // waitReadyToProcessRecord(record);
+  // ongoingBatch.add(record);
+  // if (ongoingBatch.size() == batchSize) {
+  // batches.add(ongoingBatch);
+  // ongoingBatch = new ArrayList<>(batchSize);
+  // }
+  // }
+  // if (!ongoingBatch.isEmpty()) {
+  // batches.add(ongoingBatch);
+  // }
+  // if (batches.isEmpty()) {
+  // return;
+  // }
+  // IngestionBatchProcessor ingestionBatchProcessor = getIngestionBatchProcessor();
+  // if (ingestionBatchProcessor == null) {
+  // throw new VeniceException(
+  // "IngestionBatchProcessor object should present for store version: " + kafkaVersionTopic);
+  // }
+  // /**
+  // * Process records batch by batch.
+  // */
+  // for (List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> batch: batches) {
+  // NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap = ingestionBatchProcessor.lockKeys(batch);
+  // try {
+  // long beforeProcessingPerRecordTimestampNs = System.nanoTime();
+  // List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> processedResults =
+  // ingestionBatchProcessor.process(
+  // batch,
+  // partitionConsumptionState,
+  // topicPartition.getPartitionNumber(),
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingPerRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs);
+  //
+  // for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
+  // totalBytesRead += handleSingleMessage(
+  // processedRecord,
+  // topicPartition,
+  // partitionConsumptionState,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingPerRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs,
+  // metricsEnabled,
+  // elapsedTimeForPuttingIntoQueue);
+  // }
+  // } finally {
+  // ingestionBatchProcessor.unlockKeys(keyLockMap);
+  // }
+  // }
+  //
+  // /**
+  // * Even if the records list is empty, we still need to check quota to potentially resume partition
+  // */
+  // storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
+  //
+  // if (metricsEnabled) {
+  // if (totalBytesRead > 0) {
+  // hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+  // }
+  // if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
+  // hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+  // elapsedTimeForPuttingIntoQueue.getValue(),
+  // beforeProcessingBatchRecordsTimestampMs);
+  // }
+  //
+  // hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+  // }
+  // }
 
   // For testing purpose
   List<PartitionExceptionInfo> getPartitionIngestionExceptionList() {
