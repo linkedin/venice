@@ -28,7 +28,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * resources to speed up the leader ingestion.
  */
 public class IngestionBatchProcessor {
-  public static final TreeMap EMPTY_TREE_MAP = new TreeMap();
+  private static final TreeMap EMPTY_TREE_MAP = new TreeMap();
 
   interface ProcessingFunction {
     PubSubMessageProcessedResult apply(
