@@ -1134,12 +1134,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected abstract Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+  public abstract Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
       String kafkaUrl,
       PubSubTopicPartition topicPartition);
 
-  private int handleSingleMessage(
+  public int handleSingleMessage(
       PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState,
@@ -1211,94 +1211,100 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return record.getPayloadSize();
   }
 
-  /**
-   * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
-   *
-   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
-   *
-   * @param records : received consumer records
-   * @param topicPartition
-   * @throws InterruptedException
-   */
-  protected void produceToStoreBufferServiceOrKafka(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
-      PubSubTopicPartition topicPartition,
-      String kafkaUrl,
-      int kafkaClusterId) throws InterruptedException {
-    PartitionConsumptionState partitionConsumptionState =
-        partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
-    if (partitionConsumptionState == null) {
-      throw new VeniceException(
-          "PartitionConsumptionState should present for store version: " + kafkaVersionTopic + ", partition: "
-              + topicPartition.getPartitionNumber());
-    }
-    /**
-     * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
-     * the following batch processing logic won't spend useless efforts on duplicate messages.
-      */
-    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
+  // /**
+  // * This function is in charge of producing the consumer records to the writer buffers maintained by {@link
+  // StoreBufferService}.
+  // *
+  // * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
+  // this call.
+  // *
+  // * @param records : received consumer records
+  // * @param topicPartition
+  // * @throws InterruptedException
+  // */
+  // protected void produceToStoreBufferServiceOrKafka(
+  // Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+  // PubSubTopicPartition topicPartition,
+  // String kafkaUrl,
+  // int kafkaClusterId) throws InterruptedException {
+  // PartitionConsumptionState partitionConsumptionState =
+  // partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
+  // if (partitionConsumptionState == null) {
+  // throw new VeniceException(
+  // "PartitionConsumptionState should present for store version: " + kafkaVersionTopic + ", partition: "
+  // + topicPartition.getPartitionNumber());
+  // }
+  // /**
+  // * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
+  // * the following batch processing logic won't spend useless efforts on duplicate messages.
+  // */
+  // records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
+  //
+  // if (shouldProduceInBatch(records)) {
+  // produceToStoreBufferServiceOrKafkaInBatch(
+  // records,
+  // topicPartition,
+  // partitionConsumptionState,
+  // kafkaUrl,
+  // kafkaClusterId);
+  // return;
+  // }
+  //
+  // long totalBytesRead = 0;
+  // ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
+  // boolean metricsEnabled = emitMetrics.get();
+  // long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
+  //
+  // partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
+  // for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+  // long beforeProcessingPerRecordTimestampNs = System.nanoTime();
+  // partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
+  // if (!shouldProcessRecord(record)) {
+  // partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+  // continue;
+  // }
+  //
+  // // Check schema id availability before putting consumer record to drainer queue
+  // waitReadyToProcessRecord(record);
+  //
+  // totalBytesRead += handleSingleMessage(
+  // new PubSubMessageProcessedResultWrapper<>(record),
+  // topicPartition,
+  // partitionConsumptionState,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingPerRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs,
+  // metricsEnabled,
+  // elapsedTimeForPuttingIntoQueue);
+  // }
+  //
+  // /**
+  // * Even if the records list is empty, we still need to check quota to potentially resume partition
+  // */
+  // storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
+  //
+  // if (metricsEnabled) {
+  // if (totalBytesRead > 0) {
+  // hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+  // }
+  // if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
+  // hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+  // elapsedTimeForPuttingIntoQueue.getValue(),
+  // beforeProcessingBatchRecordsTimestampMs);
+  // }
+  //
+  // hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+  // }
+  // }
 
-    if ((isActiveActiveReplicationEnabled || isWriteComputationEnabled)
+  public boolean shouldProduceInBatch(Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
+    return (isActiveActiveReplicationEnabled || isWriteComputationEnabled)
         && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
-        && IngestionBatchProcessor.isAllMessagesFromRTTopic(records)) {
-      produceToStoreBufferServiceOrKafkaInBatch(
-          records,
-          topicPartition,
-          partitionConsumptionState,
-          kafkaUrl,
-          kafkaClusterId);
-      return;
-    }
-
-    long totalBytesRead = 0;
-    ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
-    boolean metricsEnabled = emitMetrics.get();
-    long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
-
-    partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
-    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
-      long beforeProcessingPerRecordTimestampNs = System.nanoTime();
-      partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
-      if (!shouldProcessRecord(record)) {
-        partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
-        continue;
-      }
-
-      // Check schema id availability before putting consumer record to drainer queue
-      waitReadyToProcessRecord(record);
-
-      totalBytesRead += handleSingleMessage(
-          new PubSubMessageProcessedResultWrapper<>(record),
-          topicPartition,
-          partitionConsumptionState,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingPerRecordTimestampNs,
-          beforeProcessingBatchRecordsTimestampMs,
-          metricsEnabled,
-          elapsedTimeForPuttingIntoQueue);
-    }
-
-    /**
-     * Even if the records list is empty, we still need to check quota to potentially resume partition
-     */
-    storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
-
-    if (metricsEnabled) {
-      if (totalBytesRead > 0) {
-        hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
-      }
-      if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-            elapsedTimeForPuttingIntoQueue.getValue(),
-            beforeProcessingBatchRecordsTimestampMs);
-      }
-
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
+        && IngestionBatchProcessor.isAllMessagesFromRTTopic(records);
   }
 
-  protected void produceToStoreBufferServiceOrKafkaInBatch(
+  public void produceToStoreBufferServiceOrKafkaInBatch(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState,
@@ -1547,9 +1553,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
      * because of compaction or the disk quota could be adjusted even there is no record write.
-     * Since {@link #produceToStoreBufferServiceOrKafka} is only being invoked by {@link KafkaConsumerService} when there
-     * are available records, this function needs to check whether we need to resume the consumption when there are
-     * paused consumption because of hybrid quota violation.
+     * Since {@link StorePartitionDataReceiver#produceToStoreBufferServiceOrKafka} is only being invoked by
+     * {@link KafkaConsumerService} when there are available records, this function needs to check whether we need to
+     * resume the consumption when there are paused consumption because of hybrid quota violation.
      */
     if (storageUtilizationManager.hasPausedPartitionIngestion()) {
       storageUtilizationManager.checkAllPartitionsQuota();
@@ -3164,7 +3170,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_PUSH:
         /**
          * N.B.: The processing for SOP happens at the very beginning of the pipeline, in:
-         * {@link #produceToStoreBufferServiceOrKafka(Iterable, boolean, PubSubTopicPartition, String, int)}
+         * {@link StorePartitionDataReceiver#produceToStoreBufferServiceOrKafka}
          */
         break;
       case END_OF_PUSH:
@@ -3911,7 +3917,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * needs to #checkValueSchemaAvail
    * @param record
    */
-  private void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
+  public void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
       throws InterruptedException {
     KafkaMessageEnvelope kafkaValue = record.getValue();
     if (record.getKey().isControlMessage() || kafkaValue == null) {
@@ -4673,6 +4679,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   Lazy<CountDownLatch> getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
+  }
+
+  public StorageUtilizationManager getStorageUtilizationManager() {
+    return storageUtilizationManager;
   }
 
   // For unit test purpose.

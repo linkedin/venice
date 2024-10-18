@@ -2281,7 +2281,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+  public Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
       String kafkaUrl,
       PubSubTopicPartition topicPartition) {
@@ -2365,7 +2365,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * {@link DelegateConsumerRecordResult#QUEUED_TO_DRAINER}.
    *
    * This function assumes {@link #shouldProcessRecord(PubSubMessage)} has been called which happens in
-   * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
+   * {@link StorePartitionDataReceiver#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
    * before calling this and the it was decided that this record needs to be processed. It does not perform any
    * validation check on the PartitionConsumptionState object to keep the goal of the function simple and not overload.
    *
