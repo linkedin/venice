@@ -5,19 +5,31 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -139,7 +151,7 @@ public class StorePartitionDataReceiver
       }
 
       // Check schema id availability before putting consumer record to drainer queue
-      storeIngestionTask.waitReadyToProcessRecord(record);
+      waitReadyToProcessRecord(record);
 
       totalBytesRead += storeIngestionTask.handleSingleMessage(
           new PubSubMessageProcessedResultWrapper<>(record),
@@ -188,7 +200,7 @@ public class StorePartitionDataReceiver
         }
         continue;
       }
-      storeIngestionTask.waitReadyToProcessRecord(record);
+      waitReadyToProcessRecord(record);
       ongoingBatch.add(record);
       if (ongoingBatch.size() == batchSize) {
         batches.add(ongoingBatch);
@@ -271,6 +283,131 @@ public class StorePartitionDataReceiver
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+    }
+  }
+
+  /**
+   * This method checks whether the given record needs to be checked schema availability. Only PUT and UPDATE message
+   * needs to #checkValueSchemaAvail
+   * @param record
+   */
+  private void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
+      throws InterruptedException {
+    KafkaMessageEnvelope kafkaValue = record.getValue();
+    if (record.getKey().isControlMessage() || kafkaValue == null) {
+      return;
+    }
+
+    switch (MessageType.valueOf(kafkaValue)) {
+      case PUT:
+        Put put = (Put) kafkaValue.payloadUnion;
+        waitReadyToProcessDataRecord(put.schemaId);
+        try {
+          deserializeValue(put.schemaId, put.putValue, record);
+        } catch (Exception e) {
+          PartitionConsumptionState pcs =
+              storeIngestionTask.getPartitionConsumptionState(record.getTopicPartition().getPartitionNumber());
+          LeaderFollowerStateType state = pcs == null ? null : pcs.getLeaderFollowerState();
+          throw new VeniceException(
+              "Failed to deserialize PUT for: " + record.getTopicPartition() + ", offset: " + record.getOffset()
+                  + ", schema id: " + put.schemaId + ", LF state: " + state,
+              e);
+        }
+        break;
+      case UPDATE:
+        Update update = (Update) kafkaValue.payloadUnion;
+        waitReadyToProcessDataRecord(update.schemaId);
+        break;
+      case DELETE:
+        /* we don't need to check schema availability for DELETE */
+        break;
+      default:
+        throw new VeniceMessageException(
+            storeIngestionTask.getIngestionTaskName() + " : Invalid/Unrecognized operation type submitted: "
+                + kafkaValue.messageType);
+    }
+  }
+
+  /**
+   * Check whether the given schema id is available for current store.
+   * The function will bypass the check if schema id is -1 (VPJ job is still using it before we finishes the integration with schema registry).
+   * Right now, this function is maintaining a local cache for schema id of current store considering that the value schema is immutable;
+   * If the schema id is not available, this function will polling until the schema appears or timeout: {@link StoreIngestionTask#SCHEMA_POLLING_TIMEOUT_MS};
+   *
+   * @param schemaId
+   */
+  private void waitReadyToProcessDataRecord(int schemaId) throws InterruptedException {
+    if (schemaId == -1) {
+      // TODO: Once Venice Client (VeniceShellClient) finish the integration with schema registry,
+      // we need to remove this check here.
+      return;
+    }
+
+    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+        || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+      StoreVersionState storeVersionState = waitVersionStateAvailable(storeIngestionTask.getKafkaVersionTopic());
+      if (!storeVersionState.chunked) {
+        throw new VeniceException(
+            "Detected chunking in a store-version where chunking is NOT enabled. Will abort ingestion.");
+      }
+      return;
+    }
+
+    storeIngestionTask.waitUntilValueSchemaAvailable(schemaId);
+  }
+
+  private StoreVersionState waitVersionStateAvailable(String kafkaTopic) throws InterruptedException {
+    long startTime = System.currentTimeMillis();
+    long elapsedTime;
+    StoreVersionState state;
+    for (;;) {
+      state = storeIngestionTask.getStorageEngine().getStoreVersionState();
+      elapsedTime = System.currentTimeMillis() - startTime;
+
+      if (state != null) {
+        return state;
+      }
+
+      if (elapsedTime > StoreIngestionTask.SCHEMA_POLLING_TIMEOUT_MS || !storeIngestionTask.isRunning()) {
+        LOGGER.warn("Version state is not available for {} after {}", kafkaTopic, elapsedTime);
+        throw new VeniceException("Store version state is not available for " + kafkaTopic);
+      }
+
+      Thread.sleep(StoreIngestionTask.SCHEMA_POLLING_DELAY_MS);
+    }
+  }
+
+  /**
+   * Deserialize a value using the schema that serializes it. Exception will be thrown and ingestion will fail if the
+   * value cannot be deserialized. Currently, the deserialization dry-run won't happen in the following cases:
+   *
+   * 1. Value is chunked. A single piece of value cannot be deserialized. In this case, the schema id is not added in
+   *    availableSchemaIds by {@link StoreIngestionTask#waitUntilValueSchemaAvailable}.
+   * 2. Ingestion isolation is enabled, in which case ingestion happens on forked process instead of this main process.
+   */
+  private void deserializeValue(
+      int schemaId,
+      ByteBuffer value,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) throws IOException {
+    final SparseConcurrentList<Object> availableSchemaIds = storeIngestionTask.getAvailableSchemaIds();
+    final SparseConcurrentList<Object> deserializedSchemaIds = storeIngestionTask.getDeserializedSchemaIds();
+    if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
+      return;
+    }
+    if (!record.getTopicPartition().getPubSubTopic().isRealTime()) {
+      value = storeIngestionTask.getCompressor().get().decompress(value);
+    }
+    SchemaEntry valueSchema =
+        storeIngestionTask.getSchemaRepo().getValueSchema(storeIngestionTask.getStoreName(), schemaId);
+    if (valueSchema != null) {
+      Schema schema = valueSchema.getSchema();
+      new AvroGenericDeserializer<>(schema, schema).deserialize(value);
+      LOGGER.info(
+          "Value deserialization succeeded with schema id {} for incoming record from: {} for replica: {}",
+          schemaId,
+          record.getTopicPartition(),
+          Utils.getReplicaId(storeIngestionTask.getVersionTopic(), record.getPartition()));
+      deserializedSchemaIds.set(schemaId, new Object());
     }
   }
 
