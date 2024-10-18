@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
@@ -381,30 +380,20 @@ public class StorageService extends AbstractVeniceService {
       return;
     }
     for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
-      String storageEngineName = storageEngine.getStoreVersionName();
-      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
-      Set<Integer> storageEnginePartitionIds = storageEngine.getPartitionIds();
+      String storeName = storageEngine.getStoreVersionName();
+      Set<Integer> storageEnginePartitionIds = new HashSet<>(storageEngine.getPartitionIds());
+      String instanceHostName = manager.getInstanceName();
       PropertyKey.Builder propertyKeyBuilder =
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
       SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
-      String instanceHostName = manager.getInstanceName();
 
       if (idealState != null) {
-        Set<Integer> idealStatePartitionIds = new HashSet<>();
-        Set<String> partitionSet = idealState.getPartitionSet();
-        partitionSet.stream().forEach(partitionDbName -> {
-          idealStatePartitionIds.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
-        });
-
         Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
-        for (Map.Entry<String, Map<String, String>> entry: mapFields.entrySet()) {
-          String partitionDbName = entry.getKey();
-          int partitionId = RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName);
-          if (!storageEnginePartitionIds.contains(partitionId)) {
-            continue;
-          }
-          if (!entry.getValue().containsKey(instanceHostName)) {
+        for (Integer partitionId: storageEnginePartitionIds) {
+          String partitionDbName = storeName + "_" + partitionId;
+          if (!mapFields.containsKey(partitionDbName)
+              || !mapFields.get(partitionDbName).containsKey(instanceHostName)) {
             storageEngine.dropPartition(partitionId);
           }
         }

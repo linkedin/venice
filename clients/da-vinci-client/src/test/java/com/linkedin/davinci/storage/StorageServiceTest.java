@@ -39,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
@@ -142,8 +141,6 @@ public class StorageServiceTest {
   public void testCheckWhetherStoragePartitionsShouldBeKeptOrNot() throws NoSuchFieldException, IllegalAccessException {
     StorageService mockStorageService = mock(StorageService.class);
     SafeHelixManager manager = mock(SafeHelixManager.class);
-    HelixManager helixManager = mock(HelixManager.class);
-    when(manager.getOriginalManager()).thenReturn(helixManager);
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
@@ -157,10 +154,7 @@ public class StorageServiceTest {
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
-    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
     VeniceClusterConfig mockClusterConfig = mock(VeniceClusterConfig.class);
-    when(mockServerConfig.getDataBasePath()).thenReturn("/tmp");
-    when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     when(mockVeniceConfigLoader.getVeniceClusterConfig()).thenReturn(mockClusterConfig);
     when(mockVeniceConfigLoader.getVeniceClusterConfig().getClusterName()).thenReturn(clusterName);
 
@@ -171,8 +165,6 @@ public class StorageServiceTest {
     when(manager.getHelixDataAccessor()).thenReturn(helixDataAccessor);
     IdealState idealState = mock(IdealState.class);
     when(helixDataAccessor.getProperty((PropertyKey) any())).thenReturn(idealState);
-    Set<String> helixPartitionSet = new HashSet<>(Arrays.asList("test_store_v1_0", "test_store_v1_1"));
-    when(idealState.getPartitionSet()).thenReturn(helixPartitionSet);
     ZNRecord record = new ZNRecord("testId");
     Map<String, Map<String, String>> mapFields = new HashMap<>();
     Map<String, String> testPartitionZero = new HashMap<>();
@@ -208,13 +200,10 @@ public class StorageServiceTest {
     Field configLoaderField = StorageService.class.getDeclaredField("configLoader");
     configLoaderField.setAccessible(true);
     configLoaderField.set(mockStorageService, mockVeniceConfigLoader);
-    Field partitionListField = AbstractStorageEngine.class.getDeclaredField("partitionList");
-    partitionListField.setAccessible(true);
-    partitionListField.set(abstractStorageEngine, abstractStorageEngine.getPartitionList());
 
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     verify(abstractStorageEngine).dropPartition(0);
-    Assert.assertFalse(abstractStorageEngine.containsPartition(0));
+    Assert.assertFalse(abstractStorageEngine.getPartitionIds().contains(0));
   }
 }
