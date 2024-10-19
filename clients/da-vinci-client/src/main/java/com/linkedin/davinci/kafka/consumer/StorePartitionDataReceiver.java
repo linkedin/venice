@@ -685,7 +685,7 @@ public class StorePartitionDataReceiver
       validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-        storeIngestionTask.recordRegionHybridConsumptionStats(
+        recordRegionHybridConsumptionStats(
             // convert the cluster id back to the original cluster id for monitoring purpose
             storeIngestionTask.getServerConfig()
                 .getEquivalentKafkaClusterIdForSepTopic(
@@ -1007,6 +1007,25 @@ public class StorePartitionDataReceiver
       } catch (VeniceException offerToQueueException) {
         storeIngestionTask.setLastStoreIngestionException(offerToQueueException);
       }
+    }
+  }
+
+  private void recordRegionHybridConsumptionStats(
+      int kafkaClusterId,
+      int producedRecordSize,
+      long upstreamOffset,
+      long currentTimeMs) {
+    if (kafkaClusterId >= 0) {
+      storeIngestionTask.getVersionIngestionStats()
+          .recordRegionHybridConsumption(
+              storeIngestionTask.getStoreName(),
+              storeIngestionTask.getVersionNumber(),
+              kafkaClusterId,
+              producedRecordSize,
+              upstreamOffset,
+              currentTimeMs);
+      storeIngestionTask.getHostLevelIngestionStats()
+          .recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
   }
 

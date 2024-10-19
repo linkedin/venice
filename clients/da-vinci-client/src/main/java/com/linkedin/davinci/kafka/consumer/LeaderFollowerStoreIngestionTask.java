@@ -2063,23 +2063,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
-  protected void recordRegionHybridConsumptionStats(
-      int kafkaClusterId,
-      int producedRecordSize,
-      long upstreamOffset,
-      long currentTimeMs) {
-    if (kafkaClusterId >= 0) {
-      versionedIngestionStats.recordRegionHybridConsumption(
-          storeName,
-          versionNumber,
-          kafkaClusterId,
-          producedRecordSize,
-          upstreamOffset,
-          currentTimeMs);
-      hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
-    }
-  }
+  // @Override
+  // protected void recordRegionHybridConsumptionStats(
+  // int kafkaClusterId,
+  // int producedRecordSize,
+  // long upstreamOffset,
+  // long currentTimeMs) {
+  // if (kafkaClusterId >= 0) {
+  // versionedIngestionStats.recordRegionHybridConsumption(
+  // storeName,
+  // versionNumber,
+  // kafkaClusterId,
+  // producedRecordSize,
+  // upstreamOffset,
+  // currentTimeMs);
+  // hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
+  // }
+  // }
 
   @Override
   protected boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState) {

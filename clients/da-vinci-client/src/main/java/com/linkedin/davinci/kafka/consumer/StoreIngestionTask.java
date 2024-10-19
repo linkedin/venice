@@ -4722,12 +4722,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessageHeaders pubSubMessageHeaders,
       PartitionConsumptionState partitionConsumptionState);
 
-  protected abstract void recordRegionHybridConsumptionStats(
-      int kafkaClusterId,
-      int producedRecordSize,
-      long upstreamOffset,
-      long currentTimeMs);
-
   protected abstract void updateLatestInMemoryLeaderConsumedRTOffset(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl,
