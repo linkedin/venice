@@ -3711,23 +3711,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
-  protected LeaderProducerCallback createProducerCallback(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      int partition,
-      String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
-    return new LeaderProducerCallback(
-        this,
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        partition,
-        kafkaUrl,
-        beforeProcessingRecordTimestampNs);
-  }
+  // @Override
+  // protected LeaderProducerCallback createProducerCallback(
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+  // PartitionConsumptionState partitionConsumptionState,
+  // LeaderProducedRecordContext leaderProducedRecordContext,
+  // int partition,
+  // String kafkaUrl,
+  // long beforeProcessingRecordTimestampNs) {
+  // return new LeaderProducerCallback(
+  // this,
+  // consumerRecord,
+  // partitionConsumptionState,
+  // leaderProducedRecordContext,
+  // partition,
+  // kafkaUrl,
+  // beforeProcessingRecordTimestampNs);
+  // }
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
       PartitionConsumptionState partitionConsumptionState) {

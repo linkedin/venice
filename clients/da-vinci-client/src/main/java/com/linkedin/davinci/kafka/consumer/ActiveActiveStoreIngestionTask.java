@@ -1484,23 +1484,23 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // oldRmdManifest);
   // };
   // }
-
-  protected LeaderProducerCallback createProducerCallback(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      int partition,
-      String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
-    return new ActiveActiveProducerCallback(
-        this,
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        partition,
-        kafkaUrl,
-        beforeProcessingRecordTimestampNs);
-  }
+//
+//  protected LeaderProducerCallback createProducerCallback(
+//      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+//      PartitionConsumptionState partitionConsumptionState,
+//      LeaderProducedRecordContext leaderProducedRecordContext,
+//      int partition,
+//      String kafkaUrl,
+//      long beforeProcessingRecordTimestampNs) {
+//    return new ActiveActiveProducerCallback(
+//        this,
+//        consumerRecord,
+//        partitionConsumptionState,
+//        leaderProducedRecordContext,
+//        partition,
+//        kafkaUrl,
+//        beforeProcessingRecordTimestampNs);
+//  }
 
   /**
    * This method does a few things for leader topic-partition subscription:

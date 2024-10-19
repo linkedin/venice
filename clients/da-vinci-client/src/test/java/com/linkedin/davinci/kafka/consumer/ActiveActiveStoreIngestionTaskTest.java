@@ -331,8 +331,6 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getVersionIngestionStats()).thenReturn(mock(AggVersionedIngestionStats.class));
     when(ingestionTask.getVersionedDIVStats()).thenReturn(mock(AggVersionedDIVStats.class));
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
-    when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
-        .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition topicPartition =
