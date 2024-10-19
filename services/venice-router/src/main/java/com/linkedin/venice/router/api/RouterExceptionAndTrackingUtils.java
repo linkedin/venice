@@ -37,9 +37,6 @@ public class RouterExceptionAndTrackingUtils {
 
   private static final Logger LOGGER = LogManager.getLogger(RouterExceptionAndTrackingUtils.class);
 
-  /** We do not fill in the stacktrace at all for "expected exceptions" (quota, etc) */
-  private static final boolean DO_NOT_FILL_IN_STACKTRACE = false;
-
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
@@ -63,7 +60,8 @@ public class RouterExceptionAndTrackingUtils {
             false,
             null,
             true,
-            DO_NOT_FILL_IN_STACKTRACE)
+            /** We do not fill in the stacktrace at all for "expected exceptions" (quota, etc) */
+            false)
         : new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!EXCEPTION_FILTER.isRedundantException(name, String.valueOf(e.code()))) {
@@ -119,7 +117,7 @@ public class RouterExceptionAndTrackingUtils {
     String name = storeName.isPresent() ? storeName.get() : "";
     VeniceException e = isExpected(responseStatus, failureType)
         // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-        ? new VeniceException(msg, DO_NOT_FILL_IN_STACKTRACE)
+        ? new VeniceException(msg, false)
         : new VeniceException(msg);
 
     if (!EXCEPTION_FILTER.isRedundantException(name, e)) {
