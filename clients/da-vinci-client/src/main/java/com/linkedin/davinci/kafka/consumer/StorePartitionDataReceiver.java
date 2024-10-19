@@ -6,11 +6,13 @@ import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
@@ -67,6 +69,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantLock;
@@ -1332,7 +1335,7 @@ public class StorePartitionDataReceiver
           readerUpdateProtocolVersion = update.updateSchemaId;
         }
         ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-        final GenericRecord currValue = storeIngestionTask.readStoredValueRecord(
+        final GenericRecord currValue = readStoredValueRecord(
             partitionConsumptionState,
             keyBytes,
             readerValueSchemaId,
@@ -2103,6 +2106,67 @@ public class StorePartitionDataReceiver
       return false; // We're consuming from version topic (don't compress it)
     }
     return !storeIngestionTask.getCompressionStrategy().equals(CompressionStrategy.NO_OP);
+  }
+
+  /**
+   * Read the existing value. If a value for this key is found from the transient map then use that value, otherwise read
+   * it from the storage engine.
+   * @return {@link Optional#empty} if the value
+   */
+  private GenericRecord readStoredValueRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int readerValueSchemaID,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
+    final GenericRecord currValue;
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
+    if (transientRecord == null) {
+      try {
+        long lookupStartTimeInNS = System.nanoTime();
+        currValue = GenericRecordChunkingAdapter.INSTANCE.get(
+            storeIngestionTask.getStorageEngine(),
+            topicPartition.getPartitionNumber(),
+            ByteBuffer.wrap(keyBytes),
+            storeIngestionTask.isChunked(),
+            null,
+            null,
+            NoOpReadResponseStats.SINGLETON,
+            readerValueSchemaID,
+            storeIngestionTask.getStoreDeserializerCache(),
+            storeIngestionTask.getCompressor().get(),
+            manifestContainer);
+        storeIngestionTask.getHostLevelIngestionStats()
+            .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
+      } catch (Exception e) {
+        storeIngestionTask.setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
+        throw e;
+      }
+    } else {
+      storeIngestionTask.getHostLevelIngestionStats().recordWriteComputeCacheHitCount();
+      // construct currValue from this transient record only if it's not null.
+      if (transientRecord.getValue() != null) {
+        try {
+          currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
+              transientRecord.getValue(),
+              transientRecord.getValueOffset(),
+              transientRecord.getValueLen(),
+              storeIngestionTask.getStoreDeserializerCache()
+                  .getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
+              storeIngestionTask.getCompressor().get());
+        } catch (Exception e) {
+          storeIngestionTask.setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
+          throw e;
+        }
+        if (manifestContainer != null) {
+          manifestContainer.setManifest(transientRecord.getValueManifest());
+        }
+
+      } else {
+        currValue = null;
+      }
+    }
+    return currValue;
   }
 
   /**

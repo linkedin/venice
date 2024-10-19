@@ -16,13 +16,10 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
-import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -93,7 +90,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -3542,66 +3538,67 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   // ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
   // }
   // }
-
-  /**
-   * Read the existing value. If a value for this key is found from the transient map then use that value, otherwise read
-   * it from the storage engine.
-   * @return {@link Optional#empty} if the value
-   */
-  protected GenericRecord readStoredValueRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] keyBytes,
-      int readerValueSchemaID,
-      PubSubTopicPartition topicPartition,
-      ChunkedValueManifestContainer manifestContainer) {
-    final GenericRecord currValue;
-    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
-    if (transientRecord == null) {
-      try {
-        long lookupStartTimeInNS = System.nanoTime();
-        currValue = GenericRecordChunkingAdapter.INSTANCE.get(
-            storageEngine,
-            topicPartition.getPartitionNumber(),
-            ByteBuffer.wrap(keyBytes),
-            isChunked,
-            null,
-            null,
-            NoOpReadResponseStats.SINGLETON,
-            readerValueSchemaID,
-            storeDeserializerCache,
-            compressor.get(),
-            manifestContainer);
-        hostLevelIngestionStats
-            .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
-      } catch (Exception e) {
-        writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-        throw e;
-      }
-    } else {
-      hostLevelIngestionStats.recordWriteComputeCacheHitCount();
-      // construct currValue from this transient record only if it's not null.
-      if (transientRecord.getValue() != null) {
-        try {
-          currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
-              transientRecord.getValue(),
-              transientRecord.getValueOffset(),
-              transientRecord.getValueLen(),
-              storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
-              compressor.get());
-        } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-          throw e;
-        }
-        if (manifestContainer != null) {
-          manifestContainer.setManifest(transientRecord.getValueManifest());
-        }
-
-      } else {
-        currValue = null;
-      }
-    }
-    return currValue;
-  }
+  //
+  // /**
+  // * Read the existing value. If a value for this key is found from the transient map then use that value, otherwise
+  // read
+  // * it from the storage engine.
+  // * @return {@link Optional#empty} if the value
+  // */
+  // protected GenericRecord readStoredValueRecord(
+  // PartitionConsumptionState partitionConsumptionState,
+  // byte[] keyBytes,
+  // int readerValueSchemaID,
+  // PubSubTopicPartition topicPartition,
+  // ChunkedValueManifestContainer manifestContainer) {
+  // final GenericRecord currValue;
+  // PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
+  // if (transientRecord == null) {
+  // try {
+  // long lookupStartTimeInNS = System.nanoTime();
+  // currValue = GenericRecordChunkingAdapter.INSTANCE.get(
+  // storageEngine,
+  // topicPartition.getPartitionNumber(),
+  // ByteBuffer.wrap(keyBytes),
+  // isChunked,
+  // null,
+  // null,
+  // NoOpReadResponseStats.SINGLETON,
+  // readerValueSchemaID,
+  // storeDeserializerCache,
+  // compressor.get(),
+  // manifestContainer);
+  // hostLevelIngestionStats
+  // .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
+  // } catch (Exception e) {
+  // writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+  // throw e;
+  // }
+  // } else {
+  // hostLevelIngestionStats.recordWriteComputeCacheHitCount();
+  // // construct currValue from this transient record only if it's not null.
+  // if (transientRecord.getValue() != null) {
+  // try {
+  // currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
+  // transientRecord.getValue(),
+  // transientRecord.getValueOffset(),
+  // transientRecord.getValueLen(),
+  // storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
+  // compressor.get());
+  // } catch (Exception e) {
+  // writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+  // throw e;
+  // }
+  // if (manifestContainer != null) {
+  // manifestContainer.setManifest(transientRecord.getValueManifest());
+  // }
+  //
+  // } else {
+  // currValue = null;
+  // }
+  // }
+  // return currValue;
+  // }
 
   /**
    * Clone DIV check results from OffsetRecord to the DIV validator that is used for leader consumption thread.
@@ -4014,6 +4011,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public StoreWriteComputeProcessor getStoreWriteComputeHandler() {
     return storeWriteComputeHandler;
+  }
+
+  @Override
+  public AvroStoreDeserializerCache getStoreDeserializerCache() {
+    return storeDeserializerCache;
   }
 
   @Override
