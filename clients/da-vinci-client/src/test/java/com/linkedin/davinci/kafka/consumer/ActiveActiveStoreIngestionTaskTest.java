@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -333,11 +332,15 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
     when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
-    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
-        .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(testTopic), partition);
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        new StorePartitionDataReceiver(ingestionTask, topicPartition, kafkaUrl, kafkaClusterId);
+
     byte[] key = "foo".getBytes();
     byte[] updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
 
@@ -410,7 +413,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
-        ingestionTask.getProduceToTopicFunction(
+        storePartitionDataReceiver.getProduceToTopicFunction(
             partitionConsumptionState,
             updatedKeyBytes,
             updatedValueBytes,
