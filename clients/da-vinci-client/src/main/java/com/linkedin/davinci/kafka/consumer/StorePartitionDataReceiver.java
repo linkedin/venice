@@ -5,9 +5,12 @@ import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -33,6 +36,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -100,7 +104,7 @@ public class StorePartitionDataReceiver
       }
       IngestionBatchProcessor.ProcessingFunction processingFunction =
           (storeIngestionTask.isActiveActiveReplicationEnabled())
-              ? storeIngestionTask::processActiveActiveMessage
+              ? this::processActiveActiveMessage
               : this::processMessage;
       KeyLevelLocksManager lockManager = (storeIngestionTask.isActiveActiveReplicationEnabled())
           ? storeIngestionTask.getKeyLevelLocksManager().get()
@@ -1408,17 +1412,14 @@ public class StorePartitionDataReceiver
         && consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper() != null) {
       mergeConflictResultWrapper = consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper();
     } else {
-      mergeConflictResultWrapper =
-          storeIngestionTask
-              .processActiveActiveMessage(
-                  consumerRecord,
-                  partitionConsumptionState,
-                  partition,
-                  kafkaUrl,
-                  kafkaClusterId,
-                  beforeProcessingRecordTimestampNs,
-                  beforeProcessingBatchRecordsTimestampMs)
-              .getMergeConflictResultWrapper();
+      mergeConflictResultWrapper = processActiveActiveMessage(
+          consumerRecord,
+          partitionConsumptionState,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs).getMergeConflictResultWrapper();
     }
 
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
@@ -1499,6 +1500,195 @@ public class StorePartitionDataReceiver
     });
 
     partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+  }
+
+  private PubSubMessageProcessedResult processActiveActiveMessage(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+    final int incomingValueSchemaId;
+    final int incomingWriteComputeSchemaId;
+
+    switch (msgType) {
+      case PUT:
+        incomingValueSchemaId = ((Put) kafkaValue.payloadUnion).schemaId;
+        incomingWriteComputeSchemaId = -1;
+        break;
+      case UPDATE:
+        Update incomingUpdate = (Update) kafkaValue.payloadUnion;
+        incomingValueSchemaId = incomingUpdate.schemaId;
+        incomingWriteComputeSchemaId = incomingUpdate.updateSchemaId;
+        break;
+      case DELETE:
+        incomingValueSchemaId = -1; // Ignored since we don't need the schema id for DELETE operations.
+        incomingWriteComputeSchemaId = -1;
+        break;
+      default:
+        throw new VeniceMessageException(
+            storeIngestionTask.getIngestionTaskName() + " : Invalid/Unrecognized operation type submitted: "
+                + kafkaValue.messageType);
+    }
+    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
+        () -> storeIngestionTask.getValueBytesForKey(
+            partitionConsumptionState,
+            keyBytes,
+            consumerRecord.getTopicPartition(),
+            valueManifestContainer,
+            beforeProcessingBatchRecordsTimestampMs));
+    if (storeIngestionTask.hasChangeCaptureView()) {
+      /**
+       * Since this function will update the transient cache before writing the view, and if there is
+       * a change capture view writer, we need to lookup first, otherwise the transient cache will be populated
+       * when writing to the view after this function.
+       */
+      oldValueProvider.get();
+    }
+
+    final RmdWithValueSchemaId rmdWithValueSchemaID = storeIngestionTask.getReplicationMetadataAndSchemaId(
+        partitionConsumptionState,
+        keyBytes,
+        partition,
+        beforeProcessingBatchRecordsTimestampMs);
+
+    final long writeTimestamp = storeIngestionTask.getWriteTimestampFromKME(kafkaValue);
+    final long offsetSumPreOperation =
+        rmdWithValueSchemaID != null ? RmdUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.getRmdRecord()) : 0;
+    List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
+        ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
+        : Collections.singletonList(0L);
+
+    // get the source offset and the id
+    long sourceOffset = consumerRecord.getOffset();
+    final MergeConflictResult mergeConflictResult;
+
+    storeIngestionTask.getAggVersionedIngestionStats()
+        .recordTotalDCR(storeIngestionTask.getStoreName(), storeIngestionTask.getVersionNumber());
+
+    Lazy<ByteBuffer> oldValueByteBufferProvider =
+        ActiveActiveStoreIngestionTask.unwrapByteBufferFromOldValueProvider(oldValueProvider);
+
+    long beforeDCRTimestampInNs = System.nanoTime();
+    final MergeConflictResolver mergeConflictResolver = storeIngestionTask.getMergeConflictResolver();
+    switch (msgType) {
+      case PUT:
+        mergeConflictResult = mergeConflictResolver.put(
+            oldValueByteBufferProvider,
+            rmdWithValueSchemaID,
+            ((Put) kafkaValue.payloadUnion).putValue,
+            writeTimestamp,
+            incomingValueSchemaId,
+            sourceOffset,
+            kafkaClusterId,
+            kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
+        // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
+        // config to represent the mapping from Kafka server URLs to colo ID.
+        );
+        storeIngestionTask.getHostLevelIngestionStats()
+            .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
+        break;
+
+      case DELETE:
+        mergeConflictResult = mergeConflictResolver.delete(
+            oldValueByteBufferProvider,
+            rmdWithValueSchemaID,
+            writeTimestamp,
+            sourceOffset,
+            kafkaClusterId,
+            kafkaClusterId);
+        storeIngestionTask.getHostLevelIngestionStats()
+            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
+        break;
+
+      case UPDATE:
+        mergeConflictResult = mergeConflictResolver.update(
+            oldValueByteBufferProvider,
+            rmdWithValueSchemaID,
+            ((Update) kafkaValue.payloadUnion).updateValue,
+            incomingValueSchemaId,
+            incomingWriteComputeSchemaId,
+            writeTimestamp,
+            sourceOffset,
+            kafkaClusterId,
+            kafkaClusterId,
+            valueManifestContainer);
+        storeIngestionTask.getHostLevelIngestionStats()
+            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
+        break;
+      default:
+        throw new VeniceMessageException(
+            storeIngestionTask.getIngestionTaskName() + " : Invalid/Unrecognized operation type submitted: "
+                + kafkaValue.messageType);
+    }
+
+    if (mergeConflictResult.isUpdateIgnored()) {
+      storeIngestionTask.getHostLevelIngestionStats().recordUpdateIgnoredDCR();
+      // Record the last ignored offset
+      partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(
+          storeIngestionTask.getKafkaClusterIdToUrlMap().get(kafkaClusterId),
+          sourceOffset);
+      return new PubSubMessageProcessedResult(
+          new MergeConflictResultWrapper(
+              mergeConflictResult,
+              oldValueProvider,
+              oldValueByteBufferProvider,
+              rmdWithValueSchemaID,
+              valueManifestContainer,
+              null,
+              null));
+    } else {
+      storeIngestionTask.validatePostOperationResultsAndRecord(
+          mergeConflictResult,
+          offsetSumPreOperation,
+          recordTimestampsPreOperation);
+
+      final ByteBuffer updatedValueBytes = storeIngestionTask.maybeCompressData(
+          consumerRecord.getTopicPartition().getPartitionNumber(),
+          mergeConflictResult.getNewValue(),
+          partitionConsumptionState);
+
+      final int valueSchemaId = mergeConflictResult.getValueSchemaId();
+
+      GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
+      final ByteBuffer updatedRmdBytes = storeIngestionTask.getRmdSerDe()
+          .serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
+
+      if (updatedValueBytes == null) {
+        storeIngestionTask.getHostLevelIngestionStats().recordTombstoneCreatedDCR();
+        storeIngestionTask.getAggVersionedIngestionStats()
+            .recordTombStoneCreationDCR(storeIngestionTask.getStoreName(), storeIngestionTask.getVersionNumber());
+        partitionConsumptionState
+            .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, valueSchemaId, rmdRecord);
+      } else {
+        int valueLen = updatedValueBytes.remaining();
+        partitionConsumptionState.setTransientRecord(
+            kafkaClusterId,
+            consumerRecord.getOffset(),
+            keyBytes,
+            updatedValueBytes.array(),
+            updatedValueBytes.position(),
+            valueLen,
+            valueSchemaId,
+            rmdRecord);
+      }
+      return new PubSubMessageProcessedResult(
+          new MergeConflictResultWrapper(
+              mergeConflictResult,
+              oldValueProvider,
+              oldValueByteBufferProvider,
+              rmdWithValueSchemaID,
+              valueManifestContainer,
+              updatedValueBytes,
+              updatedRmdBytes));
+    }
   }
 
   /**

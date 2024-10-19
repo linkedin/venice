@@ -32,6 +32,10 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.MergeConflictResolver;
+import com.linkedin.davinci.replication.merge.MergeConflictResult;
+import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -42,6 +46,7 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ChunkAssembler;
@@ -123,6 +128,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -4754,15 +4760,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer);
 
-  protected PubSubMessageProcessedResult processActiveActiveMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long beforeProcessingBatchRecordsTimestampMs) {
-    throw new VeniceException("processActiveActiveMessage() should only be called in active active mode");
+  void validatePostOperationResultsAndRecord(
+      MergeConflictResult mergeConflictResult,
+      Long offsetSumPreOperation,
+      List<Long> timestampsPreOperation) {
+    throw new VeniceException("validatePostOperationResultsAndRecord() should only be called in active active mode");
   }
 
   public AggVersionedIngestionStats getAggVersionedIngestionStats() {
@@ -4772,6 +4774,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public int getRmdProtocolVersionId() {
     throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
   }
+
+  public ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer valueManifestContainer,
+      long currentTimeForMetricsMs) {
+    throw new VeniceException("getValueBytesForKey() should only be called in active active mode");
+  }
+
+  RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      int partition,
+      long currentTimeForMetricsMs) {
+    throw new VeniceException("getReplicationMetadataAndSchemaId() should only be called in active active mode");
+  }
+
+  public long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
+    throw new VeniceException("getWriteTimestampFromKME() should only be called in active active mode");
+  }
+
+  public MergeConflictResolver getMergeConflictResolver() {
+    throw new VeniceException("getMergeConflictResolver() should only be called in active active mode");
+  }
+
+  public RmdSerDe getRmdSerDe() {
+    throw new VeniceException("getRmdSerDe() should only be called in active active mode");
+  }
+
+  public abstract Int2ObjectMap<String> getKafkaClusterIdToUrlMap();
+
+  public abstract boolean hasChangeCaptureView();
 
   public abstract StoreWriteComputeProcessor getStoreWriteComputeHandler();
 
