@@ -50,7 +50,7 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
     return Schema.create(Schema.Type.STRING);
   }
 
-  public String transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     Object valueObj = value.get();
     String valueStr;
 
@@ -60,7 +60,9 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
       valueStr = (String) valueObj;
     }
 
-    return valueStr + "Transformed";
+    String transformedValue = valueStr + "Transformed";
+
+    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
