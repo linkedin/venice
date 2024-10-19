@@ -574,8 +574,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.purgeTransientRecordBuffer = purgeTransientRecordBuffer;
   }
 
-  protected abstract IngestionBatchProcessor getIngestionBatchProcessor();
-
   public AbstractStorageEngine getStorageEngine() {
     return storageEngine;
   }
@@ -4776,6 +4774,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);
 
   protected abstract boolean hasViewWriters();
+
+  public ExecutorService getParallelProcessingThreadPool() {
+    return parallelProcessingThreadPool;
+  }
 
   public boolean isDataRecovery() {
     return isDataRecovery;

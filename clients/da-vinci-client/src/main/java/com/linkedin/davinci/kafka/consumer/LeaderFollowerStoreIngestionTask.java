@@ -191,7 +191,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
-  private final Lazy<IngestionBatchProcessor> ingestionBatchProcessingLazy;
+  // private final Lazy<IngestionBatchProcessor> ingestionBatchProcessingLazy;
   private final Version version;
 
   public LeaderFollowerStoreIngestionTask(
@@ -333,22 +333,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         builder.getSchemaRepo(),
         getStoreName(),
         serverConfig.isComputeFastAvroEnabled());
-    this.ingestionBatchProcessingLazy = Lazy.of(() -> {
-      if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
-        return null;
-      }
-      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
-      return new IngestionBatchProcessor(
-          kafkaVersionTopic,
-          parallelProcessingThreadPool,
-          null,
-          this::processMessage,
-          isWriteComputationEnabled,
-          isActiveActiveReplicationEnabled(),
-          builder.getVersionedStorageIngestionStats(),
-          getHostLevelIngestionStats());
-    });
+    // this.ingestionBatchProcessingLazy = Lazy.of(() -> {
+    // if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+    // LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
+    // return null;
+    // }
+    // LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
+    // return new IngestionBatchProcessor(
+    // kafkaVersionTopic,
+    // parallelProcessingThreadPool,
+    // null,
+    // this::processMessage,
+    // isWriteComputationEnabled,
+    // isActiveActiveReplicationEnabled(),
+    // builder.getVersionedStorageIngestionStats(),
+    // getHostLevelIngestionStats());
+    // });
   }
 
   public static VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
@@ -393,10 +393,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
-  protected IngestionBatchProcessor getIngestionBatchProcessor() {
-    return ingestionBatchProcessingLazy.get();
-  }
+  // @Override
+  // protected IngestionBatchProcessor getIngestionBatchProcessor() {
+  // return ingestionBatchProcessingLazy.get();
+  // }
 
   @Override
   public synchronized void promoteToLeader(

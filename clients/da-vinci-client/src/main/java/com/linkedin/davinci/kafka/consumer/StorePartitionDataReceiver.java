@@ -37,6 +37,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -68,6 +69,7 @@ public class StorePartitionDataReceiver
   private final String kafkaUrl;
   private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
+  private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
   private final Logger LOGGER;
 
   private long receivedRecordsCount;
@@ -84,6 +86,30 @@ public class StorePartitionDataReceiver
     this.kafkaClusterId = kafkaClusterId;
     this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
+    this.ingestionBatchProcessorLazy = Lazy.of(() -> {
+      final String kafkaVersionTopic = storeIngestionTask.getKafkaVersionTopic();
+      if (!storeIngestionTask.getServerConfig().isAAWCWorkloadParallelProcessingEnabled()) {
+        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", kafkaVersionTopic);
+        return null;
+      }
+      IngestionBatchProcessor.ProcessingFunction processingFunction =
+          (storeIngestionTask.isActiveActiveReplicationEnabled())
+              ? storeIngestionTask::processActiveActiveMessage
+              : storeIngestionTask::processMessage;
+      KeyLevelLocksManager lockManager = (storeIngestionTask.isActiveActiveReplicationEnabled())
+          ? storeIngestionTask.getKeyLevelLocksManager().get()
+          : null;
+      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", kafkaVersionTopic);
+      return new IngestionBatchProcessor(
+          storeIngestionTask.getKafkaVersionTopic(),
+          storeIngestionTask.getParallelProcessingThreadPool(),
+          lockManager,
+          processingFunction,
+          storeIngestionTask.isTransientRecordBufferUsed(),
+          storeIngestionTask.isActiveActiveReplicationEnabled(),
+          storeIngestionTask.getAggVersionedIngestionStats(),
+          storeIngestionTask.getHostLevelIngestionStats());
+    });
   }
 
   @Override
@@ -239,7 +265,7 @@ public class StorePartitionDataReceiver
     if (batches.isEmpty()) {
       return;
     }
-    IngestionBatchProcessor ingestionBatchProcessor = storeIngestionTask.getIngestionBatchProcessor();
+    IngestionBatchProcessor ingestionBatchProcessor = ingestionBatchProcessorLazy.get();
     if (ingestionBatchProcessor == null) {
       throw new VeniceException(
           "IngestionBatchProcessor object should present for store version: "
@@ -1676,5 +1702,9 @@ public class StorePartitionDataReceiver
   // for testing purpose only
   int getKafkaClusterId() {
     return this.kafkaClusterId;
+  }
+
+  IngestionBatchProcessor getIngestionBatchProcessor() {
+    return ingestionBatchProcessorLazy.get();
   }
 }

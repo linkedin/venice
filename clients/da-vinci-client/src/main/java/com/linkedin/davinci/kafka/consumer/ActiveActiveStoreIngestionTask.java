@@ -81,7 +81,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
-  private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
+  // private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
@@ -145,22 +145,22 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             isWriteComputationEnabled,
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
-    this.ingestionBatchProcessorLazy = Lazy.of(() -> {
-      if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
-        return null;
-      }
-      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
-      return new IngestionBatchProcessor(
-          kafkaVersionTopic,
-          parallelProcessingThreadPool,
-          keyLevelLocksManager.get(),
-          this::processActiveActiveMessage,
-          isWriteComputationEnabled,
-          isActiveActiveReplicationEnabled(),
-          aggVersionedIngestionStats,
-          getHostLevelIngestionStats());
-    });
+    // this.ingestionBatchProcessorLazy = Lazy.of(() -> {
+    // if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+    // LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
+    // return null;
+    // }
+    // LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
+    // return new IngestionBatchProcessor(
+    // kafkaVersionTopic,
+    // parallelProcessingThreadPool,
+    // keyLevelLocksManager.get(),
+    // this::processActiveActiveMessage,
+    // isWriteComputationEnabled,
+    // isActiveActiveReplicationEnabled(),
+    // aggVersionedIngestionStats,
+    // getHostLevelIngestionStats());
+    // });
   }
 
   public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
@@ -394,10 +394,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return result.serialize();
   }
 
-  @Override
-  protected IngestionBatchProcessor getIngestionBatchProcessor() {
-    return ingestionBatchProcessorLazy.get();
-  }
+  // @Override
+  // protected IngestionBatchProcessor getIngestionBatchProcessor() {
+  // return ingestionBatchProcessorLazy.get();
+  // }
 
   @Override
   protected PubSubMessageProcessedResult processActiveActiveMessage(
@@ -883,33 +883,33 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // beforeProcessingRecordTimestampNs);
   // }
   // }
-//
-//  @Override
-//  protected void produceToLocalKafka(
-//      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-//      PartitionConsumptionState partitionConsumptionState,
-//      LeaderProducedRecordContext leaderProducedRecordContext,
-//      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-//      int partition,
-//      String kafkaUrl,
-//      int kafkaClusterId,
-//      long beforeProcessingRecordTimestampNs) {
-//    super.produceToLocalKafka(
-//        consumerRecord,
-//        partitionConsumptionState,
-//        leaderProducedRecordContext,
-//        produceFunction,
-//        partition,
-//        kafkaUrl,
-//        kafkaClusterId,
-//        beforeProcessingRecordTimestampNs);
-//    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
-//    // necessarily received an ack back yet).
-//    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-//        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-//      partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
-//    }
-//  }
+  //
+  // @Override
+  // protected void produceToLocalKafka(
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+  // PartitionConsumptionState partitionConsumptionState,
+  // LeaderProducedRecordContext leaderProducedRecordContext,
+  // BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+  // int partition,
+  // String kafkaUrl,
+  // int kafkaClusterId,
+  // long beforeProcessingRecordTimestampNs) {
+  // super.produceToLocalKafka(
+  // consumerRecord,
+  // partitionConsumptionState,
+  // leaderProducedRecordContext,
+  // produceFunction,
+  // partition,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingRecordTimestampNs);
+  // // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
+  // // necessarily received an ack back yet).
+  // if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
+  // && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+  // partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
+  // }
+  // }
 
   @Override
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
@@ -1484,23 +1484,23 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // oldRmdManifest);
   // };
   // }
-//
-//  protected LeaderProducerCallback createProducerCallback(
-//      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-//      PartitionConsumptionState partitionConsumptionState,
-//      LeaderProducedRecordContext leaderProducedRecordContext,
-//      int partition,
-//      String kafkaUrl,
-//      long beforeProcessingRecordTimestampNs) {
-//    return new ActiveActiveProducerCallback(
-//        this,
-//        consumerRecord,
-//        partitionConsumptionState,
-//        leaderProducedRecordContext,
-//        partition,
-//        kafkaUrl,
-//        beforeProcessingRecordTimestampNs);
-//  }
+  //
+  // protected LeaderProducerCallback createProducerCallback(
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+  // PartitionConsumptionState partitionConsumptionState,
+  // LeaderProducedRecordContext leaderProducedRecordContext,
+  // int partition,
+  // String kafkaUrl,
+  // long beforeProcessingRecordTimestampNs) {
+  // return new ActiveActiveProducerCallback(
+  // this,
+  // consumerRecord,
+  // partitionConsumptionState,
+  // leaderProducedRecordContext,
+  // partition,
+  // kafkaUrl,
+  // beforeProcessingRecordTimestampNs);
+  // }
 
   /**
    * This method does a few things for leader topic-partition subscription:
