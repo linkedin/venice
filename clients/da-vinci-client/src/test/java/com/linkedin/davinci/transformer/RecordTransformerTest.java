@@ -106,7 +106,9 @@ public class RecordTransformerTest {
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
-    assertEquals(recordTransformer.transformAndProcessPut(lazyKey, lazyValue), "SampleValueTransformed");
+    DaVinciRecordTransformerResult<String> recordTransformerResult =
+        recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
+    assertEquals(recordTransformerResult.getValue(), "SampleValueTransformed");
 
     recordTransformer.processDelete(lazyKey);
 
