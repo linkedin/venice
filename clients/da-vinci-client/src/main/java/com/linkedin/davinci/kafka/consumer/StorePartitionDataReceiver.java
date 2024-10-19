@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
+
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -43,8 +45,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 
 
 public class StorePartitionDataReceiver
@@ -710,7 +710,8 @@ public class StorePartitionDataReceiver
          * to real-time writer upon EOP here and for the remote consumption of VT, the switch will be handled
          * in the following section as it needs to flush the messages and then switch.
          */
-        if (LeaderFollowerStoreIngestionTask.isLeader(partitionConsumptionState) && msgType == MessageType.CONTROL_MESSAGE
+        if (LeaderFollowerStoreIngestionTask.isLeader(partitionConsumptionState)
+            && msgType == MessageType.CONTROL_MESSAGE
             && ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion).equals(END_OF_PUSH)) {
           LOGGER.info(
               "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
@@ -726,17 +727,14 @@ public class StorePartitionDataReceiver
       // If we are here the message must be produced to local kafka or silently consumed.
       LeaderProducedRecordContext leaderProducedRecordContext;
       // No need to resolve cluster id and kafka url because sep topics are real time topic and it's not VT
-      storeIngestionTask.validateRecordBeforeProducingToLocalKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          kafkaUrl,
-          kafkaClusterId);
+      validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
         storeIngestionTask.recordRegionHybridConsumptionStats(
             // convert the cluster id back to the original cluster id for monitoring purpose
-            storeIngestionTask.getServerConfig().getEquivalentKafkaClusterIdForSepTopic(
-                storeIngestionTask.getServerConfig().getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId)),
+            storeIngestionTask.getServerConfig()
+                .getEquivalentKafkaClusterIdForSepTopic(
+                    storeIngestionTask.getServerConfig().getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId)),
             consumerRecord.getPayloadSize(),
             consumerRecord.getOffset(),
             beforeProcessingBatchRecordsTimestampMs);
@@ -807,7 +805,7 @@ public class StorePartitionDataReceiver
                 "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
                 storeIngestionTask.getVersionTopic().getName(),
                 partition);
-            storeIngestionTask.setRealTimeVeniceWriterRef(partitionConsumptionState);;
+            storeIngestionTask.setRealTimeVeniceWriterRef(partitionConsumptionState);
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -974,6 +972,41 @@ public class StorePartitionDataReceiver
           storeIngestionTask.getIngestionTaskName() + " hasProducedToKafka: exception for message received from: "
               + consumerRecord.getTopicPartition() + ", Offset: " + consumerRecord.getOffset() + ". Bubbling up.",
           e);
+    }
+  }
+
+  /**
+   * Checks before producing local version topic.
+   *
+   * Extend this function when there is new check needed.
+   */
+  private void validateRecordBeforeProducingToLocalKafka(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      String kafkaUrl,
+      int kafkaClusterId) {
+    // Check whether the message is from local version topic; leader shouldn't consume from local VT and then produce
+    // back to VT again
+    // localKafkaClusterId will always be the regular one without "_sep" suffix so kafkaClusterId should be converted
+    // for comparison. Like-wise for the kafkaUrl.
+    if (kafkaClusterId == storeIngestionTask.getLocalKafkaClusterId()
+        && consumerRecord.getTopicPartition().getPubSubTopic().equals(storeIngestionTask.getVersionTopic())
+        && kafkaUrl.equals(storeIngestionTask.getLocalKafkaServer())) {
+      // N.B.: Ideally, the first two conditions should be sufficient, but for some reasons, in certain tests, the
+      // third condition also ends up being necessary. In any case, doing the cluster ID check should be a
+      // fast short-circuit in normal cases.
+      try {
+        int partitionId = partitionConsumptionState.getPartition();
+        storeIngestionTask.setIngestionException(
+            partitionId,
+            new VeniceException(
+                "Store version " + storeIngestionTask.getVersionTopic() + " partition " + partitionId
+                    + " is consuming from local version topic and producing back to local version topic"
+                    + ", kafkaClusterId = " + kafkaClusterId + ", kafkaUrl = " + kafkaUrl + ", this.localKafkaServer = "
+                    + storeIngestionTask.getLocalKafkaServer()));
+      } catch (VeniceException offerToQueueException) {
+        storeIngestionTask.setLastStoreIngestionException(offerToQueueException);
+      }
     }
   }
 
