@@ -110,8 +110,12 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
+
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
+    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+
     this.storeAclHandler = storeAccessController.isPresent()
-        ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository))
+        ? Optional.of(new ServerStoreAclHandler(identityParser, storeAccessController.get(), storeMetadataRepository))
         : Optional.empty();
     /**
      * If the store-level access handler is present, we don't want to fail fast if the access gets denied by {@link ServerAclHandler}.
@@ -146,9 +150,6 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
 
     serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
-
-    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
-    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
   }
 
   /*

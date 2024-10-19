@@ -51,7 +51,7 @@ public enum AvroProtocolDefinition {
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 13, PartitionState.class),
+  PARTITION_STATE(24, 14, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay
@@ -72,7 +72,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(80, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(81, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -143,7 +143,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(23, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(24, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.

@@ -99,6 +99,7 @@ import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
 import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
 import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.Arg.SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
@@ -267,7 +268,7 @@ public enum Command {
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
-          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED }
+          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

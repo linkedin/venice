@@ -41,7 +41,7 @@ def avroVersion = '1.10.2'
 def avroUtilVersion = '0.3.21'
 def grpcVersion = '1.49.2'
 def kafkaGroup = 'com.linkedin.kafka'
-def kafkaVersion = '2.4.1.65'
+def kafkaVersion = '2.4.1.78'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def protobufVersion = '3.21.7'
@@ -85,6 +85,7 @@ ext.libraries = [
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
+    hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.3',
     httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.4',
@@ -125,7 +126,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.11.4',
+    tehuti: 'io.tehuti:tehuti:0.12.3',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
@@ -806,7 +807,9 @@ task verifyJdkVersion {
   def currentJdkVersion = JavaVersion.current()
   def isSupported = supportedJdkVersions.any {version -> currentJdkVersion.equals(version) }
   if (!isSupported) {
-    throw new GradleException("Invalid JDK version: ${currentJdkVersion}. Supported versions: ${supportedJdkVersions.join(', ')}.")
+    throw new GradleException("Invalid JDK version: ${currentJdkVersion}.\n" + \
+    "Supported versions: ${supportedJdkVersions.join(', ')}.\n" + \
+    "Please set the JAVA_HOME environment variable to a supported version either locally or globally.")
   }
   println "JDK version ${currentJdkVersion} is valid."
 }

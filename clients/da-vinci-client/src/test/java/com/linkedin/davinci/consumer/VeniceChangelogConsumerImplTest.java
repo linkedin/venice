@@ -51,6 +51,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -125,10 +126,7 @@ public class VeniceChangelogConsumerImplTest {
         newVersionTopic,
         false);
     ChangelogClientConfig changelogClientConfig =
-        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
-            .setSchemaReader(schemaReader)
-            .setStoreName(storeName)
-            .setViewName("changeCaptureView");
+        getChangelogClientConfig(d2ControllerClient).setViewName("changeCaptureView");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
@@ -194,11 +192,7 @@ public class VeniceChangelogConsumerImplTest {
     PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
 
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
-    ChangelogClientConfig changelogClientConfig =
-        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
-            .setSchemaReader(schemaReader)
-            .setStoreName(storeName)
-            .setViewName("");
+    ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
 
     VeniceChangelogConsumerImpl mockInternalSeekConsumer = Mockito.mock(VeniceChangelogConsumerImpl.class);
     Mockito.when(mockInternalSeekConsumer.subscribe(any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -249,7 +243,7 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
         new ImmutablePubSubMessage<>(KafkaKey.HEART_BEAT, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
-
+    doReturn(currentTimestamp).when(veniceChangelogConsumer).getSubscribeTime();
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertFalse(bootstrapStateMap.get(0));
     kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.SECONDS.toMillis(30);
@@ -279,11 +273,7 @@ public class VeniceChangelogConsumerImplTest {
         pubSubTopicRepository.getTopic(oldVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
 
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
-    ChangelogClientConfig changelogClientConfig =
-        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
-            .setSchemaReader(schemaReader)
-            .setStoreName(storeName)
-            .setViewName("");
+    ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
@@ -351,11 +341,7 @@ public class VeniceChangelogConsumerImplTest {
     PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
 
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
-    ChangelogClientConfig changelogClientConfig =
-        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
-            .setSchemaReader(schemaReader)
-            .setStoreName(storeName)
-            .setViewName("");
+    ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
@@ -559,5 +545,14 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+  }
+
+  private ChangelogClientConfig getChangelogClientConfig(D2ControllerClient d2ControllerClient) {
+    ChangelogClientConfig changelogClientConfig =
+        new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
+            .setSchemaReader(schemaReader)
+            .setStoreName(storeName);
+    changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
+    return changelogClientConfig;
   }
 }

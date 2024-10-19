@@ -95,6 +95,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private boolean projectionFieldValidation;
   private Set<String> harClusters;
 
+  private final MetricsRepository metricsRepository;
+
   private ClientConfig(
       String storeName,
       Client r2Client,
@@ -145,17 +147,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
-    if (metricsRepository == null) {
-      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
-    }
+    this.metricsRepository =
+        metricsRepository != null ? metricsRepository : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
     for (RequestType requestType: RequestType.values()) {
       clientStatsMap.put(
           requestType,
-          FastClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
+          FastClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
     }
-    this.clusterStats = new ClusterStats(metricsRepository, storeName);
+    this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
@@ -270,6 +271,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public Client getR2Client() {
     return r2Client;
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
   }
 
   public FastClientStats getStats(RequestType requestType) {

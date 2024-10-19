@@ -340,6 +340,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return zkSharedStore.isSeparateRealTimeTopicEnabled();
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    throwUnsupportedOperationException("setSeparateRealTimeTopicEnabled");
+  }
+
+  @Override
   public boolean isAccessControlled() {
     return zkSharedStore.isAccessControlled();
   }

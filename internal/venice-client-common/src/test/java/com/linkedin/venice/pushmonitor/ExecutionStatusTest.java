@@ -1,9 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DROPPED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
@@ -12,21 +10,15 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.NEW;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_STARTED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.UNKNOWN;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.WARNING;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isDeterminedStatus;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -35,7 +27,39 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class ExecutionStatusTest {
+public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
+  public ExecutionStatusTest() {
+    super(ExecutionStatus.class);
+  }
+
+  @Override
+  protected Map<Integer, ExecutionStatus> expectedMapping() {
+    return CollectionUtil.<Integer, ExecutionStatus>mapBuilder()
+        .put(0, ExecutionStatus.NOT_CREATED)
+        .put(1, ExecutionStatus.NEW)
+        .put(2, ExecutionStatus.STARTED)
+        .put(3, ExecutionStatus.PROGRESS)
+        .put(4, ExecutionStatus.END_OF_PUSH_RECEIVED)
+        .put(5, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED)
+        .put(6, ExecutionStatus.TOPIC_SWITCH_RECEIVED)
+        .put(7, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
+        .put(8, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)
+        .put(9, ExecutionStatus.DROPPED)
+        .put(10, ExecutionStatus.COMPLETED)
+        .put(11, ExecutionStatus.WARNING)
+        .put(12, ExecutionStatus.ERROR)
+        .put(13, ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG)
+        .put(14, ExecutionStatus.ARCHIVED)
+        .put(15, ExecutionStatus.UNKNOWN)
+        .put(16, ExecutionStatus.NOT_STARTED)
+        .put(17, ExecutionStatus.DATA_RECOVERY_COMPLETED)
+        .put(18, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL)
+        .put(19, ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED)
+        .put(20, ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
+        .put(21, ExecutionStatus.DVC_INGESTION_ERROR_OTHER)
+        .build();
+  }
+
   @Test
   public void testisDVCIngestionError() {
     for (ExecutionStatus status: ExecutionStatus.values()) {
@@ -71,43 +95,6 @@ public class ExecutionStatusTest {
     assertFalse(ExecutionStatus.isError(STARTED.toString()));
     assertTrue(ExecutionStatus.isError("error"));
     assertFalse(ExecutionStatus.isError("123"));
-  }
-
-  /**
-   * Test to prevent unintentional changing of the values of ExecutionStatus
-   * as values are persisted and used across services
-   */
-  @Test
-  public void testExecutionStatusValue() {
-    assertEquals(ExecutionStatus.values().length, 22);
-
-    for (ExecutionStatus status: ExecutionStatus.values()) {
-      assertEquals(status.getValue(), status.ordinal());
-    }
-
-    // check all the values in the enum one by one to make sure it's not changed
-    assertEquals(NOT_CREATED.getValue(), 0);
-    assertEquals(NEW.getValue(), 1);
-    assertEquals(STARTED.getValue(), 2);
-    assertEquals(PROGRESS.getValue(), 3);
-    assertEquals(END_OF_PUSH_RECEIVED.getValue(), 4);
-    assertEquals(START_OF_BUFFER_REPLAY_RECEIVED.getValue(), 5);
-    assertEquals(TOPIC_SWITCH_RECEIVED.getValue(), 6);
-    assertEquals(START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(), 7);
-    assertEquals(END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(), 8);
-    assertEquals(DROPPED.getValue(), 9);
-    assertEquals(COMPLETED.getValue(), 10);
-    assertEquals(WARNING.getValue(), 11);
-    assertEquals(ERROR.getValue(), 12);
-    assertEquals(CATCH_UP_BASE_TOPIC_OFFSET_LAG.getValue(), 13);
-    assertEquals(ARCHIVED.getValue(), 14);
-    assertEquals(UNKNOWN.getValue(), 15);
-    assertEquals(NOT_STARTED.getValue(), 16);
-    assertEquals(DATA_RECOVERY_COMPLETED.getValue(), 17);
-    assertEquals(DVC_INGESTION_ERROR_DISK_FULL.getValue(), 18);
-    assertEquals(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED.getValue(), 19);
-    assertEquals(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES.getValue(), 20);
-    assertEquals(DVC_INGESTION_ERROR_OTHER.getValue(), 21);
   }
 
   @Test

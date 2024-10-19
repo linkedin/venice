@@ -33,6 +33,7 @@ import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -56,6 +57,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -182,10 +184,12 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.system.store.MetaStoreReader;
@@ -246,6 +250,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.AccessOption;
@@ -374,7 +379,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
-  private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -394,6 +398,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int pushJobDetailsSchemaId = -1;
 
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
+  private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
 
   private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
   private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
@@ -427,6 +432,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
 
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
+
+  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -530,11 +537,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
     this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-    this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        adapterSerializer,
-        commonConfig.getRefreshAttemptsForZkReconnect(),
-        commonConfig.getRefreshIntervalForZkReconnectInMs());
+    this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer);
     storeConfigRepo.refresh();
     this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
     veniceWriterFactory = new VeniceWriterFactory(
@@ -551,7 +554,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-    usePushStatusStoreToReadServerIncrementalPushStatus = commonConfig.usePushStatusStoreForIncrementalPush();
 
     zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
         zkClient,
@@ -651,7 +653,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Create the controller cluster if required.
     if (isControllerClusterHAAS) {
-      checkAndCreateVeniceControllerCluster(commonConfig.isControllerInAzureFabric());
+      checkAndCreateVeniceControllerCluster();
     } else {
       createControllerClusterIfRequired();
     }
@@ -671,10 +673,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
+
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
       DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
+      PushJobStatusStats pushJobStatusStats = new PushJobStatusStats(metricsRepository, clusterName);
       disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
       liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
+      pushJobStatusStatsMap.put(clusterName, pushJobStatusStats);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -703,6 +708,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     emptyPushZSTDDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
+
+    pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
@@ -760,9 +767,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     liveInstanceMonitor.clear();
   }
 
-  private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
+  private void checkAndCreateVeniceControllerCluster() {
     if (!helixAdminClient.isVeniceControllerClusterCreated()) {
-      helixAdminClient.createVeniceControllerCluster(isControllerInAzure);
+      helixAdminClient.createVeniceControllerCluster();
     }
     if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
       helixAdminClient.addClusterToGrandCluster(controllerClusterName);
@@ -793,6 +800,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     controllerClusterKeyBuilder = new PropertyKey.Builder(tempManager.getClusterName());
     helixManager = tempManager;
+
+    List<String> instanceTagList = multiClusterConfigs.getControllerInstanceTagList();
+    for (String instanceTag: instanceTagList) {
+      helixAdminClient.addInstanceTag(controllerClusterName, helixManager.getInstanceName(), instanceTag);
+    }
+    LOGGER.info("Connected to controller cluster {} with controller {}", controllerClusterName, controllerName);
+
   }
 
   public ZkClient getZkClient() {
@@ -828,9 +842,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new IllegalArgumentException("Invalid cluster name:" + clusterName);
     }
     if (multiClusterConfigs.getControllerConfig(clusterName).isVeniceClusterLeaderHAAS()) {
-      setupStorageClusterAsNeeded(
-          clusterName,
-          multiClusterConfigs.getControllerConfig(clusterName).isControllerInAzureFabric());
+      setupStorageClusterAsNeeded(clusterName);
     } else {
       createClusterIfRequired(clusterName);
     }
@@ -1174,6 +1186,86 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return response.getId();
   }
 
+  static boolean isPushJobFailedDueToUserError(
+      PushJobDetailsStatus status,
+      PushJobDetails pushJobDetails,
+      Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
+    if (PushJobDetailsStatus.isFailed(status)) {
+      PushJobCheckpoints checkpoint = PushJobCheckpoints.valueOf(pushJobDetails.getPushJobLatestCheckpoint());
+      return (checkpoint != null && pushJobUserErrorCheckpoints.contains(checkpoint));
+    }
+    return false;
+  }
+
+  static void emitPushJobStatusMetrics(
+      Map<String, PushJobStatusStats> pushJobStatusStatsMap,
+      PushJobStatusRecordKey pushJobDetailsKey,
+      PushJobDetails pushJobDetailsValue,
+      Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
+    List<PushJobDetailsStatusTuple> overallStatuses = pushJobDetailsValue.getOverallStatus();
+    if (overallStatuses.isEmpty()) {
+      return;
+    }
+    try {
+      PushJobDetailsStatus overallStatus =
+          PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
+      if (PushJobDetailsStatus.isTerminal(overallStatus.getValue())) {
+        String cluster = pushJobDetailsValue.getClusterName().toString();
+        PushJobStatusStats pushJobStatusStats = pushJobStatusStatsMap.get(cluster);
+        Utf8 incPushKey = new Utf8("incremental.push");
+        boolean isIncrementalPush = false;
+        if (pushJobDetailsValue.getPushJobConfigs().containsKey(incPushKey)) {
+          isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
+        }
+        StringBuilder logMessage = new StringBuilder();
+        logMessage.append("Push job status for store name: ")
+            .append(pushJobDetailsKey.getStoreName())
+            .append(", version: ")
+            .append(pushJobDetailsKey.getVersionNumber())
+            .append(", cluster: ")
+            .append(cluster);
+        if (PushJobDetailsStatus.isFailed(overallStatus)) {
+          logMessage.append(" failed with status: ").append(overallStatus);
+          if (isPushJobFailedDueToUserError(overallStatus, pushJobDetailsValue, pushJobUserErrorCheckpoints)) {
+            logMessage.append(" due to user error");
+            if (isIncrementalPush) {
+              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
+            } else {
+              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor();
+            }
+          } else {
+            logMessage.append(" due to non-user error");
+            if (isIncrementalPush) {
+              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor();
+            } else {
+              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor();
+            }
+          }
+        } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
+          logMessage.append(" succeeded with status: ").append(overallStatus);
+          // Emit metrics for successful push jobs
+          if (isIncrementalPush) {
+            pushJobStatusStats.recordIncrementalPushSuccessSensor();
+          } else {
+            pushJobStatusStats.recordBatchPushSuccessSensor();
+          }
+        }
+        LOGGER.info(
+            "{}. Incremental push: {}, push job id: {}, checkpoint: {}",
+            logMessage.toString(),
+            isIncrementalPush,
+            pushJobDetailsValue.getPushId(),
+            PushJobCheckpoints.valueOf(pushJobDetailsValue.getPushJobLatestCheckpoint()));
+      }
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to emit push job status metrics. pushJobDetails key: {}, value: {}",
+          pushJobDetailsKey.toString(),
+          pushJobDetailsValue.toString(),
+          e);
+    }
+  }
+
   /**
    * Lazy initialize a Venice writer for an internal real time topic store of push job details records.
    * Use this writer to put a pair of push job detail record (<code>key</code> and <code>value</code>).
@@ -1182,6 +1274,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    // Emit push job status metrics
+    emitPushJobStatusMetrics(pushJobStatusStatsMap, key, value, pushJobUserErrorCheckpoints);
+    // Send push job details to the push job status system store
     if (pushJobStatusStoreClusterName.isEmpty()) {
       throw new VeniceException(
           ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
@@ -2659,6 +2754,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
                       clusterConfig.getMinInSyncReplicasRealTimeTopics(),
                       false);
+                  if (version.isSeparateRealTimeTopicEnabled()) {
+                    getTopicManager().createTopic(
+                        pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
+                        numberOfPartitions,
+                        clusterConfig.getKafkaReplicationFactorRTTopics(),
+                        StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
+                        false,
+                        // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+                        clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+                        false);
+                  }
                 } else {
                   // If real-time topic already exists, check whether its retention time is correct.
                   PubSubTopicConfiguration pubSubTopicConfiguration =
@@ -3022,14 +3128,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public String getRealTimeTopic(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
-    TopicManager topicManager = getTopicManager();
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+    ensureRealTimeTopicIsReady(clusterName, realTimeTopic);
+    return realTimeTopic.getName();
+  }
+
+  @Override
+  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    PubSubTopic incrementalPushRealTimeTopic =
+        pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+    ensureRealTimeTopicIsReady(clusterName, incrementalPushRealTimeTopic);
+    return incrementalPushRealTimeTopic.getName();
+  }
+
+  private void ensureRealTimeTopicIsReady(String clusterName, PubSubTopic realTimeTopic) {
+    TopicManager topicManager = getTopicManager();
+    String storeName = realTimeTopic.getStoreName();
     if (!topicManager.containsTopic(realTimeTopic)) {
       HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         // The topic might be created by another thread already. Check before creating.
         if (topicManager.containsTopic(realTimeTopic)) {
-          return realTimeTopic.getName();
+          return;
         }
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store store = repository.getStore(storeName);
@@ -3073,7 +3194,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName);
       }
     }
-    return realTimeTopic.getName();
   }
 
   /**
@@ -3431,6 +3551,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       truncateKafkaTopic(rtTopicToDelete);
       for (ControllerClient controllerClient: controllerClientMap.values()) {
         controllerClient.deleteKafkaTopic(rtTopicToDelete);
+      }
+      // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
+      // delete it.
+      String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+      if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
+        truncateKafkaTopic(incrementalPushRTTopicToDelete);
+        for (ControllerClient controllerClient: controllerClientMap.values()) {
+          controllerClient.deleteKafkaTopic(incrementalPushRTTopicToDelete);
+        }
       }
     }
   }
@@ -4339,6 +4468,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  void setSeparateRealTimeTopicEnabled(String clusterName, String storeName, boolean separateRealTimeTopicEnabled) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setSeparateRealTimeTopicEnabled(separateRealTimeTopicEnabled);
+      return store;
+    });
+  }
+
   private void setReplicationFactor(String clusterName, String storeName, int replicaFactor) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setReplicationFactor(replicaFactor);
@@ -4618,6 +4754,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
+    Optional<Boolean> separateRealTimeTopicEnabled = params.getSeparateRealTimeTopicEnabled();
     Optional<Boolean> storeMigration = params.getStoreMigration();
     Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
     Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
@@ -4804,6 +4941,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           enableHybridModeOrUpdateSettings(clusterName, storeName);
         }
         setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
+      }
+
+      if (separateRealTimeTopicEnabled.isPresent()) {
+        setSeparateRealTimeTopicEnabled(clusterName, storeName, separateRealTimeTopicEnabled.get());
       }
 
       if (replicationFactor.isPresent()) {
@@ -5931,7 +6072,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
     if (incrementalPushVersion.isPresent()
         && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
-        && usePushStatusStoreToReadServerIncrementalPushStatus) {
+        && store.isDaVinciPushStatusStoreEnabled()) {
       getPushStatusStoreWriter().removeFromSupposedlyOngoingIncrementalPushVersions(
           store.getName(),
           versionNumber,
@@ -5944,17 +6085,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String clusterName,
       String kafkaTopic,
       String incrementalPushVersion,
-      PushMonitor monitor) {
+      PushMonitor monitor,
+      Store store) {
     HelixCustomizedViewOfflinePushRepository cvRepo =
         getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-    if (!usePushStatusStoreToReadServerIncrementalPushStatus) {
-      return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
+    boolean usePushStatusStoreForIncrementalPush =
+        multiClusterConfigs.getControllerConfig(clusterName).usePushStatusStoreForIncrementalPush();
+    if (usePushStatusStoreForIncrementalPush) {
+      if (store.isDaVinciPushStatusStoreEnabled()) {
+        return monitor.getIncrementalPushStatusFromPushStatusStore(
+            kafkaTopic,
+            incrementalPushVersion,
+            cvRepo,
+            getPushStatusStoreReader());
+      } else {
+        LOGGER.warn(
+            "Push status system store is not enabled for store: {} in cluster: {}, using ZK for incremental push status reads",
+            store.getName(),
+            clusterName);
+      }
     }
-    return monitor.getIncrementalPushStatusFromPushStatusStore(
-        kafkaTopic,
-        incrementalPushVersion,
-        cvRepo,
-        getPushStatusStoreReader());
+    return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
   }
 
   private OfflinePushStatusInfo getOfflinePushStatusInfo(
@@ -5981,7 +6132,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     if (incrementalPushVersion.isPresent()) {
-      statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
+      statusAndDetails =
+          getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor, store);
     } else {
       statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
     }
@@ -6114,7 +6266,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
   }
 
-  private void setupStorageClusterAsNeeded(String clusterName, boolean isControllerInAzureFabric) {
+  private void setupStorageClusterAsNeeded(String clusterName) {
     if (!helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
       Map<String, String> helixClusterProperties = new HashMap<>();
       helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
@@ -6133,7 +6285,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
       helixClusterProperties
           .put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
-      helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties, isControllerInAzureFabric);
+      helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties);
     }
     if (!helixAdminClient.isClusterInGrandCluster(clusterName)) {
       helixAdminClient.addClusterToGrandCluster(clusterName);
@@ -7806,41 +7958,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         "Wrote value schemas to meta system store for venice store: {} in cluster: {}",
         regularStoreName,
         clusterName);
-    // replica status for all the available versions
-    List<Version> versions = store.getVersions();
-    if (versions.isEmpty()) {
-      return;
-    }
-    for (Version version: versions) {
-      int versionNumber = version.getNumber();
-      String topic = Version.composeKafkaTopic(regularStoreName, versionNumber);
-      int partitionCount = version.getPartitionCount();
-      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository =
-          getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-      for (int curPartitionId = 0; curPartitionId < partitionCount; ++curPartitionId) {
-        List<Instance> readyToServeInstances =
-            customizedViewOfflinePushRepository.getReadyToServeInstances(topic, curPartitionId);
-        metaStoreWriter.get()
-            .writeReadyToServerStoreReplicas(
-                clusterName,
-                regularStoreName,
-                versionNumber,
-                curPartitionId,
-                readyToServeInstances);
-        LOGGER.info(
-            "Wrote the following ready-to-serve instance: {} for store: {}, version: {}, partition id: {} in cluster: {}",
-            readyToServeInstances.toString(),
-            regularStoreName,
-            versionNumber,
-            curPartitionId,
-            clusterName);
-      }
-      LOGGER.info(
-          "Wrote replica status snapshot for version: {} to meta system store for venice store: {} in cluster: {}",
-          versionNumber,
-          regularStoreName,
-          clusterName);
-    }
   }
 
   private boolean isAmplificationFactorUpdateOnly(

@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
@@ -92,6 +93,7 @@ class AbstractTestVeniceHelixAdmin {
       properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
     }
     properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
+    properties.put(CONTROLLER_INSTANCE_TAG_LIST, "GENERAL,TEST");
     controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerClusterConfig(controllerProps);

@@ -100,6 +100,10 @@ public enum Arg {
   ),
   INCREMENTAL_PUSH_ENABLED(
       "incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"
+  ),
+  SEPARATE_REALTIME_TOPIC_ENABLED(
+      "separate-realtime-topic-enabled", "srte", true,
+      "a flag to see if the store supports separate real-time topic or not"
   ), BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),
   NUM_VERSIONS_TO_PRESERVE("num-versions-to-preserve", "nvp", true, "Number of version that store should preserve."),
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),

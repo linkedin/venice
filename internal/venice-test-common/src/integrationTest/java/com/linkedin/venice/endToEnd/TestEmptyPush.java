@@ -1,8 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
@@ -11,6 +9,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFile;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
@@ -57,6 +57,7 @@ public class TestEmptyPush {
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfRouters(1)
         .numberOfServers(2)
+        .replicationFactor(2)
         .sslToKafka(false)
         .sslToStorageNodes(false)
         .build();
@@ -136,7 +137,8 @@ public class TestEmptyPush {
       PubSubTopic storeRealTimeTopic =
           venice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName));
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
-
+      // One time refresh of router metadata.
+      venice.refreshAllRouterMetaData();
       // Start writing some real-time records
       SystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducer(venice, storeName, Version.PushType.STREAM);

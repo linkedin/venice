@@ -30,12 +30,6 @@ dependencies {
     exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keeping' it clean.
   }
 
-  implementation (libraries.hadoopCommon) {
-    // Exclude transitive dependency
-    exclude group: 'org.apache.avro'
-    exclude group: 'javax.servlet'
-  }
-
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.avroUtilCompatHelper

@@ -555,6 +555,11 @@ public class TestClientSimulator implements Client {
 
     AbstractStoreMetadata metadata = new AbstractStoreMetadata(clientConfig) {
       @Override
+      public String getClusterName() {
+        return "test-cluster";
+      }
+
+      @Override
       public int getCurrentStoreVersion() {
         return 1;
       }

@@ -1528,9 +1528,10 @@ public abstract class StoreIngestionTaskTest {
     long barLastOffset = getOffset(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    doReturn(fooLastOffset + 1).when(mockTopicManager).getLatestOffsetCached(any(), eq(PARTITION_FOO));
-    doReturn(barLastOffset + 1).when(mockTopicManager).getLatestOffsetCached(any(), eq(PARTITION_BAR));
+    doReturn(fooLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_FOO));
+    doReturn(barLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_BAR));
 
+    Utils.sleep(1000);
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
@@ -3042,6 +3043,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(5L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getLatestOffsetCached(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+    long endOffset =
+        storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 1);
+    assertEquals(endOffset, 150L);
     if (nodeType == NodeType.LEADER) {
       // case 6a: leader replica => partition is not ready to serve
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
@@ -3202,6 +3206,15 @@ public abstract class StoreIngestionTaskTest {
     } else {
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers));
     }
+    doReturn(10L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+    long endOffset =
+        storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 0);
+    assertEquals(endOffset, 10L);
+    doReturn(-1L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+    endOffset =
+        storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 0);
+    assertEquals(endOffset, 0L);
+
   }
 
   @DataProvider

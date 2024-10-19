@@ -33,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
@@ -47,7 +48,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENAB
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
@@ -58,8 +63,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -97,6 +104,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
+import static com.linkedin.venice.ConfigKeys.ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
 import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
@@ -135,6 +143,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
@@ -157,6 +166,7 @@ import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STA
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
@@ -166,6 +176,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -199,6 +210,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
@@ -223,6 +235,8 @@ public class VeniceControllerClusterConfig {
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
+  private final String controllerResourceInstanceGroupTag;
+  private final List<String> controllerInstanceTagList;
   private final boolean multiRegion;
   private final boolean parent;
   private final ParentControllerRegionState parentControllerRegionState;
@@ -350,9 +364,14 @@ public class VeniceControllerClusterConfig {
 
   private final boolean concurrentInitRoutinesEnabled;
 
-  private final boolean controllerInAzureFabric;
+  private final boolean controllerClusterHelixCloudEnabled;
+  private final boolean storageClusterHelixCloudEnabled;
+  private final CloudProvider helixCloudProvider;
+  private final String helixCloudId;
+  private final List<String> helixCloudInfoSources;
+  private final String helixCloudInfoProcessorName;
 
-  private final boolean usePushStatusStoreForIncrementalPush;
+  private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
   private final long metaStoreWriterCloseTimeoutInMS;
 
@@ -432,6 +451,12 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean enabledIncrementalPushForHybridActiveActiveUserStores;
 
+  /**
+   * When the following option is enabled, new user hybrid store with incremental push enabled will automatically
+   * have separate real time topic enabled.
+   */
+  private final boolean enabledSeparateRealTimeTopicForStoreWithIncrementalPush;
+
   private final boolean enablePartialUpdateForHybridActiveActiveUserStores;
   private final boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
 
@@ -508,6 +533,8 @@ public class VeniceControllerClusterConfig {
   private final Set<String> childDatacenters;
   private final long serviceDiscoveryRegistrationRetryMS;
 
+  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -562,6 +589,8 @@ public class VeniceControllerClusterConfig {
     this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
     this.enabledIncrementalPushForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    this.enabledSeparateRealTimeTopicForStoreWithIncrementalPush =
+        props.getBoolean(ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH, false);
     this.enablePartialUpdateForHybridActiveActiveUserStores =
         props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
     this.enablePartialUpdateForHybridNonActiveActiveUserStores =
@@ -635,6 +664,14 @@ public class VeniceControllerClusterConfig {
      */
     this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
+    this.controllerResourceInstanceGroupTag = props.getString(CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, "");
+
+    if (props.getString(CONTROLLER_INSTANCE_TAG_LIST, "").isEmpty()) {
+      this.controllerInstanceTagList = Collections.emptyList();
+    } else {
+      this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST);
+    }
+
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
@@ -862,13 +899,38 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
-    this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
+    this.usePushStatusStoreForIncrementalPushStatusReads =
+        props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.metaStoreWriterCloseTimeoutInMS = props.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
     this.metaStoreWriterCloseConcurrency = props.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
-    this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
+    this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.storageClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
+
+    if (controllerClusterHelixCloudEnabled || storageClusterHelixCloudEnabled) {
+      String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER).toUpperCase();
+      try {
+        this.helixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
+      } catch (IllegalArgumentException e) {
+        throw new VeniceException(
+            "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
+                + Arrays.toString(CloudProvider.values()));
+      }
+    } else {
+      this.helixCloudProvider = null;
+    }
+
+    this.helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
+    this.helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
+
+    if (props.getString(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, "").isEmpty()) {
+      this.helixCloudInfoSources = Collections.emptyList();
+    } else {
+      this.helixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES);
+    }
+
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
@@ -905,6 +967,7 @@ public class VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
+    this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
   }
 
   public VeniceProperties getProps() {
@@ -1129,6 +1192,10 @@ public class VeniceControllerClusterConfig {
     return enabledIncrementalPushForHybridActiveActiveUserStores;
   }
 
+  public boolean enabledSeparateRealTimeTopicForStoreWithIncrementalPush() {
+    return enabledSeparateRealTimeTopicForStoreWithIncrementalPush;
+  }
+
   public boolean isEnablePartialUpdateForHybridActiveActiveUserStores() {
     return enablePartialUpdateForHybridActiveActiveUserStores;
   }
@@ -1159,6 +1226,14 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerClusterName() {
     return controllerClusterName;
+  }
+
+  public String getControllerResourceInstanceGroupTag() {
+    return controllerResourceInstanceGroupTag;
+  }
+
+  public List<String> getControllerInstanceTagList() {
+    return controllerInstanceTagList;
   }
 
   public String getControllerClusterZkAddress() {
@@ -1494,12 +1569,32 @@ public class VeniceControllerClusterConfig {
     return concurrentInitRoutinesEnabled;
   }
 
-  public boolean isControllerInAzureFabric() {
-    return controllerInAzureFabric;
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return controllerClusterHelixCloudEnabled;
+  }
+
+  public boolean isStorageClusterHelixCloudEnabled() {
+    return storageClusterHelixCloudEnabled;
+  }
+
+  public CloudProvider getHelixCloudProvider() {
+    return helixCloudProvider;
+  }
+
+  public String getHelixCloudId() {
+    return helixCloudId;
+  }
+
+  public List<String> getHelixCloudInfoSources() {
+    return helixCloudInfoSources;
+  }
+
+  public String getHelixCloudInfoProcessorName() {
+    return helixCloudInfoProcessorName;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {
-    return usePushStatusStoreForIncrementalPush;
+    return usePushStatusStoreForIncrementalPushStatusReads;
   }
 
   public long getMetaStoreWriterCloseTimeoutInMS() {
@@ -1676,5 +1771,26 @@ public class VeniceControllerClusterConfig {
   @FunctionalInterface
   interface PutToMap {
     void apply(Map<String, String> map, String key, String value, String errorMessage);
+  }
+
+  /**
+   * Parse the input to get the custom user error checkpoints for push jobs or use the default checkpoints.
+   */
+  static Set<PushJobCheckpoints> parsePushJobUserErrorCheckpoints(VeniceProperties props) {
+    if (props.containsKey(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR)) {
+      String pushJobUserErrorCheckpoints = props.getString(PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR);
+      LOGGER.info("Using configured Push job user error checkpoints: {}", pushJobUserErrorCheckpoints);
+      return Utils.parseCommaSeparatedStringToSet(pushJobUserErrorCheckpoints)
+          .stream()
+          .map(checkpointStr -> PushJobCheckpoints.valueOf(checkpointStr))
+          .collect(Collectors.toSet());
+    } else {
+      LOGGER.info("Using default Push job user error checkpoints: {}", DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS);
+      return DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
+    }
+  }
+
+  public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
+    return pushJobUserErrorCheckpoints;
   }
 }

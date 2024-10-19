@@ -68,8 +68,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
       boolean enableStatusHistory) {
     ReplicaStatus replicaStatus =
         replicaStatusMap.compute(instanceId, (k, v) -> v == null ? new ReplicaStatus(k, enableStatusHistory) : v);
-    replicaStatus.setIncrementalPushVersion(incrementalPushVersion);
-    replicaStatus.updateStatus(newStatus);
+    replicaStatus.updateStatus(newStatus, incrementalPushVersion);
     return replicaStatus;
   }
 

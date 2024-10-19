@@ -3,22 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_IN_BYTES;
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_RATIO;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -50,6 +34,23 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCu
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -62,11 +63,11 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -769,7 +770,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA);
@@ -796,7 +797,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithoutNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithoutNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithoutNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA);
@@ -895,6 +896,7 @@ public abstract class TestBatch {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     extraProps.accept(props);
 
     if (StringUtils.isEmpty(existingStore)) {
@@ -1419,7 +1421,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
+  public void testBatchJobSnapshots(Boolean isKafkaPush) throws Exception {
 
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 1; i <= 100; i++) {
@@ -1437,7 +1439,7 @@ public abstract class TestBatch {
     deleteDirectory(Paths.get(BASE_DATA_PATH_1).toFile());
     deleteDirectory(Paths.get(BASE_DATA_PATH_2).toFile());
 
-    if (isKakfaPush) {
+    if (isKafkaPush) {
       testRepush(storeName, validator);
     } else {
       testBatchStore(

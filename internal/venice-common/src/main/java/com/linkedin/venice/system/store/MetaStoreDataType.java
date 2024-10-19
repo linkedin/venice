@@ -32,7 +32,7 @@ public enum MetaStoreDataType implements VeniceEnumValue {
   VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION(6, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_VERSION_NUMBER)),
   HEARTBEAT(7, Collections.singletonList(KEY_STRING_STORE_NAME));
 
-  private static final MetaStoreDataType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(MetaStoreDataType.class);
+  private static final List<MetaStoreDataType> TYPES = EnumUtils.getEnumValuesList(MetaStoreDataType.class);
 
   private final int value;
   private final List<String> requiredKeys;
@@ -42,16 +42,13 @@ public enum MetaStoreDataType implements VeniceEnumValue {
     this.requiredKeys = requiredKeys;
   }
 
+  @Override
   public int getValue() {
     return value;
   }
 
   public static MetaStoreDataType valueOf(int value) {
-    try {
-      return TYPES_ARRAY[value];
-    } catch (IndexOutOfBoundsException e) {
-      throw new VeniceException("Invalid compression strategy: " + value);
-    }
+    return EnumUtils.valueOf(TYPES, value, MetaStoreDataType.class);
   }
 
   public StoreMetaKey getStoreMetaKey(Map<String, String> params) {

@@ -1,8 +1,8 @@
 package com.linkedin.venice.writer;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+import java.util.List;
 
 
 /**
@@ -19,7 +19,7 @@ public enum LeaderCompleteState implements VeniceEnumValue {
   LEADER_COMPLETED(1);
 
   private final int value;
-  private static final LeaderCompleteState[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(LeaderCompleteState.class);
+  private static final List<LeaderCompleteState> TYPES = EnumUtils.getEnumValuesList(LeaderCompleteState.class);
 
   LeaderCompleteState(int value) {
     this.value = value;
@@ -34,11 +34,7 @@ public enum LeaderCompleteState implements VeniceEnumValue {
   }
 
   public static LeaderCompleteState valueOf(int value) {
-    try {
-      return TYPES_ARRAY[value];
-    } catch (IndexOutOfBoundsException e) {
-      throw new VeniceException("Invalid LeaderCompleteState: " + value);
-    }
+    return EnumUtils.valueOf(TYPES, value, LeaderCompleteState.class);
   }
 
   @Override

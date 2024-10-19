@@ -23,20 +23,15 @@ public interface HelixAdminClient {
 
   /**
    * Create and configure the Venice controller cluster.
-   * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceControllerCluster(boolean isControllerInAzureFabric);
+  void createVeniceControllerCluster();
 
   /**
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
    * @param helixClusterProperties to be applied to the new cluster.
-   * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceStorageCluster(
-      String clusterName,
-      Map<String, String> helixClusterProperties,
-      boolean isControllerInAzureFabric);
+  void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties);
 
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
@@ -128,4 +123,9 @@ public interface HelixAdminClient {
    * Release resources.
    */
   void close();
+
+  /**
+   * Adds a tag to an instance
+   */
+  void addInstanceTag(String clusterName, String instanceName, String tag);
 }

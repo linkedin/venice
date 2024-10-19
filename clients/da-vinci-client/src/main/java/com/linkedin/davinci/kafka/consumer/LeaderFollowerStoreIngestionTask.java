@@ -31,6 +31,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -324,7 +325,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           null,
           this::processMessage,
           isWriteComputationEnabled,
-          isActiveActiveReplicationEnabled());
+          isActiveActiveReplicationEnabled(),
+          builder.getVersionedStorageIngestionStats(),
+          getHostLevelIngestionStats());
     });
   }
 
@@ -1605,7 +1608,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long sourceTopicOffset = consumerRecord.getOffset();
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
+    long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
+    getHostLevelIngestionStats()
+        .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
   }
 
   @Override
@@ -2140,7 +2146,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isWaitingForReplicationLag());
+          partitionConsumptionState.isComplete());
     } else {
       heartbeatMonitoringService.recordFollowerHeartbeat(
           storeName,
@@ -2148,13 +2154,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isWaitingForReplicationLag());
+          partitionConsumptionState.isComplete());
     }
   }
 
   @Override
   protected Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      String kafkaUrl,
       PubSubTopicPartition topicPartition) {
     PartitionConsumptionState partitionConsumptionState =
         partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
@@ -2177,15 +2184,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
     while (iter.hasNext()) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
+      boolean isRealTimeMsg = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        validateMessage(
-            this.kafkaDataIntegrityValidatorForLeaders,
-            record,
-            isEndOfPushReceived,
-            partitionConsumptionState);
+        if (!isGlobalRtDivEnabled) {
+          validateMessage(
+              PartitionTracker.VERSION_TOPIC,
+              this.kafkaDataIntegrityValidatorForLeaders,
+              record,
+              isEndOfPushReceived,
+              partitionConsumptionState);
+        } else {
+          validateMessage(
+              PartitionTracker.TopicType.of(
+                  isRealTimeMsg
+                      ? PartitionTracker.TopicType.REALTIME_TOPIC_TYPE
+                      : PartitionTracker.TopicType.VERSION_TOPIC_TYPE,
+                  kafkaUrl),
+              this.kafkaDataIntegrityValidatorForLeaders,
+              record,
+              isEndOfPushReceived,
+              partitionConsumptionState);
+        }
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {

@@ -1,15 +1,22 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.alpini.base.concurrency.ExecutorService;
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -106,7 +113,9 @@ public class IngestionBatchProcessorTest {
         mockKeyLevelLocksManager,
         (ignored1, ignored2, ignored3, ignored4, ignored5, ignored6, ignored7) -> null,
         true,
-        true);
+        true,
+        mock(AggVersionedIngestionStats.class),
+        mock(HostLevelIngestionStats.class));
     List<ReentrantLock> locks = batchProcessor.lockKeys(Arrays.asList(rtMessage1, rtMessage2));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key2));
@@ -146,6 +155,9 @@ public class IngestionBatchProcessorTest {
         101,
         100);
 
+    AggVersionedIngestionStats mockAggVersionedIngestionStats = mock(AggVersionedIngestionStats.class);
+    HostLevelIngestionStats mockHostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+
     IngestionBatchProcessor batchProcessor = new IngestionBatchProcessor(
         "store_v1",
         Executors.newFixedThreadPool(1, new DaemonThreadFactory("test")),
@@ -165,7 +177,9 @@ public class IngestionBatchProcessorTest {
           return null;
         },
         true,
-        true);
+        true,
+        mockAggVersionedIngestionStats,
+        mockHostLevelIngestionStats);
 
     List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> result = batchProcessor.process(
         Arrays.asList(rtMessage1, rtMessage2),
@@ -185,6 +199,45 @@ public class IngestionBatchProcessorTest {
     assertEquals(
         resultForKey2.getProcessedResult().getWriteComputeResultWrapper().getNewPut().putValue.array(),
         "value2".getBytes());
+    verify(mockAggVersionedIngestionStats).recordBatchProcessingRequest(eq("store"), eq(1), eq(2), anyLong());
+    verify(mockAggVersionedIngestionStats).recordBatchProcessingLatency(eq("store"), eq(1), anyDouble(), anyLong());
+    verify(mockHostLevelIngestionStats).recordBatchProcessingRequest(2);
+    verify(mockHostLevelIngestionStats).recordBatchProcessingRequestLatency(anyDouble());
+
+    // Error path
+    batchProcessor = new IngestionBatchProcessor(
+        "store_v1",
+        Executors.newFixedThreadPool(1, new DaemonThreadFactory("test")),
+        mockKeyLevelLocksManager,
+        (consumerRecord, ignored2, ignored3, ignored4, ignored5, ignored6, ignored7) -> {
+          if (Arrays.equals(consumerRecord.getKey().getKey(), "key1".getBytes())) {
+            Put put = new Put();
+            put.setPutValue(ByteBuffer.wrap("value1".getBytes()));
+            WriteComputeResultWrapper writeComputeResultWrapper = new WriteComputeResultWrapper(put, null, true);
+            return new PubSubMessageProcessedResult(writeComputeResultWrapper);
+          } else if (Arrays.equals(consumerRecord.getKey().getKey(), "key2".getBytes())) {
+            throw new VeniceException("Fake");
+          }
+          return null;
+        },
+        true,
+        true,
+        mockAggVersionedIngestionStats,
+        mockHostLevelIngestionStats);
+    final IngestionBatchProcessor finalBatchProcessor = batchProcessor;
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> finalBatchProcessor.process(
+            Arrays.asList(rtMessage1, rtMessage2),
+            mock(PartitionConsumptionState.class),
+            1,
+            "test_kafka",
+            1,
+            1,
+            1));
+    assertTrue(exception.getMessage().contains("Failed to execute the batch processing"));
+    verify(mockAggVersionedIngestionStats).recordBatchProcessingRequestError("store", 1);
+    verify(mockHostLevelIngestionStats).recordBatchProcessingRequestError();
   }
 
 }

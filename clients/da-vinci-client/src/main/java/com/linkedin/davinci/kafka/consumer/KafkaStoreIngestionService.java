@@ -556,6 +556,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public boolean hasCurrentVersionBootstrapping() {
+    return hasCurrentVersionBootstrapping(topicNameToIngestionTaskMap);
+  }
+
+  public static boolean hasCurrentVersionBootstrapping(Map<String, StoreIngestionTask> ingestionTaskMap) {
+    for (Map.Entry<String, StoreIngestionTask> entry: ingestionTaskMap.entrySet()) {
+      StoreIngestionTask task = entry.getValue();
+      if (task.isCurrentVersion() && !task.hasAllPartitionReportedCompleted()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Stops all the Kafka consumption tasks.
    * Closes all the Kafka clients.
@@ -1194,7 +1208,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.error(
           "Caught exception when deserializing offset record byte array: {} for replica: {}",
           Arrays.toString(offsetRecordByteArray),
-          Utils.getReplicaId(topicName, partition));
+          Utils.getReplicaId(topicName, partition),
+          e);
       throw e;
     }
     storageMetadataService.put(topicName, partition, offsetRecord);
