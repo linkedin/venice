@@ -1301,13 +1301,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
   // }
   // }
-
-  public boolean shouldProduceInBatch(Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
-    return (isActiveActiveReplicationEnabled || isWriteComputationEnabled)
-        && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
-        && IngestionBatchProcessor.isAllMessagesFromRTTopic(records);
-  }
-
+  //
+  // public boolean shouldProduceInBatch(Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
+  // return (isActiveActiveReplicationEnabled || isWriteComputationEnabled)
+  // && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
+  // && IngestionBatchProcessor.isAllMessagesFromRTTopic(records);
+  // }
+  //
   // public void produceToStoreBufferServiceOrKafkaInBatch(
   // Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
   // PubSubTopicPartition topicPartition,
