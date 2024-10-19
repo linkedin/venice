@@ -2445,61 +2445,61 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return failedPartitions.size();
   }
 
-  /**
-   * Common record check for different state models:
-   * check whether server continues receiving messages after EOP for a batch-only store.
-   */
-  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
-
-    if (partitionConsumptionState == null) {
-      String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
-          + " is null. Skipping incoming record with topic-partition: {} and offset: {}";
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
-      }
-      return false;
-    }
-
-    if (partitionConsumptionState.isErrorReported()) {
-      String msg = "Replica:  " + partitionConsumptionState.getReplicaId()
-          + " is already errored. Skipping incoming record with topic-partition: {} and offset: {}";
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
-      }
-      return false;
-    }
-
-    if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
-      KafkaKey key = record.getKey();
-      KafkaMessageEnvelope value = record.getValue();
-      if (key.isControlMessage()
-          && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
-        // Still allow END_OF_SEGMENT control message
-        return true;
-      }
-      // emit metric for unexpected messages
-      if (emitMetrics.get()) {
-        hostLevelIngestionStats.recordUnexpectedMessage();
-      }
-
-      // Report such kind of message once per minute to reduce logging volume
-      /*
-       * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
-       * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
-       *
-       * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
-       * incremental push feature of the store.
-       */
-      String message = "The record was received after 'EOP', but the store: " + kafkaVersionTopic
-          + " is neither hybrid nor incremental push enabled, so will skip it. Current records replica: {}";
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
-        LOGGER.warn(message, partitionConsumptionState.getReplicaId());
-      }
-      return false;
-    }
-    return true;
-  }
+  // /**
+  // * Common record check for different state models:
+  // * check whether server continues receiving messages after EOP for a batch-only store.
+  // */
+  // protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  // PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
+  //
+  // if (partitionConsumptionState == null) {
+  // String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
+  // + " is null. Skipping incoming record with topic-partition: {} and offset: {}";
+  // if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+  // LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+  // }
+  // return false;
+  // }
+  //
+  // if (partitionConsumptionState.isErrorReported()) {
+  // String msg = "Replica: " + partitionConsumptionState.getReplicaId()
+  // + " is already errored. Skipping incoming record with topic-partition: {} and offset: {}";
+  // if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+  // LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+  // }
+  // return false;
+  // }
+  //
+  // if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
+  // KafkaKey key = record.getKey();
+  // KafkaMessageEnvelope value = record.getValue();
+  // if (key.isControlMessage()
+  // && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
+  // // Still allow END_OF_SEGMENT control message
+  // return true;
+  // }
+  // // emit metric for unexpected messages
+  // if (emitMetrics.get()) {
+  // hostLevelIngestionStats.recordUnexpectedMessage();
+  // }
+  //
+  // // Report such kind of message once per minute to reduce logging volume
+  // /*
+  // * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
+  // * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
+  // *
+  // * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
+  // * incremental push feature of the store.
+  // */
+  // String message = "The record was received after 'EOP', but the store: " + kafkaVersionTopic
+  // + " is neither hybrid nor incremental push enabled, so will skip it. Current records replica: {}";
+  // if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+  // LOGGER.warn(message, partitionConsumptionState.getReplicaId());
+  // }
+  // return false;
+  // }
+  // return true;
+  // }
 
   protected boolean shouldPersistRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,

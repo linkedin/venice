@@ -229,7 +229,7 @@ public class StorePartitionDataReceiver
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
-      if (!storeIngestionTask.shouldProcessRecord(record)) {
+      if (!shouldProcessRecord(record)) {
         partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
         continue;
       }
@@ -278,7 +278,7 @@ public class StorePartitionDataReceiver
       if (partitionConsumptionState != null) {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
-      if (!storeIngestionTask.shouldProcessRecord(record)) {
+      if (!shouldProcessRecord(record)) {
         if (partitionConsumptionState != null) {
           partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
         }
@@ -348,6 +348,148 @@ public class StorePartitionDataReceiver
     return (storeIngestionTask.isActiveActiveReplicationEnabled() || storeIngestionTask.isTransientRecordBufferUsed())
         && storeIngestionTask.getServerConfig().isAAWCWorkloadParallelProcessingEnabled()
         && IngestionBatchProcessor.isAllMessagesFromRTTopic(records);
+  }
+
+  /**
+   * For Leader/Follower model, the follower should have the same kind of check as the Online/Offline model;
+   * for leader, it's possible that it consumers from real-time topic or GF topic.
+   */
+  private boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    PartitionConsumptionState partitionConsumptionState =
+        storeIngestionTask.getPartitionConsumptionState(record.getPartition());
+    if (partitionConsumptionState == null) {
+      LOGGER.info(
+          "Skipping message as partition is no longer actively subscribed. Replica: {}",
+          Utils.getReplicaId(storeIngestionTask.getVersionTopic(), record.getPartition()));
+      return false;
+    }
+    switch (partitionConsumptionState.getLeaderFollowerState()) {
+      case LEADER:
+        PubSubTopic currentLeaderTopic =
+            partitionConsumptionState.getOffsetRecord().getLeaderTopic(storeIngestionTask.getPubSubTopicRepository());
+        if (partitionConsumptionState.consumeRemotely()
+            && currentLeaderTopic.isVersionTopicOrStreamReprocessingTopic()) {
+          if (partitionConsumptionState.skipKafkaMessage()) {
+            String msg = "Skipping messages after EOP in remote version topic. Replica: "
+                + partitionConsumptionState.getReplicaId();
+            if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              LOGGER.info(msg);
+            }
+            return false;
+          }
+          if (record.getKey().isControlMessage()) {
+            ControlMessageType controlMessageType =
+                ControlMessageType.valueOf((ControlMessage) record.getValue().payloadUnion);
+            if (controlMessageType == ControlMessageType.END_OF_PUSH) {
+              /**
+               * The flag is turned on to avoid consuming unwanted messages after EOP in remote VT, such as SOBR. In
+               * {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()}, once leader notices that EOP is
+               * received, it will unsubscribe from the remote VT and turn off this flag. However, if data recovery is
+               * in progress and the store is hybrid then we actually want to consume messages after EOP. In that case
+               * remote TS will be skipped but with a different method.
+               */
+              if (!(storeIngestionTask.isDataRecovery() && storeIngestionTask.isHybridMode())) {
+                partitionConsumptionState.setSkipKafkaMessage(true);
+              }
+            }
+          }
+        }
+        if (!Utils
+            .resolveLeaderTopicFromPubSubTopic(
+                storeIngestionTask.getPubSubTopicRepository(),
+                record.getTopicPartition().getPubSubTopic())
+            .equals(currentLeaderTopic)) {
+          String errorMsg =
+              "Leader replica: {} received a pubsub message that doesn't belong to the leader topic. Leader topic: "
+                  + currentLeaderTopic + ", topic of incoming message: "
+                  + record.getTopicPartition().getPubSubTopic().getName();
+          if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
+            LOGGER.error(errorMsg, partitionConsumptionState.getReplicaId());
+          }
+          return false;
+        }
+        break;
+      default:
+        PubSubTopic pubSubTopic = record.getTopicPartition().getPubSubTopic();
+        String topicName = pubSubTopic.getName();
+        if (!storeIngestionTask.getVersionTopic().equals(pubSubTopic)) {
+          String errorMsg = partitionConsumptionState.getLeaderFollowerState() + " replica: "
+              + partitionConsumptionState.getReplicaId() + " received message from non version topic: " + topicName;
+          if (storeIngestionTask.consumerHasSubscription(pubSubTopic, partitionConsumptionState)) {
+            throw new VeniceMessageException(
+                errorMsg + ". Throwing exception as the node still subscribes to " + topicName);
+          }
+          if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
+            LOGGER.error("{}. Skipping the message as the node does not subscribe to {}", errorMsg, topicName);
+          }
+          return false;
+        }
+
+        long lastOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
+        if (lastOffset >= record.getOffset()) {
+          String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
+              + partitionConsumptionState.getReplicaId() + " had already processed the record";
+          if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+            LOGGER.info("{}; LastKnownOffset: {}; OffsetOfIncomingRecord: {}", message, lastOffset, record.getOffset());
+          }
+          return false;
+        }
+        break;
+    }
+
+    /**
+     * Common record check for different state models:
+     * check whether server continues receiving messages after EOP for a batch-only store.
+     */
+    // PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
+    // if (partitionConsumptionState == null) {
+    // String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
+    // + " is null. Skipping incoming record with topic-partition: {} and offset: {}";
+    // if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+    // LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+    // }
+    // return false;
+    // }
+
+    if (partitionConsumptionState.isErrorReported()) {
+      String msg = "Replica:  " + partitionConsumptionState.getReplicaId()
+          + " is already errored. Skipping incoming record with topic-partition: {} and offset: {}";
+      if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+      }
+      return false;
+    }
+
+    if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
+      KafkaKey key = record.getKey();
+      KafkaMessageEnvelope value = record.getValue();
+      if (key.isControlMessage()
+          && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
+        // Still allow END_OF_SEGMENT control message
+        return true;
+      }
+      // emit metric for unexpected messages
+      if (storeIngestionTask.isMetricsEmissionEnabled()) {
+        storeIngestionTask.getHostLevelIngestionStats().recordUnexpectedMessage();
+      }
+
+      // Report such kind of message once per minute to reduce logging volume
+      /*
+       * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
+       * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
+       *
+       * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
+       * incremental push feature of the store.
+       */
+      String message =
+          "The record was received after 'EOP', but the store: " + storeIngestionTask.getKafkaVersionTopic()
+              + " is neither hybrid nor incremental push enabled, so will skip it. Current records replica: {}";
+      if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+        LOGGER.warn(message, partitionConsumptionState.getReplicaId());
+      }
+      return false;
+    }
+    return true;
   }
 
   private void updateMetricsAndEnforceQuota(
@@ -682,8 +824,8 @@ public class StorePartitionDataReceiver
    * The caller of this function should only process this {@param consumerRecord} further if the return is
    * {@link DelegateConsumerRecordResult#QUEUED_TO_DRAINER}.
    *
-   * This function assumes {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord(PubSubMessage)} has been called which happens in
-   * {@link StorePartitionDataReceiver#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
+   * This function assumes {@link #shouldProcessRecord(PubSubMessage)} has been called which happens in
+   * {@link #produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
    * before calling this and the it was decided that this record needs to be processed. It does not perform any
    * validation check on the PartitionConsumptionState object to keep the goal of the function simple and not overload.
    *
