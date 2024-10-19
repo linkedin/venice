@@ -2814,41 +2814,41 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  /**
-   * Checks before producing local version topic.
-   *
-   * Extend this function when there is new check needed.
-   */
-  @Override
-  protected void validateRecordBeforeProducingToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      String kafkaUrl,
-      int kafkaClusterId) {
-    // Check whether the message is from local version topic; leader shouldn't consume from local VT and then produce
-    // back to VT again
-    // localKafkaClusterId will always be the regular one without "_sep" suffix so kafkaClusterId should be converted
-    // for comparison. Like-wise for the kafkaUrl.
-    if (kafkaClusterId == localKafkaClusterId
-        && consumerRecord.getTopicPartition().getPubSubTopic().equals(this.versionTopic)
-        && kafkaUrl.equals(this.localKafkaServer)) {
-      // N.B.: Ideally, the first two conditions should be sufficient, but for some reasons, in certain tests, the
-      // third condition also ends up being necessary. In any case, doing the cluster ID check should be a
-      // fast short-circuit in normal cases.
-      try {
-        int partitionId = partitionConsumptionState.getPartition();
-        setIngestionException(
-            partitionId,
-            new VeniceException(
-                "Store version " + this.kafkaVersionTopic + " partition " + partitionId
-                    + " is consuming from local version topic and producing back to local version topic"
-                    + ", kafkaClusterId = " + kafkaClusterId + ", kafkaUrl = " + kafkaUrl + ", this.localKafkaServer = "
-                    + this.localKafkaServer));
-      } catch (VeniceException offerToQueueException) {
-        setLastStoreIngestionException(offerToQueueException);
-      }
-    }
-  }
+  // /**
+  // * Checks before producing local version topic.
+  // *
+  // * Extend this function when there is new check needed.
+  // */
+  // @Override
+  // protected void validateRecordBeforeProducingToLocalKafka(
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+  // PartitionConsumptionState partitionConsumptionState,
+  // String kafkaUrl,
+  // int kafkaClusterId) {
+  // // Check whether the message is from local version topic; leader shouldn't consume from local VT and then produce
+  // // back to VT again
+  // // localKafkaClusterId will always be the regular one without "_sep" suffix so kafkaClusterId should be converted
+  // // for comparison. Like-wise for the kafkaUrl.
+  // if (kafkaClusterId == localKafkaClusterId
+  // && consumerRecord.getTopicPartition().getPubSubTopic().equals(this.versionTopic)
+  // && kafkaUrl.equals(this.localKafkaServer)) {
+  // // N.B.: Ideally, the first two conditions should be sufficient, but for some reasons, in certain tests, the
+  // // third condition also ends up being necessary. In any case, doing the cluster ID check should be a
+  // // fast short-circuit in normal cases.
+  // try {
+  // int partitionId = partitionConsumptionState.getPartition();
+  // setIngestionException(
+  // partitionId,
+  // new VeniceException(
+  // "Store version " + this.kafkaVersionTopic + " partition " + partitionId
+  // + " is consuming from local version topic and producing back to local version topic"
+  // + ", kafkaClusterId = " + kafkaClusterId + ", kafkaUrl = " + kafkaUrl + ", this.localKafkaServer = "
+  // + this.localKafkaServer));
+  // } catch (VeniceException offerToQueueException) {
+  // setLastStoreIngestionException(offerToQueueException);
+  // }
+  // }
+  // }
 
   // calculate the replication once per partition, checking Leader instance will make sure we calculate it just once
   // per partition.

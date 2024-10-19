@@ -682,11 +682,7 @@ public class StorePartitionDataReceiver
       // If we are here the message must be produced to local kafka or silently consumed.
       LeaderProducedRecordContext leaderProducedRecordContext;
       // No need to resolve cluster id and kafka url because sep topics are real time topic and it's not VT
-      storeIngestionTask.validateRecordBeforeProducingToLocalKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          kafkaUrl,
-          kafkaClusterId);
+      validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
         storeIngestionTask.recordRegionHybridConsumptionStats(
@@ -976,6 +972,41 @@ public class StorePartitionDataReceiver
       partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
     } else {
       produceCall.run();
+    }
+  }
+
+  /**
+   * Checks before producing local version topic.
+   *
+   * Extend this function when there is new check needed.
+   */
+  private void validateRecordBeforeProducingToLocalKafka(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      String kafkaUrl,
+      int kafkaClusterId) {
+    // Check whether the message is from local version topic; leader shouldn't consume from local VT and then produce
+    // back to VT again
+    // localKafkaClusterId will always be the regular one without "_sep" suffix so kafkaClusterId should be converted
+    // for comparison. Like-wise for the kafkaUrl.
+    if (kafkaClusterId == storeIngestionTask.getLocalKafkaClusterId()
+        && consumerRecord.getTopicPartition().getPubSubTopic().equals(storeIngestionTask.getVersionTopic())
+        && kafkaUrl.equals(storeIngestionTask.getLocalKafkaServer())) {
+      // N.B.: Ideally, the first two conditions should be sufficient, but for some reasons, in certain tests, the
+      // third condition also ends up being necessary. In any case, doing the cluster ID check should be a
+      // fast short-circuit in normal cases.
+      try {
+        int partitionId = partitionConsumptionState.getPartition();
+        storeIngestionTask.setIngestionException(
+            partitionId,
+            new VeniceException(
+                "Store version " + storeIngestionTask.getVersionTopic() + " partition " + partitionId
+                    + " is consuming from local version topic and producing back to local version topic"
+                    + ", kafkaClusterId = " + kafkaClusterId + ", kafkaUrl = " + kafkaUrl + ", this.localKafkaServer = "
+                    + storeIngestionTask.getLocalKafkaServer()));
+      } catch (VeniceException offerToQueueException) {
+        storeIngestionTask.setLastStoreIngestionException(offerToQueueException);
+      }
     }
   }
 
