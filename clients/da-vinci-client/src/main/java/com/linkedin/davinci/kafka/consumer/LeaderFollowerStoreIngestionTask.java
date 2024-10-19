@@ -33,14 +33,11 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
-import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
-import com.linkedin.venice.exceptions.validation.DuplicateDataException;
-import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -92,7 +89,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1261,6 +1257,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * If buffer replay is disable, all replicas will stick to version topic, no one is going to produce any message.
    */
+  @Override
   protected boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState) {
     if (!isLeader(partitionConsumptionState)) {
       return false; // Not leader
@@ -2280,78 +2277,79 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
-  public Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
-      String kafkaUrl,
-      PubSubTopicPartition topicPartition) {
-    PartitionConsumptionState partitionConsumptionState =
-        partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
-    if (partitionConsumptionState == null) {
-      // The partition is likely unsubscribed, will skip these messages.
-      LOGGER.warn(
-          "No partition consumption state for store version: {}, partition:{}, will filter out all the messages",
-          kafkaVersionTopic,
-          topicPartition.getPartitionNumber());
-      return Collections.emptyList();
-    }
-    boolean isEndOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-    if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
-      return records;
-    }
-    /**
-     * Just to note this code is getting executed in Leader only. Leader DIV check progress is always ahead of the
-     * actual data persisted on disk. Leader DIV check results will not be persisted on disk.
-     */
-    Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
-    while (iter.hasNext()) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
-      boolean isRealTimeMsg = record.getTopicPartition().getPubSubTopic().isRealTime();
-      try {
-        /**
-         * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
-         */
-        if (!isGlobalRtDivEnabled) {
-          validateMessage(
-              PartitionTracker.VERSION_TOPIC,
-              this.kafkaDataIntegrityValidatorForLeaders,
-              record,
-              isEndOfPushReceived,
-              partitionConsumptionState);
-        } else {
-          validateMessage(
-              PartitionTracker.TopicType.of(
-                  isRealTimeMsg
-                      ? PartitionTracker.TopicType.REALTIME_TOPIC_TYPE
-                      : PartitionTracker.TopicType.VERSION_TOPIC_TYPE,
-                  kafkaUrl),
-              this.kafkaDataIntegrityValidatorForLeaders,
-              record,
-              isEndOfPushReceived,
-              partitionConsumptionState);
-        }
-        versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-      } catch (FatalDataValidationException e) {
-        if (!isEndOfPushReceived) {
-          throw e;
-        }
-      } catch (DuplicateDataException e) {
-        /**
-         * Skip duplicated messages; leader must not produce duplicated messages from RT to VT, because leader will
-         * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
-         * messages to disk, and potentially rewind a k/v pair to an old value.
-         */
-        divErrorMetricCallback.accept(e);
-        LOGGER.debug(
-            "Skipping a duplicate record from: {} offset: {} for replica: {}",
-            record.getTopicPartition(),
-            record.getOffset(),
-            partitionConsumptionState.getReplicaId());
-        iter.remove();
-      }
-    }
-    return records;
-  }
+  // @Override
+  // public Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>
+  // validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+  // Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+  // String kafkaUrl,
+  // PubSubTopicPartition topicPartition) {
+  // PartitionConsumptionState partitionConsumptionState =
+  // partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
+  // if (partitionConsumptionState == null) {
+  // // The partition is likely unsubscribed, will skip these messages.
+  // LOGGER.warn(
+  // "No partition consumption state for store version: {}, partition:{}, will filter out all the messages",
+  // kafkaVersionTopic,
+  // topicPartition.getPartitionNumber());
+  // return Collections.emptyList();
+  // }
+  // boolean isEndOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
+  // if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
+  // return records;
+  // }
+  // /**
+  // * Just to note this code is getting executed in Leader only. Leader DIV check progress is always ahead of the
+  // * actual data persisted on disk. Leader DIV check results will not be persisted on disk.
+  // */
+  // Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
+  // while (iter.hasNext()) {
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
+  // boolean isRealTimeMsg = record.getTopicPartition().getPubSubTopic().isRealTime();
+  // try {
+  // /**
+  // * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
+  // */
+  // if (!isGlobalRtDivEnabled) {
+  // validateMessage(
+  // PartitionTracker.VERSION_TOPIC,
+  // this.kafkaDataIntegrityValidatorForLeaders,
+  // record,
+  // isEndOfPushReceived,
+  // partitionConsumptionState);
+  // } else {
+  // validateMessage(
+  // PartitionTracker.TopicType.of(
+  // isRealTimeMsg
+  // ? PartitionTracker.TopicType.REALTIME_TOPIC_TYPE
+  // : PartitionTracker.TopicType.VERSION_TOPIC_TYPE,
+  // kafkaUrl),
+  // this.kafkaDataIntegrityValidatorForLeaders,
+  // record,
+  // isEndOfPushReceived,
+  // partitionConsumptionState);
+  // }
+  // versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+  // } catch (FatalDataValidationException e) {
+  // if (!isEndOfPushReceived) {
+  // throw e;
+  // }
+  // } catch (DuplicateDataException e) {
+  // /**
+  // * Skip duplicated messages; leader must not produce duplicated messages from RT to VT, because leader will
+  // * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
+  // * messages to disk, and potentially rewind a k/v pair to an old value.
+  // */
+  // divErrorMetricCallback.accept(e);
+  // LOGGER.debug(
+  // "Skipping a duplicate record from: {} offset: {} for replica: {}",
+  // record.getTopicPartition(),
+  // record.getOffset(),
+  // partitionConsumptionState.getReplicaId());
+  // iter.remove();
+  // }
+  // }
+  // return records;
+  // }
 
   /**
    * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
@@ -4025,5 +4023,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       produceCall.run();
     }
+  }
+
+  @Override
+  public KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
+    return kafkaDataIntegrityValidatorForLeaders;
   }
 }
