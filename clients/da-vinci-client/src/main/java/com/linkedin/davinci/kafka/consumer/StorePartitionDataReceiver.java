@@ -6,9 +6,11 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
@@ -17,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
 import java.util.ArrayList;
@@ -147,7 +150,7 @@ public class StorePartitionDataReceiver
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
 
-      totalBytesRead += storeIngestionTask.handleSingleMessage(
+      totalBytesRead += handleSingleMessage(
           new PubSubMessageProcessedResultWrapper<>(record),
           topicPartition,
           partitionConsumptionState,
@@ -231,7 +234,7 @@ public class StorePartitionDataReceiver
                 beforeProcessingBatchRecordsTimestampMs);
 
         for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
-          totalBytesRead += storeIngestionTask.handleSingleMessage(
+          totalBytesRead += handleSingleMessage(
               processedRecord,
               topicPartition,
               partitionConsumptionState,
@@ -369,6 +372,73 @@ public class StorePartitionDataReceiver
 
       Thread.sleep(StoreIngestionTask.SCHEMA_POLLING_DELAY_MS);
     }
+  }
+
+  private int handleSingleMessage(
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PubSubTopicPartition topicPartition,
+      PartitionConsumptionState partitionConsumptionState,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs,
+      boolean metricsEnabled,
+      ValueHolder<Double> elapsedTimeForPuttingIntoQueue) throws InterruptedException {
+    final int partition = topicPartition.getPartitionNumber();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = consumerRecordWrapper.getMessage();
+    if (record.getKey().isControlMessage()) {
+      ControlMessage controlMessage = (ControlMessage) record.getValue().payloadUnion;
+      if (ControlMessageType.valueOf(controlMessage.controlMessageType) == ControlMessageType.START_OF_PUSH) {
+        /**
+         * N.B.: The rest of the {@link ControlMessage} types are handled by: {@link StoreIngestionTask#processControlMessage}
+         *
+         * But for the SOP in particular, we want to process it here, at the start of the pipeline, to ensure that the
+         * {@link StoreVersionState} is properly primed, as other functions below this point, but prior to being
+         * enqueued into the {@link StoreBufferService} rely on this state to be there.
+         */
+        storeIngestionTask.processStartOfPush(
+            record.getValue(),
+            controlMessage,
+            record.getTopicPartition().getPartitionNumber(),
+            storeIngestionTask.getPartitionConsumptionState(partition));
+      }
+    }
+
+    // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
+    // this call.
+    StoreIngestionTask.DelegateConsumerRecordResult delegateConsumerRecordResult =
+        storeIngestionTask.delegateConsumerRecord(
+            consumerRecordWrapper,
+            partition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs);
+
+    switch (delegateConsumerRecordResult) {
+      case QUEUED_TO_DRAINER:
+        long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
+
+        // blocking call
+        storeIngestionTask.putConsumerRecord(record, partition, kafkaUrl, beforeProcessingPerRecordTimestampNs);
+
+        if (metricsEnabled) {
+          elapsedTimeForPuttingIntoQueue.setValue(
+              elapsedTimeForPuttingIntoQueue.getValue() + LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS));
+        }
+        break;
+      case PRODUCED_TO_KAFKA:
+      case SKIPPED_MESSAGE:
+        break;
+      default:
+        throw new VeniceException(
+            storeIngestionTask.getIngestionTaskName() + " received unknown DelegateConsumerRecordResult enum for "
+                + record.getTopicPartition());
+    }
+    // Update the latest message consumed time
+    partitionConsumptionState.setLatestMessageConsumedTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
+
+    return record.getPayloadSize();
   }
 
   @Override
