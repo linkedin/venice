@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
@@ -10,6 +11,7 @@ import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
@@ -38,6 +40,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -53,6 +56,7 @@ import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -68,21 +72,33 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class StorePartitionDataReceiver
     implements ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> {
+  private final Logger LOGGER;
+  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
+
   private final StoreIngestionTask storeIngestionTask;
   private final PubSubTopicPartition topicPartition;
   private final String kafkaUrl;
   private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
-  private final Logger LOGGER;
 
   private long receivedRecordsCount;
+
+  private static class ReusableObjects {
+    // reuse buffer for rocksDB value object
+    final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
+    final BinaryDecoder binaryDecoder =
+        AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
+  }
+
+  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
   public StorePartitionDataReceiver(
       StoreIngestionTask storeIngestionTask,
@@ -1538,7 +1554,7 @@ public class StorePartitionDataReceiver
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
-        () -> storeIngestionTask.getValueBytesForKey(
+        () -> getValueBytesForKey(
             partitionConsumptionState,
             keyBytes,
             consumerRecord.getTopicPartition(),
@@ -2042,6 +2058,72 @@ public class StorePartitionDataReceiver
             "Timestamp found to have gone backwards!! Invalid replication metadata result: {}",
             mergeConflictResult.getRmdRecord());
       }
+    }
+  }
+
+  /**
+   * Get the value bytes for a key from {@link PartitionConsumptionState.TransientRecord} or from disk. The assumption
+   * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
+   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
+   * @param key The key bytes of the incoming record.
+   * @param topicPartition The {@link PubSubTopicPartition} from which the incoming record was consumed
+   * @return
+   */
+  private ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer valueManifestContainer,
+      long currentTimeForMetricsMs) {
+    ByteBufferValueRecord<ByteBuffer> originalValue = null;
+    // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
+    // get it from DB.
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
+    if (transientRecord == null) {
+      long lookupStartTimeInNS = System.nanoTime();
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
+      BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
+      originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
+          storeIngestionTask.getStorageEngine(),
+          topicPartition.getPartitionNumber(),
+          ByteBuffer.wrap(key),
+          storeIngestionTask.isChunked(),
+          reusedRawValue,
+          binaryDecoder,
+          RawBytesStoreDeserializerCache.getInstance(),
+          storeIngestionTask.getCompressor().get(),
+          valueManifestContainer);
+      storeIngestionTask.getHostLevelIngestionStats()
+          .recordIngestionValueBytesLookUpLatency(
+              LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
+              currentTimeForMetricsMs);
+    } else {
+      storeIngestionTask.getHostLevelIngestionStats().recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
+      // construct originalValue from this transient record only if it's not null.
+      if (transientRecord.getValue() != null) {
+        if (valueManifestContainer != null) {
+          valueManifestContainer.setManifest(transientRecord.getValueManifest());
+        }
+        originalValue = new ByteBufferValueRecord<>(
+            getCurrentValueFromTransientRecord(transientRecord),
+            transientRecord.getValueSchemaId());
+      }
+    }
+    return originalValue;
+  }
+
+  ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
+    ByteBuffer compressedValue =
+        ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+    try {
+      return storeIngestionTask.getCompressionStrategy().isCompressionEnabled()
+          ? storeIngestionTask.getCompressor()
+              .get()
+              .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
+          : compressedValue;
+    } catch (IOException e) {
+      throw new VeniceException(e);
     }
   }
 

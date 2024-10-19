@@ -5,6 +5,7 @@ import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
@@ -15,10 +16,8 @@ import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
-import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -38,14 +37,12 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -56,7 +53,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
-import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -67,7 +63,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
-  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
+  // private static final byte[] BINARY_DECODER_PARAM = new byte[16];
 
   private final int rmdProtocolVersionId;
   private final MergeConflictResolver mergeConflictResolver;
@@ -76,15 +72,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
   // private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
-
-  private static class ReusableObjects {
-    // reuse buffer for rocksDB value object
-    final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
-    final BinaryDecoder binaryDecoder =
-        AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
-  }
-
-  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
+  //
+  // private static class ReusableObjects {
+  // // reuse buffer for rocksDB value object
+  // final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
+  // final BinaryDecoder binaryDecoder =
+  // AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
+  // }
+  //
+  // private final ThreadLocal<ReusableObjects> threadLocalReusableObjects =
+  // ThreadLocal.withInitial(ReusableObjects::new);
 
   public ActiveActiveStoreIngestionTask(
       StorageService storageService,
@@ -724,72 +721,72 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // }
   // }
   // }
-
-  /**
-   * Get the value bytes for a key from {@link PartitionConsumptionState.TransientRecord} or from disk. The assumption
-   * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
-   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
-   * @param key The key bytes of the incoming record.
-   * @param topicPartition The {@link PubSubTopicPartition} from which the incoming record was consumed
-   * @return
-   */
-  @Override
-  public ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] key,
-      PubSubTopicPartition topicPartition,
-      ChunkedValueManifestContainer valueManifestContainer,
-      long currentTimeForMetricsMs) {
-    ByteBufferValueRecord<ByteBuffer> originalValue = null;
-    // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
-    // get it from DB.
-    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
-    if (transientRecord == null) {
-      long lookupStartTimeInNS = System.nanoTime();
-      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-      ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
-      BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
-      originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
-          storageEngine,
-          topicPartition.getPartitionNumber(),
-          ByteBuffer.wrap(key),
-          isChunked,
-          reusedRawValue,
-          binaryDecoder,
-          RawBytesStoreDeserializerCache.getInstance(),
-          compressor.get(),
-          valueManifestContainer);
-      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
-          LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
-          currentTimeForMetricsMs);
-    } else {
-      hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
-      // construct originalValue from this transient record only if it's not null.
-      if (transientRecord.getValue() != null) {
-        if (valueManifestContainer != null) {
-          valueManifestContainer.setManifest(transientRecord.getValueManifest());
-        }
-        originalValue = new ByteBufferValueRecord<>(
-            getCurrentValueFromTransientRecord(transientRecord),
-            transientRecord.getValueSchemaId());
-      }
-    }
-    return originalValue;
-  }
-
-  ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
-    ByteBuffer compressedValue =
-        ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
-    try {
-      return getCompressionStrategy().isCompressionEnabled()
-          ? getCompressor().get()
-              .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
-          : compressedValue;
-    } catch (IOException e) {
-      throw new VeniceException(e);
-    }
-  }
-
+  //
+  // /**
+  // * Get the value bytes for a key from {@link PartitionConsumptionState.TransientRecord} or from disk. The assumption
+  // * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
+  // * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
+  // * @param key The key bytes of the incoming record.
+  // * @param topicPartition The {@link PubSubTopicPartition} from which the incoming record was consumed
+  // * @return
+  // */
+  // @Override
+  // public ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
+  // PartitionConsumptionState partitionConsumptionState,
+  // byte[] key,
+  // PubSubTopicPartition topicPartition,
+  // ChunkedValueManifestContainer valueManifestContainer,
+  // long currentTimeForMetricsMs) {
+  // ByteBufferValueRecord<ByteBuffer> originalValue = null;
+  // // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
+  // // get it from DB.
+  // PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
+  // if (transientRecord == null) {
+  // long lookupStartTimeInNS = System.nanoTime();
+  // ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+  // ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
+  // BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
+  // originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
+  // storageEngine,
+  // topicPartition.getPartitionNumber(),
+  // ByteBuffer.wrap(key),
+  // isChunked,
+  // reusedRawValue,
+  // binaryDecoder,
+  // RawBytesStoreDeserializerCache.getInstance(),
+  // compressor.get(),
+  // valueManifestContainer);
+  // hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
+  // LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
+  // currentTimeForMetricsMs);
+  // } else {
+  // hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
+  // // construct originalValue from this transient record only if it's not null.
+  // if (transientRecord.getValue() != null) {
+  // if (valueManifestContainer != null) {
+  // valueManifestContainer.setManifest(transientRecord.getValueManifest());
+  // }
+  // originalValue = new ByteBufferValueRecord<>(
+  // getCurrentValueFromTransientRecord(transientRecord),
+  // transientRecord.getValueSchemaId());
+  // }
+  // }
+  // return originalValue;
+  // }
+  //
+  // ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
+  // ByteBuffer compressedValue =
+  // ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+  // try {
+  // return getCompressionStrategy().isCompressionEnabled()
+  // ? getCompressor().get()
+  // .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
+  // : compressedValue;
+  // } catch (IOException e) {
+  // throw new VeniceException(e);
+  // }
+  // }
+  //
   // /**
   // * This function parses the {@link MergeConflictResult} and decides if the update should be ignored or emit a PUT or
   // a

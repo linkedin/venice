@@ -177,7 +177,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     VeniceCompressor compressor = getCompressor(strategy);
     when(ingestionTask.getCompressor()).thenReturn(Lazy.of(() -> compressor));
     when(ingestionTask.getCompressionStrategy()).thenReturn(strategy);
-    when(ingestionTask.getCurrentValueFromTransientRecord(any())).thenCallRealMethod();
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        new StorePartitionDataReceiver(ingestionTask, topicPartition, "dummyUrl", 0);
 
     byte[] dataBytes = "Hello World".getBytes();
     byte[] transientRecordValueBytes = dataBytes;
@@ -192,7 +194,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(transientRecord.getValue()).thenReturn(transientRecordValueBytes);
     when(transientRecord.getValueOffset()).thenReturn(startPosition);
     when(transientRecord.getValueLen()).thenReturn(dataLength);
-    ByteBuffer result = ingestionTask.getCurrentValueFromTransientRecord(transientRecord);
+    ByteBuffer result = storePartitionDataReceiver.getCurrentValueFromTransientRecord(transientRecord);
     Assert.assertEquals(result.remaining(), dataBytes.length);
     byte[] resultByteArray = new byte[result.remaining()];
     result.get(resultByteArray);

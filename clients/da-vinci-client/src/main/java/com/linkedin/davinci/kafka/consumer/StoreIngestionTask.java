@@ -45,7 +45,6 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
-import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ChunkAssembler;
@@ -4765,15 +4764,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public int getRmdProtocolVersionId() {
     throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
-  }
-
-  public ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] key,
-      PubSubTopicPartition topicPartition,
-      ChunkedValueManifestContainer valueManifestContainer,
-      long currentTimeForMetricsMs) {
-    throw new VeniceException("getValueBytesForKey() should only be called in active active mode");
   }
 
   RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
