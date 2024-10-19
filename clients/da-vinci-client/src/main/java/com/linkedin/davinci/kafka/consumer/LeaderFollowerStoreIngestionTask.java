@@ -29,7 +29,6 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
@@ -72,7 +71,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
@@ -1256,7 +1254,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return (!versionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
   }
 
-  protected static boolean isLeader(PartitionConsumptionState partitionConsumptionState) {
+  public static boolean isLeader(PartitionConsumptionState partitionConsumptionState) {
     return Objects.equals(partitionConsumptionState.getLeaderFollowerState(), LEADER);
   }
 
@@ -3157,55 +3155,55 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  /**
-   * Compresses data in a bytebuffer when consuming from rt as a leader node and compression is enabled for the store
-   * version for which we're consuming data.
-   *
-   * @param partition which partition we're acting on so as to determine the PartitionConsumptionState
-   * @param data the data that we might compress
-   * @return a bytebuffer that's either the original bytebuffer or a new one depending on if we compressed it.
-   */
-  @Override
-  protected ByteBuffer maybeCompressData(
-      int partition,
-      ByteBuffer data,
-      PartitionConsumptionState partitionConsumptionState) {
-    // To handle delete operations
-    if (data == null) {
-      return null;
-    }
-    if (shouldCompressData(partitionConsumptionState)) {
-      try {
-        long startTimeInNS = System.nanoTime();
-        // We need to expand the front of the returned bytebuffer to make room for schema header insertion
-        ByteBuffer result = compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
-        hostLevelIngestionStats.recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
-        return result;
-      } catch (IOException e) {
-        // throw a loud exception if something goes wrong here
-        throw new RuntimeException(
-            String.format(
-                "Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
-                partition,
-                partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
-                compressor.getClass().getName()),
-            e);
-      }
-    }
-    return data;
-  }
-
-  protected boolean shouldCompressData(PartitionConsumptionState partitionConsumptionState) {
-    if (!isLeader(partitionConsumptionState)) {
-      return false; // Not leader, don't compress
-    }
-    PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    if (!realTimeTopic.equals(leaderTopic)) {
-      return false; // We're consuming from version topic (don't compress it)
-    }
-    return !compressionStrategy.equals(CompressionStrategy.NO_OP);
-  }
-
+  // /**
+  // * Compresses data in a bytebuffer when consuming from rt as a leader node and compression is enabled for the store
+  // * version for which we're consuming data.
+  // *
+  // * @param partition which partition we're acting on so as to determine the PartitionConsumptionState
+  // * @param data the data that we might compress
+  // * @return a bytebuffer that's either the original bytebuffer or a new one depending on if we compressed it.
+  // */
+  // @Override
+  // protected ByteBuffer maybeCompressData(
+  // int partition,
+  // ByteBuffer data,
+  // PartitionConsumptionState partitionConsumptionState) {
+  // // To handle delete operations
+  // if (data == null) {
+  // return null;
+  // }
+  // if (shouldCompressData(partitionConsumptionState)) {
+  // try {
+  // long startTimeInNS = System.nanoTime();
+  // // We need to expand the front of the returned bytebuffer to make room for schema header insertion
+  // ByteBuffer result = compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
+  // hostLevelIngestionStats.recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+  // return result;
+  // } catch (IOException e) {
+  // // throw a loud exception if something goes wrong here
+  // throw new RuntimeException(
+  // String.format(
+  // "Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
+  // partition,
+  // partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
+  // compressor.getClass().getName()),
+  // e);
+  // }
+  // }
+  // return data;
+  // }
+  //
+  // protected boolean shouldCompressData(PartitionConsumptionState partitionConsumptionState) {
+  // if (!isLeader(partitionConsumptionState)) {
+  // return false; // Not leader, don't compress
+  // }
+  // PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+  // if (!realTimeTopic.equals(leaderTopic)) {
+  // return false; // We're consuming from version topic (don't compress it)
+  // }
+  // return !compressionStrategy.equals(CompressionStrategy.NO_OP);
+  // }
+  //
   // @Override
   // protected PubSubMessageProcessedResult processMessage(
   // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,

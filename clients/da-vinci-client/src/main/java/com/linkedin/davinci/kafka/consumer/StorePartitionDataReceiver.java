@@ -18,6 +18,7 @@ import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -1271,7 +1272,7 @@ public class StorePartitionDataReceiver
     switch (msgType) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
-        put.putValue = storeIngestionTask.maybeCompressData(
+        put.putValue = maybeCompressData(
             consumerRecord.getTopicPartition().getPartitionNumber(),
             put.putValue,
             partitionConsumptionState);
@@ -1662,7 +1663,7 @@ public class StorePartitionDataReceiver
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
-      final ByteBuffer updatedValueBytes = storeIngestionTask.maybeCompressData(
+      final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
           mergeConflictResult.getNewValue(),
           partitionConsumptionState);
@@ -2059,6 +2060,49 @@ public class StorePartitionDataReceiver
             mergeConflictResult.getRmdRecord());
       }
     }
+  }
+
+  private ByteBuffer maybeCompressData(
+      int partition,
+      ByteBuffer data,
+      PartitionConsumptionState partitionConsumptionState) {
+    // To handle delete operations
+    if (data == null) {
+      return null;
+    }
+    if (shouldCompressData(partitionConsumptionState)) {
+      try {
+        long startTimeInNS = System.nanoTime();
+        // We need to expand the front of the returned bytebuffer to make room for schema header insertion
+        ByteBuffer result = storeIngestionTask.getCompressor().get().compress(data, ByteUtils.SIZE_OF_INT);
+        storeIngestionTask.getHostLevelIngestionStats()
+            .recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+        return result;
+      } catch (IOException e) {
+        // throw a loud exception if something goes wrong here
+        throw new RuntimeException(
+            String.format(
+                "Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
+                partition,
+                partitionConsumptionState.getOffsetRecord()
+                    .getLeaderTopic(storeIngestionTask.getPubSubTopicRepository()),
+                storeIngestionTask.getCompressor().getClass().getName()),
+            e);
+      }
+    }
+    return data;
+  }
+
+  private boolean shouldCompressData(PartitionConsumptionState partitionConsumptionState) {
+    if (!LeaderFollowerStoreIngestionTask.isLeader(partitionConsumptionState)) {
+      return false; // Not leader, don't compress
+    }
+    PubSubTopic leaderTopic =
+        partitionConsumptionState.getOffsetRecord().getLeaderTopic(storeIngestionTask.getPubSubTopicRepository());
+    if (!storeIngestionTask.getRealTimeTopic().equals(leaderTopic)) {
+      return false; // We're consuming from version topic (don't compress it)
+    }
+    return !storeIngestionTask.getCompressionStrategy().equals(CompressionStrategy.NO_OP);
   }
 
   /**
