@@ -7,10 +7,12 @@ import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Vali
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -30,7 +32,10 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -58,6 +63,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -95,7 +101,7 @@ public class StorePartitionDataReceiver
       IngestionBatchProcessor.ProcessingFunction processingFunction =
           (storeIngestionTask.isActiveActiveReplicationEnabled())
               ? storeIngestionTask::processActiveActiveMessage
-              : storeIngestionTask::processMessage;
+              : this::processMessage;
       KeyLevelLocksManager lockManager = (storeIngestionTask.isActiveActiveReplicationEnabled())
           ? storeIngestionTask.getKeyLevelLocksManager().get()
           : null;
@@ -1062,17 +1068,14 @@ public class StorePartitionDataReceiver
         && consumerRecordWrapper.getProcessedResult().getWriteComputeResultWrapper() != null) {
       writeComputeResultWrapper = consumerRecordWrapper.getProcessedResult().getWriteComputeResultWrapper();
     } else {
-      writeComputeResultWrapper =
-          storeIngestionTask
-              .processMessage(
-                  consumerRecord,
-                  partitionConsumptionState,
-                  partition,
-                  kafkaUrl,
-                  kafkaClusterId,
-                  beforeProcessingRecordTimestampNs,
-                  beforeProcessingBatchRecordsTimestampMs)
-              .getWriteComputeResultWrapper();
+      writeComputeResultWrapper = processMessage(
+          consumerRecord,
+          partitionConsumptionState,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
 
     if (msgType.equals(MessageType.UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
@@ -1225,6 +1228,160 @@ public class StorePartitionDataReceiver
             kafkaClusterId,
             beforeProcessingRecordTimestampNs);
         break;
+
+      default:
+        throw new VeniceMessageException(
+            storeIngestionTask.getIngestionTaskName() + " : Invalid/Unrecognized operation type submitted: "
+                + kafkaValue.messageType);
+    }
+  }
+
+  private PubSubMessageProcessedResult processMessage(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+    switch (msgType) {
+      case PUT:
+        Put put = (Put) kafkaValue.payloadUnion;
+        put.putValue = storeIngestionTask.maybeCompressData(
+            consumerRecord.getTopicPartition().getPartitionNumber(),
+            put.putValue,
+            partitionConsumptionState);
+        ByteBuffer putValue = put.putValue;
+
+        /**
+         * For WC enabled stores update the transient record map with the latest {key,value}. This is needed only for messages
+         * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
+         */
+        if (storeIngestionTask.isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()) {
+          partitionConsumptionState.setTransientRecord(
+              kafkaClusterId,
+              consumerRecord.getOffset(),
+              keyBytes,
+              putValue.array(),
+              putValue.position(),
+              putValue.remaining(),
+              put.schemaId,
+              null);
+        }
+
+        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(put, null, false));
+
+      case UPDATE:
+        /**
+         *  1. Currently, we support chunking only for messages produced on VT topic during batch part of the ingestion
+         *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
+         *
+         *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
+         *     (non chunked). Decoding should succeed using the simplified API
+         *     {@link ChunkingAdapter#constructValue}
+         *
+         *  2. We always use the latest value schema to deserialize stored value bytes.
+         *  3. We always use the partial update schema with an ID combination of the latest value schema ID + update schema ID
+         *     to deserialize the incoming Update request payload bytes.
+         *
+         *  The reason for 2 and 3 is that we depend on the fact that the latest value schema must be a superset schema
+         *  that contains all value fields that ever existed in a store value schema. So, always using a superset schema
+         *  as the reader schema avoids data loss where the serialized bytes contain data for a field, however, the
+         *  deserialized record does not contain that field because the reader schema does not contain that field.
+         */
+        Update update = (Update) kafkaValue.payloadUnion;
+        final int readerValueSchemaId;
+        final int readerUpdateProtocolVersion;
+        final String storeName = storeIngestionTask.getStoreName();
+        if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
+          DerivedSchemaEntry latestDerivedSchemaEntry =
+              storeIngestionTask.getSchemaRepo().getLatestDerivedSchema(storeName);
+          readerValueSchemaId = latestDerivedSchemaEntry.getValueSchemaID();
+          readerUpdateProtocolVersion = latestDerivedSchemaEntry.getId();
+        } else {
+          SchemaEntry supersetSchemaEntry = storeIngestionTask.getSchemaRepo().getSupersetSchema(storeName);
+          if (supersetSchemaEntry == null) {
+            throw new IllegalStateException("Cannot find superset schema for store: " + storeName);
+          }
+          readerValueSchemaId = supersetSchemaEntry.getId();
+          readerUpdateProtocolVersion = update.updateSchemaId;
+        }
+        ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+        final GenericRecord currValue = storeIngestionTask.readStoredValueRecord(
+            partitionConsumptionState,
+            keyBytes,
+            readerValueSchemaId,
+            consumerRecord.getTopicPartition(),
+            valueManifestContainer);
+
+        final byte[] updatedValueBytes;
+        final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
+
+        try {
+          long writeComputeStartTimeInNS = System.nanoTime();
+          // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call
+          // 'maybeCompress'.
+          updatedValueBytes = storeIngestionTask.getCompressor()
+              .get()
+              .compress(
+                  storeIngestionTask.getStoreWriteComputeHandler()
+                      .applyWriteCompute(
+                          currValue,
+                          update.schemaId,
+                          readerValueSchemaId,
+                          update.updateValue,
+                          update.updateSchemaId,
+                          readerUpdateProtocolVersion));
+          storeIngestionTask.getHostLevelIngestionStats()
+              .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
+        } catch (Exception e) {
+          storeIngestionTask.setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
+          throw new RuntimeException(e);
+        }
+
+        if (updatedValueBytes == null) {
+          if (currValue != null) {
+            throw new IllegalStateException(
+                "Detect a situation where the current value exists and the Write Compute request"
+                    + "deletes the current value. It is unexpected because Write Compute only supports partial update and does "
+                    + "not support record value deletion.");
+          } else {
+            // No-op. The fact that currValue does not exist on the leader means currValue does not exist on the
+            // follower
+            // either. So, there is no need to tell the follower replica to do anything.
+            return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
+          }
+        } else {
+          partitionConsumptionState.setTransientRecord(
+              kafkaClusterId,
+              consumerRecord.getOffset(),
+              keyBytes,
+              updatedValueBytes,
+              0,
+              updatedValueBytes.length,
+              readerValueSchemaId,
+              null);
+
+          ByteBuffer updateValueWithSchemaId =
+              ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), readerValueSchemaId, false);
+
+          Put updatedPut = new Put();
+          updatedPut.putValue = updateValueWithSchemaId;
+          updatedPut.schemaId = readerValueSchemaId;
+          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(updatedPut, oldValueManifest, false));
+        }
+      case DELETE:
+        /**
+         * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
+         */
+        if (storeIngestionTask.isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()) {
+          partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
+        }
+        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false));
 
       default:
         throw new VeniceMessageException(

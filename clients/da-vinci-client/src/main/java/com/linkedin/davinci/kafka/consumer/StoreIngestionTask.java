@@ -38,6 +38,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -159,6 +160,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -4740,14 +4742,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs);
 
-  protected abstract PubSubMessageProcessedResult processMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
+  protected abstract ByteBuffer maybeCompressData(
       int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long beforeProcessingBatchRecordsTimestampMs);
+      ByteBuffer data,
+      PartitionConsumptionState partitionConsumptionState);
+
+  protected abstract GenericRecord readStoredValueRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int readerValueSchemaID,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer);
 
   protected PubSubMessageProcessedResult processActiveActiveMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
@@ -4768,12 +4773,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
   }
 
+  public abstract StoreWriteComputeProcessor getStoreWriteComputeHandler();
+
   protected abstract Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
       PartitionConsumptionState partitionConsumptionState);
 
   protected abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);
 
   protected abstract boolean hasViewWriters();
+
+  void setWriteComputeFailureCode(int code) {
+    this.writeComputeFailureCode = code;
+  }
 
   public ExecutorService getParallelProcessingThreadPool() {
     return parallelProcessingThreadPool;
