@@ -4781,16 +4781,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throw new VeniceException("processActiveActiveMessage() should only be called in active active mode");
   }
 
-  protected void producePutOrDeleteToKafka(
-      MergeConflictResultWrapper mergeConflictResultWrapper,
+  protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    throw new VeniceException("producePutOrDeleteToKafka() should only be called in active active mode");
+      ByteBuffer updatedValueBytes,
+      ByteBuffer updatedRmdBytes,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      int valueSchemaId,
+      boolean resultReuseInput) {
+    throw new VeniceException("getProduceToTopicFunction() should only be called in active active mode");
+  }
+
+  public AggVersionedIngestionStats getAggVersionedIngestionStats() {
+    throw new VeniceException("getAggVersionedIngestionStats() should only be called in active active mode");
+  }
+
+  public int getRmdProtocolVersionId() {
+    throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
   }
 
   protected abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);

@@ -51,7 +51,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ChunkAwareCallback;
-import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -798,97 +797,97 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
-  /**
-   * This function parses the {@link MergeConflictResult} and decides if the update should be ignored or emit a PUT or a
-   * DELETE record to VT.
-   * <p>
-   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
-   * this function.
-   *
-   * @param mergeConflictResultWrapper       The result of conflict resolution.
-   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
-   * @param key                       The key bytes of the incoming record.
-   * @param consumerRecord            The {@link PubSubMessage} for the current record.
-   * @param partition
-   * @param kafkaUrl
-   */
-  @Override
-  protected void producePutOrDeleteToKafka(
-      MergeConflictResultWrapper mergeConflictResultWrapper,
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] key,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
-    ByteBuffer updatedValueBytes = mergeConflictResultWrapper.getUpdatedValueBytes();
-    ByteBuffer updatedRmdBytes = mergeConflictResultWrapper.getUpdatedRmdBytes();
-    final int valueSchemaId = mergeConflictResult.getValueSchemaId();
-
-    ChunkedValueManifest oldValueManifest = mergeConflictResultWrapper.getOldValueManifestContainer().getManifest();
-    ChunkedValueManifest oldRmdManifest = mergeConflictResultWrapper.getOldRmdWithValueSchemaId() == null
-        ? null
-        : mergeConflictResultWrapper.getOldRmdWithValueSchemaId().getRmdManifest();
-    // finally produce
-    if (mergeConflictResultWrapper.getUpdatedValueBytes() == null) {
-      hostLevelIngestionStats.recordTombstoneCreatedDCR();
-      aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      Delete deletePayload = new Delete();
-      deletePayload.schemaId = valueSchemaId;
-      deletePayload.replicationMetadataVersionId = rmdProtocolVersionId;
-      deletePayload.replicationMetadataPayload = mergeConflictResultWrapper.getUpdatedRmdBytes();
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
-          (callback, sourceTopicOffset) -> partitionConsumptionState.getVeniceWriterLazyRef()
-              .get()
-              .delete(
-                  key,
-                  callback,
-                  sourceTopicOffset,
-                  APP_DEFAULT_LOGICAL_TS,
-                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
-                  oldValueManifest,
-                  oldRmdManifest);
-      LeaderProducedRecordContext leaderProducedRecordContext =
-          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), key, deletePayload);
-      produceToLocalKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          leaderProducedRecordContext,
-          produceToTopicFunction,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
-    } else {
-      Put updatedPut = new Put();
-      updatedPut.putValue = ByteUtils
-          .prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, mergeConflictResult.doesResultReuseInput());
-      updatedPut.schemaId = valueSchemaId;
-      updatedPut.replicationMetadataVersionId = rmdProtocolVersionId;
-      updatedPut.replicationMetadataPayload = updatedRmdBytes;
-
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
-          partitionConsumptionState,
-          key,
-          updatedValueBytes,
-          updatedRmdBytes,
-          oldValueManifest,
-          oldRmdManifest,
-          valueSchemaId,
-          mergeConflictResult.doesResultReuseInput());
-      produceToLocalKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
-          produceToTopicFunction,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
-    }
-  }
+//  /**
+//   * This function parses the {@link MergeConflictResult} and decides if the update should be ignored or emit a PUT or a
+//   * DELETE record to VT.
+//   * <p>
+//   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
+//   * this function.
+//   *
+//   * @param mergeConflictResultWrapper       The result of conflict resolution.
+//   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
+//   * @param key                       The key bytes of the incoming record.
+//   * @param consumerRecord            The {@link PubSubMessage} for the current record.
+//   * @param partition
+//   * @param kafkaUrl
+//   */
+//  @Override
+//  protected void producePutOrDeleteToKafka(
+//      MergeConflictResultWrapper mergeConflictResultWrapper,
+//      PartitionConsumptionState partitionConsumptionState,
+//      byte[] key,
+//      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+//      int partition,
+//      String kafkaUrl,
+//      int kafkaClusterId,
+//      long beforeProcessingRecordTimestampNs) {
+//    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
+//    ByteBuffer updatedValueBytes = mergeConflictResultWrapper.getUpdatedValueBytes();
+//    ByteBuffer updatedRmdBytes = mergeConflictResultWrapper.getUpdatedRmdBytes();
+//    final int valueSchemaId = mergeConflictResult.getValueSchemaId();
+//
+//    ChunkedValueManifest oldValueManifest = mergeConflictResultWrapper.getOldValueManifestContainer().getManifest();
+//    ChunkedValueManifest oldRmdManifest = mergeConflictResultWrapper.getOldRmdWithValueSchemaId() == null
+//        ? null
+//        : mergeConflictResultWrapper.getOldRmdWithValueSchemaId().getRmdManifest();
+//    // finally produce
+//    if (mergeConflictResultWrapper.getUpdatedValueBytes() == null) {
+//      hostLevelIngestionStats.recordTombstoneCreatedDCR();
+//      aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
+//      Delete deletePayload = new Delete();
+//      deletePayload.schemaId = valueSchemaId;
+//      deletePayload.replicationMetadataVersionId = rmdProtocolVersionId;
+//      deletePayload.replicationMetadataPayload = mergeConflictResultWrapper.getUpdatedRmdBytes();
+//      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
+//          (callback, sourceTopicOffset) -> partitionConsumptionState.getVeniceWriterLazyRef()
+//              .get()
+//              .delete(
+//                  key,
+//                  callback,
+//                  sourceTopicOffset,
+//                  APP_DEFAULT_LOGICAL_TS,
+//                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
+//                  oldValueManifest,
+//                  oldRmdManifest);
+//      LeaderProducedRecordContext leaderProducedRecordContext =
+//          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), key, deletePayload);
+//      produceToLocalKafka(
+//          consumerRecord,
+//          partitionConsumptionState,
+//          leaderProducedRecordContext,
+//          produceToTopicFunction,
+//          partition,
+//          kafkaUrl,
+//          kafkaClusterId,
+//          beforeProcessingRecordTimestampNs);
+//    } else {
+//      Put updatedPut = new Put();
+//      updatedPut.putValue = ByteUtils
+//          .prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, mergeConflictResult.doesResultReuseInput());
+//      updatedPut.schemaId = valueSchemaId;
+//      updatedPut.replicationMetadataVersionId = rmdProtocolVersionId;
+//      updatedPut.replicationMetadataPayload = updatedRmdBytes;
+//
+//      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
+//          partitionConsumptionState,
+//          key,
+//          updatedValueBytes,
+//          updatedRmdBytes,
+//          oldValueManifest,
+//          oldRmdManifest,
+//          valueSchemaId,
+//          mergeConflictResult.doesResultReuseInput());
+//      produceToLocalKafka(
+//          consumerRecord,
+//          partitionConsumptionState,
+//          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
+//          produceToTopicFunction,
+//          partition,
+//          kafkaUrl,
+//          kafkaClusterId,
+//          beforeProcessingRecordTimestampNs);
+//    }
+//  }
 
   @Override
   protected void produceToLocalKafka(
@@ -1442,7 +1441,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     };
   }
 
-  int getRmdProtocolVersionId() {
+  @Override
+  public int getRmdProtocolVersionId() {
     return rmdProtocolVersionId;
   }
 
@@ -1451,6 +1451,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return keyLevelLocksManager;
   }
 
+  @Override
+  public AggVersionedIngestionStats getAggVersionedIngestionStats() {
+    return aggVersionedIngestionStats;
+  }
+
+  @Override
   protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
