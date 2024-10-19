@@ -43,6 +43,7 @@ import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
+import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -1326,7 +1327,7 @@ public class StorePartitionDataReceiver
                   key,
                   callback,
                   sourceTopicOffset,
-                  APP_DEFAULT_LOGICAL_TS,
+                  VeniceWriter.APP_DEFAULT_LOGICAL_TS,
                   new DeleteMetadata(valueSchemaId, storeIngestionTask.getRmdProtocolVersionId(), updatedRmdBytes),
                   oldValueManifest,
                   oldRmdManifest);
@@ -1349,16 +1350,15 @@ public class StorePartitionDataReceiver
       updatedPut.replicationMetadataVersionId = storeIngestionTask.getRmdProtocolVersionId();
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
-          storeIngestionTask.getProduceToTopicFunction(
-              partitionConsumptionState,
-              key,
-              updatedValueBytes,
-              updatedRmdBytes,
-              oldValueManifest,
-              oldRmdManifest,
-              valueSchemaId,
-              mergeConflictResult.doesResultReuseInput());
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
+          partitionConsumptionState,
+          key,
+          updatedValueBytes,
+          updatedRmdBytes,
+          oldValueManifest,
+          oldRmdManifest,
+          valueSchemaId,
+          mergeConflictResult.doesResultReuseInput());
       storeIngestionTask.produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -1369,6 +1369,40 @@ public class StorePartitionDataReceiver
           kafkaClusterId,
           beforeProcessingRecordTimestampNs);
     }
+  }
+
+  BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      ByteBuffer updatedValueBytes,
+      ByteBuffer updatedRmdBytes,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      int valueSchemaId,
+      boolean resultReuseInput) {
+    return (callback, leaderMetadataWrapper) -> {
+      if (resultReuseInput) {
+        // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
+        // will be recovered after producing the message to Kafka or if the production failing.
+        ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
+            () -> ByteUtils.prependIntHeaderToByteBuffer(
+                updatedValueBytes,
+                ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
+                true));
+      }
+      storeIngestionTask.getVeniceWriter(partitionConsumptionState)
+          .get()
+          .put(
+              key,
+              ByteUtils.extractByteArray(updatedValueBytes),
+              valueSchemaId,
+              callback,
+              leaderMetadataWrapper,
+              VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+              new PutMetadata(storeIngestionTask.getRmdProtocolVersionId(), updatedRmdBytes),
+              oldValueManifest,
+              oldRmdManifest);
+    };
   }
 
   private void validateRecordBeforeProducingToLocalKafka(
