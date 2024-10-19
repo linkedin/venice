@@ -1559,7 +1559,7 @@ public class StorePartitionDataReceiver
         partition,
         beforeProcessingBatchRecordsTimestampMs);
 
-    final long writeTimestamp = storeIngestionTask.getWriteTimestampFromKME(kafkaValue);
+    final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =
         rmdWithValueSchemaID != null ? RmdUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.getRmdRecord()) : 0;
     List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
@@ -1573,8 +1573,7 @@ public class StorePartitionDataReceiver
     storeIngestionTask.getAggVersionedIngestionStats()
         .recordTotalDCR(storeIngestionTask.getStoreName(), storeIngestionTask.getVersionNumber());
 
-    Lazy<ByteBuffer> oldValueByteBufferProvider =
-        ActiveActiveStoreIngestionTask.unwrapByteBufferFromOldValueProvider(oldValueProvider);
+    Lazy<ByteBuffer> oldValueByteBufferProvider = unwrapByteBufferFromOldValueProvider(oldValueProvider);
 
     long beforeDCRTimestampInNs = System.nanoTime();
     final MergeConflictResolver mergeConflictResolver = storeIngestionTask.getMergeConflictResolver();
@@ -1645,10 +1644,7 @@ public class StorePartitionDataReceiver
               null,
               null));
     } else {
-      storeIngestionTask.validatePostOperationResultsAndRecord(
-          mergeConflictResult,
-          offsetSumPreOperation,
-          recordTimestampsPreOperation);
+      validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
       final ByteBuffer updatedValueBytes = storeIngestionTask.maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -1989,6 +1985,64 @@ public class StorePartitionDataReceiver
             partition,
             kafkaUrl,
             beforeProcessingRecordTimestampNs);
+  }
+
+  /**
+   * Package private for testing purposes.
+   */
+  static Lazy<ByteBuffer> unwrapByteBufferFromOldValueProvider(
+      Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider) {
+    return Lazy.of(() -> {
+      ByteBufferValueRecord<ByteBuffer> bbValueRecord = oldValueProvider.get();
+      return bbValueRecord == null ? null : bbValueRecord.value();
+    });
+  }
+
+  public long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
+    if (kme.producerMetadata.logicalTimestamp >= 0) {
+      return kme.producerMetadata.logicalTimestamp;
+    } else {
+      return kme.producerMetadata.messageTimestamp;
+    }
+  }
+
+  private void validatePostOperationResultsAndRecord(
+      MergeConflictResult mergeConflictResult,
+      Long offsetSumPreOperation,
+      List<Long> timestampsPreOperation) {
+    // Nothing was applied, no harm no foul
+    if (mergeConflictResult.isUpdateIgnored()) {
+      return;
+    }
+    // Post Validation checks on resolution
+    GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
+    if (offsetSumPreOperation > RmdUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
+      // offsets went backwards, raise an alert!
+      storeIngestionTask.getHostLevelIngestionStats().recordOffsetRegressionDCRError();
+      storeIngestionTask.getAggVersionedIngestionStats()
+          .recordOffsetRegressionDCRError(storeIngestionTask.getStoreName(), storeIngestionTask.getVersionNumber());
+      LOGGER
+          .error("Offset vector found to have gone backwards!! New invalid replication metadata result: {}", rmdRecord);
+    }
+
+    // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
+    // this works fine for now however as we do not fully support A/A write compute operations (as we only do root
+    // timestamp comparisons).
+
+    List<Long> timestampsPostOperation = RmdUtils.extractTimestampFromRmd(rmdRecord);
+    for (int i = 0; i < timestampsPreOperation.size(); i++) {
+      if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
+        // timestamps went backwards, raise an alert!
+        storeIngestionTask.getHostLevelIngestionStats().recordTimestampRegressionDCRError();
+        storeIngestionTask.getAggVersionedIngestionStats()
+            .recordTimestampRegressionDCRError(
+                storeIngestionTask.getStoreName(),
+                storeIngestionTask.getVersionNumber());
+        LOGGER.error(
+            "Timestamp found to have gone backwards!! Invalid replication metadata result: {}",
+            mergeConflictResult.getRmdRecord());
+      }
+    }
   }
 
   @Override

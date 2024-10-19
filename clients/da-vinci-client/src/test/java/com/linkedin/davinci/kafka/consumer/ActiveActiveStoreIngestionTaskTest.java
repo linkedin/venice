@@ -608,11 +608,11 @@ public class ActiveActiveStoreIngestionTaskTest {
 
   @Test
   public void testUnwrapByteBufferFromOldValueProvider() {
-    Lazy<ByteBuffer> lazyBB = ActiveActiveStoreIngestionTask.unwrapByteBufferFromOldValueProvider(Lazy.of(() -> null));
+    Lazy<ByteBuffer> lazyBB = StorePartitionDataReceiver.unwrapByteBufferFromOldValueProvider(Lazy.of(() -> null));
     assertNotNull(lazyBB);
     assertNull(lazyBB.get());
 
-    lazyBB = ActiveActiveStoreIngestionTask.unwrapByteBufferFromOldValueProvider(
+    lazyBB = StorePartitionDataReceiver.unwrapByteBufferFromOldValueProvider(
         Lazy.of(() -> new ByteBufferValueRecord<>(ByteBuffer.wrap(new byte[1]), 1)));
     assertNotNull(lazyBB);
     assertNotNull(lazyBB.get());

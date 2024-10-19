@@ -10,7 +10,6 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
-import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -39,7 +38,6 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -58,7 +56,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
@@ -671,62 +668,62 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // }
   // }
   // }
-
-  /**
-   * Package private for testing purposes.
-   */
-  static Lazy<ByteBuffer> unwrapByteBufferFromOldValueProvider(
-      Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider) {
-    return Lazy.of(() -> {
-      ByteBufferValueRecord<ByteBuffer> bbValueRecord = oldValueProvider.get();
-      return bbValueRecord == null ? null : bbValueRecord.value();
-    });
-  }
-
-  @Override
-  public long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
-    if (kme.producerMetadata.logicalTimestamp >= 0) {
-      return kme.producerMetadata.logicalTimestamp;
-    } else {
-      return kme.producerMetadata.messageTimestamp;
-    }
-  }
-
-  @Override
-  void validatePostOperationResultsAndRecord(
-      MergeConflictResult mergeConflictResult,
-      Long offsetSumPreOperation,
-      List<Long> timestampsPreOperation) {
-    // Nothing was applied, no harm no foul
-    if (mergeConflictResult.isUpdateIgnored()) {
-      return;
-    }
-    // Post Validation checks on resolution
-    GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-    if (offsetSumPreOperation > RmdUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
-      // offsets went backwards, raise an alert!
-      hostLevelIngestionStats.recordOffsetRegressionDCRError();
-      aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
-      LOGGER
-          .error("Offset vector found to have gone backwards!! New invalid replication metadata result: {}", rmdRecord);
-    }
-
-    // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
-    // this works fine for now however as we do not fully support A/A write compute operations (as we only do root
-    // timestamp comparisons).
-
-    List<Long> timestampsPostOperation = RmdUtils.extractTimestampFromRmd(rmdRecord);
-    for (int i = 0; i < timestampsPreOperation.size(); i++) {
-      if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
-        // timestamps went backwards, raise an alert!
-        hostLevelIngestionStats.recordTimestampRegressionDCRError();
-        aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
-        LOGGER.error(
-            "Timestamp found to have gone backwards!! Invalid replication metadata result: {}",
-            mergeConflictResult.getRmdRecord());
-      }
-    }
-  }
+  //
+  // /**
+  // * Package private for testing purposes.
+  // */
+  // static Lazy<ByteBuffer> unwrapByteBufferFromOldValueProvider(
+  // Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider) {
+  // return Lazy.of(() -> {
+  // ByteBufferValueRecord<ByteBuffer> bbValueRecord = oldValueProvider.get();
+  // return bbValueRecord == null ? null : bbValueRecord.value();
+  // });
+  // }
+  //
+  // @Override
+  // public long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
+  // if (kme.producerMetadata.logicalTimestamp >= 0) {
+  // return kme.producerMetadata.logicalTimestamp;
+  // } else {
+  // return kme.producerMetadata.messageTimestamp;
+  // }
+  // }
+  //
+  // @Override
+  // void validatePostOperationResultsAndRecord(
+  // MergeConflictResult mergeConflictResult,
+  // Long offsetSumPreOperation,
+  // List<Long> timestampsPreOperation) {
+  // // Nothing was applied, no harm no foul
+  // if (mergeConflictResult.isUpdateIgnored()) {
+  // return;
+  // }
+  // // Post Validation checks on resolution
+  // GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
+  // if (offsetSumPreOperation > RmdUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
+  // // offsets went backwards, raise an alert!
+  // hostLevelIngestionStats.recordOffsetRegressionDCRError();
+  // aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
+  // LOGGER
+  // .error("Offset vector found to have gone backwards!! New invalid replication metadata result: {}", rmdRecord);
+  // }
+  //
+  // // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
+  // // this works fine for now however as we do not fully support A/A write compute operations (as we only do root
+  // // timestamp comparisons).
+  //
+  // List<Long> timestampsPostOperation = RmdUtils.extractTimestampFromRmd(rmdRecord);
+  // for (int i = 0; i < timestampsPreOperation.size(); i++) {
+  // if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
+  // // timestamps went backwards, raise an alert!
+  // hostLevelIngestionStats.recordTimestampRegressionDCRError();
+  // aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
+  // LOGGER.error(
+  // "Timestamp found to have gone backwards!! Invalid replication metadata result: {}",
+  // mergeConflictResult.getRmdRecord());
+  // }
+  // }
+  // }
 
   /**
    * Get the value bytes for a key from {@link PartitionConsumptionState.TransientRecord} or from disk. The assumption
