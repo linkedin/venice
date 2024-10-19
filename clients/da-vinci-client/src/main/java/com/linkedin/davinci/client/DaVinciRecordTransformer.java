@@ -72,9 +72,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * @param key the key of the record to be transformed
    * @param value the value of the record to be transformed
-   * @return the transformed value
+   * @return {@link DaVinciRecordTransformerResult}
    */
-  public abstract O transform(Lazy<K> key, Lazy<V> value);
+  public abstract DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value);
 
   /**
    * Implement this method to manage custom state outside the Da Vinci Client.
@@ -121,26 +121,46 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * @param key the key of the record to be put
    * @param value the value of the record to be put
-   * @return the transformed record
+   * @return {@link DaVinciRecordTransformerResult}
    */
-  public final O transformAndProcessPut(Lazy<K> key, Lazy<V> value) {
-    O transformedRecord = transform(key, value);
-    processPut(key, Lazy.of(() -> transformedRecord));
+  public final DaVinciRecordTransformerResult<O> transformAndProcessPut(Lazy<K> key, Lazy<V> value) {
+    DaVinciRecordTransformerResult<O> transformerResult = transform(key, value);
+    DaVinciRecordTransformerResult.Result result = transformerResult.getResult();
+    if (result == DaVinciRecordTransformerResult.Result.SKIP) {
+      return null;
+    } else if (result == DaVinciRecordTransformerResult.Result.UNCHANGED) {
+      processPut(key, (Lazy<O>) value);
+    } else {
+      O transformedRecord = transformerResult.getValue();
+      processPut(key, Lazy.of(() -> transformedRecord));
+    }
 
     if (!storeRecordsInDaVinci) {
       return null;
     }
-    return transformedRecord;
+    return transformerResult;
   }
 
   /**
-   * Takes a value, serializes it and wraps it in a ByteByffer.
+   * Serializes the given value and prepends the schema ID to the resulting ByteBuffer.
    *
    * @param value the value to be serialized
-   * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
+   * @param schemaId to prepend to the ByteBuffer
+   * @return a ByteBuffer containing the schema ID followed by the serialized value
    */
-  public final ByteBuffer getValueBytes(O value) {
-    return recordTransformerUtility.getValueBytes(value);
+  public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId) {
+    return recordTransformerUtility.prependSchemaIdToHeader(value, schemaId);
+  }
+
+  /**
+   * Prepends the given schema ID to the provided ByteBuffer
+   *
+   * @param byteBuffer the original decompressed value
+   * @param schemaId to prepend to the ByteBuffer
+   * @return a ByteBuffer containing the schema ID followed by the serialized value
+   */
+  public final ByteBuffer prependSchemaIdToHeader(ByteBuffer byteBuffer, int schemaId) {
+    return recordTransformerUtility.prependSchemaIdToHeader(byteBuffer, schemaId);
   }
 
   /**

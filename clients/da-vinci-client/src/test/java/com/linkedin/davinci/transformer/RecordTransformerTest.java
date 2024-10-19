@@ -7,6 +7,7 @@ import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
@@ -44,9 +45,10 @@ public class RecordTransformerTest {
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
-    String transformedRecord = recordTransformer.transform(lazyKey, lazyValue);
+    DaVinciRecordTransformerResult<String> transformerResult = recordTransformer.transform(lazyKey, lazyValue);
     recordTransformer.processPut(lazyKey, lazyValue);
-    assertEquals(transformedRecord, "SampleValueTransformed");
+    assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
+    assertEquals(transformerResult.getValue(), "SampleValueTransformed");
     assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue));
 
     recordTransformer.processDelete(lazyKey);

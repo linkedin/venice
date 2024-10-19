@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
@@ -27,8 +28,8 @@ public class DaVinciConfigTest {
       return Schema.create(Schema.Type.INT);
     }
 
-    public Integer transform(Lazy<Integer> key, Lazy<Integer> value) {
-      return value.get() + 1;
+    public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value) {
+      return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, value.get() + 1);
     }
 
     @Override

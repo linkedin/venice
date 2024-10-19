@@ -7,7 +7,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static java.lang.Thread.currentThread;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
@@ -110,7 +109,6 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
-  private DaVinciRecordTransformer recordTransformer;
   private BlobTransferManager<Void> blobTransferManager;
   private final boolean writeBatchingPushStatus;
 

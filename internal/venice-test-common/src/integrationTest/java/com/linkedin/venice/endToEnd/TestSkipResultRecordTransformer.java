@@ -6,8 +6,8 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 
 
-public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
-  public TestRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
+  public TestSkipResultRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
     super(storeVersion, storeRecordsInDaVinci);
   }
 
@@ -20,7 +20,7 @@ public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Int
   }
 
   public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value) {
-    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, value.get() * 100);
+    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.SKIP);
   }
 
   public void processPut(Lazy<Integer> key, Lazy<Integer> value) {

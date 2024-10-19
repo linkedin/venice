@@ -32,16 +32,32 @@ public class DaVinciRecordTransformerUtility<K, O> {
   }
 
   /**
-   * Takes a value, serializes it and wraps it in a ByteByffer.
+   * Serializes the given value and prepends the schema ID to the resulting ByteBuffer.
    *
    * @param value the value to be serialized
-   * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
+   * @param schemaId to prepend to the ByteBuffer
+   * @return a ByteBuffer containing the schema ID followed by the serialized value
    */
-  public final ByteBuffer getValueBytes(O value) {
+  public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId) {
     ByteBuffer transformedBytes = ByteBuffer.wrap(getOutputValueSerializer().serialize(value));
     ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
     newBuffer.putInt(1);
     newBuffer.put(transformedBytes);
+    newBuffer.flip();
+    return newBuffer;
+  }
+
+  /**
+   * Prepends the given schema ID to the provided ByteBuffer
+   *
+   * @param byteBuffer the original decompressed value
+   * @param schemaId to prepend to the ByteBuffer
+   * @return a ByteBuffer containing the schema ID followed by the serialized value
+   */
+  public final ByteBuffer prependSchemaIdToHeader(ByteBuffer byteBuffer, int schemaId) {
+    ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + byteBuffer.remaining());
+    newBuffer.putInt(schemaId);
+    newBuffer.put(byteBuffer);
     newBuffer.flip();
     return newBuffer;
   }

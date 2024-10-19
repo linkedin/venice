@@ -21,6 +21,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -94,6 +95,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -3464,21 +3466,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Check if put.getSchemaId is positive, if not default to 1
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
-        // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
-          long recordTransformStartTime = System.currentTimeMillis();
+          long recordTransformerStartTime = System.currentTimeMillis();
           ByteBuffer valueBytes = put.getPutValue();
           Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+          Lazy<RecordDeserializer> recordDeserializer =
+              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema));
 
-          // Decompress/assemble record
-          // ToDo: Wrap chunking in Lazy
-          Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+          // Decompress/assemble record without deserializing
+          ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
               putSchemaId,
               keyBytes,
               valueBytes,
               consumerRecord.getOffset(),
-              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
+              null,
               putSchemaId,
               compressor.get());
 
@@ -3489,24 +3491,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
+          Lazy<Object> lazyValue = Lazy.of(() -> recordDeserializer.get().deserialize(assembledObject));
 
-          Object transformedRecord = null;
+          DaVinciRecordTransformerResult transformerResult;
           try {
-            transformedRecord = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
+            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
           } catch (Exception e) {
             versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
             String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }
-          ByteBuffer transformedBytes = recordTransformer.getValueBytes(transformedRecord);
+
+          // Record was skipped, so don't write to storage engine
+          if (transformerResult == null
+              || transformerResult.getResult() == DaVinciRecordTransformerResult.Result.SKIP) {
+            return 0;
+          }
+
+          ByteBuffer transformedBytes;
+          if (transformerResult.getResult() == DaVinciRecordTransformerResult.Result.UNCHANGED) {
+            // Use original value if the record wasn't transformed
+            transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, putSchemaId);
+          } else {
+            // Serialize the new record if it was transformed
+            transformedBytes = recordTransformer.prependSchemaIdToHeader(transformerResult.getValue(), putSchemaId);
+          }
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getElapsedTimeFromMsToMs(recordTransformStartTime),
+              LatencyUtils.getElapsedTimeFromMsToMs(recordTransformerStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
         } else {

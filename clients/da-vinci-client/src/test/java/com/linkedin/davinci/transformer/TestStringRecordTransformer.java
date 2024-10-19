@@ -1,6 +1,7 @@
 package com.linkedin.davinci.transformer;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
@@ -19,7 +20,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     return Schema.create(Schema.Type.STRING);
   }
 
-  public String transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     Object valueObj = value.get();
     String valueStr;
 
@@ -29,7 +30,9 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
       valueStr = (String) valueObj;
     }
 
-    return valueStr + "Transformed";
+    String transformedValue = valueStr + "Transformed";
+
+    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
   public void processPut(Lazy<Integer> key, Lazy<String> value) {

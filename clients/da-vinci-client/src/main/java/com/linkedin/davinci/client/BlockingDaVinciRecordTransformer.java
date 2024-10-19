@@ -32,8 +32,8 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     return this.recordTransformer.getOutputValueSchema();
   }
 
-  public O transform(Lazy<K> key, Lazy<V> value) {
-    return (O) this.recordTransformer.transform(key, value);
+  public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value) {
+    return this.recordTransformer.transform(key, value);
   }
 
   public void processPut(Lazy<K> key, Lazy<O> value) {
