@@ -72,21 +72,24 @@ public class ChunkAssembler {
           keyBytes,
           ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
-        assembledRecord = decompressAndDeserialize(
-            recordDeserializer.get(),
+        ByteBuffer assembledValue = RawBytesChunkingAdapter.INSTANCE.get(
+            inMemoryStorageEngine,
+            pubSubTopicPartition.getPartitionNumber(),
+            ByteBuffer.wrap(keyBytes),
+            false,
+            null,
+            null,
+            NoOpReadResponseStats.SINGLETON,
+            readerSchemaId,
+            RawBytesStoreDeserializerCache.getInstance(),
             compressor,
-            RawBytesChunkingAdapter.INSTANCE.get(
-                inMemoryStorageEngine,
-                pubSubTopicPartition.getPartitionNumber(),
-                ByteBuffer.wrap(keyBytes),
-                false,
-                null,
-                null,
-                NoOpReadResponseStats.SINGLETON,
-                readerSchemaId,
-                RawBytesStoreDeserializerCache.getInstance(),
-                compressor,
-                null));
+            null);
+
+        if (recordDeserializer != null) {
+          assembledRecord = decompressAndDeserialize(recordDeserializer.get(), compressor, assembledValue);
+        } else {
+          assembledRecord = decompress(compressor, assembledValue);
+        }
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -98,9 +101,13 @@ public class ChunkAssembler {
             pubSubTopicPartition.getPubSubTopic().getName());
       }
     } else {
-      // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
+      // this is a fully specified record, no need to buffer and assemble it, just decompress/deserialize it
       try {
-        assembledRecord = decompressAndDeserialize(recordDeserializer.get(), compressor, valueBytes);
+        if (recordDeserializer != null) {
+          assembledRecord = decompressAndDeserialize(recordDeserializer.get(), compressor, valueBytes);
+        } else {
+          assembledRecord = decompress(compressor, valueBytes);
+        }
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -112,6 +119,10 @@ public class ChunkAssembler {
     // this is safe to do in all such contexts.
     inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
     return assembledRecord;
+  }
+
+  protected <T> T decompress(VeniceCompressor compressor, ByteBuffer value) throws IOException {
+    return (T) compressor.decompress(value);
   }
 
   protected <T> T decompressAndDeserialize(

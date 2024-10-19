@@ -175,4 +175,8 @@ public abstract class AbstractStoragePartition {
   public long getRmdByteUsage() {
     throw new VeniceUnsupportedOperationException("getRmdByteUsage");
   }
+
+  public AbstractStorageIterator getIterator() {
+    throw new UnsupportedOperationException("Method not supported for storage engine");
+  }
 }

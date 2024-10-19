@@ -9,7 +9,7 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -119,7 +119,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -268,7 +268,7 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          getRecordTransformer,
+          recordTransformerFunction,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
@@ -290,6 +290,10 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
+        if (recordTransformerFunction != null) {
+          throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
+        }
+
         blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
@@ -462,7 +466,8 @@ public class DaVinciBackend implements Closeable {
       List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
       String versionTopic = version.kafkaTopicName();
       LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageService.getStorageEngine(versionTopic));
+      AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
+      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
       StoreBackend storeBackend = getStoreOrThrow(storeName);
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
