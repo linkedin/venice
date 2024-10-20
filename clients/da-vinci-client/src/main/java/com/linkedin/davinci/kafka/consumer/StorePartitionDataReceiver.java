@@ -452,16 +452,6 @@ public class StorePartitionDataReceiver
      * Common record check for different state models:
      * check whether server continues receiving messages after EOP for a batch-only store.
      */
-    // PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
-    // if (partitionConsumptionState == null) {
-    // String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
-    // + " is null. Skipping incoming record with topic-partition: {} and offset: {}";
-    // if (!StoreIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-    // LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
-    // }
-    // return false;
-    // }
-
     if (partitionConsumptionState.isErrorReported()) {
       String msg = "Replica:  " + partitionConsumptionState.getReplicaId()
           + " is already errored. Skipping incoming record with topic-partition: {} and offset: {}";
