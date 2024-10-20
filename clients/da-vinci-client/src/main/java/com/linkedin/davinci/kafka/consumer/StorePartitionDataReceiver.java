@@ -9,7 +9,10 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
+import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
+import com.linkedin.davinci.replication.merge.RmdSerDe;
+import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -95,6 +98,9 @@ public class StorePartitionDataReceiver
   private final String kafkaUrl;
   private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
+  private final Lazy<RmdSerDe> rmdSerDe;
+  private final Lazy<MergeConflictResolver> mergeConflictResolver;
+  private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   private long receivedRecordsCount;
@@ -120,6 +126,31 @@ public class StorePartitionDataReceiver
     this.kafkaClusterId = kafkaClusterId;
     this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
+    final StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
+        new StringAnnotatedStoreSchemaCache(storeIngestionTask.getStoreName(), storeIngestionTask.getSchemaRepo());
+    this.rmdSerDe = Lazy.of(
+        () -> new RmdSerDe(
+            annotatedReadOnlySchemaRepository,
+            storeIngestionTask.getRmdProtocolVersionId(),
+            storeIngestionTask.getServerConfig().isComputeFastAvroEnabled()));
+    this.mergeConflictResolver = Lazy.of(
+        () -> MergeConflictResolverFactory.getInstance()
+            .createMergeConflictResolver(
+                annotatedReadOnlySchemaRepository,
+                rmdSerDe.get(),
+                storeIngestionTask.getStoreName(),
+                storeIngestionTask.isTransientRecordBufferUsed(),
+                storeIngestionTask.getServerConfig().isComputeFastAvroEnabled()));
+    this.keyLevelLocksManager = Lazy.of(() -> {
+      final int knownKafkaClusterNumber = storeIngestionTask.getServerConfig().getKafkaClusterIdToUrlMap().size();
+      final int initialPoolSize = knownKafkaClusterNumber + 1;
+      return new KeyLevelLocksManager(
+          storeIngestionTask.getVersionTopic().getName(),
+          initialPoolSize,
+          ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(
+              storeIngestionTask.getServerConfig(),
+              storeIngestionTask.getStoreVersionPartitionCount()));
+    });
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
       final String kafkaVersionTopic = storeIngestionTask.getKafkaVersionTopic();
       if (!storeIngestionTask.getServerConfig().isAAWCWorkloadParallelProcessingEnabled()) {
@@ -130,9 +161,8 @@ public class StorePartitionDataReceiver
           (storeIngestionTask.isActiveActiveReplicationEnabled())
               ? this::processActiveActiveMessage
               : this::processMessage;
-      KeyLevelLocksManager lockManager = (storeIngestionTask.isActiveActiveReplicationEnabled())
-          ? storeIngestionTask.getKeyLevelLocksManager().get()
-          : null;
+      KeyLevelLocksManager lockManager =
+          (storeIngestionTask.isActiveActiveReplicationEnabled()) ? keyLevelLocksManager.get() : null;
       LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", kafkaVersionTopic);
       return new IngestionBatchProcessor(
           storeIngestionTask.getKafkaVersionTopic(),
@@ -798,7 +828,7 @@ public class StorePartitionDataReceiver
        * -> [fabric A thread]produce to VT
        */
       final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecordWrapper.getMessage().getKey().getKey());
-      ReentrantLock keyLevelLock = storeIngestionTask.getKeyLevelLocksManager().get().acquireLockByKey(byteArrayKey);
+      ReentrantLock keyLevelLock = keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
       keyLevelLock.lock();
       try {
         return delegateConsumerRecord(
@@ -810,7 +840,7 @@ public class StorePartitionDataReceiver
             beforeProcessingBatchRecordsTimestampMs);
       } finally {
         keyLevelLock.unlock();
-        storeIngestionTask.getKeyLevelLocksManager().get().releaseLock(byteArrayKey);
+        keyLevelLocksManager.get().releaseLock(byteArrayKey);
       }
     }
   }
@@ -1748,49 +1778,51 @@ public class StorePartitionDataReceiver
     Lazy<ByteBuffer> oldValueByteBufferProvider = unwrapByteBufferFromOldValueProvider(oldValueProvider);
 
     long beforeDCRTimestampInNs = System.nanoTime();
-    final MergeConflictResolver mergeConflictResolver = storeIngestionTask.getMergeConflictResolver();
     switch (msgType) {
       case PUT:
-        mergeConflictResult = mergeConflictResolver.put(
-            oldValueByteBufferProvider,
-            rmdWithValueSchemaID,
-            ((Put) kafkaValue.payloadUnion).putValue,
-            writeTimestamp,
-            incomingValueSchemaId,
-            sourceOffset,
-            kafkaClusterId,
-            kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
-        // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
-        // config to represent the mapping from Kafka server URLs to colo ID.
-        );
+        mergeConflictResult = mergeConflictResolver.get()
+            .put(
+                oldValueByteBufferProvider,
+                rmdWithValueSchemaID,
+                ((Put) kafkaValue.payloadUnion).putValue,
+                writeTimestamp,
+                incomingValueSchemaId,
+                sourceOffset,
+                kafkaClusterId,
+                kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
+            // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
+            // config to represent the mapping from Kafka server URLs to colo ID.
+            );
         storeIngestionTask.getHostLevelIngestionStats()
             .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(
-            oldValueByteBufferProvider,
-            rmdWithValueSchemaID,
-            writeTimestamp,
-            sourceOffset,
-            kafkaClusterId,
-            kafkaClusterId);
+        mergeConflictResult = mergeConflictResolver.get()
+            .delete(
+                oldValueByteBufferProvider,
+                rmdWithValueSchemaID,
+                writeTimestamp,
+                sourceOffset,
+                kafkaClusterId,
+                kafkaClusterId);
         storeIngestionTask.getHostLevelIngestionStats()
             .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case UPDATE:
-        mergeConflictResult = mergeConflictResolver.update(
-            oldValueByteBufferProvider,
-            rmdWithValueSchemaID,
-            ((Update) kafkaValue.payloadUnion).updateValue,
-            incomingValueSchemaId,
-            incomingWriteComputeSchemaId,
-            writeTimestamp,
-            sourceOffset,
-            kafkaClusterId,
-            kafkaClusterId,
-            valueManifestContainer);
+        mergeConflictResult = mergeConflictResolver.get()
+            .update(
+                oldValueByteBufferProvider,
+                rmdWithValueSchemaID,
+                ((Update) kafkaValue.payloadUnion).updateValue,
+                incomingValueSchemaId,
+                incomingWriteComputeSchemaId,
+                writeTimestamp,
+                sourceOffset,
+                kafkaClusterId,
+                kafkaClusterId,
+                valueManifestContainer);
         storeIngestionTask.getHostLevelIngestionStats()
             .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
@@ -1826,8 +1858,8 @@ public class StorePartitionDataReceiver
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
       GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-      final ByteBuffer updatedRmdBytes = storeIngestionTask.getRmdSerDe()
-          .serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
+      final ByteBuffer updatedRmdBytes =
+          rmdSerDe.get().serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
       if (updatedValueBytes == null) {
         storeIngestionTask.getHostLevelIngestionStats().recordTombstoneCreatedDCR();
@@ -2462,7 +2494,7 @@ public class StorePartitionDataReceiver
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
     // Get old RMD manifest value from RMD Manifest container object.
     rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
-    storeIngestionTask.getRmdSerDe()
+    rmdSerDe.get()
         .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
     return rmdWithValueSchemaId;
   }
