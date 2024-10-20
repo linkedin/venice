@@ -14,7 +14,9 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -1723,7 +1725,7 @@ public class StorePartitionDataReceiver
       oldValueProvider.get();
     }
 
-    final RmdWithValueSchemaId rmdWithValueSchemaID = storeIngestionTask.getReplicationMetadataAndSchemaId(
+    final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
         partitionConsumptionState,
         keyBytes,
         partition,
@@ -2425,6 +2427,70 @@ public class StorePartitionDataReceiver
     } catch (IOException e) {
       throw new VeniceException(e);
     }
+  }
+
+  /**
+   * Get the existing value schema ID and RMD associated with the given key. If information for this key is found from
+   * the transient map then use that, otherwise get it from storage engine.
+   *
+   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
+   * @param key                       Bytes of key.
+   * @param partition                 The partition to fetch the replication metadata from storage engine
+   * @return The object containing RMD and value schema id. If nothing is found, return null
+   */
+  private RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      int partition,
+      long currentTimeForMetricsMs) {
+    PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
+    if (cachedRecord != null) {
+      storeIngestionTask.getHostLevelIngestionStats()
+          .recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
+      return new RmdWithValueSchemaId(
+          cachedRecord.getValueSchemaId(),
+          storeIngestionTask.getRmdProtocolVersionId(),
+          cachedRecord.getReplicationMetadataRecord(),
+          cachedRecord.getRmdManifest());
+    }
+    ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
+    byte[] replicationMetadataWithValueSchemaBytes =
+        getRmdWithValueSchemaByteBufferFromStorage(partition, key, rmdManifestContainer, currentTimeForMetricsMs);
+    if (replicationMetadataWithValueSchemaBytes == null) {
+      return null; // No RMD for this key
+    }
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+    // Get old RMD manifest value from RMD Manifest container object.
+    rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
+    storeIngestionTask.getRmdSerDe()
+        .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
+    return rmdWithValueSchemaId;
+  }
+
+  /**
+   * This method tries to retrieve the RMD bytes with prepended value schema ID from storage engine. It will also store
+   * RMD manifest into passed-in {@link ChunkedValueManifestContainer} container object if current RMD value is chunked.
+   */
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(
+      int partition,
+      byte[] key,
+      ChunkedValueManifestContainer rmdManifestContainer,
+      long currentTimeForMetricsMs) {
+    final long lookupStartTimeInNS = System.nanoTime();
+    ValueRecord result = SingleGetChunkingAdapter.getReplicationMetadata(
+        storeIngestionTask.getStorageEngine(),
+        partition,
+        key,
+        storeIngestionTask.isChunked(),
+        rmdManifestContainer);
+    storeIngestionTask.getHostLevelIngestionStats()
+        .recordIngestionReplicationMetadataLookUpLatency(
+            LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
+            currentTimeForMetricsMs);
+    if (result == null) {
+      return null;
+    }
+    return result.serialize();
   }
 
   @Override

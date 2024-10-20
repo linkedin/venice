@@ -32,7 +32,6 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -4747,14 +4746,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public int getRmdProtocolVersionId() {
     throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
-  }
-
-  RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] key,
-      int partition,
-      long currentTimeForMetricsMs) {
-    throw new VeniceException("getReplicationMetadataAndSchemaId() should only be called in active active mode");
   }
 
   public MergeConflictResolver getMergeConflictResolver() {

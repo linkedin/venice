@@ -8,17 +8,13 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
-import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -38,7 +34,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -323,70 +318,72 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return replicationMetadataBytesWithValueSchemaId;
   }
 
-  /**
-   * Get the existing value schema ID and RMD associated with the given key. If information for this key is found from
-   * the transient map then use that, otherwise get it from storage engine.
-   *
-   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
-   * @param key                       Bytes of key.
-   * @param partition                 The partition to fetch the replication metadata from storage engine
-   * @return The object containing RMD and value schema id. If nothing is found, return null
-   */
-  @Override
-  RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] key,
-      int partition,
-      long currentTimeForMetricsMs) {
-    PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
-    if (cachedRecord != null) {
-      getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
-      return new RmdWithValueSchemaId(
-          cachedRecord.getValueSchemaId(),
-          getRmdProtocolVersionId(),
-          cachedRecord.getReplicationMetadataRecord(),
-          cachedRecord.getRmdManifest());
-    }
-    ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
-    byte[] replicationMetadataWithValueSchemaBytes =
-        getRmdWithValueSchemaByteBufferFromStorage(partition, key, rmdManifestContainer, currentTimeForMetricsMs);
-    if (replicationMetadataWithValueSchemaBytes == null) {
-      return null; // No RMD for this key
-    }
-    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
-    // Get old RMD manifest value from RMD Manifest container object.
-    rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
-    getRmdSerDe()
-        .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
-    return rmdWithValueSchemaId;
-  }
+  // /**
+  // * Get the existing value schema ID and RMD associated with the given key. If information for this key is found from
+  // * the transient map then use that, otherwise get it from storage engine.
+  // *
+  // * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
+  // * @param key Bytes of key.
+  // * @param partition The partition to fetch the replication metadata from storage engine
+  // * @return The object containing RMD and value schema id. If nothing is found, return null
+  // */
+  // @Override
+  // RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
+  // PartitionConsumptionState partitionConsumptionState,
+  // byte[] key,
+  // int partition,
+  // long currentTimeForMetricsMs) {
+  // PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
+  // if (cachedRecord != null) {
+  // getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
+  // return new RmdWithValueSchemaId(
+  // cachedRecord.getValueSchemaId(),
+  // getRmdProtocolVersionId(),
+  // cachedRecord.getReplicationMetadataRecord(),
+  // cachedRecord.getRmdManifest());
+  // }
+  // ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
+  // byte[] replicationMetadataWithValueSchemaBytes =
+  // getRmdWithValueSchemaByteBufferFromStorage(partition, key, rmdManifestContainer, currentTimeForMetricsMs);
+  // if (replicationMetadataWithValueSchemaBytes == null) {
+  // return null; // No RMD for this key
+  // }
+  // RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+  // // Get old RMD manifest value from RMD Manifest container object.
+  // rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
+  // getRmdSerDe()
+  // .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
+  // return rmdWithValueSchemaId;
+  // }
 
   @Override
   public RmdSerDe getRmdSerDe() {
     return rmdSerDe;
   }
 
-  /**
-   * This method tries to retrieve the RMD bytes with prepended value schema ID from storage engine. It will also store
-   * RMD manifest into passed-in {@link ChunkedValueManifestContainer} container object if current RMD value is chunked.
-   */
-  byte[] getRmdWithValueSchemaByteBufferFromStorage(
-      int partition,
-      byte[] key,
-      ChunkedValueManifestContainer rmdManifestContainer,
-      long currentTimeForMetricsMs) {
-    final long lookupStartTimeInNS = System.nanoTime();
-    ValueRecord result = SingleGetChunkingAdapter
-        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
-    getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
-        LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
-        currentTimeForMetricsMs);
-    if (result == null) {
-      return null;
-    }
-    return result.serialize();
-  }
-
+  // /**
+  // * This method tries to retrieve the RMD bytes with prepended value schema ID from storage engine. It will also
+  // store
+  // * RMD manifest into passed-in {@link ChunkedValueManifestContainer} container object if current RMD value is
+  // chunked.
+  // */
+  // byte[] getRmdWithValueSchemaByteBufferFromStorage(
+  // int partition,
+  // byte[] key,
+  // ChunkedValueManifestContainer rmdManifestContainer,
+  // long currentTimeForMetricsMs) {
+  // final long lookupStartTimeInNS = System.nanoTime();
+  // ValueRecord result = SingleGetChunkingAdapter
+  // .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
+  // getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
+  // LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
+  // currentTimeForMetricsMs);
+  // if (result == null) {
+  // return null;
+  // }
+  // return result.serialize();
+  // }
+  //
   // @Override
   // protected IngestionBatchProcessor getIngestionBatchProcessor() {
   // return ingestionBatchProcessorLazy.get();
