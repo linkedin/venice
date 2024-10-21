@@ -62,6 +62,14 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
 
     String transformedValue = valueStr + "Transformed";
 
+    /**
+       
+    
+    /**
+     * If you want to skip a specific record or don't want to modify the value,
+     * use the single argument constructor for DaVinciRecordTransformerResult and pass in
+     * DaVinciRecordTransformerResult.Result.SKIP or DaVinciRecordTransformerResult.Result.UNCHANGED
+     */
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 

@@ -30,6 +30,15 @@ public class DaVinciRecordTransformerResult<O> {
   }
 
   /**
+   * If you want to skip a specific record or don't want to modify the value,
+   * use the single argument constructor for DaVinciRecordTransformerResult and pass in
+   * DaVinciRecordTransformerResult.Result.SKIP/DaVinciRecordTransformerResult.Result.UNCHANGED
+   */
+  public test(){
+
+  }
+
+  /**
    * Use this constructor if result is {@link Result#TRANSFORMED}
    */
   public DaVinciRecordTransformerResult(Result result, O value) {
