@@ -119,10 +119,9 @@ public class BlobSnapshotManager {
 
     // check if the concurrent user count exceeds the limit
     checkIfConcurrentUserExceedsLimit(topicName, partitionId);
-    concurrentSnapshotUsers.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    concurrentSnapshotUsers.get(topicName).putIfAbsent(partitionId, new AtomicLong(0));
-
-    concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
+    concurrentSnapshotUsers.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partitionId, k -> new AtomicLong(0))
+        .incrementAndGet();
 
     boolean isHybrid = isStoreHybrid(payload.getStoreName());
     if (!isHybrid) {
