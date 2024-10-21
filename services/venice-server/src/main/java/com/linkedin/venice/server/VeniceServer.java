@@ -355,11 +355,6 @@ public class VeniceServer {
       return helixData;
     });
 
-    managerFuture.thenApply(manager -> {
-      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
-      return true;
-    });
-
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
@@ -625,6 +620,8 @@ public class VeniceServer {
           LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
         }
       }
+
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(helixParticipationService.getHelixManager());
 
       for (AbstractVeniceService service: CollectionUtils.reversed(services.get())) {
         try {
