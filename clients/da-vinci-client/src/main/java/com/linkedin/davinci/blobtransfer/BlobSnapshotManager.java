@@ -40,8 +40,6 @@ public class BlobSnapshotManager {
   private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final static int DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN = 30;
-  private final long SNAPSHOT_RETENTION_TIME_IN_MILLIS =
-      TimeUnit.MINUTES.toMillis(DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN);
   public final static int DEFAULT_MAX_CONCURRENT_USERS = 5;
 
   // A map to keep track of the number of hosts using a snapshot for a particular topic and partition, use to restrict

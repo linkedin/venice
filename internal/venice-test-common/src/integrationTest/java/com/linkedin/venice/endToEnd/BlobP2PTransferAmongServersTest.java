@@ -5,6 +5,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.StoreStatus.FULLLY_REPLICATED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.ConfigKeys;
@@ -14,6 +15,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -31,6 +34,7 @@ import java.util.function.Consumer;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -40,6 +44,7 @@ import org.testng.annotations.Test;
 public class BlobP2PTransferAmongServersTest {
   private static final Logger LOGGER = LogManager.getLogger(BlobP2PTransferAmongServersTest.class);
   private static int PARTITION_COUNT = 3;
+  private static final int STREAMING_RECORD_SIZE = 1024;
   private String path1;
   private String path2;
   private VeniceClusterWrapper cluster;
@@ -62,10 +67,10 @@ public class BlobP2PTransferAmongServersTest {
   }
 
   @Test(singleThreaded = true)
-  public void testBlobP2PTransferAmongServers() throws Exception {
+  public void testBlobP2PTransferAmongServersForBatchStore() throws Exception {
     String storeName = "test-store";
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    setUpStore(cluster, storeName, paramsConsumer, properties -> {}, true);
+    setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
 
     VeniceServerWrapper server1 = cluster.getVeniceServers().get(0);
     VeniceServerWrapper server2 = cluster.getVeniceServers().get(1);
@@ -138,7 +143,7 @@ public class BlobP2PTransferAmongServersTest {
   public void testBlobTransferThrowExceptionIfSnapshotNotExisted() throws Exception {
     String storeName = "test-store-snapshot-not-existed";
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    setUpStore(cluster, storeName, paramsConsumer, properties -> {}, true);
+    setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
 
     VeniceServerWrapper server1 = cluster.getVeniceServers().get(0);
 
@@ -242,7 +247,7 @@ public class BlobP2PTransferAmongServersTest {
     return veniceClusterWrapper;
   }
 
-  private void setUpStore(
+  private void setUpBatchStore(
       VeniceClusterWrapper cluster,
       String storeName,
       Consumer<UpdateStoreQueryParams> paramsConsumer,
@@ -279,5 +284,97 @@ public class BlobP2PTransferAmongServersTest {
     String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
+  }
+
+  @Test(singleThreaded = true)
+  public void testBlobP2PTransferAmongServersForHybridStore() throws Exception {
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    // prepare hybrid store.
+    String storeName = "test-store-hybrid";
+    long streamingRewindSeconds = 25L;
+    long streamingMessageLag = 2L;
+    controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+    controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setBlobTransferEnabled(true));
+
+    controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+    VeniceServerWrapper server1 = cluster.getVeniceServers().get(0);
+    VeniceServerWrapper server2 = cluster.getVeniceServers().get(1);
+
+    // offset record should be same after the empty push
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      OffsetRecord offsetRecord1 =
+          server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+      OffsetRecord offsetRecord2 =
+          server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+      Assert.assertEquals(offsetRecord2.getLocalVersionTopicOffset(), offsetRecord1.getLocalVersionTopicOffset());
+    }
+
+    // cleanup and stop server 1
+    cluster.stopVeniceServer(server1.getPort());
+    FileUtils.deleteDirectory(
+        new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", METADATA_PARTITION_ID)));
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      FileUtils.deleteDirectory(
+          new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId)));
+      // both partition db and snapshot should be deleted
+      Assert.assertFalse(
+          Files.exists(
+              Paths.get(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
+      Assert.assertFalse(
+          Files.exists(Paths.get(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
+    }
+
+    // send records to server 2 only
+    SystemProducer veniceProducer = null;
+    for (int i = 1; i <= 10; i++) {
+      veniceProducer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      IntegrationTestPushUtils.sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+    }
+    if (veniceProducer != null) {
+      veniceProducer.stop();
+    }
+
+    // restart server 1
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      cluster.restartVeniceServer(server1.getPort());
+      Assert.assertTrue(server1.isRunning());
+    });
+
+    // wait for server 1 is fully replicated
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+        Boolean fileExisted = Files.exists(file.toPath());
+        Assert.assertTrue(fileExisted);
+      }
+    });
+
+    // server 1 and 2 offset record should be the same
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        OffsetRecord offsetServer1 =
+            server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+        OffsetRecord offsetServer2 =
+            server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+        Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
+      }
+    });
   }
 }
