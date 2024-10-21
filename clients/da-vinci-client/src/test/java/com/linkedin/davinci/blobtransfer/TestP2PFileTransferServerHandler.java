@@ -110,6 +110,7 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 404);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
   }
 
   @Test
@@ -131,6 +132,7 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 500);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
   }
 
   @Test
@@ -191,6 +193,8 @@ public class TestP2PFileTransferServerHandler {
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
+
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
   }
 
   @Test
@@ -267,6 +271,8 @@ public class TestP2PFileTransferServerHandler {
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
+
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
   }
 
   /**
@@ -288,5 +294,7 @@ public class TestP2PFileTransferServerHandler {
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.NOT_FOUND);
+
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
   }
 }
