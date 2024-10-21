@@ -92,12 +92,13 @@ public class InstanceStatusDecider {
       boolean isInstanceView) {
     List<NodeRemovableResult> removableResults = new ArrayList<>();
     Set<String> nonStoppableNodes = new HashSet<>();
+    List<String> toBeStoppedNodes = new ArrayList<>(lockedNodes);
     RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     for (String instanceId: instanceIds) {
       try {
         // If instance is not alive, it's removable.
         if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
-          lockedNodes.add(instanceId);
+          toBeStoppedNodes.add(instanceId);
           removableResults.add(
               NodeRemovableResult.removableResult(
                   instanceId,
@@ -123,8 +124,11 @@ public class InstanceStatusDecider {
               PartitionAssignment partitionAssignmentAfterRemoving =
                   getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
 
-              partitionAssignmentAfterRemoving =
-                  removeLockedResources(partitionAssignmentAfterRemoving, lockedNodes, resourceName, isInstanceView);
+              partitionAssignmentAfterRemoving = removeLockedResources(
+                  partitionAssignmentAfterRemoving,
+                  toBeStoppedNodes,
+                  resourceName,
+                  isInstanceView);
 
               // Push has been completed normally. The version of this push is ready to serve read requests. It is the
               // current version of a store (at least when it was checked recently).
@@ -189,7 +193,7 @@ public class InstanceStatusDecider {
         if (!nonStoppableNodes.contains(instanceId)) {
           removableResults
               .add(NodeRemovableResult.removableResult(instanceId, "Instance " + instanceId + " can be removed."));
-          lockedNodes.add(instanceId);
+          toBeStoppedNodes.add(instanceId);
         }
       } catch (Exception e) {
         String errorMsg = "Can not verify whether instance " + instanceId + " is removable.";
