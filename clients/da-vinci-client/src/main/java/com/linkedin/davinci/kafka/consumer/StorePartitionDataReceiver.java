@@ -36,6 +36,8 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -721,7 +723,7 @@ public class StorePartitionDataReceiver
                 + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
       } else if (msgType == MessageType.CONTROL_MESSAGE) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        storeIngestionTask.getAndUpdateLeaderCompletedState(
+        getAndUpdateLeaderCompletedState(
             kafkaKey,
             kafkaValue,
             controlMessage,
@@ -2167,6 +2169,48 @@ public class StorePartitionDataReceiver
       }
     }
     return currValue;
+  }
+
+  /**
+   * HeartBeat SOS messages carry the leader completion state in the header. This function extracts the leader completion
+   * state from that header and updates the {@param partitionConsumptionState} accordingly.
+   */
+  void getAndUpdateLeaderCompletedState(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaValue,
+      ControlMessage controlMessage,
+      PubSubMessageHeaders pubSubMessageHeaders,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (storeIngestionTask.isHybridFollower(partitionConsumptionState)) {
+      ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+      if (controlMessageType == ControlMessageType.START_OF_SEGMENT
+          && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
+        LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
+        LeaderCompleteState newState = oldState;
+        for (PubSubMessageHeader header: pubSubMessageHeaders) {
+          if (header.key().equals(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER)) {
+            newState = LeaderCompleteState.valueOf(header.value()[0]);
+            partitionConsumptionState
+                .setLastLeaderCompleteStateUpdateInMs(kafkaValue.producerMetadata.messageTimestamp);
+            break; // only interested in this header here
+          }
+        }
+
+        if (oldState != newState) {
+          LOGGER.info(
+              "LeaderCompleteState for replica: {} changed from {} to {}",
+              partitionConsumptionState.getReplicaId(),
+              oldState,
+              newState);
+          partitionConsumptionState.setLeaderCompleteState(newState);
+        } else {
+          LOGGER.debug(
+              "LeaderCompleteState for replica: {} received from leader: {} and is unchanged from the previous state",
+              partitionConsumptionState.getReplicaId(),
+              newState);
+        }
+      }
+    }
   }
 
   /**

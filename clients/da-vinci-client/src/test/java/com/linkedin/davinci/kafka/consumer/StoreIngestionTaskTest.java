@@ -3707,16 +3707,19 @@ public abstract class StoreIngestionTaskTest {
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
+    PubSubTopicPartitionImpl topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
     pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        topicPartition,
         0,
         0,
         0,
         pubSubMessageHeaders);
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        new StorePartitionDataReceiver(ingestionTask, topicPartition, "dummyUrl", 0);
 
     assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
     assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
@@ -3727,7 +3730,7 @@ public abstract class StoreIngestionTaskTest {
 
     if (nodeType != DA_VINCI) {
       partitionConsumptionState.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
-      ingestionTask.getAndUpdateLeaderCompletedState(
+      storePartitionDataReceiver.getAndUpdateLeaderCompletedState(
           kafkaKey,
           kafkaValue,
           controlMessage,
@@ -3738,7 +3741,7 @@ public abstract class StoreIngestionTaskTest {
     }
 
     partitionConsumptionState.setLeaderFollowerState(STANDBY);
-    ingestionTask.getAndUpdateLeaderCompletedState(
+    storePartitionDataReceiver.getAndUpdateLeaderCompletedState(
         kafkaKey,
         kafkaValue,
         controlMessage,
