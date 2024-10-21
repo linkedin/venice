@@ -117,6 +117,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.BufferedReader;
 import java.io.Console;
@@ -125,6 +126,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -143,6 +145,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -587,6 +593,8 @@ public class AdminTool {
           break;
         case DUMP_HOST_HEARTBEAT:
           dumpHostHeartbeat(cmd);
+        case RUN_CLUSTER_COMMAND:
+          runClusterCommand(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -850,6 +858,81 @@ public class AdminTool {
     verifyStoreExistence(store, true);
     TrackableControllerResponse response = controllerClient.deleteStore(store);
     printObject(response);
+  }
+
+  private static void runClusterCommand(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.RUN_CLUSTER_COMMAND);
+    String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.RUN_CLUSTER_COMMAND);
+    String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.RUN_CLUSTER_COMMAND);
+    int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
+    System.out.println(
+        "[**** Cluster Command Params ****] Cluster: " + clusterName + ", Task: " + task + ", Checkpoint: "
+            + checkpointFile + ", Parallelism: " + parallelism);
+
+    // Create child data center controller client map.
+    ChildAwareResponse childAwareResponse = controllerClient.listChildControllers(clusterName);
+    Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName, childAwareResponse);
+
+    // Fetch list cluster store list from parent region.
+    Map<String, Boolean> progressMap = new VeniceConcurrentHashMap<>();
+    MultiStoreResponse clusterStoreResponse = controllerClient.queryStoreList(false);
+    if (clusterStoreResponse.isError()) {
+      throw new VeniceException("Unable to fetch cluster store list: " + clusterStoreResponse.getError());
+    }
+    for (String storeName: clusterStoreResponse.getStores()) {
+      progressMap.put(storeName, Boolean.FALSE);
+    }
+
+    // Load progress from checkpoint file. If file does not exist, it will create new one during checkpointing.
+    try {
+      Path filePath = Paths.get(checkpointFile).toAbsolutePath();
+      if (!Files.exists(filePath)) {
+        System.out.println("Checkpoint file path does not exist, will create a new checkpoint file: " + filePath);
+      } else {
+        List<String> fileLines = Files.readAllLines(Paths.get(checkpointFile));
+        for (String line: fileLines) {
+          String storeName = line.split(",")[0];
+          // For now, it is boolean to start with, we can add more states to support retry.
+          boolean status = false;
+          if (line.split(",").length > 1) {
+            status = Boolean.parseBoolean(line.split(",")[1]);
+          }
+          progressMap.put(storeName, status);
+        }
+      }
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    List<String> taskList =
+        progressMap.entrySet().stream().filter(e -> !e.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
+
+    // Validate task type.
+    Supplier<Function<String, Boolean>> functionSupplier;
+    if ("PushSystemStore".equals(task)) {
+      functionSupplier = () -> new SystemStorePushTask(controllerClient, controllerClientMap, clusterName);
+    } else {
+      System.out.println("Undefined task: " + task);
+      return;
+    }
+
+    // Create thread pool and start parallel processing.
+    ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
+    List<Future> futureList = new ArrayList<>();
+    for (int i = 0; i < parallelism; i++) {
+      ClusterTaskRunner clusterTaskRunner =
+          new ClusterTaskRunner(progressMap, checkpointFile, taskList, functionSupplier.get());
+      futureList.add(executorService.submit(clusterTaskRunner));
+    }
+    for (int i = 0; i < parallelism; i++) {
+      try {
+        futureList.get(i).get();
+        System.out.println("Cluster task completed for thread : " + i);
+      } catch (InterruptedException | ExecutionException e) {
+        System.out.println(e.getMessage());
+        executorService.shutdownNow();
+      }
+    }
+    executorService.shutdownNow();
   }
 
   private static void backfillSystemStores(CommandLine cmd) {
