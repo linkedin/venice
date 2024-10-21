@@ -119,7 +119,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -153,7 +152,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -4734,16 +4732,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String ignoredKafkaUrl,
       long offset);
 
-  protected abstract void produceToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs);
-
   protected abstract CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition topicPartition,
@@ -4780,17 +4768,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long beforeProcessingRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
     throw new VeniceException("processActiveActiveMessage() should only be called in active active mode");
-  }
-
-  protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
-      byte[] key,
-      ByteBuffer updatedValueBytes,
-      ByteBuffer updatedRmdBytes,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest,
-      int valueSchemaId,
-      boolean resultReuseInput) {
-    throw new VeniceException("getProduceToTopicFunction() should only be called in active active mode");
   }
 
   public AggVersionedIngestionStats getAggVersionedIngestionStats() {

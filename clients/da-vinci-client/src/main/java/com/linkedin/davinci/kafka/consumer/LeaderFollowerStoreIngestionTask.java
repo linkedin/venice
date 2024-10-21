@@ -71,7 +71,6 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -97,7 +96,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
@@ -1689,30 +1687,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  protected void produceToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    LeaderProducerCallback callback = createProducerCallback(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        partition,
-        kafkaUrl,
-        beforeProcessingRecordTimestampNs);
-    long sourceTopicOffset = consumerRecord.getOffset();
-    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
-    partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
-    long beforeProduceTimestampNS = System.nanoTime();
-    produceFunction.accept(callback, leaderMetadataWrapper);
-    getHostLevelIngestionStats()
-        .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
-  }
+  // protected void produceToLocalKafka(
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+  // PartitionConsumptionState partitionConsumptionState,
+  // LeaderProducedRecordContext leaderProducedRecordContext,
+  // BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+  // int partition,
+  // String kafkaUrl,
+  // int kafkaClusterId,
+  // long beforeProcessingRecordTimestampNs) {
+  // LeaderProducerCallback callback = createProducerCallback(
+  // consumerRecord,
+  // partitionConsumptionState,
+  // leaderProducedRecordContext,
+  // partition,
+  // kafkaUrl,
+  // beforeProcessingRecordTimestampNs);
+  // long sourceTopicOffset = consumerRecord.getOffset();
+  // LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
+  // partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
+  // long beforeProduceTimestampNS = System.nanoTime();
+  // produceFunction.accept(callback, leaderMetadataWrapper);
+  // getHostLevelIngestionStats()
+  // .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
+  // }
 
   @Override
   protected boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState) {

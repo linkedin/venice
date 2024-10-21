@@ -48,8 +48,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.ChunkAwareCallback;
-import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -62,7 +60,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
@@ -886,33 +883,33 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // beforeProcessingRecordTimestampNs);
   // }
   // }
-
-  @Override
-  protected void produceToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    super.produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
-    // necessarily received an ack back yet).
-    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
-    }
-  }
+//
+//  @Override
+//  protected void produceToLocalKafka(
+//      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+//      PartitionConsumptionState partitionConsumptionState,
+//      LeaderProducedRecordContext leaderProducedRecordContext,
+//      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+//      int partition,
+//      String kafkaUrl,
+//      int kafkaClusterId,
+//      long beforeProcessingRecordTimestampNs) {
+//    super.produceToLocalKafka(
+//        consumerRecord,
+//        partitionConsumptionState,
+//        leaderProducedRecordContext,
+//        produceFunction,
+//        partition,
+//        kafkaUrl,
+//        kafkaClusterId,
+//        beforeProcessingRecordTimestampNs);
+//    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
+//    // necessarily received an ack back yet).
+//    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
+//        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+//      partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
+//    }
+//  }
 
   @Override
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(

@@ -158,7 +158,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
     storePartitionDataReceiver.processMessageAndMaybeProduceToKafka(resultWrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
-    verify(ingestionTask, times(1)).produceToLocalKafka(
+    verify(storePartitionDataReceiver, times(1)).produceToLocalKafka(
         any(),
         any(),
         leaderProducedRecordContextArgumentCaptor.capture(),
@@ -326,6 +326,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     HostLevelIngestionStats mockHostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mockHostLevelIngestionStats);
     when(ingestionTask.getVersionIngestionStats()).thenReturn(mock(AggVersionedIngestionStats.class));
     when(ingestionTask.getVersionedDIVStats()).thenReturn(mock(AggVersionedDIVStats.class));
@@ -333,8 +334,6 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
-    doCallRealMethod().when(ingestionTask)
-        .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(testTopic), partition);
@@ -409,7 +408,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
-    ingestionTask.produceToLocalKafka(
+    storePartitionDataReceiver.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
