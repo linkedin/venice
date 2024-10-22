@@ -196,6 +196,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.PubSubHelper;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -4215,6 +4216,87 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
     String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
     verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
+  }
+
+  /**
+   * Simulate the consumer thread processing a batch of polled messages while another thread modifies the leader-follower
+   * state in PCS. The following scenario must no longer occur after adding a lock on {@link LeaderFollowerStateType}:
+   * 1. Consumer thread calls {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} to process polled messages
+   * 2. Execution reaches {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord}, which compares the message's
+   * topic with the topic that should be consumed from, according to {@link PartitionConsumptionState}
+   * 3. The origin topic matches the intended topic, so the Consumer continues to process this message
+   * 4. The StoreIngestionTask thread modifies the PCS leader-follower state due to a Helix state transition
+   * 5. The Consumer thread continues to process the message, but the mismatch in the PCS leader-follower state causes
+   * sanity check failures (e.g. {@link LeaderFollowerStoreIngestionTask#validateRecordBeforeProducingToLocalKafka})
+   * 6. This eventually results in the SIT being killed, which can only be recovered by manually restarting the Venice
+   * server, which results in a massive spike in ingestion latency
+   * <p>
+   * Specifically, this tests the follower to leader transition. Followers should always consume from local VT, but
+   * leaders should never consume from local VT, and an ingestion exception will be emitted from
+   * {@link LeaderFollowerStoreIngestionTask#validateRecordBeforeProducingToLocalKafka} if this happens.
+   * By adding a reader lock to the entire section after {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord},
+   * the PCS state can never be modified while the Consumer thread is processing messages.
+   */
+  @Test(dataProvider = "aaConfigProvider")
+  public void testShouldProcessRecord(AAConfig aaConfig) throws Exception {
+    // Create a batch of polled messages for the consumer thread to process. Only one message is necessary
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
+    PubSubHelper.MutablePubSubMessage pubSubMessage = PubSubHelper.getDummyPubSubMessage(false);
+    pubSubMessage.setTopicPartition(topicPartition);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedMessages = Arrays.asList(pubSubMessage);
+
+    // Set the RT topic stuff on the PCS along with the leader state to eliminate the scary exceptions due to test setup
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo));
+    TopicSwitch topicSwitch = new TopicSwitch();
+    topicSwitch.sourceKafkaServers = Arrays.asList(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    topicSwitch.sourceTopicName = rtTopic.getName();
+    TopicSwitchWrapper topicSwitchWrapper =
+        new TopicSwitchWrapper(topicSwitch, pubSubTopicRepository.getTopic(topicSwitch.sourceTopicName.toString()));
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      VeniceWriter writer = getVeniceWriter(topic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
+      doReturn(writer).when(mockWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class)); // prevents NPE
+
+      Thread stateTransitionThread = new Thread(() -> {
+        /*
+         * Wait for the main test thread to go past shouldProcessRecord() and reach waitUntilValueSchemaAvailable()
+         * inside waitReadyToProcessRecord(), then free the main test thread by making the value schema available
+         */
+        Utils.sleep(1000L);
+        doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, 0);
+
+        /*
+         * Simulates a Helix state transition where the SIT modifies the leader-follower state in the PCS. Since
+         * setLeaderFollowerState() now requires the write lock, this has to wait until after the main test thread is
+         * done. Otherwise, validateRecordBeforeProducingToLocalKafka() would fail and induce an ingestion exception.
+         */
+        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
+        pcs.setTopicSwitch(topicSwitchWrapper);
+        pcs.getOffsetRecord().setLeaderTopic(rtTopic);
+        pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
+      });
+      stateTransitionThread.start();
+
+      try {
+        // Act as the consumer thread processing a batch of polled messages while there is another thread modifying PCS
+        storeIngestionTaskUnderTest.produceToStoreBufferServiceOrKafka(
+            consumedMessages,
+            topicPartition,
+            localKafkaConsumerService.kafkaUrl,
+            0);
+        TestUtils.shutdownThread(stateTransitionThread);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+
+      // Created in validateRecordBeforeProducingToLocalKafka() if the message is from local VT, but we're the leader
+      Assert.assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO));
+    }, aaConfig);
   }
 
   @Test
