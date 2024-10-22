@@ -306,13 +306,15 @@ public class BlobP2PTransferAmongServersTest {
     VeniceServerWrapper server2 = cluster.getVeniceServers().get(1);
 
     // offset record should be same after the empty push
-    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      OffsetRecord offsetRecord1 =
-          server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-      OffsetRecord offsetRecord2 =
-          server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-      Assert.assertEquals(offsetRecord2.getLocalVersionTopicOffset(), offsetRecord1.getLocalVersionTopicOffset());
-    }
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        OffsetRecord offsetRecord1 =
+            server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+        OffsetRecord offsetRecord2 =
+            server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+        Assert.assertEquals(offsetRecord2.getLocalVersionTopicOffset(), offsetRecord1.getLocalVersionTopicOffset());
+      }
+    });
 
     // cleanup and stop server 1
     cluster.stopVeniceServer(server1.getPort());
