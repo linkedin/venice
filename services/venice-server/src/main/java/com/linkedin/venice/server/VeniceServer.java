@@ -625,6 +625,8 @@ public class VeniceServer {
         }
       }
 
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(helixParticipationService.getHelixManager());
+
       for (AbstractVeniceService service: CollectionUtils.reversed(services.get())) {
         try {
           LOGGER.info("Stopping service: {}", service.getName());
