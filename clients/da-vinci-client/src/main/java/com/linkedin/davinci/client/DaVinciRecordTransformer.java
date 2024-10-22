@@ -107,7 +107,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * Lifecycle event triggered after records are done consuming.
+   * Lifecycle event triggered when the current {@link #storeVersion} is being retired.
    * Use this method to perform cleanup operations such as closing database connections or dropping tables.
    *
    * By default, it performs no operation.
@@ -200,6 +200,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
     return storeRecordsInDaVinci;
   }
 
+  /**
+   * @return {@link #recordTransformerUtility}
+   */
   public final DaVinciRecordTransformerUtility<K, O> getRecordTransformerUtility() {
     return recordTransformerUtility;
   }

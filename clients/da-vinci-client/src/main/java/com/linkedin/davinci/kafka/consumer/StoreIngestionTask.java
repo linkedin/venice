@@ -3603,7 +3603,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           recordTransformer.processDelete(lazyKey);
 
+          // This is called here after processDelete because if the user stores their data somewhere other than Da
+          // Vinci,
+          // this function needs to execute to allow them to delete the data from the appropriate store.
           if (!recordTransformer.getStoreRecordsInDaVinci()) {
+            // If we're not storing in Da Vinci, then no need to try to delete from the storageEngine
             break;
           }
         }

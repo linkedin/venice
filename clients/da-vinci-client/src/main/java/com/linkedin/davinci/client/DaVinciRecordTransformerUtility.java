@@ -63,9 +63,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
   }
 
   /**
-   * @return true if the transformation logic has changed since the last time the class was loaded
+   * @return true if transformer logic has changed since the last time the class was loaded
    */
-  public boolean hasTransformationLogicChanged(int classHash) {
+  public boolean hasTransformerLogicChanged(int classHash) {
     try {
       String classHashPath = String.format("./classHash-%d.txt", recordTransformer.getStoreVersion());
       File f = new File(classHashPath);
@@ -93,9 +93,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
   public final void onRecovery(AbstractStorageEngine storageEngine, Integer partition) {
     // ToDo: Store class hash in RocksDB to support blob transfer
     int classHash = recordTransformer.getClassHash();
-    boolean transformationLogicChanged = hasTransformationLogicChanged(classHash);
+    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash);
 
-    if (!recordTransformer.getStoreRecordsInDaVinci() || transformationLogicChanged) {
+    if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
       // Bootstrap from VT
       storageEngine.clearPartitionOffset(partition);
     } else {
@@ -112,7 +112,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
   }
 
   public AvroGenericDeserializer<K> getKeyDeserializer() {
-    if (outputValueDeserializer == null) {
+    if (keyDeserializer == null) {
       Schema keySchema = recordTransformer.getKeySchema();
       keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
     }

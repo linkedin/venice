@@ -976,12 +976,6 @@ public abstract class StoreIngestionTaskTest {
           .getLocalStorageEngine(topic);
     }
 
-    AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
-    when(iterator.isValid()).thenReturn(true).thenReturn(false);
-    when(iterator.key()).thenReturn("mockKey".getBytes());
-    when(iterator.value()).thenReturn("mockValue".getBytes());
-    when(mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
-
     inMemoryLocalKafkaConsumer =
         new MockInMemoryConsumer(inMemoryLocalKafkaBroker, pollStrategy, mockLocalKafkaConsumer);
 

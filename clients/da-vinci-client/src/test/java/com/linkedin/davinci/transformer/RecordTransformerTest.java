@@ -1,9 +1,15 @@
 package com.linkedin.davinci.transformer;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
@@ -59,8 +65,8 @@ public class RecordTransformerTest {
 
     DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
-    assertTrue(recordTransformerUtility.hasTransformationLogicChanged(classHash));
-    assertFalse(recordTransformerUtility.hasTransformationLogicChanged(classHash));
+    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
   }
 
   @Test

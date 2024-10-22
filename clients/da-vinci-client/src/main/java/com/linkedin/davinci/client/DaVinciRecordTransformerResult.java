@@ -35,7 +35,7 @@ public class DaVinciRecordTransformerResult<O> {
   public DaVinciRecordTransformerResult(Result result, O value) {
     if (result != Result.TRANSFORMED) {
       throw new VeniceException(
-          "Invalid constructor usage:" + "This two-argument constructor, only accepts TRANSFORMED results");
+          "Invalid constructor usage:" + "This two-argument constructor only accepts TRANSFORMED results");
     }
     this.result = result;
     this.value = value;
