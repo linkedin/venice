@@ -105,37 +105,39 @@ public class TestNettyP2PBlobTransferManager {
   public void testFailedConnectPeer() {
     CompletionStage<InputStream> future = null;
     try {
-      client.get("remotehost123", "test_store", 1, 1);
+      future = client.get("remotehost123", "test_store", 1, 1);
     } catch (Exception e) {
       Assert.assertTrue(e instanceof VenicePeersConnectionException);
       Assert.assertEquals(e.getMessage(), "Failed to connect to the host: remotehost123");
       Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
     }
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof VenicePeersConnectionException);
+    });
   }
 
   @Test
   public void testFailedRequestFromFinder() {
     doReturn(null).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
-    try {
-      manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
-      Assert.fail("Should have thrown exception");
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof VenicePeersNotFoundException);
-      Assert.assertEquals(e.getMessage(), "Failed to obtain the peers for the requested blob");
-    }
+    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof VenicePeersNotFoundException);
+    });
   }
 
   @Test
   public void testNoResultFromFinder() {
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
-    try {
-      manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
-      Assert.fail("Should have thrown exception");
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof VenicePeersNotFoundException);
-      Assert.assertEquals(e.getMessage(), "No peers found for the requested blob");
-    }
+    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof VenicePeersNotFoundException);
+    });
   }
 
   @Test
