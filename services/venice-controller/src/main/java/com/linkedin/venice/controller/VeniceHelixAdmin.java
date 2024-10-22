@@ -6564,7 +6564,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     Map<String, String> nonStoppableInstances = new HashMap<>();
     List<String> stoppableInstances = new ArrayList<>();
-    statuses.setNonStoppableInstances(nonStoppableInstances);
+    statuses.setNonStoppableInstancesWithReasons(nonStoppableInstances);
     statuses.setStoppableInstances(stoppableInstances);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(cluster);
 

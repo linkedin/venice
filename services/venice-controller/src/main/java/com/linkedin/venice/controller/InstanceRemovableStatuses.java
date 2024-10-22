@@ -24,7 +24,7 @@ public class InstanceRemovableStatuses {
     return nonStoppableInstancesWithReasons;
   }
 
-  public void setNonStoppableInstances(Map<String, String> nonStoppableInstancesWithReasons) {
+  public void setNonStoppableInstancesWithReasons(Map<String, String> nonStoppableInstancesWithReasons) {
     this.nonStoppableInstancesWithReasons = nonStoppableInstancesWithReasons;
   }
 

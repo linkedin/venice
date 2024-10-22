@@ -210,14 +210,14 @@ public class UtilsTest {
 
     List<String> list = Utils.parseCommaSeparatedStringToList("a,b,c");
     Assert.assertEquals(list.size(), 3);
-    Assert.assertTrue(list.contains("a"));
-    Assert.assertTrue(list.contains("b"));
-    Assert.assertTrue(list.contains("c"));
+    Assert.assertEquals(list.get(0), "a");
+    Assert.assertEquals(list.get(1), "b");
+    Assert.assertEquals(list.get(2), "c");
 
     List<String> stringList = Utils.parseCommaSeparatedStringToList("a, b, c");
     Assert.assertEquals(stringList.size(), 3);
-    Assert.assertTrue(stringList.contains("a"));
-    Assert.assertTrue(stringList.contains("b"));
-    Assert.assertTrue(stringList.contains("c"));
+    Assert.assertEquals(list.get(0), "a");
+    Assert.assertEquals(list.get(1), "b");
+    Assert.assertEquals(list.get(2), "c");
   }
 }
