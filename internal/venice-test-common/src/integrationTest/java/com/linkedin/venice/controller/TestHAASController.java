@@ -324,7 +324,7 @@ public class TestHAASController {
     }
   }
 
-  @Test
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testCloudConfig() {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer();
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
@@ -356,7 +356,7 @@ public class TestHAASController {
     }
   }
 
-  @Test
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testHelixUnknownInstanceOperation() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {

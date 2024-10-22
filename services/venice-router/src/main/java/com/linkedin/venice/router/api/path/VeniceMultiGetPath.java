@@ -21,6 +21,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.annotation.Nonnull;
@@ -71,7 +72,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
           "Expected api version: " + EXPECTED_PROTOCOL.getProtocolVersion() + ", but received: " + apiVersion);
     }
 
-    Iterable<ByteBuffer> keys;
+    List<ByteBuffer> keys;
     byte[] content;
 
     if (request.hasAttr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)) {
@@ -157,7 +158,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
     return MULTI_GET_ROUTER_REQUEST_KEY_V1_SERIALIZER.serializeObjects(routerKeyMap.values());
   }
 
-  private static Iterable<ByteBuffer> deserialize(byte[] content) {
+  private static List<ByteBuffer> deserialize(byte[] content) {
     return EXPECTED_PROTOCOL_DESERIALIZER.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
