@@ -281,6 +281,69 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
+  public void testRecordTransformerOnRecovery(DaVinciConfig clientConfig) throws Exception {
+    String storeName1 =
+        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .build();
+    MetricsRepository metricsRepository = new MetricsRepository();
+    clientConfig.setStorageClass(StorageClass.DISK);
+    clientConfig.setIsolated(false);
+
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+
+      TestRecordTransformer recordTransformer = new TestRecordTransformer(1, true);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+          (storeVersion) -> recordTransformer,
+          Integer.class,
+          Schema.create(Schema.Type.INT));
+      clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+
+      DaVinciClient<Integer, Object> clientWithRecordTransformer =
+          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+
+      // Test non-existent key access
+      clientWithRecordTransformer.subscribeAll().get();
+      assertNull(clientWithRecordTransformer.get(KEY_COUNT + 1).get());
+      assertNull(recordTransformer.get(KEY_COUNT + 1));
+
+      // Test single-get access
+      Integer expectedValue = 100;
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(clientWithRecordTransformer.get(k).get(), expectedValue);
+        assertEquals(recordTransformer.get(k), expectedValue);
+      }
+
+      // Mimic restart
+      recordTransformer.clearInMemoryDb();
+      assertTrue(recordTransformer.isInMemoryDbEmpty());
+      clientWithRecordTransformer.close();
+
+      clientWithRecordTransformer.start();
+      clientWithRecordTransformer.subscribeAll().get();
+
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(clientWithRecordTransformer.get(k).get(), expectedValue);
+        assertEquals(recordTransformer.get(k), expectedValue);
+      }
+
+      clientWithRecordTransformer.unsubscribeAll();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordsInDaVinciDisabledRecordTransformer(DaVinciConfig clientConfig) throws Exception {
     String storeName1 =
         createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);

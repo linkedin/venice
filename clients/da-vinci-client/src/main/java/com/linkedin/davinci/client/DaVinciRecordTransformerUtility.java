@@ -105,7 +105,13 @@ public class DaVinciRecordTransformerUtility<K, O> {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();
         Lazy<K> lazyKey = Lazy.of(() -> getKeyDeserializer().deserialize(ByteBuffer.wrap(keyBytes)));
-        Lazy<O> lazyValue = Lazy.of(() -> getOutputValueDeserializer().deserialize(ByteBuffer.wrap(valueBytes)));
+        Lazy<O> lazyValue = Lazy.of(() -> {
+          ByteBuffer byteBuffer = ByteBuffer.wrap(valueBytes);
+          // Skip schema id
+          byteBuffer.position(Integer.BYTES);
+          return getOutputValueDeserializer().deserialize(byteBuffer);
+        });
+
         recordTransformer.processPut(lazyKey, lazyValue);
       }
     }
