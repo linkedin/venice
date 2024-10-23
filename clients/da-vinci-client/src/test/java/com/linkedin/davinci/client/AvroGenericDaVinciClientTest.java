@@ -9,7 +9,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.*;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.DaVinciBackend;
@@ -20,6 +20,7 @@ import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -46,9 +47,14 @@ import org.testng.annotations.Test;
 
 
 public class AvroGenericDaVinciClientTest {
-  public AvroGenericDaVinciClient setUpClientWithRecordTransformer(ClientConfig clientConfig)
-      throws IllegalAccessException, NoSuchFieldException {
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
+  public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
+      ClientConfig clientConfig,
+      DaVinciConfig daVinciConfig) throws IllegalAccessException, NoSuchFieldException {
+
+    if (daVinciConfig == null) {
+      daVinciConfig = new DaVinciConfig();
+    }
+
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
         (storeVersion) -> new TestStringRecordTransformer(storeVersion, true),
         String.class,
@@ -106,8 +112,17 @@ public class AvroGenericDaVinciClientTest {
     when(clientConfig.getSpecificValueClass()).thenReturn(String.class);
     when(clientConfig.isSpecificClient()).thenReturn(true);
 
-    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig);
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
     dvcClient.start();
+  }
+
+  @Test
+  public void testRecordTransformerWithIngestionIsolation() {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setIsolated(true);
+
+    assertThrows(VeniceException.class, () -> setUpClientWithRecordTransformer(clientConfig, daVinciConfig));
   }
 
   @Test(expectedExceptions = VeniceClientException.class)
@@ -117,7 +132,7 @@ public class AvroGenericDaVinciClientTest {
     when(clientConfig.getSpecificValueClass()).thenReturn(Integer.class);
     when(clientConfig.isSpecificClient()).thenReturn(true);
 
-    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig);
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
     dvcClient.start();
   }
 

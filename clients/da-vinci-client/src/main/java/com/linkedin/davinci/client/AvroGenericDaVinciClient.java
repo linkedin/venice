@@ -184,6 +184,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.recordTransformerConfig = daVinciConfig.getRecordTransformerConfig();
     this.readChunkExecutorForLargeRequest =
         readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
+
+    if (daVinciConfig.isIsolated() && recordTransformerConfig != null) {
+      // When both are enabled, this causes the storage engine to be deleted everytime the client starts,
+      // since the record transformer config is never persisted to disk. Additionally, this will spawn multiple
+      // transformers per version, and if the user's transformer is stateful this could cause issues.
+      throw new VeniceException("Ingestion Isolation is not supported with the Da Vinci Record Transformer");
+    }
+
     preValidation.run();
   }
 
