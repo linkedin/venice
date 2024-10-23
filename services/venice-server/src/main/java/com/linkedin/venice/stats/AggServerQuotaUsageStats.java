@@ -27,7 +27,7 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerQuota
     getStoreStats(storeName).recordAllowedUnintentionally(rcu);
   }
 
-  public void setNodeQuotaResponsibility(String storeName, long nodeQpsResponsibility) {
-    getStoreStats(storeName).setNodeQuotaResponsibility(nodeQpsResponsibility);
+  public void setNodeQuotaResponsibility(String storeName, long nodeKpsResponsibility) {
+    getStoreStats(storeName).setNodeQuotaResponsibility(nodeKpsResponsibility);
   }
 }
