@@ -1,12 +1,11 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
+import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
@@ -24,13 +23,13 @@ public class AbstractRoute {
 
   // A singleton of acl check function against store resource
   private static final ResourceAclCheck GET_ACCESS_TO_STORE =
-      (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, HTTP_GET);
+      (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, Method.GET.name());
   // A singleton of acl check function against topic resource
   private static final ResourceAclCheck WRITE_ACCESS_TO_TOPIC =
-      (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Write");
+      (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, Method.Write.name());
 
   private static final ResourceAclCheck READ_ACCESS_TO_TOPIC =
-      (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
+      (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, Method.Read.name());
 
   private final boolean sslEnabled;
   private final Optional<DynamicAccessController> accessController;
@@ -153,7 +152,7 @@ public class AbstractRoute {
     X509Certificate certificate = getCertificate(request);
 
     String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
-    return accessController.get().isAllowlistUsers(certificate, storeName, HTTP_GET);
+    return accessController.get().isAllowlistUsers(certificate, storeName, Method.GET.name());
   }
 
   /**

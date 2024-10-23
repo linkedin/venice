@@ -59,7 +59,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;

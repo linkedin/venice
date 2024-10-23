@@ -86,8 +86,8 @@ public class VeniceGrpcServer {
     }
   }
 
-  public boolean isShutdown() {
-    return server.isShutdown();
+  public boolean isRunning() {
+    return !server.isShutdown();
   }
 
   public boolean isTerminated() {

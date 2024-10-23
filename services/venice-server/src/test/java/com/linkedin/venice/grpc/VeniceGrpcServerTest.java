@@ -39,7 +39,7 @@ public class VeniceGrpcServerTest {
     assertFalse(grpcServer.isTerminated());
 
     grpcServer.stop();
-    assertTrue(grpcServer.isShutdown());
+    assertTrue(grpcServer.isRunning());
   }
 
   @Test
@@ -65,7 +65,7 @@ public class VeniceGrpcServerTest {
     Thread.sleep(500);
 
     grpcServer.stop();
-    assertTrue(grpcServer.isShutdown());
+    assertTrue(grpcServer.isRunning());
 
     Thread.sleep(500);
 

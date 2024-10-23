@@ -14,7 +14,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;

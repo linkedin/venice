@@ -101,10 +101,11 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
   @Override
   public NewStoreResponse createNewStore(NewStoreRequest request) {
     try {
+      // ControllerEndPointParamValidator.validateNewStoreRequest(request);
       VeniceControllerGrpcServiceBlockingStub stub = VeniceControllerGrpcServiceGrpc
           .newBlockingStub(getOrCreateChannel(getLeaderControllerUrl(request.getClusterName())));
       // convert the NewStoreRequest to a gRPC request using the utility class
-      CreateStoreGrpcRequest grpcRequest = GrpcRequestResponseConverter.toGrpcRequest(request);
+      CreateStoreGrpcRequest grpcRequest = GrpcRequestResponseConverter.toGrpcCreateStoreGrpcRequest(request);
 
       // make gRPC request
       CreateStoreGrpcResponse grpcResponse = stub.createStore(grpcRequest);

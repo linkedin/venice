@@ -2,25 +2,36 @@ package com.linkedin.venice.controllerapi.transport;
 
 import com.google.rpc.ErrorInfo;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.request.ControllerRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
+import com.linkedin.venice.controllerapi.request.UpdateAclForStoreRequest;
+import com.linkedin.venice.protocols.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
+import com.linkedin.venice.protocols.UpdateAclForStoreGrpcRequest;
 import io.grpc.Status.Code;
 import io.grpc.StatusRuntimeException;
 import io.grpc.protobuf.StatusProto;
 
 
 public class GrpcRequestResponseConverter {
-  public static CreateStoreGrpcRequest toGrpcRequest(NewStoreRequest newStoreRequest) {
+  public static CreateStoreGrpcRequest toGrpcCreateStoreGrpcRequest(NewStoreRequest newStoreRequest) {
     CreateStoreGrpcRequest.Builder builder = CreateStoreGrpcRequest.newBuilder()
-        .setClusterName(newStoreRequest.getClusterName())
-        .setStoreName(newStoreRequest.getStoreName())
-        .setOwner(newStoreRequest.getOwner())
+        .setClusterStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(newStoreRequest.getClusterName())
+                .setStoreName(newStoreRequest.getStoreName())
+                .build())
         .setKeySchema(newStoreRequest.getKeySchema())
         .setValueSchema(newStoreRequest.getValueSchema())
         .setIsSystemStore(newStoreRequest.isSystemStore());
 
+    // For optional fields, only set if they are not null
+    if (newStoreRequest.getOwner() != null) {
+      builder.setOwner(newStoreRequest.getOwner());
+    }
     if (newStoreRequest.getAccessPermissions() != null) {
       builder.setAccessPermission(newStoreRequest.getAccessPermissions());
     }
@@ -34,16 +45,38 @@ public class GrpcRequestResponseConverter {
   }
 
   public static NewStoreRequest convertGrpcRequestToNewStoreRequest(CreateStoreGrpcRequest grpcRequest) {
-    String accessPermissions = grpcRequest.hasAccessPermission() ? grpcRequest.getAccessPermission() : null;
-
     return new NewStoreRequest(
-        grpcRequest.getClusterName(),
-        grpcRequest.getStoreName(),
-        grpcRequest.getOwner(),
+        grpcRequest.getClusterStoreInfo().getClusterName(),
+        grpcRequest.getClusterStoreInfo().getStoreName(),
+        grpcRequest.hasOwner() ? grpcRequest.getOwner() : null,
         grpcRequest.getKeySchema(),
         grpcRequest.getValueSchema(),
-        accessPermissions,
+        grpcRequest.hasAccessPermission() ? grpcRequest.getAccessPermission() : null,
         grpcRequest.getIsSystemStore());
+  }
+
+  // UpdateAclForStoreRequest
+  public static UpdateAclForStoreRequest convertGrpcRequestToUpdateAclForStoreRequest(
+      UpdateAclForStoreGrpcRequest grpcRequest) {
+    return new UpdateAclForStoreRequest(
+        grpcRequest.getClusterStoreInfo().getClusterName(),
+        grpcRequest.getClusterStoreInfo().getStoreName(),
+        grpcRequest.getAccessPermissions());
+  }
+
+  public static ClusterStoreGrpcInfo getClusterStoreGrpcInfo(ControllerResponse response) {
+    ClusterStoreGrpcInfo.Builder builder = ClusterStoreGrpcInfo.newBuilder();
+    if (response.getCluster() != null) {
+      builder.setClusterName(response.getCluster());
+    }
+    if (response.getName() != null) {
+      builder.setStoreName(response.getName());
+    }
+    return builder.build();
+  }
+
+  public static ControllerRequest getControllerRequest(ClusterStoreGrpcInfo clusterStoreGrpcInfo) {
+    return new ControllerRequest(clusterStoreGrpcInfo.getClusterName(), clusterStoreGrpcInfo.getStoreName());
   }
 
   /**

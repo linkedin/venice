@@ -84,6 +84,7 @@ ext.libraries = [
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
@@ -501,6 +502,11 @@ subprojects {
               counter = 'BRANCH'
               value = 'COVEREDRATIO'
               minimum = threshold
+            }
+            afterEvaluate {
+              classDirectories.setFrom(files(classDirectories.files.collect { fileTree(dir: it, exclude: [
+                  '**/com/linkedin/venice/protocols/**',
+              ])}))
             }
           }
         }

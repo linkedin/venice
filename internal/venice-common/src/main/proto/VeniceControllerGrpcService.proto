@@ -6,13 +6,178 @@ import "google/rpc/error_details.proto";
 
 option java_multiple_files = true;
 
-service VeniceControllerGrpcService {
-  rpc getStoresInCluster (GetStoresInClusterGrpcRequest) returns (GetStoresInClusterGrpcResponse) {}
-  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
-  rpc queryJobStatus(QueryJobStatusGrpcRequest) returns (QueryJobStatusGrpcResponse) {}
+//1. AdminCommandExecutionRoutes: DONE
+//2. AdminTopicMetadataRoutes: DONE
+//3. ClusterDiscovery: DONE
+//4. ClusterRoutes
+//5. ControllerRoutes
+//6. CreateStore: DONE
+//7. CreateVersion
+//8. DataRecoveryRoutes
+//9. JobRoutes
+//10. MigrationRoutes
+//11. NewClusterBuildOutRoutes
+//12. NodesAndReplicas
+//13. RoutersClusterConfigRoutes
+//14. SchemaRoutes
+//15. SkipAdminRoute
+//16. StoragePersonaRoutes
+//17. StoresRoutes
+//18. VersionRoute: DONE
 
-  // RPC for getting the leader controller
-  rpc GetLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+service VeniceControllerGrpcService {
+
+  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+
+  // CreateStore
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
+  rpc updateAclForStore(UpdateAclForStoreGrpcRequest) returns (UpdateAclForStoreGrpcResponse);
+  rpc getAclForStore(GetAclForStoreGrpcRequest) returns (GetAclForStoreGrpcResponse);
+  rpc deleteAclForStore(DeleteAclForStoreGrpcRequest) returns (DeleteAclForStoreGrpcResponse);
+  rpc checkResourceCleanupForStoreCreation(CheckResourceCleanupForStoreCreationGrpcRequest) returns (CheckResourceCleanupForStoreCreationGrpcResponse) {}
+
+  // AdminCommandExecution
+  rpc getAdminCommandExecutionStatus(AdminCommandExecutionStatusGrpcRequest) returns (AdminCommandExecutionStatusGrpcResponse) {}
+  rpc getLastSuccessfulAdminCommandExecutionId(LastSuccessfulAdminCommandExecutionGrpcRequest) returns (LastSuccessfulAdminCommandExecutionGrpcResponse) {}
+
+  // AdminTopicMetadata
+  rpc getAdminTopicMetadata(AdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
+  rpc updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest) returns (UpdateAdminTopicMetadataGrpcResponse) {}
+
+  // ClusterDiscovery
+  rpc discoverClusterForStore(DiscoverClusterGrpcRequest) returns (DiscoverClusterGrpcResponse) {}
+
+  // VersionRoute
+  rpc listBootstrappingVersions(ListBootstrappingVersionsGrpcRequest) returns (ListBootstrappingVersionsGrpcResponse) {}
+}
+
+message ListBootstrappingVersionsGrpcRequest {
+  string clusterName = 1;
+}
+
+message BootstrappingVersion {
+  string storeVersionName = 1;
+  string versionStatus = 2;
+}
+
+message ListBootstrappingVersionsGrpcResponse {
+  string clusterName = 1;
+  repeated BootstrappingVersion bootstrappingVersions = 2;
+}
+
+message DiscoverClusterGrpcRequest {
+  string storeName = 1;
+}
+
+message DiscoverClusterGrpcResponse {
+  string clusterName = 1;
+  string storeName = 2;
+  string d2Service = 3;
+  string serverD2Service = 4;
+  string zkAddress = 5;
+  string pubSubBootstrapServers = 6;
+}
+
+message AdminTopicMetadataGrpcRequest {
+  string clusterName = 1;
+  optional string storeName = 2;
+}
+
+message AdminTopicMetadataGrpcResponse {
+  string clusterName = 1;
+  optional string storeName = 2;
+  int64 executionId = 3;
+  optional int64 offset = 4;
+  optional int64 upstreamOffset = 5;
+}
+
+message UpdateAdminTopicMetadataGrpcRequest {
+  string clusterName = 1;
+  optional string storeName = 2;
+  int64 executionId = 3;
+  optional int64 offset = 4;
+  optional int64 upstreamOffset = 5;
+}
+
+message UpdateAdminTopicMetadataGrpcResponse {
+  string clusterName = 1;
+  optional string storeName = 2;
+}
+
+message AdminCommandExecutionStatusGrpcRequest {
+  string clusterName = 1;
+  int64 adminCommandExecutionId = 2;
+}
+
+message AdminCommandExecutionStatusGrpcResponse {
+  string clusterName = 1;
+  int64 adminCommandExecutionId = 2;
+  string operation = 3;
+  string startTime = 4;
+  map<string, string> fabricToExecutionStatusMap = 5;
+}
+
+message LastSuccessfulAdminCommandExecutionGrpcRequest {
+  string clusterName = 1;
+}
+
+message LastSuccessfulAdminCommandExecutionGrpcResponse {
+  string clusterName = 1;
+  int64 lastSuccessfulAdminCommandExecutionId = 2;
+}
+
+
+message ClusterStoreGrpcInfo {
+  string clusterName = 1;
+  string storeName = 2;
+}
+
+message CreateStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string keySchema = 2;
+  string valueSchema = 3;
+  optional string owner = 4;
+  optional bool isSystemStore = 5;
+  optional string accessPermission = 6;
+}
+
+message CreateStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string owner = 2;
+}
+
+message UpdateAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string accessPermissions = 3;
+}
+
+message UpdateAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message GetAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message GetAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string accessPermissions = 2;
+}
+
+message DeleteAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message DeleteAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message CheckResourceCleanupForStoreCreationGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message CheckResourceCleanupForStoreCreationGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
 }
 
 message VeniceControllerGrpcError {
@@ -49,20 +214,6 @@ message StoreInfoGrpc {
 
 message GetStoresInClusterGrpcResponse {
   repeated StoreInfoGrpc stores = 1;
-}
-
-message CreateStoreGrpcRequest {
-  string clusterName = 1;
-  string storeName = 2;
-  string keySchema = 3;
-  string valueSchema = 4;
-  string owner = 5;
-  bool isSystemStore = 6;
-  optional string accessPermission = 7;
-}
-
-message CreateStoreGrpcResponse {
-  string owner = 1;
 }
 
 message QueryJobStatusGrpcRequest {

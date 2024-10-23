@@ -9,7 +9,6 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;

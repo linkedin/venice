@@ -8,7 +8,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_D
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Optional;

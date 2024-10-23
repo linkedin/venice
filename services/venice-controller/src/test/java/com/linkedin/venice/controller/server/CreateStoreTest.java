@@ -16,7 +16,6 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;

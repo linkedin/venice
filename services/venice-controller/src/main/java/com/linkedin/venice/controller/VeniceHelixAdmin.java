@@ -3832,6 +3832,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String kafkaTopicName,
       long deprecatedJobTopicRetentionMs) {
     try {
+
       if (topicManager
           .updateTopicRetention(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicRetentionMs)) {
         return true;

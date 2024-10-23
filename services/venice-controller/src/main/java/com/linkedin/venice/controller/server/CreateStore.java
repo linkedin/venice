@@ -15,11 +15,12 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.request.ControllerRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
+import com.linkedin.venice.controllerapi.request.UpdateAclForStoreRequest;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
@@ -44,34 +45,18 @@ public class CreateStore extends AbstractRoute {
         if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
+        // Validate request parameters
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String keySchema = request.queryParams(KEY_SCHEMA);
-        String valueSchema = request.queryParams(VALUE_SCHEMA);
-        boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
-
-        String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
-        if (owner == null) {
-          owner = "";
-        }
-
-        String accessPerm = request.queryParams(ACCESS_PERMISSION);
-        Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
-
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        veniceResponse.setOwner(owner);
-
+        // Extract the parameters from the spark request and create the generic request object
         NewStoreRequest storeRequest = new NewStoreRequest(
-            clusterName,
-            storeName,
-            owner,
-            keySchema,
-            valueSchema,
-            accessPermissions.orElse(null),
-            isSystemStore);
-        requestHandler.createStore(storeRequest);
+            request.queryParams(CLUSTER),
+            request.queryParams(NAME),
+            AdminSparkServer.getOptionalParameterValue(request, OWNER),
+            request.queryParams(KEY_SCHEMA),
+            request.queryParams(VALUE_SCHEMA),
+            request.queryParams(ACCESS_PERMISSION),
+            Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE)));
+        requestHandler.createStore(storeRequest, veniceResponse);
       }
     };
   }
@@ -86,12 +71,11 @@ public class CreateStore extends AbstractRoute {
       try {
         // TODO need security validation here?
         AdminSparkServer.validateParams(request, UPDATE_ACL.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String accessPermissions = request.queryParams(ACCESS_PERMISSION);
-        responseObject.setCluster(cluster);
-        responseObject.setName(storeName);
-        admin.updateAclForStore(cluster, storeName, accessPermissions);
+        UpdateAclForStoreRequest updateAclForStoreRequest = new UpdateAclForStoreRequest(
+            request.queryParams(CLUSTER),
+            request.queryParams(NAME),
+            request.queryParams(ACCESS_PERMISSION));
+        requestHandler.updateAclForStore(updateAclForStoreRequest, responseObject);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -110,13 +94,9 @@ public class CreateStore extends AbstractRoute {
       try {
         // TODO need security validation here?
         AdminSparkServer.validateParams(request, GET_ACL.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        responseObject.setCluster(cluster);
-        responseObject.setName(storeName);
-
-        String accessPerm = admin.getAclForStore(cluster, storeName);
-        responseObject.setAccessPermissions(accessPerm);
+        requestHandler.getAclForStore(
+            new ControllerRequest(request.queryParams(CLUSTER), request.queryParams(NAME)),
+            responseObject);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -135,11 +115,9 @@ public class CreateStore extends AbstractRoute {
       try {
         // TODO need security validation here?
         AdminSparkServer.validateParams(request, DELETE_ACL.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        responseObject.setCluster(cluster);
-        responseObject.setName(storeName);
-        admin.deleteAclForStore(cluster, storeName);
+        requestHandler.deleteAclForStore(
+            new ControllerRequest(request.queryParams(CLUSTER), request.queryParams(NAME)),
+            responseObject);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -157,11 +135,9 @@ public class CreateStore extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         AdminSparkServer.validateParams(request, GET_ACL.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        controllerResponse.setCluster(cluster);
-        controllerResponse.setName(storeName);
-        admin.checkResourceCleanupBeforeStoreCreation(cluster, storeName);
+        requestHandler.checkResourceCleanupBeforeStoreCreation(
+            new ControllerRequest(request.queryParams(CLUSTER), request.queryParams(NAME)),
+            controllerResponse);
       } catch (Throwable e) {
         controllerResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -169,5 +145,4 @@ public class CreateStore extends AbstractRoute {
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     };
   }
-
 }

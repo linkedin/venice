@@ -110,7 +110,6 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AuditInfo;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.spark.VeniceSparkServerFactory;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -534,7 +533,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         CLUSTER_DISCOVERY.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(admin)));
+        new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(requestHandler, admin)));
     httpService.get(
         LIST_BOOTSTRAPPING_VERSIONS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, versionRoute.listBootstrappingVersions(admin)));

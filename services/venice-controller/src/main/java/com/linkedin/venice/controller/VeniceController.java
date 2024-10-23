@@ -11,6 +11,8 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
+import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;

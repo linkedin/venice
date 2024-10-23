@@ -7,7 +7,6 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -23,7 +22,6 @@ import spark.Route;
 
 
 public class TestVeniceRouteHandler {
-  private VeniceControllerRequestHandler requestHandler;
   private Admin mockAdmin;
 
   @BeforeMethod
@@ -31,7 +29,6 @@ public class TestVeniceRouteHandler {
     mockAdmin = mock(VeniceParentHelixAdmin.class);
     ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
     doReturn(mockAdmin).when(dependencies).getAdmin();
-    requestHandler = new VeniceControllerRequestHandler(dependencies);
   }
 
   @Test

@@ -10,7 +10,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.ParentControllerRegionState;
-import com.linkedin.venice.controller.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
