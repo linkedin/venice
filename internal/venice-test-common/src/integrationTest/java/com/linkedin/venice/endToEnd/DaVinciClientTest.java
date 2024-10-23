@@ -295,7 +295,6 @@ public class DaVinciClientTest {
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
-    // clientConfig.setIsolated(false);
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
