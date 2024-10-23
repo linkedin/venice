@@ -8,10 +8,13 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -44,13 +47,25 @@ public class ChunkAssembler {
     this.inMemoryStorageEngine.suppressLogs(true);
   }
 
+  /**
+   * This method is used to buffer and assemble chunking records consumed from a Kafka topic. For chunked records, we
+   * buffer the chunks in memory until we have all the chunks for a given key. Once we have all the chunks indicated by
+   * receiving the chunk manifest record, we assemble the chunks and deserialize it from binary back into an object
+   * by using the provided deserializer and return the fully assembled record.
+   *
+   * The provided deserializer can be either a lazy record deserializer or an AvroProtocolDefinition which is used to
+   * select the appropriate protocol serializer for deserialization.
+   *
+   * Note that if the passed-in record is a regular record (not chunked), we will return the record after
+   * deserializing it without buffering it in memory.
+   */
   public <T> T bufferAndAssembleRecord(
       PubSubTopicPartition pubSubTopicPartition,
       int schemaId,
       byte[] keyBytes,
       ByteBuffer valueBytes,
       long recordOffset,
-      Lazy<RecordDeserializer<T>> recordDeserializer,
+      Object deserializer,
       int readerSchemaId,
       VeniceCompressor compressor) {
     T assembledRecord = null;
@@ -60,33 +75,33 @@ public class ChunkAssembler {
     }
     // If this is a record chunk, store the chunk and return null for processing this record
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+      // We need to extract data from valueBytes, otherwise it could contain non-data in the array.
       inMemoryStorageEngine.put(
           pubSubTopicPartition.getPartitionNumber(),
           keyBytes,
-          ValueRecord.create(schemaId, valueBytes.array()).serialize());
+          ValueRecord.create(schemaId, ByteUtils.extractByteArray(valueBytes)).serialize());
       return null;
-    } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+    }
+
+    if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
       inMemoryStorageEngine.put(
           pubSubTopicPartition.getPartitionNumber(),
           keyBytes,
-          ValueRecord.create(schemaId, valueBytes.array()).serialize());
+          ValueRecord.create(schemaId, ByteUtils.extractByteArray(valueBytes)).serialize());
       try {
-        assembledRecord = decompressAndDeserialize(
-            recordDeserializer.get(),
+        valueBytes = RawBytesChunkingAdapter.INSTANCE.get(
+            inMemoryStorageEngine,
+            pubSubTopicPartition.getPartitionNumber(),
+            ByteBuffer.wrap(keyBytes),
+            false,
+            null,
+            null,
+            NoOpReadResponseStats.SINGLETON,
+            readerSchemaId,
+            RawBytesStoreDeserializerCache.getInstance(),
             compressor,
-            RawBytesChunkingAdapter.INSTANCE.get(
-                inMemoryStorageEngine,
-                pubSubTopicPartition.getPartitionNumber(),
-                ByteBuffer.wrap(keyBytes),
-                false,
-                null,
-                null,
-                NoOpReadResponseStats.SINGLETON,
-                readerSchemaId,
-                RawBytesStoreDeserializerCache.getInstance(),
-                compressor,
-                null));
+            null);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -95,17 +110,26 @@ public class ChunkAssembler {
         LOGGER.warn(
             "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
             recordOffset,
-            pubSubTopicPartition.getPubSubTopic().getName());
-      }
-    } else {
-      // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
-      try {
-        assembledRecord = decompressAndDeserialize(recordDeserializer.get(), compressor, valueBytes);
-      } catch (Exception e) {
-        throw new RuntimeException(e);
+            pubSubTopicPartition.getPubSubTopic().getName(),
+            ex);
       }
     }
 
+    /**
+     * We have two types of deserializers that we support here. One is the lazy deserializer which is used for
+     * chunked records, and the other is the AvroProtocolDefinition which is currently used for Global DIV.
+     */
+    try {
+      if (deserializer instanceof Lazy) {
+        assembledRecord =
+            decompressAndDeserialize(((Lazy<RecordDeserializer<T>>) deserializer).get(), compressor, valueBytes);
+      } else if (deserializer instanceof AvroProtocolDefinition) {
+        AvroProtocolDefinition protocol = (AvroProtocolDefinition) deserializer;
+        assembledRecord = decompressAndDeserialize(protocol, compressor, valueBytes);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
     // We only buffer one record at a time for a given partition. If we've made it this far
     // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
     // the cache. Kafka might give duplicate delivery, but it won't give out of order delivery, so
@@ -119,6 +143,15 @@ public class ChunkAssembler {
       VeniceCompressor compressor,
       ByteBuffer value) throws IOException {
     return deserializer.deserialize(compressor.decompress(value));
+  }
+
+  protected <T extends SpecificRecord> T decompressAndDeserialize(
+      AvroProtocolDefinition protocol,
+      VeniceCompressor compressor,
+      ByteBuffer value) throws IOException {
+    InternalAvroSpecificSerializer<T> deserializer = protocol.getSerializer();
+    return deserializer
+        .deserialize(ByteUtils.extractByteArray(compressor.decompress(value)), protocol.getCurrentProtocolVersion());
   }
 
   public void clearInMemoryDB() {
