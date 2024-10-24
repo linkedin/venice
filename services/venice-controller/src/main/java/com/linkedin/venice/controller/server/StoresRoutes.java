@@ -83,6 +83,7 @@ import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
@@ -210,28 +211,8 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, StoreResponse veniceResponse) {
         // No ACL check for getting store metadata
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
-        String storeName = request.queryParams(NAME);
-        String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        Store store = admin.getStore(clusterName, storeName);
-        if (store == null) {
-          throw new VeniceNoStoreException(storeName);
-        }
-        StoreInfo storeInfo = StoreInfo.fromStore(store);
-        // Make sure store info will have right default retention time for Nuage UI display.
-        if (storeInfo.getBackupVersionRetentionMs() < 0) {
-          storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
-        }
-        // This is the only place the default value of maxRecordSizeBytes is set for StoreResponse for VPJ and Consumer
-        if (storeInfo.getMaxRecordSizeBytes() < 0) {
-          storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
-        }
-        storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
-        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
-        storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
-
-        veniceResponse.setStore(storeInfo);
+        GetStoreRequest getStoreRequest = new GetStoreRequest(request.queryParams(CLUSTER), request.queryParams(NAME));
+        requestHandler.getStore(getStoreRequest, veniceResponse);
       }
     };
   }

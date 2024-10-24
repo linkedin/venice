@@ -1,0 +1,218 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+import "google/protobuf/timestamp.proto";  // Import for timestamp handling
+
+option java_multiple_files = true;
+
+// Enum for Data Replication Policy
+enum DataReplicationPolicyGrpc {
+  NON_AGGREGATE = 0;
+  AGGREGATE = 1;
+  NONE = 2;
+  ACTIVE_ACTIVE = 3;
+}
+
+// Enum for Buffer Replay Policy
+enum BufferReplayPolicyGrpc {
+  REWIND_FROM_EOP = 0;
+  REWIND_FROM_SOP = 1;
+}
+
+// Protobuf message for HybridStoreConfig
+message HybridStoreConfigGrpc {
+  // Time to rewind from before the EOP or SOP in seconds.
+  int64 rewindTimeInSeconds = 1;
+
+  // Offset lag threshold to determine when the store should go online.
+  int64 offsetLagThresholdToGoOnline = 2;
+
+  // Producer timestamp lag threshold in seconds for the store to go online.
+  int64 producerTimestampLagThresholdToGoOnlineInSeconds = 3;
+
+  // Data replication policy used for the hybrid store.
+  DataReplicationPolicyGrpc dataReplicationPolicy = 4;
+
+  // Buffer replay policy used for the hybrid store.
+  BufferReplayPolicyGrpc bufferReplayPolicy = 5;
+}
+
+// Enum for Compression Strategy
+enum CompressionStrategyGrpc {
+  NO_OP = 0;
+  GZIP = 1;
+  ZSTD = 2;
+  ZSTD_WITH_DICT = 3;
+}
+
+// Enum for Backup Strategy
+enum BackupStrategyGrpc {
+  KEEP_MIN_VERSIONS = 0;
+  DELETE_ON_NEW_PUSH_START = 1;
+}
+
+message ETLStoreConfigGrpc {
+  // The proxy account used for ETL operations.
+  string etledUserProxyAccount = 1;
+
+  // Flag indicating whether ETL is enabled for regular versions.
+  bool regularVersionETLEnabled = 2;
+
+  // Flag indicating whether ETL is enabled for future versions.
+  bool futureVersionETLEnabled = 3;
+}
+
+// Protobuf message for Partitioner Config
+message PartitionerConfigGrpc {
+  // The class name of the partitioner.
+  string partitionerClass = 1;
+  // Parameters for the partitioner, represented as key-value pairs.
+  map<string, string> partitionerParams = 2;
+}
+
+// Protobuf message for View Config
+message ViewConfigGrpc {
+  // The class name of the view.
+  string viewClassName = 1;
+
+  // Parameters for the view, represented as key-value pairs.
+  map<string, string> viewParameters = 2;
+}
+
+// Protobuf message for Store Info
+message StoreInfoGrpc {
+  string name = 1;
+  string owner = 2;
+  int32 currentVersion = 3;
+
+  // Mapping of colo to current versions
+  map<string, int32> coloToCurrentVersions = 4;
+
+  int32 reservedVersion = 5;
+  int32 partitionCount = 6;
+  int64 lowWatermark = 7;
+  bool enableStoreWrites = 8;
+  bool enableStoreReads = 9;
+
+  // List of versions
+  repeated VersionGrpc versions = 10;  // Assume VersionGrpc is defined elsewhere
+
+  int64 storageQuotaInByte = 11;
+  bool hybridStoreOverheadBypass = 12;
+  int64 readQuotaInCU = 13;
+
+  // Hybrid store configuration
+  HybridStoreConfigGrpc hybridStoreConfig = 14;  // Assume HybridStoreConfigGrpc is defined elsewhere
+
+  bool accessControlled = 15;
+  bool chunkingEnabled = 16;
+  bool rmdChunkingEnabled = 17;
+  bool singleGetRouterCacheEnabled = 18;
+  bool batchGetRouterCacheEnabled = 19;
+
+  int32 batchGetLimit = 20;
+  int32 largestUsedVersionNumber = 21;
+  bool incrementalPushEnabled = 22;
+
+  // Compression strategy
+  CompressionStrategyGrpc compressionStrategy = 23;
+  bool clientDecompressionEnabled = 24;
+  int32 numVersionsToPreserve = 25;
+  bool migrating = 26;
+  bool writeComputationEnabled = 27;
+
+  int32 replicationMetadataVersionId = 28;
+  bool readComputationEnabled = 29;
+  int32 bootstrapToOnlineTimeoutInHours = 30;
+  bool nativeReplicationEnabled = 31;
+
+  string pushStreamSourceAddress = 32;
+  BackupStrategyGrpc backupStrategy = 33;  // Backup strategy
+
+  bool schemaAutoRegisterFromPushJobEnabled = 34;
+  bool superSetSchemaAutoGenerationForReadComputeEnabled = 35;
+  int32 latestSuperSetValueSchemaId = 36;
+  bool hybridStoreDiskQuotaEnabled = 37;
+
+  ETLStoreConfigGrpc etlStoreConfig = 38;  // ETL store config
+  PartitionerConfigGrpc partitionerConfig = 39;  // Partitioner config
+
+  int64 backupVersionRetentionMs = 40;
+  int32 replicationFactor = 41;
+  bool migrationDuplicateStore = 42;
+
+  string nativeReplicationSourceFabric = 43;
+  bool storeMetadataSystemStoreEnabled = 44;
+  bool storeMetaSystemStoreEnabled = 45;
+  bool daVinciPushStatusStoreEnabled = 46;
+
+  bool activeActiveReplicationEnabled = 47;
+  string kafkaBrokerUrl = 48;
+
+  // Mapping of view configurations
+  map<string, ViewConfigGrpc> viewConfigs = 49;  // View config
+
+  bool storageNodeReadQuotaEnabled = 50;
+  int64 minCompactionLagSeconds = 51;
+  int64 maxCompactionLagSeconds = 52;
+
+  int32 maxRecordSizeBytes = 53;
+  int32 maxNearlineRecordSizeBytes = 54;
+
+  bool unusedSchemaDeletionEnabled = 55;
+  bool blobTransferEnabled = 56;
+}
+
+// Protobuf message for Data Recovery Version Config
+message DataRecoveryVersionConfigGrpc {
+  // The source fabric for data recovery.
+  string dataRecoverySourceFabric = 1;
+
+  // Flag indicating whether data recovery is complete.
+  bool dataRecoveryComplete = 2;
+
+  // The version number of the data recovery source.
+  int32 dataRecoverySourceVersionNumber = 3;
+}
+
+enum PushTypeGrpc {
+  BATCH = 0;
+  STREAM_REPROCESSING = 1;
+  STREAM = 2;
+  INCREMENTAL = 3;
+}
+
+message VersionGrpc {
+  string storeName = 1;
+  int32 number = 2;
+  int64 createdTime = 3;
+  int32 status = 4;
+  string pushJobId = 5;
+  int32 compressionStrategy = 6;
+  bool leaderFollowerModelEnabled = 7;
+  bool nativeReplicationEnabled = 8;
+  string pushStreamSourceAddress = 9;
+  bool bufferReplayEnabledForHybrid = 10;
+  bool chunkingEnabled = 11;
+  bool rmdChunkingEnabled = 12;
+  int32 pushType = 13;
+  int32 partitionCount = 14;
+  PartitionerConfigGrpc partitionerConfig = 15;
+  int32 incrementalPushPolicy = 16;
+  int32 replicationFactor = 17;
+  string nativeReplicationSourceFabric = 18;
+  bool incrementalPushEnabled = 19;
+  bool separateRealTimeTopicEnabled = 20;
+  bool blobTransferEnabled = 21;
+  bool useVersionLevelIncrementalPushEnabled = 22;
+  HybridStoreConfigGrpc hybridConfig = 23;
+  bool useVersionLevelHybridConfig = 24;
+  bool activeActiveReplicationEnabled = 25;
+  int32 timestampMetadataVersionId = 26;
+  DataRecoveryVersionConfigGrpc dataRecoveryConfig = 27;
+  bool deferVersionSwap = 28;
+  map<string, VersionGrpc> views = 29;
+  int32 repushSourceVersion = 30;
+}

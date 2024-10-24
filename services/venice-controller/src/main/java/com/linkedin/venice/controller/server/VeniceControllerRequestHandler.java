@@ -15,18 +15,22 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.request.AdminCommandExecutionStatusRequest;
 import com.linkedin.venice.controllerapi.request.AdminTopicMetadataRequest;
 import com.linkedin.venice.controllerapi.request.ClusterDiscoveryRequest;
 import com.linkedin.venice.controllerapi.request.ControllerRequest;
+import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAclForStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAdminTopicMetadataRequest;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -351,5 +355,32 @@ public class VeniceControllerRequestHandler {
       default:
         throw new IllegalArgumentException("Unsupported store config filter for type: " + fieldSchema.getType());
     }
+  }
+
+  public void getStore(GetStoreRequest request, StoreResponse response) {
+    String clusterName = request.getClusterName();
+    String storeName = request.getStoreName();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    LOGGER.info("Getting store: {} in cluster: {}", storeName, clusterName);
+
+    Store store = admin.getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    StoreInfo storeInfo = StoreInfo.fromStore(store);
+    // Make sure store info will have right default retention time for Nuage UI display.
+    if (storeInfo.getBackupVersionRetentionMs() < 0) {
+      storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
+    }
+    // This is the only place the default value of maxRecordSizeBytes is set for StoreResponse for VPJ and Consumer
+    if (storeInfo.getMaxRecordSizeBytes() < 0) {
+      storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
+    }
+    storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
+    boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
+    storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
+
+    response.setStore(storeInfo);
   }
 }
