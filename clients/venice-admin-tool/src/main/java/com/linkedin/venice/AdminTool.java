@@ -27,6 +27,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.server.AggregratedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -3099,15 +3100,16 @@ public class AdminTool {
         getRequiredArgument(cmd, Arg.BASE_PATH));
   }
 
-  private static void getAggregatedHealthStatus(CommandLine cmd) {
+  private static void getAggregatedHealthStatus(CommandLine cmd) throws JsonProcessingException {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     String instances = getRequiredArgument(cmd, Arg.INSTANCES);
     String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
-
-    ControllerResponse response = controllerClient.getAggregatedHealthStatus(
-        clusterName,
-        Utils.parseCommaSeparatedStringToList(instances),
-        Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
+    AggregratedHealthStatusRequest request = new AggregratedHealthStatusRequest();
+    request.setToBeStoppedInstances(Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
+    request.setInstances(Utils.parseCommaSeparatedStringToList(instances));
+    request.setClusterId(clusterName);
+    String requestString = OBJECT_MAPPER.writeValueAsString(request);
+    ControllerResponse response = controllerClient.getAggregatedHealthStatus(requestString);
     printObject(response);
 
   }

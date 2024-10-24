@@ -6557,8 +6557,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // If current controller is not the leader, redirect with leader URL
     if (!isLeaderControllerFor(cluster)) {
-      Instance instance = getLeaderController(cluster);
-      statuses.setRedirectUrl(instance.getNodeId());
+      statuses.setRedirectUrl(getLeaderController(cluster).getUrl(false));
       return statuses;
     }
 
