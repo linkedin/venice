@@ -205,8 +205,6 @@ public enum ControllerRoute {
   CLUSTER_DISCOVERY("/discover_cluster", HttpMethod.GET, Collections.singletonList(NAME)),
   LIST_BOOTSTRAPPING_VERSIONS("/list_bootstrapping_versions", HttpMethod.GET, Collections.emptyList()),
 
-  OFFLINE_PUSH_INFO("/offline_push_info", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
-
   UPLOAD_PUSH_JOB_STATUS(
       "/upload_push_job_status", HttpMethod.POST,
       Arrays.asList(CLUSTER, NAME, VERSION, PUSH_JOB_STATUS, PUSH_JOB_DURATION, PUSH_JOB_ID)

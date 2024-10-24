@@ -26,9 +26,6 @@ option java_multiple_files = true;
 //18. VersionRoute: DONE
 
 service VeniceControllerGrpcService {
-
-  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
-
   // CreateStore
   rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
   rpc updateAclForStore(UpdateAclForStoreGrpcRequest) returns (UpdateAclForStoreGrpcResponse);
@@ -49,6 +46,122 @@ service VeniceControllerGrpcService {
 
   // VersionRoute
   rpc listBootstrappingVersions(ListBootstrappingVersionsGrpcRequest) returns (ListBootstrappingVersionsGrpcResponse) {}
+
+//   ClusterRoutes
+//  rpc updateClusterConfig(UpdateClusterConfigGrpcRequest) returns (UpdateClusterConfigGrpcResponse) {}
+//  rpc isStoreMigrationAllowed(IsStoreMigrationAllowedGrpcRequest) returns (IsStoreMigrationAllowedGrpcResponse) {}
+//  rpc wipeCluster(WipeClusterGrpcRequest) returns (WipeClusterGrpcResponse) {}
+//  rpc cleanupInstanceCustomizedStates(CleanupInstanceCustomizedStatesGrpcRequest) returns (CleanupInstanceCustomizedStatesGrpcResponse) {}
+
+//  // ControllerRoutes
+//  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+//  rpc getChildControllers(GetChildControllersGrpcRequest) returns (GetChildControllersGrpcResponse) {}
+//  rpc updatePubSubTopicLogCompaction(UpdatePubSubTopicLogCompactionGrpcRequest) returns (UpdatePubSubTopicLogCompactionGrpcResponse) {}
+//  rpc getPubSubTopicConfigs(GetPubSubTopicConfigsGrpcRequest) returns (GetPubSubTopicConfigsGrpcResponse) {}
+//  rpc updatePubSubTopicRetention(UpdatePubSubTopicRetentionGrpcRequest) returns (UpdatePubSubTopicRetentionGrpcResponse) {}
+//  rpc updatePubSubTopicMinInSyncReplica(UpdatePubSubTopicMinInSyncReplicaGrpcRequest) returns (UpdatePubSubTopicMinInSyncReplicaGrpcResponse) {}
+//  rpc updatePubSubTopicConfig(UpdatePubSubTopicConfigGrpcRequest) returns (UpdatePubSubTopicConfigGrpcResponse) {}
+//
+//  // CreateVersion
+//  rpc requestTopicForPushingVersion(RequestTopicForPushingVersionGrpcRequest) returns (RequestTopicForPushingVersionGrpcResponse) {}
+//  rpc addVersionAndStartIngestion(AddVersionAndStartIngestionGrpcRequest) returns (AddVersionAndStartIngestionGrpcResponse) {}
+//  rpc writeEndOfPush(WriteEndOfPushGrpcRequest) returns (WriteEndOfPushGrpcResponse) {}
+//  rpc emptyPush(EmptyPushGrpcRequest) returns (EmptyPushGrpcResponse) {}
+//
+//  // DataRecoveryRoutes
+//  rpc initiateDataRecovery(InitiateDataRecoveryGrpcRequest) returns (InitiateDataRecoveryGrpcResponse) {}
+//  rpc prepareDataRecovery(PrepareDataRecoveryGrpcRequest) returns (PrepareDataRecoveryGrpcResponse) {}
+//  rpc isStoreVersionReadyForDataRecovery(IsStoreVersionReadyForDataRecoveryGrpcRequest) returns (IsStoreVersionReadyForDataRecoveryGrpcResponse) {}
+
+
+//  // JobRoutes
+//  rpc queryJobStatus(QueryJobStatusGrpcRequest) returns (QueryJobStatusGrpcResponse) {}
+//  rpc killOfflinePushJob(KillOfflinePushJobGrpcRequest) returns (KillOfflinePushJobGrpcResponse) {}
+//  rpc uploadPushJobStatus(UploadPushJobStatusGrpcRequest) returns (UploadPushJobStatusGrpcResponse) {}
+//  rpc sendPushJobDetails(SendPushJobDetailsGrpcRequest) returns (SendPushJobDetailsGrpcResponse) {}
+//  rpc getOngoingIncrementalPushVersions(GetOngoingIncrementalPushVersionsGrpcRequest) returns (GetOngoingIncrementalPushVersionsGrpcResponse) {}
+//
+//  // MigrationRoutes
+//  rpc getAllMigrationPushStrategies(GetAllMigrationPushStrategiesGrpcRequest) returns (GetAllMigrationPushStrategiesGrpcResponse) {}
+//  rpc setMigrationPushStrategy(SetMigrationPushStrategyGrpcRequest) returns (SetMigrationPushStrategyGrpcResponse) {}
+//
+//  // NewClusterBuildOutRoutes
+//  rpc copyOverStoreSchemasAndConfigs(CopyOverStoreSchemasAndConfigsGrpcRequest) returns (CopyOverStoreSchemasAndConfigsGrpcResponse) {}
+//
+//  // NodesAndReplicas
+//  rpc listAllStorageNodes(ListAllStorageNodesGrpcRequest) returns (ListAllStorageNodesGrpcResponse) {}
+//  rpc listAllStorageNodesStatus(ListAllStorageNodesStatusGrpcRequest) returns (ListAllStorageNodesStatusGrpcResponse) {}
+//  rpc listReplicasForStore(ListReplicasForStoreGrpcRequest) returns (ListReplicasForStoreGrpcResponse) {}
+//  rpc listReplicasForStorageNode(ListReplicasForStorageNodeGrpcRequest) returns (ListReplicasForStorageNodeGrpcResponse) {}
+//  rpc isNodeRemovable(IsNodeRemovableGrpcRequest) returns (IsNodeRemovableGrpcResponse) {}
+//  rpc removeNodeFromCluster(RemoveNodeFromClusterGrpcRequest) returns (RemoveNodeFromClusterGrpcResponse) {}
+//  rpc addNodeIntoAllowList(AddNodeIntoAllowListGrpcRequest) returns (AddNodeIntoAllowListGrpcResponse) {}
+//  rpc removeNodeFromAllowList(RemoveNodeFromAllowListGrpcRequest) returns (RemoveNodeFromAllowListGrpcResponse) {}
+//  rpc nodeReplicasReadinessCheck(NodeReplicasReadinessCheckGrpcRequest) returns (NodeReplicasReadinessCheckGrpcResponse) {}
+//
+//  // RoutersClusterConfigRoutes
+//  rpc enableThrottling(EnableThrottlingGrpcRequest) returns (EnableThrottlingGrpcResponse) {}
+//  rpc enableMaxCapacityProtection(EnableMaxCapacityProtectionGrpcRequest) returns (EnableMaxCapacityProtectionGrpcResponse) {}
+//  rpc enableQuotaRebalanced(EnableQuotaRebalancedGrpcRequest) returns (EnableQuotaRebalancedGrpcResponse) {}
+//  rpc getRoutersClusterConfig(GetRoutersClusterConfigGrpcRequest) returns (GetRoutersClusterConfigGrpcResponse) {}
+
+//  // SchemaRoutes
+//  rpc getKeySchema(GetKeySchemaGrpcRequest) returns (GetKeySchemaGrpcResponse) {}
+//  rpc addValueSchema(AddValueSchemaGrpcRequest) returns (AddValueSchemaGrpcResponse) {}
+//  rpc addDerivedSchema(AddDerivedSchemaGrpcRequest) returns (AddDerivedSchemaGrpcResponse) {}
+//  rpc getValueSchema(GetValueSchemaGrpcRequest) returns (GetValueSchemaGrpcResponse) {}
+//  rpc getValueSchemaID(GetValueSchemaIDGrpcRequest) returns (GetValueSchemaIDGrpcResponse) {}
+//  rpc getValueOrDerivedSchemaID(GetValueOrDerivedSchemaIDGrpcRequest) returns (GetValueOrDerivedSchemaIDGrpcResponse) {}
+//  rpc getAllValueSchema(GetAllValueSchemaGrpcRequest) returns (GetAllValueSchemaGrpcResponse) {}
+//  rpc getAllValueAndDerivedSchema(GetAllValueAndDerivedSchemaGrpcRequest) returns (GetAllValueAndDerivedSchemaGrpcResponse) {}
+//  rpc removeDerivedSchema(RemoveDerivedSchemaGrpcRequest) returns (RemoveDerivedSchemaGrpcResponse) {}
+//  rpc getAllReplicationMetadataSchemas(GetAllReplicationMetadataSchemasGrpcRequest) returns (GetAllReplicationMetadataSchemasGrpcResponse) {}
+//
+//  // SkipAdminRoute
+//  rpc skipAdminMessage(SkipAdminMessageGrpcRequest) returns (SkipAdminMessageGrpcResponse) {}
+//
+//  // StoragePersonaRoutes
+//  rpc createStoragePersona(CreateStoragePersonaGrpcRequest) returns (CreateStoragePersonaGrpcResponse) {}
+//  rpc getStoragePersona(GetStoragePersonaGrpcRequest) returns (GetStoragePersonaGrpcResponse) {}
+//  rpc deleteStoragePersona(DeleteStoragePersonaGrpcRequest) returns (DeleteStoragePersonaGrpcResponse) {}
+//  rpc updateStoragePersona(UpdateStoragePersonaGrpcRequest) returns (UpdateStoragePersonaGrpcResponse) {}
+//  rpc getPersonaAssociatedWithStore(GetPersonaAssociatedWithStoreGrpcRequest) returns (GetPersonaAssociatedWithStoreGrpcResponse) {}
+//  rpc getClusterStoragePersonas(GetClusterStoragePersonasGrpcRequest) returns (GetClusterStoragePersonasGrpcResponse) {}
+//
+//  // StoresRoutes
+//  rpc getAllStores(GetAllStoresGrpcRequest) returns (GetAllStoresGrpcResponse) {}
+//  rpc getAllStoresStatuses(GetAllStoresStatusesGrpcRequest) returns (GetAllStoresStatusesGrpcResponse) {}
+//  rpc getRepushInfo(GetRepushInfoGrpcRequest) returns (GetRepushInfoGrpcResponse) {}
+//  rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse) {}
+//  rpc getFutureVersion(GetFutureVersionGrpcRequest) returns (GetFutureVersionGrpcResponse) {}
+//  rpc migrateStore(MigrateStoreGrpcRequest) returns (MigrateStoreGrpcResponse) {}
+//  rpc completeMigration(CompleteMigrationGrpcRequest) returns (CompleteMigrationGrpcResponse) {}
+//  rpc abortMigration(AbortMigrationGrpcRequest) returns (AbortMigrationGrpcResponse) {}
+//  rpc deleteStore(DeleteStoreGrpcRequest) returns (DeleteStoreGrpcResponse) {}
+//  rpc updateStore(UpdateStoreGrpcRequest) returns (UpdateStoreGrpcResponse) {}
+//  rpc setOwner(SetOwnerGrpcRequest) returns (SetOwnerGrpcResponse) {}
+//  rpc setPartitionCount(SetPartitionCountGrpcRequest) returns (SetPartitionCountGrpcResponse) {}
+//  rpc setCurrentVersion(SetCurrentVersionGrpcRequest) returns (SetCurrentVersionGrpcResponse) {}
+//  rpc rollbackToBackupVersion(RollbackToBackupVersionGrpcRequest) returns (RollbackToBackupVersionGrpcResponse) {}
+//  rpc rollForwardToFutureVersion(RollForwardToFutureVersionGrpcRequest) returns (RollForwardToFutureVersionGrpcResponse) {}
+//  rpc enableStore(EnableStoreGrpcRequest) returns (EnableStoreGrpcResponse) {}
+//  rpc deleteAllVersions(DeleteAllVersionsGrpcRequest) returns (DeleteAllVersionsGrpcResponse) {}
+//  rpc deleteOldVersions(DeleteOldVersionsGrpcRequest) returns (DeleteOldVersionsGrpcResponse) {}
+//  rpc getStorageEngineOverheadRatio(GetStorageEngineOverheadRatioGrpcRequest) returns (GetStorageEngineOverheadRatioGrpcResponse) {}
+//  rpc enableNativeReplicationForCluster(EnableNativeReplicationForClusterGrpcRequest) returns (EnableNativeReplicationForClusterGrpcResponse) {}
+//  rpc enableActiveActiveReplicationForCluster(EnableActiveActiveReplicationForClusterGrpcRequest) returns (EnableActiveActiveReplicationForClusterGrpcResponse) {}
+//  rpc setTopicCompaction(SetTopicCompactionGrpcRequest) returns (SetTopicCompactionGrpcResponse) {}
+//  rpc getDeletableStoreTopics(GetDeletableStoreTopicsGrpcRequest) returns (GetDeletableStoreTopicsGrpcResponse) {}
+//  rpc compareStore(CompareStoreGrpcRequest) returns (CompareStoreGrpcResponse) {}
+//  rpc getStaleStoresInCluster(GetStaleStoresInClusterGrpcRequest) returns (GetStaleStoresInClusterGrpcResponse) {}
+//  rpc getStoresInCluster(GetStoresInClusterGrpcRequest) returns (GetStoresInClusterGrpcResponse) {}
+//  rpc getStoreLargestUsedVersion(GetStoreLargestUsedVersionGrpcRequest) returns (GetStoreLargestUsedVersionGrpcResponse) {}
+//  rpc listStorePushInfo(ListStorePushInfoGrpcRequest) returns (ListStorePushInfoGrpcResponse) {}
+//  rpc getRegionPushDetails(GetRegionPushDetailsGrpcRequest) returns (GetRegionPushDetailsGrpcResponse) {}
+//  rpc deleteKafkaTopic(DeleteKafkaTopicGrpcRequest) returns (DeleteKafkaTopicGrpcResponse) {}
+//  rpc removeStoreFromGraveyard(RemoveStoreFromGraveyardGrpcRequest) returns (RemoveStoreFromGraveyardGrpcResponse) {}
+//  rpc sendHeartbeatToSystemStore(SendHeartbeatToSystemStoreGrpcRequest) returns (SendHeartbeatToSystemStoreGrpcResponse) {}
+//  rpc getHeartbeatFromSystemStore(GetHeartbeatFromSystemStoreGrpcRequest) returns (GetHeartbeatFromSystemStoreGrpcResponse) {}
 }
 
 message ListBootstrappingVersionsGrpcRequest {

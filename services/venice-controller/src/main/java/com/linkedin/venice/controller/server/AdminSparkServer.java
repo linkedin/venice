@@ -73,7 +73,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS_READINESS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.OFFLINE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.PREPARE_DATA_RECOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
@@ -537,10 +536,6 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         LIST_BOOTSTRAPPING_VERSIONS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, versionRoute.listBootstrappingVersions(admin)));
-
-    httpService.post(
-        OFFLINE_PUSH_INFO.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createVersion.uploadPushInfo(admin)));
 
     httpService.post(
         UPLOAD_PUSH_JOB_STATUS.getPath(),

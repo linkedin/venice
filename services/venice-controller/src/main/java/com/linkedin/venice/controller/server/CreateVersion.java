@@ -22,7 +22,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EMPTY_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.END_OF_PUSH;
-import static com.linkedin.venice.controllerapi.ControllerRoute.OFFLINE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.meta.Version.REPLICATION_METADATA_VERSION_ID_UNSET;
@@ -577,36 +576,6 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
-  }
-
-  @Deprecated
-  public Route uploadPushInfo(Admin admin) {
-    return (request, response) -> {
-      ControllerResponse responseObject = new ControllerResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        // Also allow allowlist users to run this command
-        if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("ACL failed for request " + request.url());
-          responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-        }
-        AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
-
-        // Query params
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-        // TODO No-op, can be removed once the corresponding VPJ plugin version is deployed.
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(e, request, response);
-      }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-
     };
   }
 
