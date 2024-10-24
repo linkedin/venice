@@ -103,6 +103,10 @@ public class TestActiveActiveIngestion {
     return false;
   }
 
+  protected boolean whetherToEnableNearlineProducerThroughputOptimizationInServer() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     serializer = new AvroSerializer(STRING_SCHEMA);
@@ -179,6 +183,10 @@ public class TestActiveActiveIngestion {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
+    if (whetherToEnableNearlineProducerThroughputOptimizationInServer()) {
+      storeParms.setNearlineProducerCountPerWriter(2);
+      storeParms.setNearlineProducerCompressionEnabled(false);
+    }
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
 
@@ -253,6 +261,10 @@ public class TestActiveActiveIngestion {
         .setChunkingEnabled(isChunkingEnabled)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
+    if (whetherToEnableNearlineProducerThroughputOptimizationInServer()) {
+      storeParms.setNearlineProducerCountPerWriter(2);
+      storeParms.setNearlineProducerCompressionEnabled(false);
+    }
     MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
@@ -425,6 +437,10 @@ public class TestActiveActiveIngestion {
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true);
+    if (whetherToEnableNearlineProducerThroughputOptimizationInServer()) {
+      storeParms.setNearlineProducerCountPerWriter(2);
+      storeParms.setNearlineProducerCompressionEnabled(false);
+    }
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     // Create a new version
     VersionCreationResponse versionCreationResponse;

@@ -859,7 +859,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionId;
       deletePayload.replicationMetadataPayload = mergeConflictResultWrapper.getUpdatedRmdBytes();
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
-          (callback, sourceTopicOffset) -> veniceWriter.get()
+          (callback, sourceTopicOffset) -> partitionConsumptionState.getVeniceWriterLazyRef()
+              .get()
               .delete(
                   key,
                   callback,
@@ -888,6 +889,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
+          partitionConsumptionState,
           key,
           updatedValueBytes,
           updatedRmdBytes,
@@ -1538,6 +1540,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
+      PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       ByteBuffer updatedValueBytes,
       ByteBuffer updatedRmdBytes,
@@ -1555,7 +1558,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));
       }
-      getVeniceWriter().get()
+      getVeniceWriter(partitionConsumptionState).get()
           .put(
               key,
               ByteUtils.extractByteArray(updatedValueBytes),

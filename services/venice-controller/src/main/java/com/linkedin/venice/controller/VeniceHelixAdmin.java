@@ -4783,6 +4783,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
+    Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
+    Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5063,6 +5065,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       blobTransferEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setBlobTransferEnabled(aBoolean);
+        return store;
+      }));
+
+      nearlineProducerCompressionEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setNearlineProducerCompressionEnabled(aBoolean);
+        return store;
+      }));
+
+      nearlineProducerCountPerWriter.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setNearlineProducerCountPerWriter(aInt);
         return store;
       }));
 

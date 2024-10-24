@@ -15,7 +15,9 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
@@ -207,6 +209,8 @@ public class PartitionConsumptionState {
   private long lastLeaderCompleteStateUpdateInMs;
 
   private List<String> pendingReportIncPushVersionList;
+
+  private Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
 
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
@@ -452,6 +456,14 @@ public class PartitionConsumptionState {
 
   public void finalizeExpectedChecksum() {
     this.expectedSSTFileChecksum = null;
+  }
+
+  public Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriterLazyRef() {
+    return veniceWriterLazyRef;
+  }
+
+  public void setVeniceWriterLazyRef(Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef) {
+    this.veniceWriterLazyRef = veniceWriterLazyRef;
   }
 
   /**

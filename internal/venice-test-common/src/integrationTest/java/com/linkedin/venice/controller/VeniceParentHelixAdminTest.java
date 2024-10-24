@@ -902,6 +902,7 @@ public class VeniceParentHelixAdminTest {
     testUpdateCompactionLag(parentControllerClient, childControllerClient);
     testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
     testUpdateBlobTransfer(parentControllerClient, childControllerClient);
+    testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -949,6 +950,21 @@ public class VeniceParentHelixAdminTest {
     Consumer<StoreResponse> responseConsumer = response -> {
       Assert.assertEquals(response.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
       Assert.assertEquals(response.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateNearlineProducerConfig(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean nearlineProducerCompressionEnabled = false;
+    final int nearlineProducerCountPerWriter = 10;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setNearlineProducerCompressionEnabled(nearlineProducerCompressionEnabled);
+      params.setNearlineProducerCountPerWriter(nearlineProducerCountPerWriter);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert
+          .assertEquals(response.getStore().isNearlineProducerCompressionEnabled(), nearlineProducerCompressionEnabled);
+      Assert.assertEquals(response.getStore().getNearlineProducerCountPerWriter(), nearlineProducerCountPerWriter);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }

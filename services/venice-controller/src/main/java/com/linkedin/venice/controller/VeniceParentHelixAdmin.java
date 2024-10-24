@@ -34,6 +34,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -2607,6 +2609,14 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
               .orElseGet(currStore::isSeparateRealTimeTopicEnabled);
+
+      setStore.nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COMPRESSION_ENABLED))
+          .orElseGet(currStore::isNearlineProducerCompressionEnabled);
+
+      setStore.nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter()
+          .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
+          .orElseGet(currStore::getNearlineProducerCountPerWriter);
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
