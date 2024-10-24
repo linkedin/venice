@@ -3827,6 +3827,14 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
+  @Override
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      List<String> instances,
+      List<String> toBeStoppedInstances) {
+    throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus");
+  }
+
   /**
    * @see VeniceHelixAdmin#isLeaderControllerFor(String)
    */

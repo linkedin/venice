@@ -202,4 +202,22 @@ public class UtilsTest {
     Assert.assertTrue(setWithSpaces.contains("b"));
     Assert.assertTrue(setWithSpaces.contains("c"));
   }
+
+  @Test
+  public void testParseCommaSeparatedStringToList() {
+    Assert.assertTrue(Utils.parseCommaSeparatedStringToList(null).isEmpty());
+    Assert.assertTrue(Utils.parseCommaSeparatedStringToList("").isEmpty());
+
+    List<String> list = Utils.parseCommaSeparatedStringToList("a,b,c");
+    Assert.assertEquals(list.size(), 3);
+    Assert.assertEquals(list.get(0), "a");
+    Assert.assertEquals(list.get(1), "b");
+    Assert.assertEquals(list.get(2), "c");
+
+    List<String> stringList = Utils.parseCommaSeparatedStringToList("a, b, c");
+    Assert.assertEquals(stringList.size(), 3);
+    Assert.assertEquals(list.get(0), "a");
+    Assert.assertEquals(list.get(1), "b");
+    Assert.assertEquals(list.get(2), "c");
+  }
 }
