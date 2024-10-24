@@ -422,7 +422,9 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static boolean containsHybridVersion(List<Version> versions) {
     for (Version version: versions) {
-      if (version.getHybridStoreConfig() != null) {
+      VersionStatus versionStatus = version.getStatus();
+      if (version.getHybridStoreConfig() != null && VersionStatus.isVersionErrored(versionStatus)
+          && VersionStatus.isVersionKilled(versionStatus)) {
         return true;
       }
     }

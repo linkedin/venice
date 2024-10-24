@@ -3827,6 +3827,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
+  @Override
+  public boolean canDeleteRTTopic(String clusterName, String storeName) {
+    return false;
+  }
+
   /**
    * @see VeniceHelixAdmin#isLeaderControllerFor(String)
    */
