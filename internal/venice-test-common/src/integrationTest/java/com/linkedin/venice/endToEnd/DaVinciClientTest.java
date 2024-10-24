@@ -241,8 +241,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformer(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 =
-        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
@@ -461,8 +460,12 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 =
-        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+    Function<String, ByteBuffer> compressionDictionaryGenerator = s -> null;
+    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(
+        KEY_COUNT,
+        compressionStrategy,
+        compressionDictionaryGenerator);
     String storeName2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
@@ -514,7 +517,8 @@ public class DaVinciClientTest {
           assertFalse(response.isError(), response.getError());
         });
 
-        Integer expectedValue = cluster.createVersion(storeName1, KEY_COUNT);
+        Integer expectedValue =
+            cluster.createVersion(storeName1, KEY_COUNT, compressionStrategy, compressionDictionaryGenerator);
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           for (int k = 0; k < KEY_COUNT; ++k) {
             Object readValue = client1.get(k).get();

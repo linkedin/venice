@@ -17,6 +17,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
 import org.apache.avro.Schema;
@@ -80,9 +81,10 @@ public class RecordTransformerTest {
     when(iterator.value()).thenReturn("mockValue".getBytes());
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
 
     int partitionNumber = 1;
-    recordTransformer.onRecovery(storageEngine, partitionNumber);
+    recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionNumber);
 
     // Reset the mock to clear previous interactions
@@ -90,7 +92,7 @@ public class RecordTransformerTest {
 
     // Execute the onRecovery method again to test the case where the classHash file exists
     when(storageEngine.getIterator(partitionNumber)).thenReturn(iterator);
-    recordTransformer.onRecovery(storageEngine, partitionNumber);
+    recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
     verify(storageEngine, never()).clearPartitionOffset(partitionNumber);
     verify(storageEngine, times(1)).getIterator(partitionNumber);
   }

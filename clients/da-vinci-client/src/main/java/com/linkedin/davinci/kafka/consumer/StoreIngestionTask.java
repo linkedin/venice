@@ -610,7 +610,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionNumber = topicPartition.getPartitionNumber();
 
     if (recordTransformer != null) {
-      recordTransformer.onRecovery(storageEngine, partitionNumber);
+      recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
     }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
@@ -3516,14 +3516,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<RecordDeserializer> recordDeserializer =
               Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema));
 
-          // Decompress/assemble record without deserializing
           ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
               putSchemaId,
               keyBytes,
               valueBytes,
               consumerRecord.getOffset(),
-              null,
               putSchemaId,
               compressor.get());
 
@@ -3534,7 +3532,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<Object> lazyValue = Lazy.of(() -> recordDeserializer.get().deserialize(assembledObject));
+          Lazy<Object> lazyValue = Lazy.of(() -> {
+            try {
+              ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
+              return recordDeserializer.get().deserialize(decompressedAssembledObject);
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
+          });
 
           DaVinciRecordTransformerResult transformerResult;
           try {
@@ -3557,8 +3562,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             // Use original value if the record wasn't transformed
             transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, putSchemaId);
           } else {
-            // Serialize the new record if it was transformed
-            transformedBytes = recordTransformer.prependSchemaIdToHeader(transformerResult.getValue(), putSchemaId);
+            // Serialize and compress the new record if it was transformed
+            transformedBytes =
+                recordTransformer.prependSchemaIdToHeader(transformerResult.getValue(), putSchemaId, compressor.get());
           }
 
           put.putValue = transformedBytes;

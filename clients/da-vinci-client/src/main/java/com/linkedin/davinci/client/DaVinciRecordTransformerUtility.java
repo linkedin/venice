@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -32,32 +33,40 @@ public class DaVinciRecordTransformerUtility<K, O> {
   }
 
   /**
-   * Serializes the given value and prepends the schema ID to the resulting ByteBuffer.
+   * Serializes and compresses the value and prepends the schema ID to the resulting ByteBuffer.
    *
-   * @param value the value to be serialized
+   * @param value to be serialized and compressed
    * @param schemaId to prepend to the ByteBuffer
-   * @return a ByteBuffer containing the schema ID followed by the serialized value
+   * @return a ByteBuffer containing the schema ID followed by the serialized and compressed value
    */
-  public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId) {
-    ByteBuffer transformedBytes = ByteBuffer.wrap(getOutputValueSerializer().serialize(value));
-    ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
-    newBuffer.putInt(1);
-    newBuffer.put(transformedBytes);
-    newBuffer.flip();
-    return newBuffer;
+  public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId, VeniceCompressor compressor) {
+    byte[] serializedValue = getOutputValueSerializer().serialize(value);
+    byte[] compressedValue;
+    try {
+      compressedValue = compressor.compress(serializedValue);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+
+    ByteBuffer valueBytes = ByteBuffer.wrap(compressedValue);
+    ByteBuffer newValueBytes = ByteBuffer.allocate(Integer.BYTES + valueBytes.remaining());
+    newValueBytes.putInt(schemaId);
+    newValueBytes.put(valueBytes);
+    newValueBytes.flip();
+    return newValueBytes;
   }
 
   /**
    * Prepends the given schema ID to the provided ByteBuffer
    *
-   * @param byteBuffer the original decompressed value
+   * @param valueBytes the original value
    * @param schemaId to prepend to the ByteBuffer
-   * @return a ByteBuffer containing the schema ID followed by the serialized value
+   * @return a ByteBuffer containing the schema ID followed by the value
    */
-  public final ByteBuffer prependSchemaIdToHeader(ByteBuffer byteBuffer, int schemaId) {
-    ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + byteBuffer.remaining());
+  public final ByteBuffer prependSchemaIdToHeader(ByteBuffer valueBytes, int schemaId) {
+    ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + valueBytes.remaining());
     newBuffer.putInt(schemaId);
-    newBuffer.put(byteBuffer);
+    newBuffer.put(valueBytes);
     newBuffer.flip();
     return newBuffer;
   }
@@ -90,7 +99,10 @@ public class DaVinciRecordTransformerUtility<K, O> {
   /**
    * Bootstraps the client after it comes online.
    */
-  public final void onRecovery(AbstractStorageEngine storageEngine, Integer partition) {
+  public final void onRecovery(
+      AbstractStorageEngine storageEngine,
+      Integer partition,
+      Lazy<VeniceCompressor> compressor) {
     // ToDo: Store class hash in RocksDB to support blob transfer
     int classHash = recordTransformer.getClassHash();
     boolean transformerLogicChanged = hasTransformerLogicChanged(classHash);
@@ -106,10 +118,16 @@ public class DaVinciRecordTransformerUtility<K, O> {
         byte[] valueBytes = iterator.value();
         Lazy<K> lazyKey = Lazy.of(() -> getKeyDeserializer().deserialize(ByteBuffer.wrap(keyBytes)));
         Lazy<O> lazyValue = Lazy.of(() -> {
-          ByteBuffer byteBuffer = ByteBuffer.wrap(valueBytes);
+          ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
           // Skip schema id
-          byteBuffer.position(Integer.BYTES);
-          return getOutputValueDeserializer().deserialize(byteBuffer);
+          valueByteBuffer.position(Integer.BYTES);
+          ByteBuffer decompressedValueBytes;
+          try {
+            decompressedValueBytes = compressor.get().decompress(valueByteBuffer);
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+          return getOutputValueDeserializer().deserialize(decompressedValueBytes);
         });
 
         recordTransformer.processPut(lazyKey, lazyValue);

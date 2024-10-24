@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -142,14 +143,14 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * Serializes the given value and prepends the schema ID to the resulting ByteBuffer.
+   * Serializes and compresses the value and prepends the schema ID to the resulting ByteBuffer.
    *
-   * @param value the value to be serialized
+   * @param value to be serialized and compressed
    * @param schemaId to prepend to the ByteBuffer
-   * @return a ByteBuffer containing the schema ID followed by the serialized value
+   * @return a ByteBuffer containing the schema ID followed by the serialized and compressed value
    */
-  public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId) {
-    return recordTransformerUtility.prependSchemaIdToHeader(value, schemaId);
+  public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId, VeniceCompressor compressor) {
+    return recordTransformerUtility.prependSchemaIdToHeader(value, schemaId, compressor);
   }
 
   /**
@@ -189,8 +190,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * Bootstraps the client after it comes online.
    */
-  public final void onRecovery(AbstractStorageEngine storageEngine, Integer partition) {
-    recordTransformerUtility.onRecovery(storageEngine, partition);
+  public final void onRecovery(
+      AbstractStorageEngine storageEngine,
+      Integer partition,
+      Lazy<VeniceCompressor> compressor) {
+    recordTransformerUtility.onRecovery(storageEngine, partition, compressor);
   }
 
   /**
