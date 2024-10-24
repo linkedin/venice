@@ -219,7 +219,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   @Override
-  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+  public Map<String, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     KafkaConsumerService kafkaConsumerService = getKafkaConsumerService(versionTopic, pubSubTopicPartition);
@@ -233,6 +233,17 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
           pubSubTopicPartition);
       return Collections.emptyMap();
     }
+  }
+
+  @Override
+  public Map<String, ConsumerServiceIngestionInfo> getIngestionInfoFromConsumerServices() {
+    Map<String, ConsumerServiceIngestionInfo> aggregateResult = new VeniceConcurrentHashMap<>();
+    for (KafkaConsumerService kafkaConsumerService: consumerServices) {
+      Map<String, ConsumerServiceIngestionInfo> consumerServiceResult =
+          kafkaConsumerService.getIngestionInfoFromConsumerServices();
+      aggregateResult.putAll(consumerServiceResult);
+    }
+    return aggregateResult;
   }
 
   @Override

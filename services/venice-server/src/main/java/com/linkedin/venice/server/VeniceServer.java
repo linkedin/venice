@@ -16,6 +16,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetrieverDelegator;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -432,7 +433,7 @@ public class VeniceServer {
         metadataRepo,
         storeValueSchemasCacheService,
         customizedViewFuture,
-        kafkaStoreIngestionService,
+        new IngestionMetadataRetrieverDelegator(kafkaStoreIngestionService, heartbeatMonitoringService),
         serverReadMetadataRepository,
         serverConfig,
         metricsRepository,
@@ -537,6 +538,15 @@ public class VeniceServer {
     } else {
       throw new VeniceException("Cannot get kafka store ingestion service if server is not started");
     }
+  }
+
+  public HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    if (isStarted()) {
+      return heartbeatMonitoringService;
+    } else {
+      throw new VeniceException("Cannot get heartbeat monitoring service if server is not started");
+    }
+
   }
 
   // This is for testing purpose.

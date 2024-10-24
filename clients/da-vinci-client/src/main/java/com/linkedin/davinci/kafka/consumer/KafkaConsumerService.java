@@ -26,6 +26,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -494,37 +495,60 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
-  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+  public Map<String, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
-    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
-    if (consumer != null) {
-      ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
-      String consumerIdStr = consumptionTask.getTaskIdStr();
-      for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
-        long offsetLag = consumer.getOffsetLag(topicPartition);
-        long latestOffset = consumer.getLatestOffset(topicPartition);
-        double msgRate = consumptionTask.getMessageRate(topicPartition);
-        double byteRate = consumptionTask.getByteRate(topicPartition);
-        long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
-        long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
-        if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
-          elapsedTimeSinceLastPollInMs =
-              LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
-        }
-        PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
-        String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
-        TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
-            latestOffset,
-            offsetLag,
-            msgRate,
-            byteRate,
-            consumerIdStr,
-            elapsedTimeSinceLastPollInMs,
-            destinationVersionTopicName);
-        topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
+    return getIngestionInfoFromConsumer(consumer);
+  }
+
+  public Map<String, ConsumerServiceIngestionInfo> getIngestionInfoFromConsumerServices() {
+    Map<String, ConsumerIngestionInfo> result = new VeniceConcurrentHashMap<>();
+    for (Map.Entry<SharedKafkaConsumer, ConsumptionTask> entry: consumerToConsumptionTask.entrySet()) {
+      Map<String, TopicPartitionIngestionInfo> consumerResult = getIngestionInfoFromConsumer(entry.getKey());
+      if (consumerResult.isEmpty()) {
+        continue;
       }
+      ConsumerIngestionInfo consumerIngestionInfo =
+          new ConsumerIngestionInfo(entry.getValue().getTaskIdStr(), consumerResult);
+      result.put(entry.getValue().getTaskIdStr(), consumerIngestionInfo);
+    }
+    if (result.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    String consumerServiceName = this.kafkaUrl + "-" + this.poolType;
+    return Collections.singletonMap(consumerServiceName, new ConsumerServiceIngestionInfo(consumerServiceName, result));
+  }
+
+  Map<String, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(SharedKafkaConsumer consumer) {
+    if (consumer == null) {
+      return Collections.emptyMap();
+    }
+    Map<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
+    ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
+    String consumerIdStr = consumptionTask.getTaskIdStr();
+    for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
+      long offsetLag = consumer.getOffsetLag(topicPartition);
+      long latestOffset = consumer.getLatestOffset(topicPartition);
+      double msgRate = consumptionTask.getMessageRate(topicPartition);
+      double byteRate = consumptionTask.getByteRate(topicPartition);
+      long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
+      long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+      if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
+        elapsedTimeSinceLastPollInMs =
+            LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+      }
+      PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
+      String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
+      TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
+          latestOffset,
+          offsetLag,
+          msgRate,
+          byteRate,
+          consumerIdStr,
+          elapsedTimeSinceLastPollInMs,
+          destinationVersionTopicName);
+      topicPartitionIngestionInfoMap.put(topicPartition.toString(), topicPartitionIngestionInfo);
     }
     return topicPartitionIngestionInfoMap;
   }

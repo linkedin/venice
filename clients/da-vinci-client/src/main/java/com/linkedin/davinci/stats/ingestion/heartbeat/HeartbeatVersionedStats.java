@@ -37,7 +37,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       long heartbeatTs,
       boolean isReadyToServe) {
     // If the partition is ready to serve, report it's lage to the main lag metric. Otherwise, report it
-    // to the catch up metric.
+    // to the catch-up metric.
     // The metric which isn't updated is squelched by reporting the currentTime (so as to appear caught up and mute
     // alerts)
     if (isReadyToServe) {

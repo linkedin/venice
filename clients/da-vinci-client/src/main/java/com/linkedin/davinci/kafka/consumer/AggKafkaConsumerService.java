@@ -85,6 +85,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
       });
 
+  private final VeniceJsonSerializer<Map<String, Map<String, ConsumerServiceIngestionInfo>>> consumerIngestionContextJsonSerializer =
+      new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, ConsumerServiceIngestionInfo>>>() {
+      });
+
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
       final PubSubPropertiesSupplier pubSubPropertiesSupplier,
@@ -475,16 +479,26 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContext = new HashMap<>();
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
-      Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+      Map<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
           consumerService.getIngestionInfoFromConsumer(versionTopic, pubSubTopicPartition);
-      for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
-          .entrySet()) {
-        PubSubTopicPartition topicPartition = entry.getKey();
+      for (Map.Entry<String, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap.entrySet()) {
         TopicPartitionIngestionInfo topicPartitionIngestionInfo = entry.getValue();
         topicPartitionIngestionContext.computeIfAbsent(kafkaUrl, k -> new HashMap<>())
-            .put(topicPartition.toString(), topicPartitionIngestionInfo);
+            .put(entry.getKey(), topicPartitionIngestionInfo);
       }
     }
     return topicPartitionIngestionContextJsonSerializer.serialize(topicPartitionIngestionContext, "");
+  }
+
+  byte[] getIngestionInfoForConsumerServices() throws IOException {
+    Map<String, Map<String, ConsumerServiceIngestionInfo>> aggregateIngestionInfoMap = new VeniceConcurrentHashMap<>();
+
+    for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
+      AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
+      Map<String, ConsumerServiceIngestionInfo> topicPartitionIngestionInfoMap =
+          consumerService.getIngestionInfoFromConsumerServices();
+      aggregateIngestionInfoMap.put(kafkaUrl, topicPartitionIngestionInfoMap);
+    }
+    return consumerIngestionContextJsonSerializer.serialize(aggregateIngestionInfoMap, "");
   }
 }

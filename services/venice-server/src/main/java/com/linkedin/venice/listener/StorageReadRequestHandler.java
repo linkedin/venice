@@ -36,6 +36,8 @@ import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
+import com.linkedin.venice.listener.request.IngestionContextRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
@@ -373,6 +375,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     } else if (message instanceof TopicPartitionIngestionContextRequest) {
       TopicPartitionIngestionContextResponse response =
           handleTopicPartitionIngestionContextRequest((TopicPartitionIngestionContextRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof IngestionContextRequest) {
+      TopicPartitionIngestionContextResponse response =
+          handleIngestionContextRequest((IngestionContextRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof HeartbeatRequest) {
+      TopicPartitionIngestionContextResponse response = handleHeartbeatRequest((HeartbeatRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -851,4 +860,18 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     String topicName = topicPartitionIngestionContextRequest.getTopic();
     return ingestionMetadataRetriever.getTopicPartitionIngestionContext(versionTopic, topicName, partition);
   }
+
+  private TopicPartitionIngestionContextResponse handleIngestionContextRequest(
+      IngestionContextRequest ingestionContextRequest) {
+    // TODO: Add conditional filter;
+    return ingestionMetadataRetriever.getIngestionContext();
+  }
+
+  private TopicPartitionIngestionContextResponse handleHeartbeatRequest(HeartbeatRequest heartbeatRequest) {
+    return ingestionMetadataRetriever.getHeartbeatLag(
+        heartbeatRequest.getTopic(),
+        heartbeatRequest.getPartition(),
+        heartbeatRequest.isFilterLagReplica());
+  }
+
 }

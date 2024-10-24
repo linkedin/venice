@@ -1148,7 +1148,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return kafkaConsumerProperties;
   }
 
-  @Override
   public ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
     return storageMetadataService.getStoreVersionCompressionDictionary(topicName);
   }
@@ -1157,7 +1156,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicNameToIngestionTaskMap.get(topicName);
   }
 
-  @Override
   public AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions) {
     AdminResponse response = new AdminResponse();
     StoreIngestionTask ingestionTask = getStoreIngestionTask(topicName);
@@ -1193,6 +1191,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           e);
     }
     return topicPartitionIngestionContextResponse;
+  }
+
+  public TopicPartitionIngestionContextResponse getIngestionContext() {
+    TopicPartitionIngestionContextResponse response = new TopicPartitionIngestionContextResponse();
+    try {
+      byte[] topicPartitionInfo = aggKafkaConsumerService.getIngestionInfoForConsumerServices();
+      response.setTopicPartitionIngestionContext(topicPartitionInfo);
+    } catch (Exception e) {
+      response.setError(true);
+      response.setMessage(e.getMessage());
+      LOGGER.error("Error on get topic partition ingestion context for all consumers", e);
+    }
+    return response;
   }
 
   /**

@@ -89,7 +89,7 @@ public class KafkaConsumerServiceTest {
         ConsumerPoolType.REGULAR_POOL,
         factory,
         properties,
-        1000l,
+        1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
@@ -199,16 +199,17 @@ public class KafkaConsumerServiceTest {
 
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, true, () -> {
       verify(consumer1, atLeastOnce()).poll(anyLong());
-      Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+      Map<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
           consumerService.getIngestionInfoFromConsumer(versionTopic, topicPartition);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
-      Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains("0"));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains(testKafkaUrl));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getMsgRate() > 0);
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getByteRate() > 0);
+      Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition.toString()));
+      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition.toString()).getConsumerIdStr().contains("0"));
+      Assert.assertTrue(
+          topicPartitionIngestionInfoMap.get(topicPartition.toString()).getConsumerIdStr().contains(testKafkaUrl));
+      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition.toString()).getMsgRate() > 0);
+      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition.toString()).getByteRate() > 0);
       Assert.assertEquals(
-          topicPartitionIngestionInfoMap.get(topicPartition).getVersionTopicName(),
+          topicPartitionIngestionInfoMap.get(topicPartition.toString()).getVersionTopicName(),
           topicForStoreName3.getName());
       verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleBandwidth(anyInt());
       verify(mockIngestionThrottler, atLeastOnce())
@@ -227,7 +228,7 @@ public class KafkaConsumerServiceTest {
         poolType,
         factory,
         properties,
-        1000l,
+        1000L,
         1,
         mockIngestionThrottler,
         mock(KafkaClusterBasedRecordThrottler.class),
@@ -381,7 +382,7 @@ public class KafkaConsumerServiceTest {
         ConsumerPoolType.REGULAR_POOL,
         factory,
         properties,
-        1000l,
+        1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),

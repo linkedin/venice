@@ -16,4 +16,10 @@ public interface IngestionMetadataRetriever {
       String topicName,
       int partitionNum);
 
+  TopicPartitionIngestionContextResponse getIngestionContext();
+
+  TopicPartitionIngestionContextResponse getHeartbeatLag(
+      String topicFilter,
+      int partitionFilter,
+      boolean filterLagReplica);
 }

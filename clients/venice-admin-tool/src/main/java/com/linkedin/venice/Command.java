@@ -62,6 +62,7 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
+import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
@@ -518,6 +519,15 @@ public enum Command {
       "dump-topic-partition-ingestion-context",
       "Dump the topic partition ingestion context belong to a certain store version in a certain storage node",
       new Arg[] { SERVER_URL, STORE, VERSION, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION }
+  ),
+  DUMP_HOST_INGESTION_CONTEXT(
+      "dump-host-ingestion-context", "Dump all topic partition ingestion context belong to a certain storage node",
+      new Arg[] { SERVER_URL }
+  ),
+  DUMP_HOST_HEARTBEAT(
+      "dump-host-heartbeat",
+      "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
+      new Arg[] { SERVER_URL }, new Arg[] { KAFKA_TOPIC_NAME, PARTITION, LAG_FILTER_ENABLED }
   ),
   CONFIGURE_STORE_VIEW(
       "configure-store-view", "Configure store view of a certain store", new Arg[] { URL, STORE, VIEW_NAME },

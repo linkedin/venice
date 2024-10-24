@@ -7,6 +7,8 @@ import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
+import com.linkedin.venice.listener.request.IngestionContextRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -137,6 +139,17 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(currentVersionRequest.getStoreName());
           ctx.fireChannelRead(currentVersionRequest);
           break;
+        case HOST_INGESTION_CONTEXT:
+          statsHandler.setMetadataRequest(true);
+          IngestionContextRequest ingestionContextRequest =
+              IngestionContextRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          ctx.fireChannelRead(ingestionContextRequest);
+
+        case HOST_HEARTBEAT_LAG:
+          statsHandler.setMetadataRequest(true);
+          HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          ctx.fireChannelRead(heartbeatRequest);
+
         case TOPIC_PARTITION_INGESTION_CONTEXT:
           TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest =
               TopicPartitionIngestionContextRequest.parseGetHttpRequest(uri.getPath(), requestParts);

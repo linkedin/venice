@@ -567,6 +567,12 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
+        case DUMP_HOST_INGESTION_CONTEXT:
+          dumpHostIngestionContext(cmd);
+          break;
+        case DUMP_HOST_HEARTBEAT:
+          dumpHostHeartbeat(cmd);
+          break;
         case MIGRATE_VENICE_ZK_PATHS:
           migrateVeniceZKPaths(cmd);
           break;
@@ -3065,6 +3071,30 @@ public class AdminTool {
     }
   }
 
+  private static void dumpHostIngestionContext(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer("dummy", getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpTopicPartitionIngestionContext(transportClient);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  private static void dumpHostHeartbeat(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer("dummy", getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpHostHeartbeatLag(
+          transportClient,
+          getOptionalArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          getOptionalArgument(cmd, Arg.PARTITION),
+          getOptionalArgument(cmd, Arg.LAG_FILTER_ENABLED));
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
   private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
     Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
     String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
@@ -3141,6 +3171,40 @@ public class AdminTool {
             .append(topicName)
             .append("/")
             .append(partition);
+    String requestUrl = sb.toString();
+    byte[] responseBody;
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    responseBody = transportClientResponse.getBody();
+    TopicPartitionIngestionContextResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
+    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
+  }
+
+  static void dumpTopicPartitionIngestionContext(TransportClient transportClient) throws Exception {
+    StringBuilder sb = new StringBuilder(QueryAction.HOST_INGESTION_CONTEXT.toString().toLowerCase());
+    String requestUrl = sb.toString();
+    byte[] responseBody;
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    responseBody = transportClientResponse.getBody();
+    TopicPartitionIngestionContextResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
+    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
+  }
+
+  static void dumpHostHeartbeatLag(
+      TransportClient transportClient,
+      String topicFilter,
+      String partitionFilter,
+      String lagFilter) throws Exception {
+    String topicName = topicFilter == null ? "" : topicFilter;
+    String partition = partitionFilter == null ? "-1" : partitionFilter;
+    String filterLag = lagFilter == null ? "false" : lagFilter;
+    StringBuilder sb = new StringBuilder(QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase()).append("/")
+        .append(topicName)
+        .append("/")
+        .append(partition)
+        .append("/")
+        .append(filterLag);
     String requestUrl = sb.toString();
     byte[] responseBody;
     TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
