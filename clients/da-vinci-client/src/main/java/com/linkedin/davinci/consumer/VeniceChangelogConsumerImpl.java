@@ -61,6 +61,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -619,6 +620,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
     if (changeCaptureStats != null) {
       changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
+    }
+    if (changelogClientConfig.shouldCompactMessages()) {
+      Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+      // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+      // replaced,
+      // it's put in at the position of the first insertion. This isn't quite what we want, we want to keep only
+      // a single key (just as a map would), but we want to keep the position of the last insertion as well. So in order
+      // to do that, we remove the entry before inserting it.
+      for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: pubSubMessages) {
+        if (tempMap.containsKey(message.getKey())) {
+          tempMap.remove(message.getKey());
+        }
+        tempMap.put(message.getKey(), message);
+      }
+      return tempMap.values();
     }
     return pubSubMessages;
   }
