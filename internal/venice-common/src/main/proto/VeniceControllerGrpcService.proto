@@ -54,7 +54,7 @@ service VeniceControllerGrpcService {
 //  rpc cleanupInstanceCustomizedStates(CleanupInstanceCustomizedStatesGrpcRequest) returns (CleanupInstanceCustomizedStatesGrpcResponse) {}
 
 //  // ControllerRoutes
-//  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
 //  rpc getChildControllers(GetChildControllersGrpcRequest) returns (GetChildControllersGrpcResponse) {}
 //  rpc updatePubSubTopicLogCompaction(UpdatePubSubTopicLogCompactionGrpcRequest) returns (UpdatePubSubTopicLogCompactionGrpcResponse) {}
 //  rpc getPubSubTopicConfigs(GetPubSubTopicConfigsGrpcRequest) returns (GetPubSubTopicConfigsGrpcResponse) {}
@@ -129,7 +129,7 @@ service VeniceControllerGrpcService {
 //  rpc getClusterStoragePersonas(GetClusterStoragePersonasGrpcRequest) returns (GetClusterStoragePersonasGrpcResponse) {}
 //
 //  // StoresRoutes
-//  rpc getAllStores(GetAllStoresGrpcRequest) returns (GetAllStoresGrpcResponse) {}
+  rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse) {}
 //  rpc getAllStoresStatuses(GetAllStoresStatusesGrpcRequest) returns (GetAllStoresStatusesGrpcResponse) {}
 //  rpc getRepushInfo(GetRepushInfoGrpcRequest) returns (GetRepushInfoGrpcResponse) {}
 //  rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse) {}
@@ -162,6 +162,18 @@ service VeniceControllerGrpcService {
 //  rpc removeStoreFromGraveyard(RemoveStoreFromGraveyardGrpcRequest) returns (RemoveStoreFromGraveyardGrpcResponse) {}
 //  rpc sendHeartbeatToSystemStore(SendHeartbeatToSystemStoreGrpcRequest) returns (SendHeartbeatToSystemStoreGrpcResponse) {}
 //  rpc getHeartbeatFromSystemStore(GetHeartbeatFromSystemStoreGrpcRequest) returns (GetHeartbeatFromSystemStoreGrpcResponse) {}
+}
+
+message ListStoresGrpcRequest {
+  string clusterName = 1;
+  optional bool includeSystemStores = 2;
+  optional string storeConfigNameFilter = 3;
+  optional string storeConfigValueFilter = 4;
+}
+
+message ListStoresGrpcResponse {
+  string clusterName = 1;
+  repeated string storeName = 2;
 }
 
 message ListBootstrappingVersionsGrpcRequest {

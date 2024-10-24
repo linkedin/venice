@@ -11,12 +11,14 @@ import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.request.AdminCommandExecutionStatusRequest;
 import com.linkedin.venice.controllerapi.request.AdminTopicMetadataRequest;
 import com.linkedin.venice.controllerapi.request.ClusterDiscoveryRequest;
 import com.linkedin.venice.controllerapi.request.ControllerRequest;
+import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAclForStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAdminTopicMetadataRequest;
@@ -42,6 +44,8 @@ import com.linkedin.venice.protocols.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.ListBootstrappingVersionsGrpcRequest;
 import com.linkedin.venice.protocols.ListBootstrappingVersionsGrpcResponse;
+import com.linkedin.venice.protocols.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.UpdateAdminTopicMetadataGrpcRequest;
@@ -483,4 +487,36 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
               .asRuntimeException());
     }
   }
+
+  @Override
+  public void listStores(ListStoresGrpcRequest grpcRequest, StreamObserver<ListStoresGrpcResponse> responseObserver) {
+    String clusterName = grpcRequest.getClusterName();
+    LOGGER.debug("Received gRPC request to list stores for cluster: {}", clusterName);
+    try {
+      boolean excludeSystemStores = grpcRequest.hasIncludeSystemStores() && !grpcRequest.getIncludeSystemStores();
+      String storeConfigNameFilter =
+          grpcRequest.hasStoreConfigNameFilter() ? grpcRequest.getStoreConfigNameFilter() : null;
+      String storeConfigValueFilter =
+          grpcRequest.hasStoreConfigValueFilter() ? grpcRequest.getStoreConfigValueFilter() : null;
+      ListStoresRequest request =
+          new ListStoresRequest(clusterName, excludeSystemStores, storeConfigNameFilter, storeConfigValueFilter);
+      MultiStoreResponse response = new MultiStoreResponse();
+      requestHandler.listStores(request, response);
+      ListStoresGrpcResponse.Builder responseBuilder =
+          ListStoresGrpcResponse.newBuilder().setClusterName(response.getCluster());
+      for (String storeName: response.getStores()) {
+        responseBuilder.addStoreName(storeName);
+      }
+      responseObserver.onNext(responseBuilder.build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOGGER.error("Error while listing stores for cluster: {}", clusterName, e);
+      responseObserver.onError(
+          Status.fromCode(Code.INTERNAL)
+              .withDescription("Error while listing stores")
+              .withCause(e)
+              .asRuntimeException());
+    }
+  }
+
 }
