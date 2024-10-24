@@ -282,7 +282,7 @@ public enum Arg {
   ),
   NEARLINE_PRODUCER_COUNT_PER_WRITER(
       "nearline-producer-count-per-writer", "npcpw", true,
-      "How many producer will be used to write nearline workload in Server"
+      "How many producers will be used to write nearline workload in Server"
   );
 
   private final String argName;

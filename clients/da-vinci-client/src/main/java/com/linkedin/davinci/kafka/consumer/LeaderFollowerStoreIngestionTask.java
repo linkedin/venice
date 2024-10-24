@@ -184,9 +184,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *    may be called from multiple thread simultaneously, during start of batch push. Therefore, we wrap it in
    *    {@link Lazy} to initialize it in a thread safe way and to ensure that only one instance is created for the
    *    entire ingestion task.
+   *
+   *    Important:
+   *    Please don't use these writers directly, and you should retrieve the writer from {@link PartitionConsumptionState#getVeniceWriterLazyRef()}
+   *    when producing to the local topic.
    */
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
-
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTime;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
@@ -2392,19 +2395,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             controlMessage,
             consumerRecord.getPubSubMessageHeaders(),
             partitionConsumptionState);
-        /**
-         * For the local consumption, the batch data won't be produce to the local VT again, so we will switch
-         * to real-time writer upon EOP here and for the remote consumption of VT, the switch will be handled
-         * in the following section as it needs to flush the messages and then switch.
-         */
-        if (isLeader(partitionConsumptionState) && ControlMessageType.valueOf(controlMessage).equals(END_OF_PUSH)
-            && !partitionConsumptionState.consumeRemotely()) {
-          LOGGER.info(
-              "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
-              getVersionTopic().getName(),
-              partition);
-          partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
-        }
       }
 
       /**
@@ -2412,6 +2402,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * (i) it's a follower or (ii) leader is consuming from VT
        */
       if (!produceToLocalKafka) {
+        /**
+         * For the local consumption, the batch data won't be produce to the local VT again, so we will switch
+         * to real-time writer upon EOP here and for the remote consumption of VT, the switch will be handled
+         * in the following section as it needs to flush the messages and then switch.
+         */
+        if (isLeader(partitionConsumptionState) && msgType == MessageType.CONTROL_MESSAGE
+            && ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion).equals(END_OF_PUSH)) {
+          LOGGER.info(
+              "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
+              getVersionTopic().getName(),
+              partition);
+          // Just to be extra safe
+          partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
+          partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
+        }
         return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
       }
 
