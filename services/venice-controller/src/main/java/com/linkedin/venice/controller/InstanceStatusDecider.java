@@ -13,7 +13,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -91,10 +90,10 @@ public class InstanceStatusDecider {
       List<String> lockedNodes,
       boolean isInstanceView) {
     List<NodeRemovableResult> removableResults = new ArrayList<>();
-    Set<String> nonStoppableNodes = new HashSet<>();
     List<String> toBeStoppedNodes = new ArrayList<>(lockedNodes);
     RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     for (String instanceId: instanceIds) {
+      boolean instanceNonStoppable = false;
       try {
         // If instance is not alive, it's removable.
         if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
@@ -148,7 +147,7 @@ public class InstanceStatusDecider {
                     resourceName,
                     clusterName,
                     result.getSecond());
-                nonStoppableNodes.add(instanceId);
+                instanceNonStoppable = true;
                 removableResults.add(
                     NodeRemovableResult.nonRemovableResult(
                         instanceId,
@@ -178,7 +177,7 @@ public class InstanceStatusDecider {
                     resourceName,
                     clusterName,
                     result.getSecond());
-                nonStoppableNodes.add(instanceId);
+                instanceNonStoppable = true;
                 removableResults.add(
                     NodeRemovableResult.nonRemovableResult(
                         instanceId,
@@ -190,7 +189,7 @@ public class InstanceStatusDecider {
             }
           }
         }
-        if (!nonStoppableNodes.contains(instanceId)) {
+        if (!instanceNonStoppable) {
           removableResults
               .add(NodeRemovableResult.removableResult(instanceId, "Instance " + instanceId + " can be removed."));
           toBeStoppedNodes.add(instanceId);

@@ -5,7 +5,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VERSION_SWAP;
@@ -21,7 +20,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
@@ -915,15 +913,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
-  public StoppableNodeStatusResponse getAggregatedHealthStatus(
-      String clusterName,
-      List<String> instances,
-      List<String> toBeStoppedInstances) {
-    QueryParams params = newParams().add(CLUSTER_ID, clusterName)
-        .add(INSTANCES, String.join(",", instances))
-        .add(TO_BE_STOPPED_INSTANCES, String.join(",", toBeStoppedInstances));
-
-    return request(ControllerRoute.AGGREGATED_HEALTH_STATUS, params, StoppableNodeStatusResponse.class);
+  public StoppableNodeStatusResponse getAggregatedHealthStatus(String aggrHealthStatusParam) {
+    return request(
+        ControllerRoute.AGGREGATED_HEALTH_STATUS,
+        newParams(),
+        StoppableNodeStatusResponse.class,
+        aggrHealthStatusParam.getBytes());
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {
