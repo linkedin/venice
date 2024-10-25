@@ -156,12 +156,12 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * Prepends the given schema ID to the provided ByteBuffer
    *
-   * @param byteBuffer the original decompressed value
+   * @param valueBytes the original serialized and compressed value
    * @param schemaId to prepend to the ByteBuffer
-   * @return a ByteBuffer containing the schema ID followed by the serialized value
+   * @return a ByteBuffer containing the schema ID followed by the serialized and compressed value
    */
-  public final ByteBuffer prependSchemaIdToHeader(ByteBuffer byteBuffer, int schemaId) {
-    return recordTransformerUtility.prependSchemaIdToHeader(byteBuffer, schemaId);
+  public final ByteBuffer prependSchemaIdToHeader(ByteBuffer valueBytes, int schemaId) {
+    return recordTransformerUtility.prependSchemaIdToHeader(valueBytes, schemaId);
   }
 
   /**

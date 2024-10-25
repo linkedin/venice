@@ -52,7 +52,7 @@ public class DaVinciConfigTest {
 
   @Test
   public void testGetAndSetRecordTransformer() {
-    Integer testStoreVersion = 0;
+    Integer testStoreVersion = 1;
     DaVinciConfig config = new DaVinciConfig();
     assertNull(config.getRecordTransformer(testStoreVersion));
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(

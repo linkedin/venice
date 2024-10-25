@@ -9,7 +9,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.DaVinciBackend;
@@ -124,7 +125,7 @@ public class AvroGenericDaVinciClientTest {
     assertThrows(VeniceClientException.class, () -> setUpClientWithRecordTransformer(clientConfig, daVinciConfig));
   }
 
-  @Test(expectedExceptions = VeniceClientException.class)
+  @Test
   public void testRecordTransformerClientValueClassMismatch() throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = mock(ClientConfig.class);
     when(clientConfig.getStoreName()).thenReturn("test_store");
@@ -132,7 +133,7 @@ public class AvroGenericDaVinciClientTest {
     when(clientConfig.isSpecificClient()).thenReturn(true);
 
     AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
-    dvcClient.start();
+    assertThrows(VeniceClientException.class, () -> dvcClient.start());
   }
 
   @Test

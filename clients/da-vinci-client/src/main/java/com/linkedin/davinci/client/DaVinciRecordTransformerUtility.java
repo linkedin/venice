@@ -59,9 +59,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
   /**
    * Prepends the given schema ID to the provided ByteBuffer
    *
-   * @param valueBytes the original value
+   * @param valueBytes the original serialized and compressed value
    * @param schemaId to prepend to the ByteBuffer
-   * @return a ByteBuffer containing the schema ID followed by the value
+   * @return a ByteBuffer containing the schema ID followed by the serialized and compressed value
    */
   public final ByteBuffer prependSchemaIdToHeader(ByteBuffer valueBytes, int schemaId) {
     ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + valueBytes.remaining());

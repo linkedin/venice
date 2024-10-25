@@ -6,7 +6,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 
 
-public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
+public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   public TestUnchangedResultRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
     super(storeVersion, storeRecordsInDaVinci);
   }
@@ -16,14 +16,14 @@ public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransform
   }
 
   public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.INT);
+    return Schema.create(Schema.Type.STRING);
   }
 
-  public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
-  public void processPut(Lazy<Integer> key, Lazy<Integer> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value) {
     return;
   }
 

@@ -360,9 +360,9 @@ public class DaVinciClientTest {
       }
 
       // Mimic restart
+      clientWithRecordTransformer.close();
       recordTransformer.clearInMemoryDb();
       assertTrue(recordTransformer.isInMemoryDbEmpty());
-      clientWithRecordTransformer.close();
 
       clientWithRecordTransformer.start();
       clientWithRecordTransformer.subscribeAll().get();
@@ -384,7 +384,6 @@ public class DaVinciClientTest {
     // (2MB = 2 * 1024 * 1024 bytes)
     int sizeInBytes = 2 * 1024 * 1024;
     StringBuilder stringBuilder = new StringBuilder(sizeInBytes);
-    // Append characters to the StringBuilder until it exceeds 1MB
     while (stringBuilder.length() < sizeInBytes) {
       stringBuilder.append("a");
     }
@@ -451,9 +450,9 @@ public class DaVinciClientTest {
       }
 
       // Mimic restart
+      clientWithRecordTransformer.close();
       recordTransformer.clearInMemoryDb();
       assertTrue(recordTransformer.isInMemoryDbEmpty());
-      clientWithRecordTransformer.close();
 
       clientWithRecordTransformer.start();
       clientWithRecordTransformer.subscribeAll().get();
@@ -1638,8 +1637,7 @@ public class DaVinciClientTest {
     propertiesConsumer.accept(vpjProperties);
     // Create & update store for test.
     final int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions); // Update the
-                                                                                                   // partition count.
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions);
     paramsConsumer.accept(params);
 
     try (ControllerClient controllerClient =

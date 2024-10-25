@@ -4,7 +4,7 @@ import org.apache.avro.Schema;
 
 
 /**
- * Configuration class for the Da Vinci Record Transformer, which is passed into {@link DaVinciConfig}.
+ * Configuration class for {@link DaVinciRecordTransformer}, which is passed into {@link DaVinciConfig}.
  */
 public class DaVinciRecordTransformerConfig {
   private final DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;

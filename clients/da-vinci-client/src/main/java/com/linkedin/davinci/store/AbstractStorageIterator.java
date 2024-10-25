@@ -23,21 +23,21 @@ public abstract class AbstractStorageIterator {
   }
 
   /**
-   * Moves to the next entry.
+   * Moves to the next entry
    */
   public void next() {
     throw new UnsupportedOperationException("Method not implemented");
   }
 
   /**
-   * Moves to the previous entry.
+   * Moves to the previous entry
    */
   public void prev() {
     throw new UnsupportedOperationException("Method not implemented");
   }
 
   /**
-   * Seeks to the first entry whose key is greater than or equal to the given key.
+   * Seeks to the first entry whose key is greater than or equal to the given key
    *
    * @param key the key to seek to
    */
@@ -46,14 +46,14 @@ public abstract class AbstractStorageIterator {
   }
 
   /**
-   * Seek to the first key.
+   * Seek to the first key
    */
   public void seekToFirst() {
     throw new UnsupportedOperationException("Method not implemented");
   }
 
   /**
-   * Seek to the last key.
+   * Seek to the last key
    */
   public void seekToLast() {
     throw new UnsupportedOperationException("Method not implemented");
