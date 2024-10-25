@@ -27,8 +27,11 @@ import spark.Route;
 
 
 public class StoragePersonaRoutes extends AbstractRoute {
-  public StoragePersonaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public StoragePersonaRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

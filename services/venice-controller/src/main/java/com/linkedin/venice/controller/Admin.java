@@ -738,7 +738,7 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * Provision a new set of ACL for a venice store and its associated kafka topic.
    */
-  void updateAclForStore(String clusterName, String storeName, String accessPermisions);
+  void updateAclForStore(String clusterName, String storeName, String accessPermissions);
 
   /**
    * Fetch the current set of ACL provisioned for a venice store and its associated kafka topic.

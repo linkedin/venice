@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -26,6 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -38,6 +40,17 @@ public class StoreRoutesTest {
   private static final String TEST_STORE_NAME = "test_store";
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  private VeniceControllerRequestHandler requestHandler;
+  private Admin mockAdmin;
+
+  @BeforeMethod
+  public void setUp() {
+    mockAdmin = mock(VeniceParentHelixAdmin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(mockAdmin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
 
   @Test
   public void testGetFutureVersion() throws Exception {
@@ -55,7 +68,7 @@ public class StoreRoutesTest {
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -79,8 +92,8 @@ public class StoreRoutesTest {
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
-    Route rollForwardToFutureVersion =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).rollForwardToFutureVersion(mockAdmin);
+    Route rollForwardToFutureVersion = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler)
+        .rollForwardToFutureVersion(mockAdmin);
 
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
@@ -105,7 +118,7 @@ public class StoreRoutesTest {
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -116,7 +129,7 @@ public class StoreRoutesTest {
     doCallRealMethod().when(mockAdmin).getBackupVersionsForMultiColos(TEST_CLUSTER, TEST_STORE_NAME);
     doReturn(2).when(mockAdmin).getBackupVersion(TEST_CLUSTER, TEST_STORE_NAME);
     Route getBackupVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getBackupVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler).getBackupVersion(mockAdmin);
     multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getBackupVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -147,7 +160,7 @@ public class StoreRoutesTest {
     doReturn(queryParamsMap).when(request).queryMap();
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -177,7 +190,7 @@ public class StoreRoutesTest {
     doReturn(queryParamsMap).when(request).queryMap();
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -209,7 +222,7 @@ public class StoreRoutesTest {
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
-    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository);
+    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler);
     final StoreResponse response = ObjectMapperFactory.getInstance()
         .readValue(
             storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),

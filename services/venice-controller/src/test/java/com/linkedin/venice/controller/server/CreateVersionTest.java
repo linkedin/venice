@@ -31,6 +31,8 @@ import static org.testng.Assert.expectThrows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -73,10 +75,14 @@ public class CreateVersionTest {
   private Request request;
   private Response response;
   private DynamicAccessController accessClient;
+  private VeniceControllerRequestHandler requestHandler;
 
   @BeforeMethod
   public void setUp() {
-    admin = mock(Admin.class);
+    admin = mock(VeniceParentHelixAdmin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(admin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
     request = mock(Request.class);
     response = mock(Response.class);
     accessClient = mock(DynamicAccessController.class);
@@ -116,7 +122,8 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false);
+    CreateVersion createVersion =
+        new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false, requestHandler);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     // Not an allowlist user.
@@ -180,7 +187,7 @@ public class CreateVersionTest {
     assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, requestHandler);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
@@ -238,7 +245,7 @@ public class CreateVersionTest {
     assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, requestHandler);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
@@ -293,7 +300,7 @@ public class CreateVersionTest {
     assertTrue(admin.isParent());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, requestHandler);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
     Object result = createVersionRoute.handle(request, response);
     assertNotNull(result);
@@ -398,7 +405,7 @@ public class CreateVersionTest {
 
   @Test
   public void testValidatePushTypeForStreamPushType() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, requestHandler);
 
     // push type is STREAM and store is not hybrid
     Store store1 = mock(Store.class);
@@ -445,7 +452,7 @@ public class CreateVersionTest {
 
   @Test
   public void testValidatePushTypeForIncrementalPushPushType() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, requestHandler);
 
     // push type is INCREMENTAL and store is not hybrid
     Store store1 = mock(Store.class);

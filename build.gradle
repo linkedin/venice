@@ -84,6 +84,7 @@ ext.libraries = [
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
@@ -93,6 +94,7 @@ ext.libraries = [
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.14',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.16',
     jacksonCore: "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}",
+//    jacksonProtobuf: "com.fasterxml.jackson.dataformat:jackson-dataformat-protobuf:${jacksonVersion}",
     jacksonAnnotations: "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}",
     jacksonDatabind: "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}",
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
@@ -501,6 +503,11 @@ subprojects {
               counter = 'BRANCH'
               value = 'COVEREDRATIO'
               minimum = threshold
+            }
+            afterEvaluate {
+              classDirectories.setFrom(files(classDirectories.files.collect { fileTree(dir: it, exclude: [
+                  '**/com/linkedin/venice/protocols/**',
+              ])}))
             }
           }
         }

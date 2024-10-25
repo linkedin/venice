@@ -16,8 +16,11 @@ import spark.Route;
 
 
 public class NewClusterBuildOutRoutes extends AbstractRoute {
-  public NewClusterBuildOutRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public NewClusterBuildOutRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

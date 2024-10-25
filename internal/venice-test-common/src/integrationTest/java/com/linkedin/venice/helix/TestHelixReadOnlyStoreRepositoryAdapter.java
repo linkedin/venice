@@ -162,7 +162,7 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       assertEquals(
           allStores.size(),
           4,
-          "'getAllStores' should return regular stores and the corresponding meta system store if enabled");
+          "'listStores' should return regular stores and the corresponding meta system store if enabled");
       Set<String> storeNameSet = allStores.stream().map(Store::getName).collect(Collectors.toSet());
       assertTrue(storeNameSet.contains(newRepositorySupportedSystemStoreType.getZkSharedStoreName()));
       assertTrue(storeNameSet.contains(regularStoreName));

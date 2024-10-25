@@ -11,13 +11,18 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
+import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.grpc.VeniceGrpcServer;
+import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
@@ -25,13 +30,18 @@ import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnounc
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.BlockingQueueType;
+import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,6 +56,8 @@ public class VeniceController {
   private VeniceControllerService controllerService;
   private AdminSparkServer adminServer;
   private AdminSparkServer secureAdminServer;
+  private VeniceGrpcServer adminGrpcServer;
+  private VeniceGrpcServer adminSecureGrpcServer;
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
 
@@ -69,6 +81,7 @@ public class VeniceController {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubClientsFactory pubSubClientsFactory;
   static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  private ThreadPoolExecutor grpcExecutor = null;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -150,6 +163,22 @@ public class VeniceController {
         pubSubTopicRepository,
         pubSubClientsFactory);
 
+    ControllerRequestHandlerDependencies.Builder requestHandlerDepsBuilder =
+        new ControllerRequestHandlerDependencies.Builder().setAdmin(controllerService.getVeniceHelixAdmin())
+            .setMetricsRepository(metricsRepository)
+            .setClusters(multiClusterConfigs.getClusters())
+            .setDisabledRoutes(multiClusterConfigs.getDisabledRoutes())
+            .setVeniceProperties(multiClusterConfigs.getCommonConfig().getJettyConfigOverrides())
+            .setDisableParentRequestTopicForStreamPushes(
+                multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes())
+            .setPubSubTopicRepository(pubSubTopicRepository);
+
+    requestHandlerDepsBuilder.setSslConfig(null)
+        .setCheckReadMethodForKafka(false)
+        .setAccessController(null)
+        .setEnforceSSL(multiClusterConfigs.isControllerEnforceSSLOnly());
+    VeniceControllerRequestHandler requestHandlerForHttpServer =
+        new VeniceControllerRequestHandler(requestHandlerDepsBuilder.build());
     adminServer = new AdminSparkServer(
         // no need to pass the hostname, we are binding to all the addresses
         multiClusterConfigs.getAdminPort(),
@@ -164,11 +193,18 @@ public class VeniceController {
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         // TODO: Builder pattern or just pass the config object here?
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        requestHandlerForHttpServer);
     if (sslEnabled) {
       /**
        * SSL enabled AdminSparkServer uses a different port number than the regular service.
        */
+      requestHandlerDepsBuilder.setSslConfig(multiClusterConfigs.getSslConfig().orElse(null))
+          .setCheckReadMethodForKafka(multiClusterConfigs.adminCheckReadMethodForKafka())
+          .setAccessController(accessController.orElse(null))
+          .setEnforceSSL(true);
+      VeniceControllerRequestHandler requestHandlerForHttpsServer =
+          new VeniceControllerRequestHandler(requestHandlerDepsBuilder.build());
       secureAdminServer = new AdminSparkServer(
           multiClusterConfigs.getAdminSecurePort(),
           controllerService.getVeniceHelixAdmin(),
@@ -181,7 +217,8 @@ public class VeniceController {
           multiClusterConfigs.getDisabledRoutes(),
           multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
           multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
-          pubSubTopicRepository);
+          pubSubTopicRepository,
+          requestHandlerForHttpsServer);
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
@@ -231,6 +268,42 @@ public class VeniceController {
     }
     // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
     initializeSystemSchema(controllerService.getVeniceHelixAdmin());
+
+    // if gRpc server is not enabled, return early
+    if (!multiClusterConfigs.isGrpcServerEnabled()) {
+      return;
+    }
+
+    requestHandlerDepsBuilder.setSslConfig(null)
+        .setCheckReadMethodForKafka(false)
+        .setAccessController(null)
+        .setEnforceSSL(multiClusterConfigs.isControllerEnforceSSLOnly());
+
+    VeniceControllerRequestHandler requestHandlerForGrpcServer =
+        new VeniceControllerRequestHandler(requestHandlerDepsBuilder.build());
+    VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(requestHandlerForGrpcServer);
+
+    // Both non-secure and secure gRPC servers share the same executor
+    int grpcServerThreadCount = multiClusterConfigs.getGrpcServerThreadCount();
+    grpcExecutor = ThreadPoolFactory.createThreadPool(
+        grpcServerThreadCount,
+        "ControllerGrpcServerThread",
+        Integer.MAX_VALUE,
+        BlockingQueueType.LINKED_BLOCKING_QUEUE);
+
+    VeniceGrpcServerConfig.Builder grpcServerBuilder =
+        new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminGrpcPort())
+            .setService(grpcService)
+            .setExecutor(grpcExecutor);
+    adminGrpcServer = new VeniceGrpcServer(grpcServerBuilder.build());
+
+    if (sslEnabled) {
+      String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
+      Properties sslProperties = multiClusterConfigs.getSslConfig().get().getSslProperties();
+      SSLFactory sslFactory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
+      grpcServerBuilder.setPort(multiClusterConfigs.getAdminSecureGrpcPort()).setSslFactory(sslFactory);
+      adminSecureGrpcServer = new VeniceGrpcServer(grpcServerBuilder.build());
+    }
   }
 
   /**
@@ -255,6 +328,12 @@ public class VeniceController {
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     asyncRetryingServiceDiscoveryAnnouncer.register();
+    if (adminGrpcServer != null) {
+      adminGrpcServer.start();
+    }
+    if (adminSecureGrpcServer != null) {
+      adminSecureGrpcServer.start();
+    }
     LOGGER.info("Controller is started.");
   }
 
@@ -311,6 +390,16 @@ public class VeniceController {
     unusedValueSchemaCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    if (adminGrpcServer != null) {
+      adminGrpcServer.stop();
+    }
+    if (adminSecureGrpcServer != null) {
+      adminSecureGrpcServer.stop();
+    }
+    if (grpcExecutor != null) {
+      LOGGER.info("Shutting down gRPC executor");
+      grpcExecutor.shutdown();
+    }
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(adminServer);

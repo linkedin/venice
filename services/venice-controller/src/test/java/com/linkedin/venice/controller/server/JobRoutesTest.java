@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -15,11 +16,23 @@ import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class JobRoutesTest {
   private static final Logger LOGGER = LogManager.getLogger(JobRoutesTest.class);
+
+  private VeniceControllerRequestHandler requestHandler;
+  private Admin mockAdmin;
+
+  @BeforeMethod
+  public void setUp() {
+    mockAdmin = mock(VeniceParentHelixAdmin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(mockAdmin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
 
   @Test
   public void testPopulateJobStatus() {
@@ -33,7 +46,7 @@ public class JobRoutesTest {
     String cluster = Utils.getUniqueString("cluster");
     String store = Utils.getUniqueString("store");
     int version = 5;
-    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
+    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty(), requestHandler);
     JobStatusQueryResponse response =
         jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null, null);
 

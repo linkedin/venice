@@ -19,8 +19,11 @@ import spark.Route;
 
 
 public class RoutersClusterConfigRoutes extends AbstractRoute {
-  public RoutersClusterConfigRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public RoutersClusterConfigRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

@@ -9,16 +9,19 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.AdminCommandExecutionTracker;
-import com.linkedin.venice.controllerapi.AdminCommandExecution;
+import com.linkedin.venice.controllerapi.request.AdminCommandExecutionStatusRequest;
+import com.linkedin.venice.controllerapi.request.ControllerRequest;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import java.util.Optional;
 import spark.Route;
 
 
 public class AdminCommandExecutionRoutes extends AbstractRoute {
-  public AdminCommandExecutionRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public AdminCommandExecutionRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**
@@ -32,22 +35,15 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       // This request should only hit the parent controller. If a PROD controller get this kind of request, a empty
       // response would be return.
       AdminSparkServer.validateParams(request, EXECUTION.getParams(), admin);
-      String cluster = request.queryParams(CLUSTER);
-      long executionId = Long.parseLong(request.queryParams(EXECUTION_ID));
-      responseObject.setCluster(cluster);
-      Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
-          admin.getAdminCommandExecutionTracker(cluster);
-      if (adminCommandExecutionTracker.isPresent()) {
-        AdminCommandExecution execution = adminCommandExecutionTracker.get().checkExecutionStatus(executionId);
-        if (execution == null) {
-          responseObject
-              .setError("Could not find the execution by given id: " + executionId + " in cluster: " + cluster);
-        } else {
-          responseObject.setExecution(execution);
-        }
-      } else {
-        responseObject.setError(
-            "Could not track execution in this controller. Make sure you send the command to a correct parent controller.");
+      try {
+        requestHandler.getAdminCommandExecutionStatus(
+            new AdminCommandExecutionStatusRequest(
+                request.queryParams(CLUSTER),
+                Long.parseLong(request.queryParams(EXECUTION_ID))),
+            responseObject);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
@@ -62,10 +58,8 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       LastSucceedExecutionIdResponse responseObject = new LastSucceedExecutionIdResponse();
       response.type(HttpConstants.JSON);
       AdminSparkServer.validateParams(request, LAST_SUCCEED_EXECUTION_ID.getParams(), admin);
-      String cluster = request.queryParams(CLUSTER);
-      responseObject.setCluster(cluster);
       try {
-        responseObject.setLastSucceedExecutionId(admin.getLastSucceedExecutionId(cluster));
+        requestHandler.getLastSucceedExecutionId(new ControllerRequest(request.queryParams(CLUSTER)), responseObject);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

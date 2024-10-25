@@ -17,8 +17,11 @@ import spark.Route;
 
 
 public class SkipAdminRoute extends AbstractRoute {
-  public SkipAdminRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public SkipAdminRoute(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**

@@ -14,6 +14,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -152,7 +153,8 @@ public class ServiceFactory {
   public static AdminSparkServer getMockAdminSparkServer(
       Admin admin,
       String cluster,
-      List<ControllerRoute> bannedRoutes) {
+      List<ControllerRoute> bannedRoutes,
+      VeniceControllerRequestHandler requestHandler) {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<>();
       clusters.add(cluster);
@@ -168,7 +170,8 @@ public class ServiceFactory {
           bannedRoutes,
           null,
           false,
-          new PubSubTopicRepository()); // Change this.
+          new PubSubTopicRepository(),
+          requestHandler); // Change this.
       server.start();
       return server;
     });

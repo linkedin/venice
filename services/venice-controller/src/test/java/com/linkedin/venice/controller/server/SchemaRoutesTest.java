@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -22,6 +24,7 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import java.util.Optional;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.Request;
 import spark.Response;
@@ -29,6 +32,17 @@ import spark.Route;
 
 
 public class SchemaRoutesTest {
+  private VeniceControllerRequestHandler requestHandler;
+  private Admin mockAdmin;
+
+  @BeforeMethod
+  public void setUp() {
+    mockAdmin = mock(VeniceParentHelixAdmin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(mockAdmin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
+
   @Test
   public void schemaMismatchErrorMessage() {
     String cluster = "cluster_name";
@@ -38,7 +52,7 @@ public class SchemaRoutesTest {
     Admin admin = mock(Admin.class);
     when(admin.getValueSchemaId(cluster, store, schemaStr)).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     when(admin.getStore(cluster, store)).thenReturn(null);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), requestHandler);
     try {
       schemaRoutes.populateSchemaResponseForValueOrDerivedSchemaID(admin, cluster, store, schemaStr);
     } catch (VeniceNoStoreException e) {
@@ -98,7 +112,7 @@ public class SchemaRoutesTest {
     doReturn(new SchemaEntry(schemaId, schemaStr)).when(admin)
         .addValueSchema(cluster, store, schemaStr, schemaId, schemaCompatType);
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), requestHandler);
     Route route = schemaRoutes.addValueSchema(admin);
     route.handle(request, response);
     verify(response, times(0)).status(anyInt()); // no error

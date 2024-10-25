@@ -73,7 +73,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS_READINESS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.OFFLINE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.PREPARE_DATA_RECOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
@@ -170,6 +169,8 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
 
+  private final VeniceControllerRequestHandler requestHandler;
+
   public AdminSparkServer(
       int port,
       Admin admin,
@@ -182,7 +183,8 @@ public class AdminSparkServer extends AbstractVeniceService {
       List<ControllerRoute> disabledRoutes,
       VeniceProperties jettyConfigOverrides,
       boolean disableParentRequestTopicForStreamPushes,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -206,6 +208,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     this.disabledRoutes = disabledRoutes;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.requestHandler = requestHandler;
   }
 
   @Override
@@ -278,29 +281,33 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
-    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository);
-    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
-    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
-    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
+    ControllerRoutes controllerRoutes =
+        new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
+    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
+    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController, requestHandler);
+    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController, requestHandler);
     CreateVersion createVersion = new CreateVersion(
         sslEnabled,
         accessController,
         this.checkReadMethodForKafka,
-        disableParentRequestTopicForStreamPushes);
-    CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
-    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
+        disableParentRequestTopicForStreamPushes,
+        requestHandler);
+    CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController, requestHandler);
+    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController, requestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController, requestHandler);
     AdminCommandExecutionRoutes adminCommandExecutionRoutes =
-        new AdminCommandExecutionRoutes(sslEnabled, accessController);
+        new AdminCommandExecutionRoutes(sslEnabled, accessController, requestHandler);
     RoutersClusterConfigRoutes routersClusterConfigRoutes =
-        new RoutersClusterConfigRoutes(sslEnabled, accessController);
-    MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
-    VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
-    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
-    NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(sslEnabled, accessController);
-    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
-    AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
-    StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
+        new RoutersClusterConfigRoutes(sslEnabled, accessController, requestHandler);
+    MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController, requestHandler);
+    VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController, requestHandler);
+    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController, requestHandler);
+    NewClusterBuildOutRoutes newClusterBuildOutRoutes =
+        new NewClusterBuildOutRoutes(sslEnabled, accessController, requestHandler);
+    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController, requestHandler);
+    AdminTopicMetadataRoutes adminTopicMetadataRoutes =
+        new AdminTopicMetadataRoutes(sslEnabled, accessController, requestHandler);
+    StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController, requestHandler);
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -525,14 +532,10 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         CLUSTER_DISCOVERY.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(admin)));
+        new VeniceParentControllerRegionStateHandler(admin, ClusterDiscovery.discoverCluster(requestHandler, admin)));
     httpService.get(
         LIST_BOOTSTRAPPING_VERSIONS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, versionRoute.listBootstrappingVersions(admin)));
-
-    httpService.post(
-        OFFLINE_PUSH_INFO.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createVersion.uploadPushInfo(admin)));
 
     httpService.post(
         UPLOAD_PUSH_JOB_STATUS.getPath(),

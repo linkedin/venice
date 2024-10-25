@@ -6,14 +6,18 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_BOOTSTRAPPI
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
+import com.linkedin.venice.controllerapi.request.ControllerRequest;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
 
 
 public class VersionRoute extends AbstractRoute {
-  public VersionRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public VersionRoute(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
+    super(sslEnabled, accessController, requestHandler);
   }
 
   /**
@@ -25,9 +29,7 @@ public class VersionRoute extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiVersionStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, LIST_BOOTSTRAPPING_VERSIONS.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(cluster);
-        veniceResponse.setVersionStatusMap(admin.findAllBootstrappingVersions(cluster));
+        requestHandler.listBootstrappingVersions(new ControllerRequest(request.queryParams(CLUSTER)), veniceResponse);
       }
     };
   }
