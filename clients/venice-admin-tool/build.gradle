@@ -42,6 +42,10 @@ jar {
   }
 }
 
+shadowJar {
+  mergeServiceFiles()  // Enable merging service files from different dependencies
+}
+
 ext {
   jacocoCoverageThreshold = 0.00
 }

@@ -667,8 +667,8 @@ public class VeniceControllerClusterConfig {
     this.adminPort = props.getInt(ADMIN_PORT);
     this.adminHostname = props.getString(ADMIN_HOSTNAME, Utils::getHostName);
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
-    this.adminGrpcPort = props.getInt(CONTROLLER_ADMIN_GRPC_PORT);
-    this.adminSecureGrpcPort = props.getInt(CONTROLLER_ADMIN_SECURE_GRPC_PORT);
+    this.adminGrpcPort = props.getInt(CONTROLLER_ADMIN_GRPC_PORT, -1);
+    this.adminSecureGrpcPort = props.getInt(CONTROLLER_ADMIN_SECURE_GRPC_PORT, -1);
 
     /**
      * Override the config to false if the "Read" method check is not working as expected.

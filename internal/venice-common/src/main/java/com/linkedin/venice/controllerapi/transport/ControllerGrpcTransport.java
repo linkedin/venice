@@ -27,9 +27,9 @@ import com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.ChannelCredentials;
-import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import java.util.ArrayList;
@@ -63,8 +63,13 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
   }
 
   ManagedChannel getOrCreateChannel(String serverGrpcAddress) {
-    return grpcChannelCache
-        .computeIfAbsent(serverGrpcAddress, k -> Grpc.newChannelBuilder(serverGrpcAddress, channelCredentials).build());
+    return grpcChannelCache.computeIfAbsent(serverGrpcAddress, k -> {
+      ManagedChannel channel = ManagedChannelBuilder.forTarget(serverGrpcAddress)
+          .usePlaintext()
+          .defaultLoadBalancingPolicy("pick_first")
+          .build();
+      return channel;
+    });
   }
 
   @Override

@@ -10,7 +10,7 @@ plugins {
   id 'maven-publish'
   id 'com.diffplug.spotless' version '6.12.0'
   id 'com.dorongold.task-tree' version '2.1.0'
-  id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
+  id 'com.github.johnrengelman.shadow' version '7.1.2' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'org.gradle.test-retry' version '1.5.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
@@ -85,6 +85,7 @@ ext.libraries = [
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
+//    grpcLb: "io.grpc:grpc-loadbalancer-pick-first:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
