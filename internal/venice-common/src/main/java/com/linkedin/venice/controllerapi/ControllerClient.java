@@ -72,6 +72,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.meta.Version.PushType;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -85,6 +87,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -111,6 +114,7 @@ import org.apache.logging.log4j.Logger;
 
 public class ControllerClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ControllerClient.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -913,12 +917,21 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
-  public StoppableNodeStatusResponse getAggregatedHealthStatus(String aggrHealthStatusParam) {
+  public StoppableNodeStatusResponse getAggregatedHealthStatus(
+      String clusterName,
+      List<String> instances,
+      List<String> toBeStoppedInstances) throws JsonProcessingException {
+
+    AggregatedHealthStatusRequest request = new AggregatedHealthStatusRequest();
+    request.setToBeStoppedInstances(toBeStoppedInstances);
+    request.setInstances(instances);
+    request.setClusterId(clusterName);
+    String requestString = OBJECT_MAPPER.writeValueAsString(request);
     return request(
         ControllerRoute.AGGREGATED_HEALTH_STATUS,
         newParams(),
         StoppableNodeStatusResponse.class,
-        aggrHealthStatusParam.getBytes());
+        requestString.getBytes());
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {

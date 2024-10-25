@@ -3841,7 +3841,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
       List<String> instances,
-      List<String> toBeStoppedInstances) {
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled) {
     throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus");
   }
 

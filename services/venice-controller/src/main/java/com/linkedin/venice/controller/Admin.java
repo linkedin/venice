@@ -535,7 +535,8 @@ public interface Admin extends AutoCloseable, Closeable {
   InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
       List<String> instances,
-      List<String> toBeStoppedInstances);
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

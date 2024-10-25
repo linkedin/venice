@@ -27,7 +27,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
-import com.linkedin.venice.controller.server.AggregratedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -3104,12 +3103,10 @@ public class AdminTool {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     String instances = getRequiredArgument(cmd, Arg.INSTANCES);
     String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
-    AggregratedHealthStatusRequest request = new AggregratedHealthStatusRequest();
-    request.setToBeStoppedInstances(Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
-    request.setInstances(Utils.parseCommaSeparatedStringToList(instances));
-    request.setClusterId(clusterName);
-    String requestString = OBJECT_MAPPER.writeValueAsString(request);
-    ControllerResponse response = controllerClient.getAggregatedHealthStatus(requestString);
+    ControllerResponse response = controllerClient.getAggregatedHealthStatus(
+        clusterName,
+        Utils.parseCommaSeparatedStringToList(instances),
+        Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
     printObject(response);
 
   }

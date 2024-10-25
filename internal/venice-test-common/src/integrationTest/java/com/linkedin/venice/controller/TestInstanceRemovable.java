@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.controller.server.AggregratedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -15,7 +13,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -32,8 +29,6 @@ import org.testng.annotations.Test;
 
 
 public class TestInstanceRemovable {
-  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-
   private VeniceClusterWrapper cluster;
   int partitionSize = 1000;
   int replicaFactor = 3;
@@ -99,12 +94,8 @@ public class TestInstanceRemovable {
             client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
         String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
         String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
-        AggregratedHealthStatusRequest request = new AggregratedHealthStatusRequest();
-        request.setToBeStoppedInstances(Collections.emptyList());
-        request.setInstances(Arrays.asList(server2, server1));
-        request.setClusterId(clusterName);
-        String requestString = OBJECT_MAPPER.writeValueAsString(request);
-        StoppableNodeStatusResponse statuses = client.getAggregatedHealthStatus(requestString);
+        StoppableNodeStatusResponse statuses =
+            client.getAggregatedHealthStatus(clusterName, Arrays.asList(server2, server1), Collections.emptyList());
         Assert.assertEquals(statuses.getStoppableInstances().size(), 2);
         /*
          * This is the same scenario as we would do later in the following test steps.
@@ -203,16 +194,13 @@ public class TestInstanceRemovable {
           client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
       String server1 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
       String server2 = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2);
-      AggregratedHealthStatusRequest request = new AggregratedHealthStatusRequest();
-      request.setToBeStoppedInstances(Collections.emptyList());
-      request.setInstances(Collections.singletonList(server1));
-      request.setClusterId(clusterName);
-      String requestString = OBJECT_MAPPER.writeValueAsString(request);
-      StoppableNodeStatusResponse statuses = client.getAggregatedHealthStatus(requestString);
+
+      StoppableNodeStatusResponse statuses =
+          client.getAggregatedHealthStatus(clusterName, Collections.singletonList(server1), Collections.emptyList());
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
 
-      request.setInstances(Arrays.asList(server1, server2));
-      statuses = client.getAggregatedHealthStatus(OBJECT_MAPPER.writeValueAsString(request));
+      statuses =
+          client.getAggregatedHealthStatus(clusterName, Arrays.asList(server1, server2), Collections.emptyList());
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
       Assert.assertTrue(statuses.getNonStoppableInstancesWithReasons().containsKey(server2));
       Assert.assertTrue(

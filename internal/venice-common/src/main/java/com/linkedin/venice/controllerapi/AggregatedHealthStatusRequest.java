@@ -1,11 +1,11 @@
-package com.linkedin.venice.controller.server;
+package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 
-public class AggregratedHealthStatusRequest {
+public class AggregatedHealthStatusRequest {
   @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
   List<String> instances;
 
@@ -13,7 +13,7 @@ public class AggregratedHealthStatusRequest {
   List<String> to_be_stopped_instances;
   String cluster_id;
 
-  public AggregratedHealthStatusRequest(
+  public AggregatedHealthStatusRequest(
       List<String> instances,
       List<String> to_be_stopped_instances,
       String cluster_id) {
@@ -22,7 +22,7 @@ public class AggregratedHealthStatusRequest {
     this.cluster_id = cluster_id;
   }
 
-  public AggregratedHealthStatusRequest() {
+  public AggregatedHealthStatusRequest() {
   }
 
   @JsonProperty("cluster_id")

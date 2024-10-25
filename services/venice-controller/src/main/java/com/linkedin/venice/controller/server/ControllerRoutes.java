@@ -17,6 +17,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.InstanceRemovableStatuses;
+import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
@@ -193,8 +194,8 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
 
       try {
-        AggregratedHealthStatusRequest statusRequest =
-            OBJECT_MAPPER.readValue(request.body(), AggregratedHealthStatusRequest.class);
+        AggregatedHealthStatusRequest statusRequest =
+            OBJECT_MAPPER.readValue(request.body(), AggregatedHealthStatusRequest.class);
         String cluster = statusRequest.getClusterId();
         List<String> instanceList = statusRequest.getInstances();
         if (instanceList.isEmpty()) {
@@ -208,9 +209,10 @@ public class ControllerRoutes extends AbstractRoute {
         responseObject.setCluster(cluster);
 
         InstanceRemovableStatuses statuses =
-            admin.getAggregatedHealthStatus(cluster, instanceList, toBeStoppedInstanceList);
+            admin.getAggregatedHealthStatus(cluster, instanceList, toBeStoppedInstanceList, isSslEnabled());
         if (statuses.getRedirectUrl() != null) {
           response.redirect(statuses.getRedirectUrl() + AGGR_HEALTH_STATUS_URI, HttpStatus.SC_MOVED_TEMPORARILY);
+          return null;
         } else {
           responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstancesWithReasons());
           responseObject.setStoppableInstances(statuses.getStoppableInstances());

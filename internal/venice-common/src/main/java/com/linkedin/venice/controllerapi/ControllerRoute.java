@@ -2,7 +2,6 @@ package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AGGR_HEALTH_STATUS_PARAM;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
@@ -134,10 +133,7 @@ public enum ControllerRoute {
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
-  ),
-  AGGREGATED_HEALTH_STATUS(
-      "/aggregatedHealthStatus", HttpMethod.POST, Collections.emptyList(), AGGR_HEALTH_STATUS_PARAM
-  ),
+  ), AGGREGATED_HEALTH_STATUS("/aggregatedHealthStatus", HttpMethod.POST, Collections.emptyList()),
   ROLL_FORWARD_TO_FUTURE_VERSION(
       "/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
   ),

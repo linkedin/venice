@@ -6552,12 +6552,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public InstanceRemovableStatuses getAggregatedHealthStatus(
       String cluster,
       List<String> instances,
-      List<String> toBeStoppedInstances) {
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled) {
     InstanceRemovableStatuses statuses = new InstanceRemovableStatuses();
 
     // If current controller is not the leader, redirect with leader URL
     if (!isLeaderControllerFor(cluster)) {
-      statuses.setRedirectUrl(getLeaderController(cluster).getUrl(false));
+      statuses.setRedirectUrl(getLeaderController(cluster).getUrl(isSSLEnabled));
       return statuses;
     }
 
