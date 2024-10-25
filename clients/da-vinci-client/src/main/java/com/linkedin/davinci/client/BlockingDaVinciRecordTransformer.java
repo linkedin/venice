@@ -51,12 +51,12 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer.processDelete(key);
   }
 
-  public void onStart() {
-    this.recordTransformer.onStart();
+  public void onStartVersionIngestion() {
+    this.recordTransformer.onStartVersionIngestion();
     startLatch.countDown();
   }
 
-  public void onEnd() {
-    this.recordTransformer.onEnd();
+  public void onEndVersionIngestion() {
+    this.recordTransformer.onEndVersionIngestion();
   }
 }

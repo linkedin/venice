@@ -102,7 +102,7 @@ public class RecordTransformerTest {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
     recordTransformer =
         new BlockingDaVinciRecordTransformer<>(recordTransformer, recordTransformer.getStoreRecordsInDaVinci());
-    recordTransformer.onStart();
+    recordTransformer.onStartVersionIngestion();
 
     assertTrue(recordTransformer.getStoreRecordsInDaVinci());
 
@@ -120,7 +120,7 @@ public class RecordTransformerTest {
 
     recordTransformer.processDelete(lazyKey);
 
-    recordTransformer.onEnd();
+    recordTransformer.onEndVersionIngestion();
   }
 
 }

@@ -468,9 +468,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
 
-      // onStart called here instead of run() because this needs to finish running before bootstrapping starts
+      // onStartVersionIngestion called here instead of run() because this needs to finish running before bootstrapping
+      // starts
       long startTime = System.currentTimeMillis();
-      recordTransformer.onStart();
+      recordTransformer.onStartVersionIngestion();
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleStartLatency(
           storeName,
@@ -3892,7 +3893,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();
-      recordTransformer.onEnd();
+      recordTransformer.onEndVersionIngestion();
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleEndLatency(
           storeName,

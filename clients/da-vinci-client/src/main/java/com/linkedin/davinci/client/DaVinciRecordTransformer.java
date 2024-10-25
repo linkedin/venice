@@ -98,12 +98,12 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   };
 
   /**
-   * Lifecycle event triggered before records are consumed.
+   * Lifecycle event triggered before consuming records for {@link #storeVersion}.
    * Use this method to perform setup operations such as opening database connections or creating tables.
    *
    * By default, it performs no operation.
    */
-  public void onStart() {
+  public void onStartVersionIngestion() {
     return;
   }
 
@@ -113,7 +113,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * By default, it performs no operation.
    */
-  public void onEnd() {
+  public void onEndVersionIngestion() {
     return;
   }
 
