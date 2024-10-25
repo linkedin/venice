@@ -1,0 +1,85 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+option java_multiple_files = true;
+
+service VeniceControllerGrpcService {
+  rpc getStoresInCluster (GetStoresInClusterGrpcRequest) returns (GetStoresInClusterGrpcResponse) {}
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
+  rpc getJobStatus(QueryJobStatusGrpcRequest) returns (QueryJobStatusGrpcResponse) {}
+  // RPC for getting the leader controller
+  rpc GetLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+}
+
+message LeaderControllerGrpcRequest {
+  string clusterName = 1; // The cluster name
+}
+
+message LeaderControllerGrpcResponse {
+  string clusterName = 1;        // The cluster name
+  string httpUrl = 2;        // Leader controller URL
+  string httpsUrl = 3;       // SSL-enabled leader controller URL
+  string grpcUrl = 4;        // gRPC URL for leader controller
+  string secureGrpcUrl = 5;  // Secure gRPC URL for leader controller
+}
+
+message QueryJobStatusGrpcRequest {
+  string name = 1;
+  int32 version = 2;
+  string targetedRegions = 3;
+  optional string incrementalPushVersion = 4;
+}
+
+message QueryJobStatusGrpcResponse {
+  int32 version = 1;
+  string status = 2;
+  string statusDetails = 3;
+  int64 statusUpdateTimeStamp = 4;
+
+  repeated UnCompletedPartition uncompletedPartitions = 5;
+}
+
+message StoreInfoGrpc {
+  string storeName = 1;
+  optional string owner = 2;
+  int32 currentVersion = 3;
+  int32 partitionCount = 4;
+  map<string, int32> coloToCurrentVersion = 5;
+  int32 reservedVersion = 6;
+  bool enableWrites = 7;
+  bool enableReads = 8;
+}
+
+message UnCompletedReplicas {
+  string instanceId = 1;
+  string executionStatus = 2;
+  int64 currentOffset = 3;
+  string statusDetails = 4;
+}
+
+message UnCompletedPartition {
+  int32 partition = 1;
+  repeated UnCompletedReplicas uncompletedReplicas = 2;
+}
+
+message GetStoresInClusterGrpcRequest {
+  string clusterName = 1;
+}
+
+message GetStoresInClusterGrpcResponse {
+  repeated StoreInfoGrpc stores = 1;
+}
+
+message CreateStoreGrpcRequest {
+  string clusterName = 1;
+  string storeName = 2;
+  string keySchema = 3;
+  string valueSchema = 4;
+  string owner = 5;
+  bool isSystemStore = 6;
+  optional string accessPermission = 7;
+}
+
+message CreateStoreGrpcResponse {
+  string owner = 1;
+}

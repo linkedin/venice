@@ -2,6 +2,10 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpMethod;
+import com.linkedin.venice.controller.converters.HttpConvertersRegistry;
+import com.linkedin.venice.controller.converters.RequestConverter;
+import com.linkedin.venice.controller.requests.ControllerHttpRequest;
+import com.linkedin.venice.controller.requests.ControllerRequest;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -33,8 +37,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class ControllerTransport implements AutoCloseable {
-  private static final Logger LOGGER = LogManager.getLogger(ControllerTransport.class);
+/**
+ *
+ */
+public class ControllerHttpTransportClient implements AutoCloseable {
+  private static final Logger LOGGER = LogManager.getLogger(ControllerHttpTransportClient.class);
   private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
 
@@ -49,8 +56,10 @@ public class ControllerTransport implements AutoCloseable {
   }
 
   private final CloseableHttpAsyncClient httpClient;
+  private final HttpConvertersRegistry converterRegistry;
 
-  public ControllerTransport(Optional<SSLFactory> sslFactory) {
+  public ControllerHttpTransportClient(Optional<SSLFactory> sslFactory) {
+    this.converterRegistry = new HttpConvertersRegistry();
     this.httpClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(this.REQUEST_CONFIG)
         .setSSLStrategy(sslFactory.isPresent() ? new SSLIOSessionStrategy(sslFactory.get().getSSLContext()) : null)
@@ -61,6 +70,27 @@ public class ControllerTransport implements AutoCloseable {
   @Override
   public void close() {
     Utils.closeQuietlyWithErrorLogged(this.httpClient);
+  }
+
+  public <T extends ControllerRequest, D extends ControllerResponse> D request(
+      String controllerUrl,
+      T request,
+      Class<D> responseType) throws ExecutionException, TimeoutException {
+    ControllerHttpRequest httpRequest = convertToHttpRequest(request);
+    return request(
+        controllerUrl,
+        request.getRoute(),
+        httpRequest.getParams(),
+        responseType,
+        httpRequest.getTimeoutMs(),
+        httpRequest.getData());
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T extends ControllerRequest> ControllerHttpRequest convertToHttpRequest(T request) {
+    RequestConverter<T, ControllerHttpRequest> converter =
+        (RequestConverter<T, ControllerHttpRequest>) converterRegistry.getRequestConverter(request.getClass());
+    return converter.convert(request);
   }
 
   public <T extends ControllerResponse> T request(

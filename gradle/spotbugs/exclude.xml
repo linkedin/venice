@@ -82,7 +82,7 @@
       <Class name="com.linkedin.venice.utils.RedundantExceptionFilter">
         <Field name="singleton"/>
       </Class>
-      <Class name="com.linkedin.venice.controllerapi.ControllerTransport">
+      <Class name="com.linkedin.venice.controllerapi.ControllerHttpTransportClient">
         <Field name="OBJECT_MAPPER"/>
       </Class>
       <Class name="com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils">

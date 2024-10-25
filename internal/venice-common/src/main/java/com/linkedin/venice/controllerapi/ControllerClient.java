@@ -20,12 +20,10 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
@@ -74,6 +72,10 @@ import static com.linkedin.venice.meta.Version.PushType;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
+import com.linkedin.venice.controller.requests.ControllerRequest;
+import com.linkedin.venice.controller.requests.CreateStoreRequest;
+import com.linkedin.venice.controller.transport.ControllerGrpcTransportClient;
+import com.linkedin.venice.controller.transport.TransportType;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -191,7 +193,7 @@ public class ControllerClient implements Closeable {
 
     Exception lastConnectException = null;
     Exception lastException = null;
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    try (ControllerHttpTransportClient transport = new ControllerHttpTransportClient(sslFactory)) {
       for (String url: urls) {
         try {
           String leaderControllerUrl =
@@ -542,9 +544,8 @@ public class ControllerClient implements Closeable {
   }
 
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
-    QueryParams params =
-        newParams().add(NAME, storeName).add(OWNER, owner).add(KEY_SCHEMA, keySchema).add(VALUE_SCHEMA, valueSchema);
-    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+    CreateStoreRequest createStoreRequest = createNewStore(storeName, owner, keySchema, valueSchema, null, false);
+    return transportAgnosticRequest(createStoreRequest, NewStoreResponse.class);
   }
 
   public NewStoreResponse createNewStore(
@@ -553,21 +554,32 @@ public class ControllerClient implements Closeable {
       String keySchema,
       String valueSchema,
       String accessPermissions) {
-    QueryParams params = newParams().add(NAME, storeName)
-        .add(OWNER, owner)
-        .add(KEY_SCHEMA, keySchema)
-        .add(VALUE_SCHEMA, valueSchema)
-        .add(ACCESS_PERMISSION, accessPermissions);
-    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+    CreateStoreRequest createStoreRequest =
+        createNewStore(storeName, owner, keySchema, valueSchema, accessPermissions, false);
+    return transportAgnosticRequest(createStoreRequest, NewStoreResponse.class);
   }
 
   public NewStoreResponse createNewSystemStore(String storeName, String owner, String keySchema, String valueSchema) {
-    QueryParams params = newParams().add(NAME, storeName)
-        .add(OWNER, owner)
-        .add(KEY_SCHEMA, keySchema)
-        .add(VALUE_SCHEMA, valueSchema)
-        .add(IS_SYSTEM_STORE, true);
-    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+    CreateStoreRequest createStoreRequest = createNewStore(storeName, owner, keySchema, valueSchema, null, true);
+    return transportAgnosticRequest(createStoreRequest, NewStoreResponse.class);
+  }
+
+  private CreateStoreRequest createNewStore(
+      String storeName,
+      String owner,
+      String keySchema,
+      String valueSchema,
+      String accessPermissions,
+      boolean isSystemStore) {
+    return CreateStoreRequest.newBuilder()
+        .setClusterName(clusterName)
+        .setStoreName(storeName)
+        .setOwner(owner)
+        .setKeySchema(keySchema)
+        .setValueSchema(valueSchema)
+        .setAccessPermissions(accessPermissions)
+        .setSystemStore(isSystemStore)
+        .build();
   }
 
   public StoreMigrationResponse isStoreMigrationAllowed() {
@@ -1137,7 +1149,7 @@ public class ControllerClient implements Closeable {
 
   public ClusterStaleDataAuditResponse getClusterStaleStores(String clusterName, String parentControllerUrl) {
     QueryParams params = newParams().add(CLUSTER, clusterName);
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    try (ControllerHttpTransportClient transport = new ControllerHttpTransportClient(sslFactory)) {
       return transport.request(
           parentControllerUrl,
           ControllerRoute.GET_STALE_STORES_IN_CLUSTER,
@@ -1187,7 +1199,7 @@ public class ControllerClient implements Closeable {
 
     Exception lastConnectException = null;
     Exception lastException = null;
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    try (ControllerHttpTransportClient transport = new ControllerHttpTransportClient(sslFactory)) {
       for (String url: urls) {
         try {
           // Because the way to get parameter is different between controller and router, in order to support query
@@ -1402,6 +1414,55 @@ public class ControllerClient implements Closeable {
     return URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
   }
 
+  /**
+   * The following functionality and {@link #getTransportTypeForRoute(ControllerRoute)} ideally should be extracted
+   * to separate component and {@link ControllerClient} should be abstracted from the transport details. However,
+   * with the current dependency on how leader urls are discovered and how dependency injection of {@link ControllerClient}
+   * exists, this needs to temporarily live as the {@link ControllerClient} responsibility
+   * TODO: Refactor out the discovery mechanism and the dependency on passing leader urls to the underlying transport
+   */
+  public <REQ extends ControllerRequest, RES extends ControllerResponse> RES transportAgnosticRequest(
+      REQ request,
+      Class<RES> responseType) {
+    TransportType type = getTransportTypeForRoute(request.getRoute());
+    RES controllerResponse = null;
+
+    try {
+      if (TransportType.GRPC.equals(type)) {
+        try (ControllerGrpcTransportClient client =
+            new ControllerGrpcTransportClient(getLeaderControllerGrpcUrl(), sslFactory.orElse(null))) {
+          controllerResponse = client.request(request);
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      } else if (TransportType.HTTP.equals(type)) {
+        try (ControllerHttpTransportClient client = new ControllerHttpTransportClient(sslFactory)) {
+          controllerResponse = client.request(getLeaderControllerUrl(), request, responseType);
+        }
+      }
+    } catch (ExecutionException | TimeoutException e) {
+      throw new VeniceException(e);
+    }
+
+    return controllerResponse;
+  }
+
+  /**
+   * Extensions of {@link ControllerClient} that needs to control the underlying transport medium can
+   * override this method.
+   */
+  protected TransportType getTransportTypeForRoute(ControllerRoute route) {
+    return TransportType.HTTP;
+  }
+
+  /**
+   * Temporary workaround to inject gRPC URL for the controller extensions that want to leverage gRPC transport
+   * This should be moved as part of the refactor mentioned above in the {@link #transportAgnosticRequest(ControllerRequest, Class)}
+   */
+  protected String getLeaderControllerGrpcUrl() {
+    return getLeaderControllerUrl();
+  }
+
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
     return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, null);
   }
@@ -1423,7 +1484,7 @@ public class ControllerClient implements Closeable {
       byte[] data) {
     Exception lastException = null;
     boolean logErrorMessage = true;
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    try (ControllerHttpTransportClient transport = new ControllerHttpTransportClient(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
           return transport.request(getLeaderControllerUrl(), route, params, responseType, timeoutMs, data);

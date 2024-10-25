@@ -5,7 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.controllerapi.ControllerTransport;
+import com.linkedin.venice.controllerapi.ControllerHttpTransportClient;
 import com.linkedin.venice.controllerapi.QueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -32,7 +32,7 @@ public class TestBackupControllerResponse {
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
                 .setRegionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
                 .build());
-        ControllerTransport transport = new ControllerTransport(Optional.empty());
+        ControllerHttpTransportClient transport = new ControllerHttpTransportClient(Optional.empty());
         VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                 .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
