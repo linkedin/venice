@@ -202,6 +202,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -4300,6 +4301,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
 
+    doReturn(Lazy.of(() -> veniceWriter)).when(pcs).getVeniceWriterLazyRef();
+
     StoreIngestionTaskFactory ingestionTaskFactory = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setStorageMetadataService(mockStorageMetadataService)
         .setMetadataRepository(mockReadOnlyStoreRepository)
@@ -4383,6 +4386,9 @@ public abstract class StoreIngestionTaskTest {
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
+
+    doReturn(Lazy.of(() -> veniceWriter)).when(pcs0).getVeniceWriterLazyRef();
+    doReturn(Lazy.of(() -> veniceWriter)).when(pcs1).getVeniceWriterLazyRef();
 
     StoreIngestionTaskFactory ingestionTaskFactory = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setStorageMetadataService(mockStorageMetadataService)

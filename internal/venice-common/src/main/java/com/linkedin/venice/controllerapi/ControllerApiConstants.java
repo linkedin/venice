@@ -236,4 +236,7 @@ public class ControllerApiConstants {
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
+
+  public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
+  public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
 }
