@@ -1,0 +1,68 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+option java_multiple_files = true;
+
+service VeniceControllerGrpcService {
+  rpc getStoresInCluster (GetStoresInClusterGrpcRequest) returns (GetStoresInClusterGrpcResponse) {}
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
+  rpc getJobStatus(QueryJobStatusGrpcRequest) returns (QueryJobStatusGrpcResponse) {}
+}
+
+message GetStoresInClusterGrpcRequest {
+  string clusterName = 1;
+}
+
+message GetStoresInClusterGrpcResponse {
+  message StoreInfo {
+    string name = 1;
+    optional string owner = 2;
+    int32 currentVersion = 3;
+    int32 partitionCount = 4;
+    map<string, int32> coloToCurrentVersion = 5;
+    int32 reservedVersion = 6;
+    bool enableWrites = 7;
+    bool enableReads = 8;
+  }
+
+  repeated StoreInfo stores = 1;
+}
+
+message CreateStoreGrpcRequest {
+  string storeName = 1;
+  string keySchema = 2;
+  string valueSchema = 3;
+  optional string owner = 4;
+}
+
+message CreateStoreGrpcResponse {
+  string owner = 1;
+}
+
+message QueryJobStatusGrpcRequest {
+  string name = 1;
+  int32 version = 2;
+  string targetedRegions = 3;
+  optional string incrementalPushVersion = 4;
+}
+
+message QueryJobStatusGrpcResponse {
+  int32 version = 1;
+  string status = 2;
+  string statusDetails = 3;
+  int64 statusUpdateTimeStamp = 4;
+
+  // intentionally ignore extra information related fields and details
+
+  message UnCompletedPartition {
+    int32 partition = 1;
+    message UnCompletedReplicas {
+      string instanceId = 1;
+      string executionStatus = 2;
+      int64 currentOffset = 3;
+      string statusDetails = 4;
+    }
+    repeated UnCompletedReplicas uncompletedReplicas = 2;
+  }
+  repeated UnCompletedPartition uncompletedPartitions = 5;
+}
