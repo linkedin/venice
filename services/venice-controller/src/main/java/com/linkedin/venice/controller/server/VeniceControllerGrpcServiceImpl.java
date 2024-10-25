@@ -114,7 +114,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       StreamObserver<CreateStoreGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
     String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-    LOGGER.debug("Received gRPC request to create store: {} in cluster: {}", storeName, clusterName);
+    LOGGER.info("Received gRPC request to create store: {} in cluster: {}", storeName, clusterName);
     try {
       // TODO (sushantmane) : Add the ACL check for allowlist users here
 
@@ -156,7 +156,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       StreamObserver<UpdateAclForStoreGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
     String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-    LOGGER.debug("Received gRPC request to update ACL for store: {} in cluster: {}", storeName, clusterName);
+    LOGGER.info("Received gRPC request to update ACL for store: {} in cluster: {}", storeName, clusterName);
     try {
       // Convert the gRPC request to the internal request object
       UpdateAclForStoreRequest request = new UpdateAclForStoreRequest(
@@ -188,7 +188,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       StreamObserver<GetAclForStoreGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
     String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-    LOGGER.debug("Received gRPC request to get ACL for store: {} in cluster: {}", storeName, clusterName);
+    LOGGER.info("Received gRPC request to get ACL for store: {} in cluster: {}", storeName, clusterName);
     try {
       // Convert the gRPC request to the internal request object
       ControllerRequest request = getControllerRequest(grpcRequest.getClusterStoreInfo());
@@ -220,7 +220,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       StreamObserver<DeleteAclForStoreGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
     String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-    LOGGER.debug("Received gRPC request to delete ACL for store: {} in cluster: {}", storeName, clusterName);
+    LOGGER.info("Received gRPC request to delete ACL for store: {} in cluster: {}", storeName, clusterName);
     try {
       // Convert the gRPC request to the internal request object
       ControllerRequest request = getControllerRequest(grpcRequest.getClusterStoreInfo());
@@ -249,7 +249,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       StreamObserver<CheckResourceCleanupForStoreCreationGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
     String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-    LOGGER.debug(
+    LOGGER.info(
         "Received gRPC request to check resource cleanup before creating store: {} in cluster: {}",
         storeName,
         clusterName);
@@ -287,7 +287,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       StreamObserver<AdminCommandExecutionStatusGrpcResponse> responseObserver) {
     String clusterName = request.getClusterName();
     long executionId = request.getAdminCommandExecutionId();
-    LOGGER.debug(
+    LOGGER.info(
         "Received gRPC request to get admin command execution status for executionId: {} in cluster: {}",
         executionId,
         clusterName);
@@ -357,7 +357,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
     if (grpcRequest.hasStoreName()) {
       storeName = grpcRequest.getStoreName();
     }
-    LOGGER.debug(
+    LOGGER.info(
         "Received gRPC request to get admin topic metadata for cluster: {}{}",
         clusterName,
         storeName != null ? " and store: " + storeName : "");
@@ -400,7 +400,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
     Long executionId = grpcRequest.getExecutionId();
     Long offset = grpcRequest.hasOffset() ? grpcRequest.getOffset() : null;
     Long upstreamOffset = grpcRequest.hasUpstreamOffset() ? grpcRequest.getUpstreamOffset() : null;
-    LOGGER.debug(
+    LOGGER.info(
         "Received gRPC request to update admin topic metadata for cluster: {}{}",
         clusterName,
         storeName != null ? " and store: " + storeName : "");
@@ -436,7 +436,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       DiscoverClusterGrpcRequest grpcRequest,
       StreamObserver<DiscoverClusterGrpcResponse> responseObserver) {
     String storeName = grpcRequest.getStoreName();
-    LOGGER.debug("Received gRPC request to discover cluster for store: {}", storeName);
+    LOGGER.info("Received gRPC request to discover cluster for store: {}", storeName);
     try {
       D2ServiceDiscoveryResponse response = new D2ServiceDiscoveryResponse();
       requestHandler.getClusterDiscovery(new ClusterDiscoveryRequest(grpcRequest.getStoreName()), response);
@@ -474,7 +474,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       ListBootstrappingVersionsGrpcRequest grpcRequest,
       StreamObserver<ListBootstrappingVersionsGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterName();
-    LOGGER.debug("Received gRPC request to list bootstrapping versions for cluster: {}", clusterName);
+    LOGGER.info("Received gRPC request to list bootstrapping versions for cluster: {}", clusterName);
     try {
       MultiVersionStatusResponse response = new MultiVersionStatusResponse();
       requestHandler.listBootstrappingVersions(new ControllerRequest(clusterName), response);
@@ -500,7 +500,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
   @Override
   public void listStores(ListStoresGrpcRequest grpcRequest, StreamObserver<ListStoresGrpcResponse> responseObserver) {
     String clusterName = grpcRequest.getClusterName();
-    LOGGER.debug("Received gRPC request to list stores for cluster: {}", clusterName);
+    LOGGER.info("Received gRPC request to list stores for cluster: {}", clusterName);
     try {
       boolean excludeSystemStores = grpcRequest.hasIncludeSystemStores() && !grpcRequest.getIncludeSystemStores();
       String storeConfigNameFilter =
@@ -535,7 +535,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
     try {
       clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
       storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-      LOGGER.debug("Received gRPC request to get store: {} in cluster: {}", storeName, clusterName);
+      LOGGER.info("Received gRPC request to get store: {} in cluster: {}", storeName, clusterName);
       StoreResponse response = new StoreResponse();
       requestHandler.getStore(new GetStoreRequest(clusterName, storeName), response);
       responseObserver.onNext(
@@ -561,7 +561,7 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
     try {
       clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
       storeName = grpcRequest.getClusterStoreInfo().getStoreName();
-      LOGGER.debug("Received gRPC request to empty push for store: {} in cluster: {}", storeName, clusterName);
+      LOGGER.info("Received gRPC request to empty push for store: {} in cluster: {}", storeName, clusterName);
       VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
       requestHandler
           .emptyPush(new EmptyPushRequest(clusterName, storeName, grpcRequest.getPushJobId()), versionCreationResponse);

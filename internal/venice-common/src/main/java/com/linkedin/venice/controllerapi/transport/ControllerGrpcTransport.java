@@ -48,15 +48,18 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
   private final ControllerHttpTransport fallbackHttpTransport;
   private final Map<String, ManagedChannel> grpcChannelCache;
   private final ChannelCredentials channelCredentials;
+  private final String controllerGrpcUrl;
 
   public ControllerGrpcTransport(
       ControllerTransportAdapterConfigs transportAdapterConfigs,
       ControllerHttpTransport fallbackHttpTransport) {
     this.transportAdapterConfigs = transportAdapterConfigs;
-    this.controllerDiscoveryUrls = transportAdapterConfigs.getControllerDiscoveryUrls();
+    // this.controllerDiscoveryUrls = transportAdapterConfigs.getControllerDiscoveryUrls();
+    this.controllerDiscoveryUrls = Collections.singletonList(transportAdapterConfigs.getControllerGrpcUrl());
     this.fallbackHttpTransport = fallbackHttpTransport;
     this.grpcChannelCache = new VeniceConcurrentHashMap<>(4);
     this.channelCredentials = InsecureChannelCredentials.create(); // TODO: Use secure channel credentials if configured
+    this.controllerGrpcUrl = transportAdapterConfigs.getControllerGrpcUrl();
   }
 
   ManagedChannel getOrCreateChannel(String serverGrpcAddress) {

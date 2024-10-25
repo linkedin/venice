@@ -15,6 +15,7 @@ public class ControllerTransportAdapterConfigs {
   private final int queryJobStatusTimeout;
   private final int requestTimeout;
   private final String clusterName;
+  private final String controllerGrpcUrl;
 
   private ControllerTransportAdapterConfigs(Builder builder) {
     this.controllerDiscoveryUrls = builder.controllerDiscoveryUrls;
@@ -23,6 +24,11 @@ public class ControllerTransportAdapterConfigs {
     this.queryJobStatusTimeout = builder.queryJobStatusTimeout;
     this.requestTimeout = builder.requestTimeout;
     this.clusterName = builder.clusterName;
+    this.controllerGrpcUrl = builder.controllerGrpcUrl;
+  }
+
+  public String getControllerGrpcUrl() {
+    return controllerGrpcUrl;
   }
 
   public String getClusterName() {
@@ -56,8 +62,14 @@ public class ControllerTransportAdapterConfigs {
     private int maxAttempts = -1;
     private int queryJobStatusTimeout = -1;
     private int requestTimeout = -1;
+    private String controllerGrpcUrl;
 
     public Builder() {
+    }
+
+    public Builder setControllerGrpcUrl(String controllerGrpcUrl) {
+      this.controllerGrpcUrl = controllerGrpcUrl;
+      return this;
     }
 
     public Builder setClusterName(String clusterName) {

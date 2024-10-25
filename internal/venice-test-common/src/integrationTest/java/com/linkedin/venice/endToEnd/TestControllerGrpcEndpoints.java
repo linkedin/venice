@@ -25,6 +25,7 @@ import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
@@ -56,10 +57,22 @@ public class TestControllerGrpcEndpoints {
   }
 
   @Test
+  public void testAdminTool() throws Exception {
+    String[] adminToolArgs = { "--url", veniceCluster.getAllControllersURLs(), "--cluster",
+        veniceCluster.getClusterName(), "--controller-grpc-url",
+        veniceCluster.getLeaderVeniceController().getControllerGrpcUrl(), "--list-stores" };
+    AdminTool.main(adminToolArgs);
+  }
+
+  @Test
   public void testGrpcEndpoints() {
     String storeName = Utils.getUniqueString("store");
-    try (ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersGrpcURLs(), true)) {
+
+    try (ControllerClient controllerClient = new ControllerClient(
+        veniceCluster.getClusterName(),
+        veniceCluster.getAllControllersURLs(),
+        Optional.empty(),
+        veniceCluster.getAllControllersGrpcURLs())) {
       TestUtils
           .assertCommand(controllerClient.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, "\"string\"", null));
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
@@ -124,7 +137,7 @@ public class TestControllerGrpcEndpoints {
 
     System.out.println("Store created successfully");
     try (ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs(), false)) {
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs())) {
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
       System.out.println(storeResponse);
       StoreInfo storeInfo = storeResponse.getStore();

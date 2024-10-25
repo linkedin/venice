@@ -127,27 +127,24 @@ public class ControllerClient implements Closeable {
   private final ControllerTransportAdapter transportAdapter;
 
   public ControllerClient(String clusterName, String discoveryUrls) {
-    this(clusterName, discoveryUrls, Optional.empty(), false);
+    this(clusterName, discoveryUrls, Optional.empty(), null);
   }
 
   public ControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
-    this(clusterName, discoveryUrls, sslFactory, false);
+    this(clusterName, discoveryUrls, sslFactory, null);
   }
 
-  public ControllerClient(String clusterName, String discoveryUrls, boolean useGrpcBasedTransport) {
-    this(clusterName, discoveryUrls, Optional.empty(), useGrpcBasedTransport);
+  public ControllerClient(String clusterName, String discoveryUrls, String grpcUrl) {
+    this(clusterName, discoveryUrls, Optional.empty(), grpcUrl);
   }
 
-  public ControllerClient(
-      String clusterName,
-      String discoveryUrls,
-      Optional<SSLFactory> sslFactory,
-      boolean useGrpcBasedTransport) {
+  public ControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory, String grpcUrl) {
     this(
         clusterName,
         discoveryUrls,
         sslFactory,
-        createTransportAdapter(clusterName, discoveryUrls, sslFactory, useGrpcBasedTransport));
+        createTransportAdapter(clusterName, discoveryUrls, sslFactory, grpcUrl),
+        grpcUrl);
   }
 
   /**
@@ -161,7 +158,8 @@ public class ControllerClient implements Closeable {
       String clusterName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory,
-      ControllerTransportAdapter transportAdapter) {
+      ControllerTransportAdapter transportAdapter,
+      String grpcUrl) {
     if (StringUtils.isEmpty(discoveryUrls)) {
       throw new VeniceException("Controller discovery url list is empty: " + discoveryUrls);
     }
@@ -184,14 +182,21 @@ public class ControllerClient implements Closeable {
       String clusterName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory,
-      boolean useGrpcBasedTransport) {
+      String grpcUrl) {
     ControllerTransportAdapterConfigs configs =
         new ControllerTransportAdapterConfigs.Builder().setClusterName(clusterName)
             .setControllerDiscoveryUrls(getControllerDiscoveryUrls(discoveryUrls))
             .setSslFactory(sslFactory.orElse(null))
+            .setControllerGrpcUrl(grpcUrl)
             .build();
 
-    if (useGrpcBasedTransport) {
+    if (grpcUrl != null) {
+      System.out.println(
+          "Using gRPC transport for controller client with direct urls: " + discoveryUrls + " and grpcUrl: " + grpcUrl);
+      LOGGER.info(
+          "Using gRPC transport for controller client with direct urls: {} and grpcUrl: {}",
+          discoveryUrls,
+          grpcUrl);
       return new ControllerGrpcTransport(configs, new ControllerHttpTransport(configs));
     } else {
       return new ControllerHttpTransport(configs);
@@ -231,7 +236,7 @@ public class ControllerClient implements Closeable {
       String clusterName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory) {
-    return ControllerClientFactory.getControllerClient(clusterName, discoveryUrls, sslFactory);
+    return ControllerClientFactory.getControllerClient(clusterName, discoveryUrls, sslFactory, null);
   }
 
   @Override

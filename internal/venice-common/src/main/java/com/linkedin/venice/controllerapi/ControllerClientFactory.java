@@ -40,9 +40,19 @@ public class ControllerClientFactory {
   public static ControllerClient getControllerClient(
       String clusterName,
       String discoveryUrls,
-      Optional<SSLFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory,
+      String grpcUrl) {
     final String clientIdentifier = clusterName + discoveryUrls;
-    return createIfAbsent(clientIdentifier, () -> new ControllerClient(clusterName, discoveryUrls, sslFactory));
+    return createIfAbsent(
+        clientIdentifier,
+        () -> new ControllerClient(clusterName, discoveryUrls, sslFactory, grpcUrl));
+  }
+
+  public static ControllerClient getControllerClient(
+      String clusterName,
+      String discoveryUrls,
+      Optional<SSLFactory> sslFactory) {
+    return getControllerClient(clusterName, discoveryUrls, sslFactory, null);
   }
 
   public static ControllerClient discoverAndConstructControllerClient(
