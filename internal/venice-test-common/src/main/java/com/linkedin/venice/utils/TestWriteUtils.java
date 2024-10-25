@@ -296,14 +296,7 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "int2string.avro", INT_TO_STRING_SCHEMA, (recordSchema, writer) -> {
-      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
-        GenericRecord i2s = new GenericData.Record(recordSchema);
-        i2s.put(DEFAULT_KEY_FIELD_PROP, i);
-        i2s.put(DEFAULT_VALUE_FIELD_PROP, "name " + i);
-        writer.append(i2s);
-      }
-    });
+    return writeSimpleAvroFileWithIntToStringSchema(parentDir, "name ", DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
   public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir, String customValue, int numKeys)
@@ -312,7 +305,7 @@ public class TestWriteUtils {
       for (int i = 1; i <= numKeys; ++i) {
         GenericRecord i2s = new GenericData.Record(recordSchema);
         i2s.put(DEFAULT_KEY_FIELD_PROP, i);
-        i2s.put(DEFAULT_VALUE_FIELD_PROP, customValue);
+        i2s.put(DEFAULT_VALUE_FIELD_PROP, customValue + i);
         writer.append(i2s);
       }
     });

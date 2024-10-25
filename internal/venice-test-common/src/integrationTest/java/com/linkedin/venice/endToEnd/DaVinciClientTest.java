@@ -241,15 +241,31 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformer(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String storeName = Utils.getUniqueString("test-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    boolean pushStatusStoreEnabled = false;
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    String customValue = "a";
+    int numKeys = 10;
+
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
+
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
 
@@ -259,21 +275,23 @@ public class DaVinciClientTest {
         metricsRepository,
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion) -> new TestRecordTransformer(storeVersion, true),
-          Integer.class,
-          Schema.create(Schema.Type.INT));
+          (storeVersion) -> new TestStringRecordTransformer(storeVersion, true),
+          String.class,
+          Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+          factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();
-      assertNull(clientWithRecordTransformer.get(KEY_COUNT + 1).get());
+      assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
 
       // Test single-get access
-      for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(clientWithRecordTransformer.get(k).get(), 100);
+      for (int k = 1; k <= numKeys; ++k) {
+        Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = "a" + k + "Transformed";
+        assertEquals(valueObj.toString(), expectedValue);
       }
       clientWithRecordTransformer.unsubscribeAll();
     }
@@ -281,15 +299,32 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformerOnRecovery(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 =
-        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String storeName = Utils.getUniqueString("test-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    boolean pushStatusStoreEnabled = true;
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+    String customValue = "a";
+    int numKeys = 10;
+
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
+
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -301,26 +336,27 @@ public class DaVinciClientTest {
         metricsRepository,
         backendConfig)) {
 
-      TestRecordTransformer recordTransformer = new TestRecordTransformer(1, true);
+      TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(1, true);
 
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
           (storeVersion) -> recordTransformer,
-          Integer.class,
-          Schema.create(Schema.Type.INT));
+          String.class,
+          Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+          factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();
-      assertNull(clientWithRecordTransformer.get(KEY_COUNT + 1).get());
-      assertNull(recordTransformer.get(KEY_COUNT + 1));
+      assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
+      assertNull(recordTransformer.get(numKeys + 1));
 
       // Test single-get access
-      Integer expectedValue = 100;
-      for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(clientWithRecordTransformer.get(k).get(), expectedValue);
+      for (int k = 1; k <= numKeys; ++k) {
+        Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = "a" + k + "Transformed";
+        assertEquals(valueObj.toString(), expectedValue);
         assertEquals(recordTransformer.get(k), expectedValue);
       }
 
@@ -332,8 +368,10 @@ public class DaVinciClientTest {
       clientWithRecordTransformer.start();
       clientWithRecordTransformer.subscribeAll().get();
 
-      for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(clientWithRecordTransformer.get(k).get(), expectedValue);
+      for (int k = 1; k <= numKeys; ++k) {
+        Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = "a" + k + "Transformed";
+        assertEquals(valueObj.toString(), expectedValue);
         assertEquals(recordTransformer.get(k), expectedValue);
       }
 
@@ -343,9 +381,6 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformerChunking(DaVinciConfig clientConfig) throws Exception {
-    int numKeys = 10;
-    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
-
     // Construct a large string to trigger chunking
     // (2MB = 2 * 1024 * 1024 bytes)
     int sizeInBytes = 2 * 1024 * 1024;
@@ -359,27 +394,20 @@ public class DaVinciClientTest {
     String storeName = Utils.getUniqueString("test-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
     Consumer<Properties> propertiesConsumer = properties -> {};
+    boolean pushStatusStoreEnabled = true;
+    boolean chunkingEnabled = true;
+    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+    int numKeys = 10;
 
-    writeSimpleAvroFileWithIntToStringSchema(inputDir, largeString, numKeys);
-
-    // Setup VPJ job properties.
-    Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
-    propertiesConsumer.accept(vpjProperties);
-    // Create & update store for test.
-    int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions) // Update the
-                                                                                                  // partition count.
-        .setChunkingEnabled(true)
-        .setCompressionStrategy(compressionStrategy);
-    paramsConsumer.accept(params);
-
-    try (ControllerClient controllerClient =
-        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
-      cluster.createMetaSystemStore(storeName);
-      cluster.createPushStatusSystemStore(storeName);
-      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-      runVPJ(vpjProperties, 1, cluster);
-    }
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        largeString,
+        numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -387,7 +415,7 @@ public class DaVinciClientTest {
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -416,9 +444,9 @@ public class DaVinciClientTest {
       assertNull(recordTransformer.get(numKeys + 1));
 
       // Test single-get access
-      String expectedValue = largeString + "Transformed";
       for (int k = 1; k <= numKeys; ++k) {
         Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = largeString + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
         assertEquals(recordTransformer.get(k), expectedValue);
       }
@@ -433,6 +461,7 @@ public class DaVinciClientTest {
 
       for (int k = 1; k <= numKeys; ++k) {
         Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = largeString + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
         assertEquals(recordTransformer.get(k), expectedValue);
       }
@@ -443,16 +472,31 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordsInDaVinciDisabledRecordTransformer(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 =
-        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String storeName = Utils.getUniqueString("test-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    boolean pushStatusStoreEnabled = false;
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    String customValue = "a";
+    int numKeys = 10;
+
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
+
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
 
@@ -462,17 +506,17 @@ public class DaVinciClientTest {
         metricsRepository,
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion) -> new TestRecordTransformer(storeVersion, false),
-          Integer.class,
-          Schema.create(Schema.Type.INT));
+          (storeVersion) -> new TestStringRecordTransformer(storeVersion, false),
+          String.class,
+          Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+          factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       // Test single-get access
       clientWithRecordTransformer.subscribeAll().get();
-      for (int k = 0; k < KEY_COUNT; ++k) {
+      for (int k = 1; k <= numKeys; ++k) {
         assertNull(clientWithRecordTransformer.get(k).get());
       }
       clientWithRecordTransformer.unsubscribeAll();
@@ -481,16 +525,31 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testSkipResultRecordTransformer(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 =
-        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String storeName = Utils.getUniqueString("test-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    boolean pushStatusStoreEnabled = false;
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    String customValue = "a";
+    int numKeys = 10;
+
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
+
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
 
@@ -501,16 +560,16 @@ public class DaVinciClientTest {
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
           (storeVersion) -> new TestSkipResultRecordTransformer(storeVersion, true),
-          Integer.class,
-          Schema.create(Schema.Type.INT));
+          String.class,
+          Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+          factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       // Test single-get access
       clientWithRecordTransformer.subscribeAll().get();
-      for (int k = 0; k < KEY_COUNT; ++k) {
+      for (int k = 1; k <= numKeys; ++k) {
         assertNull(clientWithRecordTransformer.get(k).get());
       }
       clientWithRecordTransformer.unsubscribeAll();
@@ -519,16 +578,31 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testUnchangedResultRecordTransformer(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 =
-        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String storeName = Utils.getUniqueString("test-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    boolean pushStatusStoreEnabled = false;
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    String customValue = "a";
+    int numKeys = 10;
+
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
+
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
 
@@ -539,20 +613,22 @@ public class DaVinciClientTest {
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
           (storeVersion) -> new TestUnchangedResultRecordTransformer(storeVersion, true),
-          Integer.class,
-          Schema.create(Schema.Type.INT));
+          String.class,
+          Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+          factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();
-      assertNull(clientWithRecordTransformer.get(KEY_COUNT + 1).get());
+      assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
 
       // Test single-get access
-      for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(clientWithRecordTransformer.get(k).get(), 1);
+      for (int k = 1; k <= numKeys; ++k) {
+        Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = "a" + k;
+        assertEquals(valueObj.toString(), expectedValue);
       }
       clientWithRecordTransformer.unsubscribeAll();
     }
@@ -560,12 +636,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
-    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
-    Function<String, ByteBuffer> compressionDictionaryGenerator = s -> null;
-    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(
-        KEY_COUNT,
-        compressionStrategy,
-        compressionDictionaryGenerator);
+    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String storeName2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
@@ -617,8 +688,7 @@ public class DaVinciClientTest {
           assertFalse(response.isError(), response.getError());
         });
 
-        Integer expectedValue =
-            cluster.createVersion(storeName1, KEY_COUNT, compressionStrategy, compressionDictionaryGenerator);
+        Integer expectedValue = cluster.createVersion(storeName1, KEY_COUNT);
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           for (int k = 0; k < KEY_COUNT; ++k) {
             Object readValue = client1.get(k).get();
@@ -1571,6 +1641,41 @@ public class DaVinciClientTest {
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions); // Update the
                                                                                                    // partition count.
+    paramsConsumer.accept(params);
+
+    try (ControllerClient controllerClient =
+        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
+      cluster.createMetaSystemStore(storeName);
+      if (useDVCPushStatusStore) {
+        cluster.createPushStatusSystemStore(storeName);
+      }
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+      runVPJ(vpjProperties, 1, cluster);
+    }
+  }
+
+  private void setUpStore(
+      String storeName,
+      Consumer<UpdateStoreQueryParams> paramsConsumer,
+      Consumer<Properties> propertiesConsumer,
+      boolean useDVCPushStatusStore,
+      boolean chunkingEnabled,
+      CompressionStrategy compressionStrategy,
+      String customValue,
+      int numKeys) throws Exception {
+    // Produce input data.
+    writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
+
+    // Setup VPJ job properties.
+    Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+    propertiesConsumer.accept(vpjProperties);
+    // Create & update store for test.
+    final int numPartitions = 3;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions) // Update the
+                                                                                                  // partition count
+        .setChunkingEnabled(chunkingEnabled)
+        .setCompressionStrategy(compressionStrategy);
+
     paramsConsumer.accept(params);
 
     try (ControllerClient controllerClient =
