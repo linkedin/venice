@@ -1324,7 +1324,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (!isDaVinciClient) {
         // also update the leader topic offset using the upstream offset in ProducerMetadata
         if (shouldUpdateUpstreamOffset(consumerRecord)) {
-          // 魔改的url传进来, 不需要魔改回去
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
           final long newUpstreamOffset = kafkaValue.leaderMetadataFooter.upstreamOffset;
           PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
