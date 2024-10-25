@@ -43,8 +43,8 @@ public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Int
     return inMemoryDb.get(key);
   }
 
-  public Integer put(Integer key, Integer value) {
-    return inMemoryDb.put(key, value);
+  public void put(Integer key, Integer value) {
+    inMemoryDb.put(key, value);
   }
 
 }
