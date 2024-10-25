@@ -1324,6 +1324,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (!isDaVinciClient) {
         // also update the leader topic offset using the upstream offset in ProducerMetadata
         if (shouldUpdateUpstreamOffset(consumerRecord)) {
+          // 魔改的url传进来, 不需要魔改回去
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
           final long newUpstreamOffset = kafkaValue.leaderMetadataFooter.upstreamOffset;
           PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
@@ -2140,12 +2141,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
+    // Separate incremental push pubsub entries has the same pubsub url but differnet cluster id, which creates
+    // confusion
+    // for heartbeat tracking. We need to resolve the kafka url to the actual kafka cluster url.
+    String resolvedKafkaUrl = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaUrl) : kafkaUrl;
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       heartbeatMonitoringService.recordLeaderHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(resolvedKafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     } else {
@@ -2153,7 +2158,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(resolvedKafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     }
@@ -2308,12 +2313,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       // If we are here the message must be produced to local kafka or silently consumed.
       LeaderProducedRecordContext leaderProducedRecordContext;
-
-      validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
+      int originalPubsubClusterId = serverConfig.getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId);
+      String resolvedKafkaUrl = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaUrl) : kafkaUrl;
+      validateRecordBeforeProducingToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          resolvedKafkaUrl,
+          originalPubsubClusterId);
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
         recordRegionHybridConsumptionStats(
-            kafkaClusterId,
+            // convert the cluster id back to the original cluster id for monitoring purpose
+            serverConfig.getEquivalentKafkaClusterIdForSepTopic(originalPubsubClusterId),
             consumerRecord.getPayloadSize(),
             consumerRecord.getOffset(),
             beforeProcessingBatchRecordsTimestampMs);
@@ -2336,7 +2347,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         switch (controlMessageType) {
           case START_OF_PUSH:
             /**
-             * N.B.: This is expected to be the first time time we call {@link veniceWriter#get()}. During this time
+             * N.B.: This is expected to be the first time we call {@link veniceWriter#get()}. During this time
              *       since startOfPush has not been processed yet, {@link StoreVersionState} is not created yet (unless
              *       this is a server restart scenario). So the {@link com.linkedin.venice.writer.VeniceWriter#isChunkingEnabled} field
              *       will not be set correctly at this point. This is fine as chunking is mostly not applicable for control messages.
@@ -2635,6 +2646,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int kafkaClusterId) {
     // Check whether the message is from local version topic; leader shouldn't consume from local VT and then produce
     // back to VT again
+    // localKafkaClusterId will always be the regular one without "_sep" suffix so kafkaClusterId should be converted
+    // for comparison. Like-wise for the kafkaUrl.
     if (kafkaClusterId == localKafkaClusterId
         && consumerRecord.getTopicPartition().getPubSubTopic().equals(this.versionTopic)
         && kafkaUrl.equals(this.localKafkaServer)) {

@@ -1875,6 +1875,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     List<CharSequence> returnSet = new ArrayList<>(originalTopicSwitch.sourceKafkaServers.size());
     for (CharSequence url: originalTopicSwitch.sourceKafkaServers) {
+      // For separate incremental topic URL, the original URL is not a valid URL, so need to resolve it.
+      // There's no issue for TS, as we do topic switch for both real-time and separate incremental topic.
       returnSet.add(kafkaClusterUrlResolver.apply(url.toString()));
     }
     originalTopicSwitch.sourceKafkaServers = returnSet;
@@ -3421,12 +3423,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
-    final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
+    // TODO: pass special format of kafka url as input here when subscribe to the separate incremental push topic
+    String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
+    final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
-        .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
+        .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
     PartitionReplicaIngestionContext partitionReplicaIngestionContext =
         new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
+    // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
+    // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 
@@ -4090,6 +4096,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return topic manager
    */
   protected TopicManager getTopicManager(String sourceKafkaServer) {
+    if (kafkaClusterUrlResolver != null) {
+      sourceKafkaServer = kafkaClusterUrlResolver.apply(sourceKafkaServer);
+    }
     if (sourceKafkaServer.equals(localKafkaServer)) {
       // Use default kafka admin client (could be scala or java based) to get local topic manager
       return topicManagerRepository.getLocalTopicManager();
