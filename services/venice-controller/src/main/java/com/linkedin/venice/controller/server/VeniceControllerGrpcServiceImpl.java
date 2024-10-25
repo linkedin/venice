@@ -15,10 +15,12 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.AdminCommandExecutionStatusRequest;
 import com.linkedin.venice.controllerapi.request.AdminTopicMetadataRequest;
 import com.linkedin.venice.controllerapi.request.ClusterDiscoveryRequest;
 import com.linkedin.venice.controllerapi.request.ControllerRequest;
+import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
@@ -39,6 +41,8 @@ import com.linkedin.venice.protocols.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.EmptyPushGrpcRequest;
+import com.linkedin.venice.protocols.EmptyPushGrpcResponse;
 import com.linkedin.venice.protocols.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.GetStoreGrpcRequest;
@@ -545,6 +549,29 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       responseObserver.onError(
           Status.fromCode(Code.INTERNAL)
               .withDescription("Error while getting store: ")
+              .withCause(e)
+              .asRuntimeException());
+    }
+  }
+
+  @Override
+  public void emptyPush(EmptyPushGrpcRequest grpcRequest, StreamObserver<EmptyPushGrpcResponse> responseObserver) {
+    String clusterName = null;
+    String storeName = null;
+    try {
+      clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
+      storeName = grpcRequest.getClusterStoreInfo().getStoreName();
+      LOGGER.debug("Received gRPC request to empty push for store: {} in cluster: {}", storeName, clusterName);
+      VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+      requestHandler
+          .emptyPush(new EmptyPushRequest(clusterName, storeName, grpcRequest.getPushJobId()), versionCreationResponse);
+      responseObserver.onNext(GrpcRequestResponseConverter.fromEmptyPushGrpcResponse(versionCreationResponse));
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOGGER.error("Error while empty push for store: {} in cluster: {}", storeName, clusterName, e);
+      responseObserver.onError(
+          Status.fromCode(Code.INTERNAL)
+              .withDescription("Error while empty push for store: " + storeName + " in cluster: " + clusterName)
               .withCause(e)
               .asRuntimeException());
     }

@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 
 import com.linkedin.venice.HttpConstants;
@@ -16,7 +17,9 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.QueryParams;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
+import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -133,10 +136,15 @@ public class ControllerHttpTransport implements ControllerTransportAdapter {
   }
 
   @Override
-  public StoreResponse getStore(GetStoreRequest getStoreRequest) {
-    QueryParams params =
-        newParams().add(NAME, getStoreRequest.getStoreName()).add(CLUSTER, getStoreRequest.getClusterName());
+  public StoreResponse getStore(GetStoreRequest request) {
+    QueryParams params = newParams().add(NAME, request.getStoreName()).add(CLUSTER, request.getClusterName());
     return request(ControllerRoute.STORE, params, StoreResponse.class);
+  }
+
+  @Override
+  public VersionCreationResponse emptyPush(EmptyPushRequest request) {
+    QueryParams params = newParams().add(NAME, request.getStoreName()).add(PUSH_JOB_ID, request.getPushJobId());
+    return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
   }
 
   private static String encodeQueryParams(QueryParams params) {

@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.ControllerRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAclForStoreRequest;
@@ -34,6 +35,7 @@ import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.DataRecoveryVersionConfigGrpc;
 import com.linkedin.venice.protocols.DataReplicationPolicyGrpc;
 import com.linkedin.venice.protocols.ETLStoreConfigGrpc;
+import com.linkedin.venice.protocols.EmptyPushGrpcResponse;
 import com.linkedin.venice.protocols.HybridStoreConfigGrpc;
 import com.linkedin.venice.protocols.PartitionerConfigGrpc;
 import com.linkedin.venice.protocols.PushTypeGrpc;
@@ -106,6 +108,17 @@ public class GrpcRequestResponseConverter {
     }
     if (response.getName() != null) {
       builder.setStoreName(response.getName());
+    }
+    return builder.build();
+  }
+
+  public static ClusterStoreGrpcInfo getClusterStoreGrpcInfo(ControllerRequest request) {
+    ClusterStoreGrpcInfo.Builder builder = ClusterStoreGrpcInfo.newBuilder();
+    if (request.getClusterName() != null) {
+      builder.setClusterName(request.getClusterName());
+    }
+    if (request.getStoreName() != null) {
+      builder.setStoreName(request.getStoreName());
     }
     return builder.build();
   }
@@ -443,9 +456,12 @@ public class GrpcRequestResponseConverter {
         .setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled())
         .setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig())
         .setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled())
-        .setDataRecoveryConfig(toGrpcDataRecoveryVersionConfig(version.getDataRecoveryVersionConfig()))
         .setDeferVersionSwap(version.isVersionSwapDeferred())
         .setRepushSourceVersion(version.getRepushSourceVersion());
+
+    if (version.getDataRecoveryVersionConfig() != null) {
+      versionBuilder.setDataRecoveryConfig(toGrpcDataRecoveryVersionConfig(version.getDataRecoveryVersionConfig()));
+    }
 
     if (version.getHybridStoreConfig() != null) {
       versionBuilder.setHybridConfig(toGrpcHybridStoreConfig(version.getHybridStoreConfig()));
@@ -640,5 +656,52 @@ public class GrpcRequestResponseConverter {
     storeInfo.setCompressionStrategy(toCompressionStrategy(storeInfoGrpc.getCompressionStrategy()));
     storeInfo.setBackupStrategy(toBackupStrategy(storeInfoGrpc.getBackupStrategy()));
     return storeInfo;
+  }
+
+  public static EmptyPushGrpcResponse fromEmptyPushGrpcResponse(VersionCreationResponse response) {
+    EmptyPushGrpcResponse.Builder builder = EmptyPushGrpcResponse.newBuilder()
+        .setClusterStoreInfo(GrpcRequestResponseConverter.getClusterStoreGrpcInfo(response))
+        .setVersion(response.getVersion())
+        .setPartitions(response.getPartitions())
+        .setReplicas(response.getReplicas())
+        .setEnableSSL(response.isEnableSSL())
+        .setCompressionStrategy(GrpcRequestResponseConverter.fromCompressionStrategy(response.getCompressionStrategy()))
+        .setDaVinciPushStatusStoreEnabled(response.isDaVinciPushStatusStoreEnabled());
+    if (response.getPartitionerClass() != null) {
+      builder.setPartitionerClass(response.getPartitionerClass());
+    }
+    if (response.getKafkaTopic() != null) {
+      builder.setPubSubTopic(response.getKafkaTopic());
+    }
+    if (response.getKafkaBootstrapServers() != null) {
+      builder.setPubSubBootstrapServers(response.getKafkaBootstrapServers());
+    }
+    if (response.getKafkaSourceRegion() != null) {
+      builder.setPubSubSourceRegion(response.getKafkaSourceRegion());
+    }
+    Map<String, String> partitionerParams = response.getPartitionerParams();
+    if (partitionerParams != null) {
+      builder.putAllPartitionerParams(partitionerParams);
+    }
+    return builder.build();
+  }
+
+  public static VersionCreationResponse toVersionCreationResponse(EmptyPushGrpcResponse grpcResponse) {
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setCluster(grpcResponse.getClusterStoreInfo().getClusterName());
+    response.setName(grpcResponse.getClusterStoreInfo().getStoreName());
+    response.setVersion(grpcResponse.getVersion());
+    response.setPartitions(grpcResponse.getPartitions());
+    response.setReplicas(grpcResponse.getReplicas());
+    response.setKafkaTopic(grpcResponse.getPubSubTopic());
+    response.setKafkaBootstrapServers(grpcResponse.getPubSubBootstrapServers());
+    response.setEnableSSL(grpcResponse.getEnableSSL());
+    response.setCompressionStrategy(
+        GrpcRequestResponseConverter.toCompressionStrategy(grpcResponse.getCompressionStrategy()));
+    response.setPartitionerClass(grpcResponse.getPartitionerClass());
+    response.setDaVinciPushStatusStoreEnabled(grpcResponse.getDaVinciPushStatusStoreEnabled());
+    response.setKafkaSourceRegion(grpcResponse.getPubSubSourceRegion());
+    response.setPartitionerParams(grpcResponse.getPartitionerParamsMap());
+    return response;
   }
 }

@@ -67,7 +67,7 @@ service VeniceControllerGrpcService {
 //  rpc requestTopicForPushingVersion(RequestTopicForPushingVersionGrpcRequest) returns (RequestTopicForPushingVersionGrpcResponse) {}
 //  rpc addVersionAndStartIngestion(AddVersionAndStartIngestionGrpcRequest) returns (AddVersionAndStartIngestionGrpcResponse) {}
 //  rpc writeEndOfPush(WriteEndOfPushGrpcRequest) returns (WriteEndOfPushGrpcResponse) {}
-//  rpc emptyPush(EmptyPushGrpcRequest) returns (EmptyPushGrpcResponse) {}
+  rpc emptyPush(EmptyPushGrpcRequest) returns (EmptyPushGrpcResponse) {}
 //
 //  // DataRecoveryRoutes
 //  rpc initiateDataRecovery(InitiateDataRecoveryGrpcRequest) returns (InitiateDataRecoveryGrpcResponse) {}
@@ -163,6 +163,26 @@ service VeniceControllerGrpcService {
 //  rpc removeStoreFromGraveyard(RemoveStoreFromGraveyardGrpcRequest) returns (RemoveStoreFromGraveyardGrpcResponse) {}
 //  rpc sendHeartbeatToSystemStore(SendHeartbeatToSystemStoreGrpcRequest) returns (SendHeartbeatToSystemStoreGrpcResponse) {}
 //  rpc getHeartbeatFromSystemStore(GetHeartbeatFromSystemStoreGrpcRequest) returns (GetHeartbeatFromSystemStoreGrpcResponse) {}
+}
+
+message EmptyPushGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string pushJobId = 2;
+}
+
+message EmptyPushGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  int32 version = 2;
+  int32 partitions = 3;
+  int32 replicas = 4;
+  string pubSubTopic = 5;
+  string pubSubBootstrapServers = 6;
+  bool enableSSL = 7;
+  CompressionStrategyGrpc compressionStrategy = 8;
+  string partitionerClass = 9;
+  map<string, string> partitionerParams = 10;
+  bool daVinciPushStatusStoreEnabled = 11;
+  optional string pubSubSourceRegion = 12;
 }
 
 message GetStoreGrpcRequest {

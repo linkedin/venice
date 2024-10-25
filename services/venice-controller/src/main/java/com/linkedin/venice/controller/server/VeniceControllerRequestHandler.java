@@ -16,10 +16,12 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.AdminCommandExecutionStatusRequest;
 import com.linkedin.venice.controllerapi.request.AdminTopicMetadataRequest;
 import com.linkedin.venice.controllerapi.request.ClusterDiscoveryRequest;
 import com.linkedin.venice.controllerapi.request.ControllerRequest;
+import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
@@ -28,9 +30,11 @@ import com.linkedin.venice.controllerapi.request.UpdateAdminTopicMetadataRequest
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -382,5 +386,45 @@ public class VeniceControllerRequestHandler {
     storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
 
     response.setStore(storeInfo);
+  }
+
+  public void emptyPush(EmptyPushRequest request, VersionCreationResponse response) {
+    String clusterName = request.getClusterName();
+    String storeName = request.getStoreName();
+    String pushJobId = request.getPushJobId();
+    Version version = null;
+    LOGGER.info("Empty push for store: {} in cluster: {} with push job id: {}", storeName, clusterName, pushJobId);
+    try {
+      if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+        throw new VeniceUnsupportedOperationException(
+            "EMPTY PUSH",
+            "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
+      }
+
+      int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName);
+      int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
+      version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
+      int versionNumber = version.getNumber();
+      response.setCluster(clusterName);
+      response.setName(storeName);
+      response.setVersion(versionNumber);
+      response.setPartitions(partitionNum);
+      response.setReplicas(replicationFactor);
+      response.setKafkaTopic(version.kafkaTopicName());
+      response.setKafkaBootstrapServers(version.getPushStreamSourceAddress());
+
+      admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
+    } catch (Throwable e) {
+      // Clean up on failed push.
+      if (version != null && clusterName != null) {
+        LOGGER.warn(
+            "Cleaning up failed Empty push: {} with storeVersion {} cluster: {}",
+            pushJobId,
+            clusterName,
+            version.kafkaTopicName());
+        admin.killOfflinePush(clusterName, version.kafkaTopicName(), true);
+      }
+      throw e;
+    }
   }
 }

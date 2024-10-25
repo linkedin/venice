@@ -7,7 +7,6 @@ import "google/protobuf/timestamp.proto";  // Import for timestamp handling
 
 option java_multiple_files = true;
 
-// Enum for Data Replication Policy
 enum DataReplicationPolicyGrpc {
   NON_AGGREGATE = 0;
   AGGREGATE = 1;
@@ -15,31 +14,19 @@ enum DataReplicationPolicyGrpc {
   ACTIVE_ACTIVE = 3;
 }
 
-// Enum for Buffer Replay Policy
 enum BufferReplayPolicyGrpc {
   REWIND_FROM_EOP = 0;
   REWIND_FROM_SOP = 1;
 }
 
-// Protobuf message for HybridStoreConfig
 message HybridStoreConfigGrpc {
-  // Time to rewind from before the EOP or SOP in seconds.
   int64 rewindTimeInSeconds = 1;
-
-  // Offset lag threshold to determine when the store should go online.
   int64 offsetLagThresholdToGoOnline = 2;
-
-  // Producer timestamp lag threshold in seconds for the store to go online.
   int64 producerTimestampLagThresholdToGoOnlineInSeconds = 3;
-
-  // Data replication policy used for the hybrid store.
   DataReplicationPolicyGrpc dataReplicationPolicy = 4;
-
-  // Buffer replay policy used for the hybrid store.
   BufferReplayPolicyGrpc bufferReplayPolicy = 5;
 }
 
-// Enum for Compression Strategy
 enum CompressionStrategyGrpc {
   NO_OP = 0;
   GZIP = 1;
@@ -47,7 +34,6 @@ enum CompressionStrategyGrpc {
   ZSTD_WITH_DICT = 3;
 }
 
-// Enum for Backup Strategy
 enum BackupStrategyGrpc {
   KEEP_MIN_VERSIONS = 0;
   DELETE_ON_NEW_PUSH_START = 1;
@@ -153,8 +139,6 @@ message StoreInfoGrpc {
   PartitionerConfigGrpc partitionerConfig = 55;
   map<string, ViewConfigGrpc> viewConfigs = 56;
 }
-
-
 
 message VersionGrpc {
   string storeName = 1;

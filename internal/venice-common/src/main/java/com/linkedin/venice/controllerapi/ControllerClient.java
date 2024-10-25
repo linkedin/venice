@@ -73,6 +73,7 @@ import static com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
+import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -605,9 +606,7 @@ public class ControllerClient implements Closeable {
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
     // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
-    QueryParams params =
-        newParams().add(NAME, storeName).add(PUSH_JOB_ID, pushJobId).add(STORE_SIZE, Long.toString(storeSize));
-    return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
+    return transportAdapter.emptyPush(new EmptyPushRequest(clusterName, storeName, pushJobId));
   }
 
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {

@@ -8,10 +8,12 @@ import static org.testng.Assert.assertNotNull;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
@@ -21,7 +23,9 @@ import com.linkedin.venice.utils.Utils;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
+import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -57,14 +61,47 @@ public class TestControllerGrpcEndpoints {
         new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersGrpcURLs(), true)) {
       TestUtils
           .assertCommand(controllerClient.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, "\"string\"", null));
-
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
       assertNotNull(storeResponse);
       StoreInfo storeInfo = storeResponse.getStore();
       assertNotNull(storeInfo);
-      System.out.println(storeInfo);
       AdminTool.printObject(storeInfo);
+      System.out.println("Before adding a version");
+
+      VersionCreationResponse versionCreationResponse =
+          TestUtils.assertCommand(controllerClient.emptyPush(storeName, "pushJobId", Integer.MAX_VALUE));
+      System.out.println(versionCreationResponse);
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        System.out.println("Waiting for version to be added");
+        StoreResponse storeResponse1 = TestUtils.assertCommand(controllerClient.getStore(storeName));
+        assertNotNull(storeResponse1);
+        StoreInfo storeInfo1 = storeResponse1.getStore();
+        assertNotNull(storeInfo1);
+        AdminTool.printObject(storeInfo1);
+        List<Version> versions1 = storeInfo1.getVersions();
+        assertNotNull(versions1);
+        assertEquals(versions1.size(), 1);
+        System.out.println(versions1.get(0));
+      });
+
+      versionCreationResponse =
+          TestUtils.assertCommand(controllerClient.emptyPush(storeName, "pushJobId-2", Integer.MAX_VALUE));
+      System.out.println(versionCreationResponse);
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        System.out.println("Waiting for version to be added");
+        StoreResponse storeResponse1 = TestUtils.assertCommand(controllerClient.getStore(storeName));
+        assertNotNull(storeResponse1);
+        StoreInfo storeInfo1 = storeResponse1.getStore();
+        assertNotNull(storeInfo1);
+        AdminTool.printObject(storeInfo1);
+        List<Version> versions1 = storeInfo1.getVersions();
+        assertNotNull(versions1);
+        assertEquals(versions1.size(), 1);
+      });
     }
+
     System.out.println("Store created successfully");
     try (ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs(), false)) {

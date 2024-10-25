@@ -4,13 +4,17 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
+import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
+import com.linkedin.venice.protocols.EmptyPushGrpcRequest;
+import com.linkedin.venice.protocols.EmptyPushGrpcResponse;
 import com.linkedin.venice.protocols.GetStoreGrpcRequest;
 import com.linkedin.venice.protocols.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.LeaderControllerGrpcRequest;
@@ -130,8 +134,7 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
   public StoreResponse getStore(GetStoreRequest getStoreRequest) {
     try {
       // ControllerEndPointParamValidator.validateGetStoreRequest(getStoreRequest);
-      VeniceControllerGrpcServiceBlockingStub stub = VeniceControllerGrpcServiceGrpc
-          .newBlockingStub(getOrCreateChannel(getLeaderControllerUrl(getStoreRequest.getClusterName())));
+      VeniceControllerGrpcServiceBlockingStub stub = getBlockingStub(getStoreRequest.getClusterName());
 
       // convert the GetStoreRequest to a gRPC request using the utility class
       GetStoreGrpcRequest grpcRequest = GetStoreGrpcRequest.newBuilder()
@@ -157,6 +160,33 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
     } catch (Exception e) {
       LOGGER.error("Error getting store", e);
       throw new VeniceClientException("Error getting store", e); // change it http exception
+    }
+  }
+
+  private VeniceControllerGrpcServiceBlockingStub getBlockingStub(String clusterName) {
+    String leaderControllerUrl = getLeaderControllerUrl(clusterName);
+    ManagedChannel channel = getOrCreateChannel(leaderControllerUrl);
+    return VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+  }
+
+  @Override
+  public VersionCreationResponse emptyPush(EmptyPushRequest emptyPushRequest) {
+    String clusterName = emptyPushRequest.getClusterName();
+    String storeName = emptyPushRequest.getStoreName();
+    String pushJobId = emptyPushRequest.getPushJobId();
+    try {
+      EmptyPushGrpcRequest grpcRequest = EmptyPushGrpcRequest.newBuilder()
+          .setClusterStoreInfo(GrpcRequestResponseConverter.getClusterStoreGrpcInfo(emptyPushRequest))
+          .setPushJobId(pushJobId)
+          .build();
+      EmptyPushGrpcResponse grpcResponse = getBlockingStub(clusterName).emptyPush(grpcRequest);
+      return GrpcRequestResponseConverter.toVersionCreationResponse(grpcResponse);
+    } catch (StatusRuntimeException e) {
+      LOGGER.error("Error empty pushing to store {} in cluster {}", storeName, clusterName, e);
+      throw GrpcRequestResponseConverter.handleGrpcError(e);
+    } catch (Exception e) {
+      LOGGER.error("Error empty pushing to store {} in cluster {}", storeName, clusterName, e);
+      throw new VeniceClientException("Error empty pushing", e); // change it http exception
     }
   }
 }
