@@ -32,7 +32,6 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
 
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     String valueStr = convertUtf8ToString(value.get());
-
     put(key.get(), valueStr);
   }
 

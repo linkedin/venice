@@ -189,7 +189,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       // When both are enabled, this causes the storage engine to be deleted everytime the client starts,
       // since the record transformer config is never persisted to disk. Additionally, this will spawn multiple
       // transformers per version, and if the user's transformer is stateful this could cause issues.
-      throw new VeniceClientException("Ingestion Isolation is not supported with the Da Vinci Record Transformer");
+      throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
     }
 
     preValidation.run();
@@ -725,7 +725,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   // Visible for testing
-  public void initBackend(
+  protected void initBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,

@@ -117,7 +117,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -1671,8 +1670,7 @@ public class DaVinciClientTest {
     propertiesConsumer.accept(vpjProperties);
     // Create & update store for test.
     final int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions) // Update the
-                                                                                                  // partition count
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions)
         .setChunkingEnabled(chunkingEnabled)
         .setCompressionStrategy(compressionStrategy);
 
@@ -1700,16 +1698,6 @@ public class DaVinciClientTest {
 
   private String createStoreWithMetaSystemStoreAndPushStatusSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
-    cluster.createMetaSystemStore(storeName);
-    cluster.createPushStatusSystemStore(storeName);
-    return storeName;
-  }
-
-  private String createStoreWithMetaSystemStoreAndPushStatusSystemStore(
-      int keyCount,
-      CompressionStrategy compressionStrategy,
-      Function<String, ByteBuffer> compressionDictionaryGenerator) throws Exception {
-    String storeName = cluster.createStore(keyCount, compressionStrategy, compressionDictionaryGenerator);
     cluster.createMetaSystemStore(storeName);
     cluster.createPushStatusSystemStore(storeName);
     return storeName;
