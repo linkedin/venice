@@ -32,10 +32,10 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
    * have same real-time topics, we should avoid same real-time topic partition from different version topics sharing
    * the same consumer from consumer pool.
    */
-  private final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
+  protected final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
       new VeniceConcurrentHashMap<>();
 
-  private final Logger LOGGER;
+  protected Logger LOGGER;
 
   private int shareConsumerIndex = 0;
 
@@ -137,7 +137,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     return consumer;
   }
 
-  private boolean alreadySubscribedRealtimeTopicPartition(
+  protected boolean alreadySubscribedRealtimeTopicPartition(
       SharedKafkaConsumer consumer,
       PubSubTopicPartition topicPartition) {
     Set<PubSubConsumerAdapter> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
