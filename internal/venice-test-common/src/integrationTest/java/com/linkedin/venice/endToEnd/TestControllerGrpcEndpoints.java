@@ -3,12 +3,15 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.protocols.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
@@ -54,11 +57,23 @@ public class TestControllerGrpcEndpoints {
         new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersGrpcURLs(), true)) {
       TestUtils
           .assertCommand(controllerClient.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, "\"string\"", null));
+
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+      assertNotNull(storeResponse);
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertNotNull(storeInfo);
+      System.out.println(storeInfo);
+      AdminTool.printObject(storeInfo);
     }
+    System.out.println("Store created successfully");
     try (ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs(), false)) {
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
       System.out.println(storeResponse);
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertNotNull(storeInfo);
+      System.out.println(storeInfo);
+      AdminTool.printObject(storeInfo);
     }
   }
 

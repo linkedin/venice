@@ -15,7 +15,9 @@ import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.QueryParams;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
+import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -128,6 +130,13 @@ public class ControllerHttpTransport implements ControllerTransportAdapter {
       params.add(ACCESS_PERMISSION, newStoreRequest.getAccessPermissions());
     }
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
+  @Override
+  public StoreResponse getStore(GetStoreRequest getStoreRequest) {
+    QueryParams params =
+        newParams().add(NAME, getStoreRequest.getStoreName()).add(CLUSTER, getStoreRequest.getClusterName());
+    return request(ControllerRoute.STORE, params, StoreResponse.class);
   }
 
   private static String encodeQueryParams(QueryParams params) {

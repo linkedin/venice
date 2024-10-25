@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAclForStoreRequest;
 import com.linkedin.venice.controllerapi.request.UpdateAdminTopicMetadataRequest;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.controllerapi.transport.GrpcRequestResponseConverter;
 import com.linkedin.venice.protocols.AdminCommandExecutionStatusGrpcRequest;
 import com.linkedin.venice.protocols.AdminCommandExecutionStatusGrpcResponse;
 import com.linkedin.venice.protocols.AdminTopicMetadataGrpcRequest;
@@ -50,7 +51,6 @@ import com.linkedin.venice.protocols.ListBootstrappingVersionsGrpcRequest;
 import com.linkedin.venice.protocols.ListBootstrappingVersionsGrpcResponse;
 import com.linkedin.venice.protocols.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.ListStoresGrpcResponse;
-import com.linkedin.venice.protocols.StoreInfoGrpc;
 import com.linkedin.venice.protocols.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.UpdateAdminTopicMetadataGrpcRequest;
@@ -524,32 +524,21 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
     }
   }
 
-  // rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse) {}
   @Override
   public void getStore(GetStoreGrpcRequest grpcRequest, StreamObserver<GetStoreGrpcResponse> responseObserver) {
+    String clusterName = null;
+    String storeName = null;
     try {
-      String clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
-      String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
+      clusterName = grpcRequest.getClusterStoreInfo().getClusterName();
+      storeName = grpcRequest.getClusterStoreInfo().getStoreName();
       LOGGER.debug("Received gRPC request to get store: {} in cluster: {}", storeName, clusterName);
-
-      // Convert the gRPC request to the internal request object
-      GetStoreRequest request = new GetStoreRequest(clusterName, storeName);
       StoreResponse response = new StoreResponse();
-      requestHandler.getStore(request, response);
-
-      StoreInfoGrpc storeInfoGrpc = StoreInfoGrpc.newBuilder()
-          .setClusterName(response.getCluster())
-          .setStoreName(response.getName())
-          .setOwner(response.getOwner())
-          .setKeySchema(response.getKeySchema())
-          .setValueSchema(response.getValueSchema())
-          .setAccessPermission(response.getAccessPermission())
-          .setIsSystemStore(response.getIsSystemStore())
-          .build();
-
-      // Convert the internal response object to the gRPC response object and send the gRPC response
-      responseObserver
-          .onNext(GetStoreGrpcResponse.newBuilder().setClusterName(clusterName).setStoreName(storeName).build());
+      requestHandler.getStore(new GetStoreRequest(clusterName, storeName), response);
+      responseObserver.onNext(
+          GetStoreGrpcResponse.newBuilder()
+              .setClusterStoreInfo(grpcRequest.getClusterStoreInfo())
+              .setStoreInfo(GrpcRequestResponseConverter.toStoreInfoGrpc(response.getStore()))
+              .build());
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOGGER.error("Error while getting store: {} in cluster: {}", storeName, clusterName, e);
@@ -560,5 +549,4 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
               .asRuntimeException());
     }
   }
-
 }

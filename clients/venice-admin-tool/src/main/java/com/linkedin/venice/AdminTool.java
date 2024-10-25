@@ -3240,7 +3240,7 @@ public class AdminTool {
   }
 
   ///// Print Output ////
-  private static void printObject(Object response) {
+  public static void printObject(Object response) {
     printObject(response, System.out::print);
   }
 

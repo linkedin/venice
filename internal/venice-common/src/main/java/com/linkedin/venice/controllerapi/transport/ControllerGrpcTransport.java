@@ -3,11 +3,16 @@ package com.linkedin.venice.controllerapi.transport;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
+import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
+import com.linkedin.venice.protocols.GetStoreGrpcRequest;
+import com.linkedin.venice.protocols.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc;
@@ -118,6 +123,40 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
     } catch (Exception e) {
       LOGGER.error("Error creating store", e);
       throw new VeniceClientException("Error creating store", e); // change it http exception
+    }
+  }
+
+  @Override
+  public StoreResponse getStore(GetStoreRequest getStoreRequest) {
+    try {
+      // ControllerEndPointParamValidator.validateGetStoreRequest(getStoreRequest);
+      VeniceControllerGrpcServiceBlockingStub stub = VeniceControllerGrpcServiceGrpc
+          .newBlockingStub(getOrCreateChannel(getLeaderControllerUrl(getStoreRequest.getClusterName())));
+
+      // convert the GetStoreRequest to a gRPC request using the utility class
+      GetStoreGrpcRequest grpcRequest = GetStoreGrpcRequest.newBuilder()
+          .setClusterStoreInfo(
+              ClusterStoreGrpcInfo.newBuilder()
+                  .setClusterName(getStoreRequest.getClusterName())
+                  .setStoreName(getStoreRequest.getStoreName())
+                  .build())
+          .build();
+
+      // make gRPC request
+      GetStoreGrpcResponse grpcResponse = stub.getStore(grpcRequest);
+
+      // convert the gRPC response to StoreResponse using the utility class
+      StoreResponse response = new StoreResponse();
+      response.setCluster(grpcResponse.getClusterStoreInfo().getClusterName());
+      response.setName(grpcResponse.getClusterStoreInfo().getStoreName());
+      response.setStore(GrpcRequestResponseConverter.toStoreInfo(grpcResponse.getStoreInfo()));
+      return response;
+    } catch (StatusRuntimeException e) {
+      LOGGER.error("Error getting store", e);
+      throw GrpcRequestResponseConverter.handleGrpcError(e);
+    } catch (Exception e) {
+      LOGGER.error("Error getting store", e);
+      throw new VeniceClientException("Error getting store", e); // change it http exception
     }
   }
 }

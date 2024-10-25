@@ -73,6 +73,7 @@ import static com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
+import com.linkedin.venice.controllerapi.request.GetStoreRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.controllerapi.transport.ControllerGrpcTransport;
@@ -298,8 +299,7 @@ public class ControllerClient implements Closeable {
   }
 
   public StoreResponse getStore(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
-    return request(ControllerRoute.STORE, params, StoreResponse.class);
+    return transportAdapter.getStore(new GetStoreRequest(clusterName, storeName));
   }
 
   public StoreResponse getStore(String storeName, int timeoutMs) {

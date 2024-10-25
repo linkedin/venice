@@ -170,9 +170,8 @@ message GetStoreGrpcRequest {
 }
 
 message GetStoreGrpcResponse {
-  string clusterName = 1;
-  string storeName = 2;
-  StoreInfoGrpc storeInfo = 3;
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  StoreInfoGrpc storeInfo = 2;
 }
 
 message ListStoresGrpcRequest {
