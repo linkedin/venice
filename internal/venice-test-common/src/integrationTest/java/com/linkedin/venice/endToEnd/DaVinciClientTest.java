@@ -249,13 +249,7 @@ public class DaVinciClientTest {
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .build();
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -297,15 +291,7 @@ public class DaVinciClientTest {
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
-        .build();
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
 
@@ -377,15 +363,7 @@ public class DaVinciClientTest {
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, largeString, numKeys);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
-        .build();
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
 
@@ -449,13 +427,7 @@ public class DaVinciClientTest {
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .build();
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -492,13 +464,7 @@ public class DaVinciClientTest {
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .build();
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -535,13 +501,7 @@ public class DaVinciClientTest {
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .build();
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -1664,5 +1624,22 @@ public class DaVinciClientTest {
   @DataProvider(name = "CompressionStrategy")
   public static Object[][] compressionStrategy() {
     return DataProviderUtils.allPermutationGenerator(DataProviderUtils.COMPRESSION_STRATEGIES);
+  }
+
+  public VeniceProperties buildRecordTransformerBackendConfig(boolean pushStatusStoreEnabled) {
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    PropertyBuilder backendPropertyBuilder = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
+        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);
+
+    if (pushStatusStoreEnabled) {
+      backendPropertyBuilder.put(PUSH_STATUS_STORE_ENABLED, true).put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);
+    }
+
+    return backendPropertyBuilder.build();
   }
 }
