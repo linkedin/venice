@@ -55,6 +55,10 @@ public class ListStoresRequest extends ControllerRequest {
     return excludeSystemStores;
   }
 
+  public boolean includeSystemStores() {
+    return !excludeSystemStores;
+  }
+
   public String getStoreConfigNameFilter() {
     return storeConfigNameFilter;
   }

@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -99,7 +100,26 @@ public class TestControllerGrpcEndpoints {
         List<Version> versions1 = storeInfo1.getVersions();
         assertNotNull(versions1);
         assertEquals(versions1.size(), 1);
+        assertEquals(storeInfo1.getCurrentVersion(), 2);
       });
+
+      // create one more store
+      String storeName2 = Utils.getUniqueString("store");
+      TestUtils
+          .assertCommand(controllerClient.createNewStore(storeName2, "owner", DEFAULT_KEY_SCHEMA, "\"string\"", null));
+      StoreResponse storeResponse2 = TestUtils.assertCommand(controllerClient.getStore(storeName2));
+      assertNotNull(storeResponse2);
+      StoreInfo storeInfo2 = storeResponse2.getStore();
+      assertNotNull(storeInfo2);
+      AdminTool.printObject(storeInfo2);
+
+      // list all stores
+      MultiStoreResponse multiStoreResponse = TestUtils.assertCommand(controllerClient.queryStoreList());
+      assertNotNull(multiStoreResponse);
+      String[] stores = multiStoreResponse.getStores();
+      assertNotNull(stores);
+      assertEquals(stores.length, 2);
+      System.out.println("Stores: " + stores[0] + ", " + stores[1]);
     }
 
     System.out.println("Store created successfully");

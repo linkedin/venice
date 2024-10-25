@@ -2,12 +2,14 @@ package com.linkedin.venice.controllerapi.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
 import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
+import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.ClusterStoreGrpcInfo;
@@ -19,6 +21,8 @@ import com.linkedin.venice.protocols.GetStoreGrpcRequest;
 import com.linkedin.venice.protocols.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -188,5 +192,35 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
       LOGGER.error("Error empty pushing to store {} in cluster {}", storeName, clusterName, e);
       throw new VeniceClientException("Error empty pushing", e); // change it http exception
     }
+  }
+
+  @Override
+  public MultiStoreResponse listStores(ListStoresRequest listStoresRequest) {
+    try {
+
+      VeniceControllerGrpcServiceBlockingStub stub = getBlockingStub(listStoresRequest.getClusterName());
+      // convert the ListStoresRequest to a gRPC request using the utility class
+      ListStoresGrpcRequest.Builder builder = ListStoresGrpcRequest.newBuilder()
+          .setClusterName(listStoresRequest.getClusterName())
+          .setIncludeSystemStores(listStoresRequest.includeSystemStores());
+
+      if (listStoresRequest.getStoreConfigNameFilter() != null) {
+        builder.setStoreConfigNameFilter(listStoresRequest.getStoreConfigNameFilter());
+      }
+      if (listStoresRequest.getStoreConfigValueFilter() != null) {
+        builder.setStoreConfigValueFilter(listStoresRequest.getStoreConfigValueFilter());
+      }
+      ListStoresGrpcResponse grpcResponse = stub.listStores(builder.build());
+      MultiStoreResponse response = new MultiStoreResponse();
+      response.setStores(grpcResponse.getStoreNameList().toArray(new String[0]));
+      return response;
+    } catch (StatusRuntimeException e) {
+      LOGGER.error("Error listing stores", e);
+      throw GrpcRequestResponseConverter.handleGrpcError(e);
+    } catch (Exception e) {
+      LOGGER.error("Error listing stores", e);
+      throw new VeniceClientException("Error listing stores", e); // change it http exception
+    }
+
   }
 }

@@ -2,11 +2,14 @@ package com.linkedin.venice.controllerapi.transport;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 
 import com.linkedin.venice.HttpConstants;
@@ -14,6 +17,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.QueryParams;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -21,6 +25,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
 import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
+import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -145,6 +150,18 @@ public class ControllerHttpTransport implements ControllerTransportAdapter {
   public VersionCreationResponse emptyPush(EmptyPushRequest request) {
     QueryParams params = newParams().add(NAME, request.getStoreName()).add(PUSH_JOB_ID, request.getPushJobId());
     return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
+  }
+
+  @Override
+  public MultiStoreResponse listStores(ListStoresRequest request) {
+    QueryParams queryParams = newParams().add(INCLUDE_SYSTEM_STORES, !request.isExcludeSystemStores());
+    if (request.getStoreConfigNameFilter() != null) {
+      queryParams.add(STORE_CONFIG_NAME_FILTER, request.getStoreConfigNameFilter());
+    }
+    if (request.getStoreConfigValueFilter() != null) {
+      queryParams.add(STORE_CONFIG_VALUE_FILTER, request.getStoreConfigValueFilter());
+    }
+    return request(ControllerRoute.LIST_STORES, queryParams, MultiStoreResponse.class);
   }
 
   private static String encodeQueryParams(QueryParams params) {

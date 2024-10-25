@@ -18,7 +18,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
@@ -57,8 +56,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
@@ -75,6 +72,7 @@ import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.request.DiscoverLeaderControllerRequest;
 import com.linkedin.venice.controllerapi.request.EmptyPushRequest;
 import com.linkedin.venice.controllerapi.request.GetStoreRequest;
+import com.linkedin.venice.controllerapi.request.ListStoresRequest;
 import com.linkedin.venice.controllerapi.request.NewStoreRequest;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.controllerapi.transport.ControllerGrpcTransport;
@@ -906,18 +904,12 @@ public class ControllerClient implements Closeable {
       boolean includeSystemStores,
       Optional<String> configNameFilter,
       Optional<String> configValueFilter) {
-    QueryParams queryParams = newParams().add(INCLUDE_SYSTEM_STORES, includeSystemStores);
-    if (configNameFilter.isPresent() ^ configValueFilter.isPresent()) {
-      throw new VeniceException(
-          "Missing argument: "
-              + (configNameFilter.isPresent() ? "store-config-value-filter" : "store-config-name-filter"));
-    }
-    if (includeSystemStores && configNameFilter.isPresent()) {
-      throw new VeniceException("Doesn't support config filtering on system store yet.");
-    }
-    configNameFilter.ifPresent(c -> queryParams.add(STORE_CONFIG_NAME_FILTER, c));
-    configValueFilter.ifPresent(c -> queryParams.add(STORE_CONFIG_VALUE_FILTER, c));
-    return request(ControllerRoute.LIST_STORES, queryParams, MultiStoreResponse.class);
+    return transportAdapter.listStores(
+        new ListStoresRequest(
+            clusterName,
+            includeSystemStores,
+            configNameFilter.orElse(null),
+            configValueFilter.orElse(null)));
   }
 
   public MultiStoreStatusResponse listStoresStatuses() {
