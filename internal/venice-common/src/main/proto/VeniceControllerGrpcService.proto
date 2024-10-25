@@ -3,6 +3,7 @@ package com.linkedin.venice.protocols;
 
 import "google/rpc/status.proto";
 import "google/rpc/error_details.proto";
+import "VeniceStore.proto";
 
 option java_multiple_files = true;
 
@@ -132,7 +133,7 @@ service VeniceControllerGrpcService {
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse) {}
 //  rpc getAllStoresStatuses(GetAllStoresStatusesGrpcRequest) returns (GetAllStoresStatusesGrpcResponse) {}
 //  rpc getRepushInfo(GetRepushInfoGrpcRequest) returns (GetRepushInfoGrpcResponse) {}
-//  rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse) {}
+  rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse) {}
 //  rpc getFutureVersion(GetFutureVersionGrpcRequest) returns (GetFutureVersionGrpcResponse) {}
 //  rpc migrateStore(MigrateStoreGrpcRequest) returns (MigrateStoreGrpcResponse) {}
 //  rpc completeMigration(CompleteMigrationGrpcRequest) returns (CompleteMigrationGrpcResponse) {}
@@ -162,6 +163,16 @@ service VeniceControllerGrpcService {
 //  rpc removeStoreFromGraveyard(RemoveStoreFromGraveyardGrpcRequest) returns (RemoveStoreFromGraveyardGrpcResponse) {}
 //  rpc sendHeartbeatToSystemStore(SendHeartbeatToSystemStoreGrpcRequest) returns (SendHeartbeatToSystemStoreGrpcResponse) {}
 //  rpc getHeartbeatFromSystemStore(GetHeartbeatFromSystemStoreGrpcRequest) returns (GetHeartbeatFromSystemStoreGrpcResponse) {}
+}
+
+message GetStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+}
+
+message GetStoreGrpcResponse {
+  string clusterName = 1;
+  string storeName = 2;
+  StoreInfoGrpc storeInfo = 3;
 }
 
 message ListStoresGrpcRequest {
@@ -326,19 +337,7 @@ message GetStoresInClusterGrpcRequest {
   string clusterName = 1;
 }
 
-message StoreInfoGrpc {
-  string storeName = 1;
-  optional string owner = 2;
-  int32 currentVersion = 3;
-  int32 partitionCount = 4;
-  map<string, int32> coloToCurrentVersion = 5;
-  int32 reservedVersion = 6;
-  bool enableWrites = 7;
-  bool enableReads = 8;
-}
-
 message GetStoresInClusterGrpcResponse {
-  repeated StoreInfoGrpc stores = 1;
 }
 
 message QueryJobStatusGrpcRequest {

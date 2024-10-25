@@ -94,7 +94,7 @@ ext.libraries = [
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.14',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.16',
     jacksonCore: "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}",
-    jacksonProtobuf: "com.fasterxml.jackson.dataformat:jackson-dataformat-protobuf:${jacksonVersion}",
+//    jacksonProtobuf: "com.fasterxml.jackson.dataformat:jackson-dataformat-protobuf:${jacksonVersion}",
     jacksonAnnotations: "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}",
     jacksonDatabind: "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}",
     javax: 'javax.servlet:javax.servlet-api:3.1.0',

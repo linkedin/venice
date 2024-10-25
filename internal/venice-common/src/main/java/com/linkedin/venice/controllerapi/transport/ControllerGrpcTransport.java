@@ -117,7 +117,7 @@ public class ControllerGrpcTransport implements ControllerTransportAdapter {
       throw GrpcRequestResponseConverter.handleGrpcError(e);
     } catch (Exception e) {
       LOGGER.error("Error creating store", e);
-      throw new VeniceClientException("Error creating store", e);
+      throw new VeniceClientException("Error creating store", e); // change it http exception
     }
   }
 }
