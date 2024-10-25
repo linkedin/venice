@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataRecoveryVersionConfig;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -26,6 +27,7 @@ import com.linkedin.venice.protocols.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.DataRecoveryVersionConfigGrpc;
 import com.linkedin.venice.protocols.DataReplicationPolicyGrpc;
+import com.linkedin.venice.protocols.ETLStoreConfigGrpc;
 import com.linkedin.venice.protocols.HybridStoreConfigGrpc;
 import com.linkedin.venice.protocols.PartitionerConfigGrpc;
 import com.linkedin.venice.protocols.PushTypeGrpc;
@@ -38,7 +40,6 @@ import io.grpc.Status.Code;
 import io.grpc.StatusRuntimeException;
 import io.grpc.protobuf.StatusProto;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 
@@ -320,20 +321,27 @@ public class GrpcRequestResponseConverter {
     }
   }
 
+  public static ETLStoreConfigGrpc fromETLStoreConfigG(ETLStoreConfig etlStoreConfig) {
+    return ETLStoreConfigGrpc.newBuilder()
+        .setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount())
+        .setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled())
+        .setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled())
+        .build();
+  }
+
   public static StoreInfoGrpc toStoreInfoGrpc(StoreInfo storeInfo) {
     StoreInfoGrpc.Builder builder = StoreInfoGrpc.newBuilder()
         .setName(storeInfo.getName())
         .setOwner(storeInfo.getOwner())
+        .setPartitionCount(storeInfo.getPartitionCount())
         .setCurrentVersion(storeInfo.getCurrentVersion())
         .setReservedVersion(storeInfo.getReservedVersion())
-        .setPartitionCount(storeInfo.getPartitionCount())
         .setLowWatermark(storeInfo.getLowWatermark())
         .setEnableStoreWrites(storeInfo.isEnableStoreWrites())
         .setEnableStoreReads(storeInfo.isEnableStoreReads())
         .setStorageQuotaInByte(storeInfo.getStorageQuotaInByte())
         .setHybridStoreOverheadBypass(storeInfo.getHybridStoreOverheadBypass())
         .setReadQuotaInCU(storeInfo.getReadQuotaInCU())
-        .setHybridStoreConfig(toGrpcHybridStoreConfig(storeInfo.getHybridStoreConfig()))
         .setAccessControlled(storeInfo.isAccessControlled())
         .setChunkingEnabled(storeInfo.isChunkingEnabled())
         .setRmdChunkingEnabled(storeInfo.isRmdChunkingEnabled())
@@ -342,7 +350,6 @@ public class GrpcRequestResponseConverter {
         .setBatchGetLimit(storeInfo.getBatchGetLimit())
         .setLargestUsedVersionNumber(storeInfo.getLargestUsedVersionNumber())
         .setIncrementalPushEnabled(storeInfo.isIncrementalPushEnabled())
-        .setCompressionStrategy(fromCompressionStrategy(storeInfo.getCompressionStrategy()))
         .setClientDecompressionEnabled(storeInfo.getClientDecompressionEnabled())
         .setNumVersionsToPreserve(storeInfo.getNumVersionsToPreserve())
         .setMigrating(storeInfo.isMigrating())
@@ -356,7 +363,7 @@ public class GrpcRequestResponseConverter {
         .setSuperSetSchemaAutoGenerationForReadComputeEnabled(
             storeInfo.isSuperSetSchemaAutoGenerationForReadComputeEnabled())
         .setLatestSuperSetValueSchemaId(storeInfo.getLatestSuperSetValueSchemaId())
-        .setBackupStrategy(fromBackupStrategy(storeInfo.getBackupStrategy()))
+        .setHybridStoreDiskQuotaEnabled(storeInfo.isHybridStoreDiskQuotaEnabled())
         .setBackupVersionRetentionMs(storeInfo.getBackupVersionRetentionMs())
         .setReplicationFactor(storeInfo.getReplicationFactor())
         .setMigrationDuplicateStore(storeInfo.isMigrationDuplicateStore())
@@ -366,7 +373,6 @@ public class GrpcRequestResponseConverter {
         .setDaVinciPushStatusStoreEnabled(storeInfo.isDaVinciPushStatusStoreEnabled())
         .setActiveActiveReplicationEnabled(storeInfo.isActiveActiveReplicationEnabled())
         .setKafkaBrokerUrl(storeInfo.getKafkaBrokerUrl())
-        .putAllViewConfigs(toGrpcViewConfigs(storeInfo.getViewConfigs()))
         .setStorageNodeReadQuotaEnabled(storeInfo.isStorageNodeReadQuotaEnabled())
         .setMinCompactionLagSeconds(storeInfo.getMinCompactionLagSeconds())
         .setMaxCompactionLagSeconds(storeInfo.getMaxCompactionLagSeconds())
@@ -375,13 +381,21 @@ public class GrpcRequestResponseConverter {
         .setUnusedSchemaDeletionEnabled(storeInfo.isUnusedSchemaDeletionEnabled())
         .setBlobTransferEnabled(storeInfo.isBlobTransferEnabled());
 
-    storeInfo.getColoToCurrentVersions().forEach(builder::putColoToCurrentVersions);
-
-    List<Version> versions = storeInfo.getVersions();
-    for (Version version: versions) {
-      builder.addVersions(toGrpcVersion(version));
+    for (Map.Entry<String, Integer> entry: storeInfo.getColoToCurrentVersions().entrySet()) {
+      builder.putColoToCurrentVersions(entry.getKey(), entry.getValue());
     }
 
+    for (Version version: storeInfo.getVersions()) {
+      builder.addVersions(toGrpcVersion(version));
+    }
+    builder.setHybridStoreConfig(toGrpcHybridStoreConfig(storeInfo.getHybridStoreConfig()))
+        .setCompressionStrategy(fromCompressionStrategy(storeInfo.getCompressionStrategy()))
+        .setBackupStrategy(fromBackupStrategy(storeInfo.getBackupStrategy()))
+        .setEtlStoreConfig(fromETLStoreConfigG(storeInfo.getEtlStoreConfig()))
+        .setPartitionerConfig(toGrpcPartitionerConfig(storeInfo.getPartitionerConfig()));
+    for (Map.Entry<String, ViewConfig> entry: storeInfo.getViewConfigs().entrySet()) {
+      builder.putViewConfigs(entry.getKey(), toGrpcViewConfig(entry.getValue()));
+    }
     return builder.build();
   }
 }
