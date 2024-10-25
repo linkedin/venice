@@ -13,7 +13,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -111,7 +111,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
@@ -175,7 +174,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final Function<Integer, DaVinciRecordTransformer> getRecordTransformer;
+  private final DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -207,14 +206,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
       HeartbeatMonitoringService heartbeatMonitoringService) {
     this.cacheBackend = cacheBackend;
-    this.getRecordTransformer = getRecordTransformer;
+    this.recordTransformerFunction = recordTransformerFunction;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -528,7 +527,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerFunction);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {

@@ -62,7 +62,7 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
   }
 
   @Override
-  protected void prepareData() throws Exception {
+  protected void prepareData() {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 

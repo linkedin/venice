@@ -1006,7 +1006,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Stream<Map.Entry> batchData,
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator) {
-    return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData, CompressionStrategy.NO_OP, null);
+    return createStore(
+        DEFAULT_KEY_SCHEMA,
+        DEFAULT_VALUE_SCHEMA,
+        batchData,
+        compressionStrategy,
+        compressionDictionaryGenerator);
   }
 
   public String createStore(int keyCount, GenericRecord record) {
@@ -1049,6 +1054,22 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return createVersion(
         storeName,
         IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
+  }
+
+  public int createVersion(
+      String storeName,
+      int keyCount,
+      CompressionStrategy compressionStrategy,
+      Function<String, ByteBuffer> compressionDictionaryGenerator) {
+    StoreResponse response = assertCommand(controllerClient.get().getStore(storeName));
+    int nextVersionId = response.getStore().getLargestUsedVersionNumber() + 1;
+    return createVersion(
+        storeName,
+        DEFAULT_KEY_SCHEMA,
+        DEFAULT_VALUE_SCHEMA,
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)),
+        compressionStrategy,
+        compressionDictionaryGenerator);
   }
 
   public int createVersion(String storeName, Stream<Map.Entry> batchData) {

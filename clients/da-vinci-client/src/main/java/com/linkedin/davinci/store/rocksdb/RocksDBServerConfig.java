@@ -406,8 +406,7 @@ public class RocksDBServerConfig {
      */
     this.maxLogFileNum = props.getInt(ROCKSDB_MAX_LOG_FILE_NUM, 3);
     this.maxLogFileSize = props.getSizeInBytes(ROCKSDB_MAX_LOG_FILE_SIZE, 10 * 1024 * 1024); // 10MB;
-    this.transformerValueSchema =
-        props.containsKey(RECORD_TRANSFORMER_VALUE_SCHEMA) ? props.getString(RECORD_TRANSFORMER_VALUE_SCHEMA) : "null";
+    this.transformerValueSchema = props.getString(RECORD_TRANSFORMER_VALUE_SCHEMA, "null");
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
