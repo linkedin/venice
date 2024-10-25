@@ -241,23 +241,13 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformer(DaVinciConfig clientConfig) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        pushStatusStoreEnabled,
-        chunkingEnabled,
-        compressionStrategy,
-        customValue,
-        numKeys);
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -299,23 +289,13 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformerOnRecovery(DaVinciConfig clientConfig) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        pushStatusStoreEnabled,
-        chunkingEnabled,
-        compressionStrategy,
-        customValue,
-        numKeys);
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -390,22 +370,12 @@ public class DaVinciClientTest {
     String largeString = stringBuilder.toString();
 
     String storeName = Utils.getUniqueString("test-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = true;
     CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     int numKeys = 10;
 
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        pushStatusStoreEnabled,
-        chunkingEnabled,
-        compressionStrategy,
-        largeString,
-        numKeys);
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, largeString, numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -471,23 +441,13 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordsInDaVinciDisabledRecordTransformer(DaVinciConfig clientConfig) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        pushStatusStoreEnabled,
-        chunkingEnabled,
-        compressionStrategy,
-        customValue,
-        numKeys);
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -524,23 +484,13 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testSkipResultRecordTransformer(DaVinciConfig clientConfig) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        pushStatusStoreEnabled,
-        chunkingEnabled,
-        compressionStrategy,
-        customValue,
-        numKeys);
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -577,23 +527,13 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testUnchangedResultRecordTransformer(DaVinciConfig clientConfig) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        pushStatusStoreEnabled,
-        chunkingEnabled,
-        compressionStrategy,
-        customValue,
-        numKeys);
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -1649,6 +1589,26 @@ public class DaVinciClientTest {
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       runVPJ(vpjProperties, 1, cluster);
     }
+  }
+
+  private void setUpStore(
+      String storeName,
+      boolean useDVCPushStatusStore,
+      boolean chunkingEnabled,
+      CompressionStrategy compressionStrategy,
+      String customValue,
+      int numKeys) throws Exception {
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        useDVCPushStatusStore,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
   }
 
   private void setUpStore(

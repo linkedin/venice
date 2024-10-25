@@ -468,8 +468,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
 
-      // onStartVersionIngestion called here instead of run() because this needs to finish running before bootstrapping
-      // starts
+      // onStartVersionIngestion called here instead of run() because this needs to finish running
+      // before bootstrapping starts
       long startTime = System.currentTimeMillis();
       recordTransformer.onStartVersionIngestion();
       long endTime = System.currentTimeMillis();
