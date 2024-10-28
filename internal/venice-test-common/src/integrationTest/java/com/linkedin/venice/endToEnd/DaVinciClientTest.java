@@ -436,7 +436,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(1, true);
+    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(1, false);
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
