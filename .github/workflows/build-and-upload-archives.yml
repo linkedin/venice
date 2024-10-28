@@ -30,7 +30,7 @@ jobs:
         env:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/actions/setup-gradle@v3
         with:
           arguments: |
             "-Pversion=${{  env.GIT_TAG }}" publishAllPublicationsToLinkedInJFrogRepository
