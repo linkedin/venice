@@ -63,7 +63,7 @@ jobs:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
       - name: Check if files have changed
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: check_alpini_files_changed
         with:
           filters: |
@@ -133,7 +133,7 @@ jobs:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
       - name: Check if files have changed
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: check_alpini_files_changed
         with:
           filters: |
