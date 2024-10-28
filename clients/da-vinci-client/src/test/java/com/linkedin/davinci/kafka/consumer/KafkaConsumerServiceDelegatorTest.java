@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -15,6 +16,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
@@ -483,15 +485,18 @@ public class KafkaConsumerServiceDelegatorTest {
   }
 
   /**
-   * This test is to simulate multiple threads resubscribing to the same real-time topic partition for different store
-   * versions and verify if the lock will protect the handoff for {@link ConsumptionTask} and {@link ConsumedDataReceiver}
-   * during the re-subscription.
+   * This test simulates multiple threads resubscribing to the same real-time topic partition for different store
+   * versions. It verifies if the lock effectively protects the handoff between {@link ConsumptionTask} and
+   * {@link ConsumedDataReceiver} during the re-subscription process. Previously, an unprotected handoff led to an
+   * {@link IllegalStateException} being thrown within {@link ConsumptionTask#setDataReceiver}.
+   * To induce the race condition, we assume there are 5 store versions, with each version assigned to a dedicated
+   * thread that continuously resubscribes to the same real-time topic partition. This continues until either a race
+   * condition is encountered or the test times out (30 seconds).
+   * TODO: removing the invocationCount after the PR is approved.
    */
-  @Test(invocationCount = 5)
+  @Test(invocationCount = 20)
   public void testKafkaConsumerServiceResubscriptionConcurrency() throws Exception {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
-    when(consumer1.hasAnySubscription()).thenReturn(true);
-
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
     when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1);
 
@@ -503,7 +508,6 @@ public class KafkaConsumerServiceDelegatorTest {
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
     int versionNum = 5;
-
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
@@ -513,7 +517,7 @@ public class KafkaConsumerServiceDelegatorTest {
         factory,
         properties,
         1000l,
-        versionNum + 1, // Plus 1 to guarantee the consumer pool size is larger than the # of versions.
+        versionNum * 2, // To simulate real production cases: consumers # >> version # per store.
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
@@ -523,7 +527,7 @@ public class KafkaConsumerServiceDelegatorTest {
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        null,
+        mock(AggKafkaConsumerServiceStats.class),
         false,
         mock(ReadOnlyStoreRepository.class),
         false);
@@ -545,37 +549,46 @@ public class KafkaConsumerServiceDelegatorTest {
     CountDownLatch countDownLatch = new CountDownLatch(1);
     List<Thread> infiniteSubUnSubThreads = new ArrayList<>();
     for (int i = 0; i < versionNum; i++) {
-      PubSubTopic topicV1ForStoreName3 = TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, i));
+      PubSubTopic versionTopicForStoreName3 = TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, i));
       StoreIngestionTask task = mock(StoreIngestionTask.class);
-      when(task.getVersionTopic()).thenReturn(topicV1ForStoreName3);
+      when(task.getVersionTopic()).thenReturn(versionTopicForStoreName3);
       when(task.isHybridMode()).thenReturn(true);
 
       PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
-          topicV1ForStoreName3,
+          versionTopicForStoreName3,
           realTimeTopicPartition,
           PartitionReplicaIngestionContext.VersionRole.CURRENT,
           PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
       ConsumedDataReceiver consumedDataReceiver = mock(ConsumedDataReceiver.class);
-      when(consumedDataReceiver.destinationIdentifier()).thenReturn(topicV1ForStoreName3);
+      when(consumedDataReceiver.destinationIdentifier()).thenReturn(versionTopicForStoreName3);
       Runnable infiniteSubUnSub = getResubscriptionRunnableFor(
           delegator,
           partitionReplicaIngestionContext,
           consumedDataReceiver,
           countDownLatch);
-      Thread infiniteSubUnSubThread = new Thread(infiniteSubUnSub, "infiniteResubscribe: " + topicV1ForStoreName3);
+      Thread infiniteSubUnSubThread = new Thread(infiniteSubUnSub, "infiniteResubscribe: " + versionTopicForStoreName3);
       infiniteSubUnSubThread.start();
       infiniteSubUnSubThreads.add(infiniteSubUnSubThread);
+      // Wait for the thread to start.
+      waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        assertTrue(
+            infiniteSubUnSubThread.getState().equals(Thread.State.WAITING)
+                || infiniteSubUnSubThread.getState().equals(Thread.State.TIMED_WAITING)
+                || infiniteSubUnSubThread.getState().equals(Thread.State.BLOCKED)
+                || infiniteSubUnSubThread.getState().equals(Thread.State.RUNNABLE));
+      });
     }
-
     long currentTime = System.currentTimeMillis();
     Boolean raceConditionFound = countDownLatch.await(30, TimeUnit.SECONDS);
     long elapsedTime = System.currentTimeMillis() - currentTime;
     for (Thread infiniteSubUnSubThread: infiniteSubUnSubThreads) {
       infiniteSubUnSubThread.interrupt();
+      infiniteSubUnSubThread.join();
     }
     Assert.assertFalse(
         raceConditionFound,
         "Found race condition in KafkaConsumerService with time passed in milliseconds: " + elapsedTime);
+    delegator.close();
   }
 
   private Runnable getResubscriptionRunnableFor(
@@ -609,6 +622,7 @@ public class KafkaConsumerServiceDelegatorTest {
           }
         }
       } catch (Exception e) {
+        // If any thread encounter an exception, count down the latch to 0 to indicate main thread to catch the issue.
         e.printStackTrace();
         countDownLatch.countDown();
       }
