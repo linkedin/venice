@@ -233,9 +233,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), 200);
     String responseString = IOUtils.toString(httpResponse.getEntity().getContent());
     InstanceRemovableStatuses statuses = OBJECT_MAPPER.readValue(responseString, InstanceRemovableStatuses.class);
-    Assert.assertTrue(
-        statuses.getNonStoppableInstancesWithReasons().containsKey(server),
-        "dd " + statuses.getNonStoppableInstancesWithReasons());
+    Assert.assertTrue(statuses.getNonStoppableInstancesWithReasons().containsKey(server));
     httpClient.close();
   }
 

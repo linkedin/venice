@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
@@ -9,16 +10,14 @@ public class AggregatedHealthStatusRequest {
   List<String> to_be_stopped_instances;
   String cluster_id;
 
+  @JsonCreator
   public AggregatedHealthStatusRequest(
-      List<String> instances,
-      List<String> to_be_stopped_instances,
-      String cluster_id) {
+      @JsonProperty("instances") List<String> instances,
+      @JsonProperty("to_be_stopped_instances") List<String> to_be_stopped_instances,
+      @JsonProperty("cluster_id") String cluster_id) {
     this.instances = instances;
     this.to_be_stopped_instances = to_be_stopped_instances;
     this.cluster_id = cluster_id;
-  }
-
-  public AggregatedHealthStatusRequest() {
   }
 
   @JsonProperty("cluster_id")
@@ -31,10 +30,12 @@ public class AggregatedHealthStatusRequest {
     return cluster_id;
   }
 
+  @JsonProperty("instances")
   public List<String> getInstances() {
     return instances;
   }
 
+  @JsonProperty("instances")
   public void setInstances(List<String> instances) {
     this.instances = instances;
   }
