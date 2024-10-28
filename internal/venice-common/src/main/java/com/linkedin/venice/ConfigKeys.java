@@ -2305,4 +2305,14 @@ public class ConfigKeys {
   public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
       "server.aa.wc.workload.parallel.processing.thread.pool.size";
   public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
+
+  /**
+   * Whether to enable producer throughput optimization for realtime workload or not.
+   * Two strategies:
+   * 1. Disable compression.
+   * 2. Utilizing multiple producers per write.
+   * These two options are controlled via store-level config.
+   */
+  public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
+      "server.nearline.workload.producer.throughput.optimization.enabled";
 }

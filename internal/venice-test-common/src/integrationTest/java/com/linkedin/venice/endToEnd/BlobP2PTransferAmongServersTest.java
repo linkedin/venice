@@ -66,7 +66,7 @@ public class BlobP2PTransferAmongServersTest {
     }
   }
 
-  @Test(singleThreaded = true)
+  @Test(singleThreaded = true, timeOut = 180000)
   public void testBlobP2PTransferAmongServersForBatchStore() throws Exception {
     String storeName = "test-store";
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
@@ -139,7 +139,7 @@ public class BlobP2PTransferAmongServersTest {
    * If there are no snapshots available for the store on server2, the blob transfer should throw an exception and return a 404 error.
    * When server1 restarts and receives the 404 error from server2, it will switch to using Kafka to ingest the data.
    */
-  @Test(singleThreaded = true)
+  @Test(singleThreaded = true, timeOut = 180000)
   public void testBlobTransferThrowExceptionIfSnapshotNotExisted() throws Exception {
     String storeName = "test-store-snapshot-not-existed";
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
@@ -286,7 +286,7 @@ public class BlobP2PTransferAmongServersTest {
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  @Test(singleThreaded = true)
+  @Test(singleThreaded = true, timeOut = 180000)
   public void testBlobP2PTransferAmongServersForHybridStore() throws Exception {
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     // prepare hybrid store.

@@ -72,14 +72,11 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -101,7 +98,6 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
@@ -293,9 +289,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected final int partitionCount;
 
-  // Used to construct VenicePartitioner
-  protected final VenicePartitioner venicePartitioner;
-
   // Total number of partition for this store version
   protected final int storeVersionPartitionCount;
 
@@ -443,11 +436,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
     this.isIsolatedIngestion = isIsolatedIngestion;
-
-    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
-    this.venicePartitioner = partitionerConfig == null
-        ? new DefaultVenicePartitioner()
-        : PartitionUtils.getVenicePartitioner(partitionerConfig);
     this.partitionCount = storeVersionPartitionCount;
     this.ingestionNotificationDispatcher =
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);

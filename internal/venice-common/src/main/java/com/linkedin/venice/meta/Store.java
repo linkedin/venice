@@ -321,4 +321,12 @@ public interface Store {
   boolean isBlobTransferEnabled();
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
+
+  boolean isNearlineProducerCompressionEnabled();
+
+  void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
+
+  int getNearlineProducerCountPerWriter();
+
+  void setNearlineProducerCountPerWriter(int producerCnt);
 }
