@@ -924,9 +924,6 @@ public class ControllerClient implements Closeable {
 
     AggregatedHealthStatusRequest request =
         new AggregatedHealthStatusRequest(instances, toBeStoppedInstances, clusterName);
-    request.setToBeStoppedInstances(toBeStoppedInstances);
-    request.setInstances(instances);
-    request.setClusterId(clusterName);
     String requestString = OBJECT_MAPPER.writeValueAsString(request);
     return request(
         ControllerRoute.AGGREGATED_HEALTH_STATUS,
