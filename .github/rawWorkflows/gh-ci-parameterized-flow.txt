@@ -22,10 +22,10 @@
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          arguments: "$GradleArguments"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew $GradleArguments
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
