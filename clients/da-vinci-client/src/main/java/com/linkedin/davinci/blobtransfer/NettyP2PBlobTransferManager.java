@@ -53,11 +53,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
       NettyFileTransferClient nettyClient,
-      BlobFinder peerFinder) {
+      BlobFinder peerFinder,
+      String baseDir) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
     this.peerFinder = peerFinder;
-    this.baseDir = nettyClient.getBaseDir();
+    this.baseDir = baseDir;
   }
 
   @Override
@@ -91,19 +92,22 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
   /**
    * Process the peers sequentially to fetch the blob for the given storeName and partition
-   * error cases:
-   * 1. [Fatal Case] If no peers info are found for the requested blob, a VenicePeersNotFoundException is thrown.
+   * - Error cases:
+   * - Fatal cases, skip bootstrapping from blob:
+   * 1. If no peers info are found for the requested blob, a VenicePeersNotFoundException is thrown.
    *    In this case, blob transfer is not used for bootstrapping at all.
-   * 2. If one host connect error, it will throw VenicePeersCannotConnectException then move to the next possible host.
-   * 3. If the connected host does not have the requested file,
-   *    a VeniceBlobTransferFileNotFoundException is thrown, and the process moves on to the next available host.
-   * 4. If any unexpected exception occurs, such as InterruptedException, ExecutionException, or TimeoutException
-   *    during the file/metadata transfer, a VeniceException is thrown,
-   *    and the process moves on to the next possible host, and the partially downloaded blobs are deleted.
-   * 5. [Fatal Case] If all peers fail to connect or have no snapshot, a VenicePeersNotFoundException is thrown,
+   * 2. If all peers fail to connect or have no snapshot, a VenicePeersNotFoundException is thrown,
    *    and Kafka is used for bootstrapping instead.
    *
-   *  success case:
+   * - Non-fatal cases, move to the next possible host:
+   * 3. If one host connect error, it will throw VenicePeersCannotConnectException then move to the next possible host.
+   * 4. If the connected host does not have the requested file,
+   *    a VeniceBlobTransferFileNotFoundException is thrown, and the process moves on to the next available host.
+   * 5. If any unexpected exception occurs, such as InterruptedException, ExecutionException, or TimeoutException
+   *    during the file/metadata transfer, a VeniceException is thrown,
+   *    and the process moves on to the next possible host, and the partially downloaded blobs are deleted.
+   *
+   *  - Success case:
    *  1. If the blob is successfully fetched from a peer, an InputStream of the blob is returned.
    *
    * @param peers the list of peers to process
@@ -160,7 +164,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       });
     }
 
-    // error case 5: no valid peers found for the requested blob after trying all possible hosts, skip bootstrapping
+    // error case 2: no valid peers found for the requested blob after trying all possible hosts, skip bootstrapping
     // from blob.
     return chainOfPeersFuture.thenRun(() -> {
       if (!resultFuture.isDone()) {
@@ -177,14 +181,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private void handlePeerFetchException(Throwable ex, String chosenHost, String storeName, int version, int partition) {
     String errorMsg = null;
     if (ex.getCause() instanceof VenicePeersConnectionException) {
-      // error case 2: failed to connect to the peer, move to the next possible host
+      // error case 3: failed to connect to the peer, move to the next possible host
       errorMsg = String
           .format(PEER_CONNECTION_EXCEPTION_MSG_FORMAT, chosenHost, storeName, version, partition, ex.getMessage());
     } else if (ex.getCause() instanceof VeniceBlobTransferFileNotFoundException) {
-      // error case 3: the connected host does not have the requested file, move to the next available host
+      // error case 4: the connected host does not have the requested file, move to the next available host
       errorMsg = String.format(PEER_NO_SNAPSHOT_MSG_FORMAT, chosenHost, storeName, version, partition, ex.getMessage());
     } else {
-      // error case 4: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
+      // error case 5: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
       // expected, move to the next possible host
       errorMsg =
           String.format(FAILED_TO_FETCH_BLOB_MSG_FORMAT, chosenHost, storeName, version, partition, ex.getMessage());

@@ -73,7 +73,7 @@ public class TestNettyP2PBlobTransferManager {
     client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
     finder = mock(BlobFinder.class);
 
-    manager = new NettyP2PBlobTransferManager(server, client, finder);
+    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString());
     manager.start();
   }
 

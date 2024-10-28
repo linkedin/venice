@@ -62,7 +62,7 @@ public class NettyFileTransferClient {
       // Attach the file handler to the pipeline
       // Attach the metadata handler to the pipeline
       ch.pipeline()
-          .addLast(new IdleStateHandler(60, 60, 60))
+          .addLast(new IdleStateHandler(0, 0, 60))
           .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
           .addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition))
           .addLast(new P2PMetadataTransferHandler(storageMetadataService, baseDir, storeName, version, partition));
@@ -103,13 +103,5 @@ public class NettyFileTransferClient {
       LOGGER.error(errorMsg, e);
       throw new VenicePeersConnectionException(errorMsg, e);
     }
-  }
-
-  /**
-   * Get the base directory for storing the blobs
-   * @return the base directory
-   */
-  public String getBaseDir() {
-    return baseDir;
   }
 }
