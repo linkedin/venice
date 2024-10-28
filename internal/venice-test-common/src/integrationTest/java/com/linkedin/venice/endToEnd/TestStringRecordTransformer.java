@@ -10,26 +10,30 @@ import org.apache.avro.util.Utf8;
 
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  private final Map<Integer, String> inMemoryDb = new HashMap<>();
+  private final Map<Integer, String> inMemoryDB = new HashMap<>();
 
   public TestStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
     super(storeVersion, storeRecordsInDaVinci);
   }
 
+  @Override
   public Schema getKeySchema() {
     return Schema.create(Schema.Type.INT);
   }
 
+  @Override
   public Schema getOutputValueSchema() {
     return Schema.create(Schema.Type.STRING);
   }
 
+  @Override
   public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     String valueStr = convertUtf8ToString(value.get());
     String transformedValue = valueStr + "Transformed";
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
+  @Override
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     String valueStr = convertUtf8ToString(value.get());
     put(key.get(), valueStr);
@@ -46,20 +50,20 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     return valueStr;
   }
 
-  public void clearInMemoryDb() {
-    inMemoryDb.clear();
+  public void clearInMemoryDB() {
+    inMemoryDB.clear();
   }
 
-  public boolean isInMemoryDbEmpty() {
-    return inMemoryDb.isEmpty();
+  public boolean isInMemoryDBEmpty() {
+    return inMemoryDB.isEmpty();
   }
 
   public String get(Integer key) {
-    return inMemoryDb.get(key);
+    return inMemoryDB.get(key);
   }
 
   public void put(Integer key, String value) {
-    inMemoryDb.put(key, value);
+    inMemoryDB.put(key, value);
   }
 
 }

@@ -325,10 +325,13 @@ public class DaVinciClientTest {
         assertEquals(recordTransformer.get(k), expectedValue);
       }
 
-      // Mimic restart
+      /*
+       * Simulates a client restart. During this process, the DVRT will use the on-disk state
+       * to repopulate the inMemoryDB, avoiding the need for re-ingestion after clearing.
+       */
       clientWithRecordTransformer.close();
-      recordTransformer.clearInMemoryDb();
-      assertTrue(recordTransformer.isInMemoryDbEmpty());
+      recordTransformer.clearInMemoryDB();
+      assertTrue(recordTransformer.isInMemoryDBEmpty());
 
       clientWithRecordTransformer.start();
       clientWithRecordTransformer.subscribeAll().get();
@@ -397,10 +400,13 @@ public class DaVinciClientTest {
         assertEquals(recordTransformer.get(k), expectedValue);
       }
 
-      // Mimic restart
+      /*
+       * Simulates a client restart. During this process, the DVRT will use the on-disk state
+       * to repopulate the inMemoryDB, avoiding the need for re-ingestion after clearing.
+       */
       clientWithRecordTransformer.close();
-      recordTransformer.clearInMemoryDb();
-      assertTrue(recordTransformer.isInMemoryDbEmpty());
+      recordTransformer.clearInMemoryDB();
+      assertTrue(recordTransformer.isInMemoryDBEmpty());
 
       clientWithRecordTransformer.start();
       clientWithRecordTransformer.subscribeAll().get();
@@ -417,7 +423,7 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testRecordsInDaVinciDisabledRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+  public void testRecordTransformerWithEmptyDaVinci(DaVinciConfig clientConfig) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
@@ -430,13 +436,15 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
+    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(1, true);
+
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion) -> new TestStringRecordTransformer(storeVersion, false),
+          (storeVersion) -> recordTransformer,
           String.class,
           Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
@@ -444,10 +452,14 @@ public class DaVinciClientTest {
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
-      // Test single-get access
       clientWithRecordTransformer.subscribeAll().get();
       for (int k = 1; k <= numKeys; ++k) {
+        // Record shouldn't be stored in Da Vinci
         assertNull(clientWithRecordTransformer.get(k).get());
+
+        // Record should be stored in inMemoryDB
+        String expectedValue = "a" + k + "Transformed";
+        assertEquals(recordTransformer.get(k), expectedValue);
       }
       clientWithRecordTransformer.unsubscribeAll();
     }
@@ -467,22 +479,28 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
+    TestSkipResultRecordTransformer recordTransformer = new TestSkipResultRecordTransformer(1, true);
+
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion) -> new TestSkipResultRecordTransformer(storeVersion, true),
+          (storeVersion) -> recordTransformer,
           String.class,
           Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName, clientConfig);
-
-      // Test single-get access
       clientWithRecordTransformer.subscribeAll().get();
+
+      /*
+       * Since the record transformer is skipping over every record,
+       * nothing should exist in Da Vinci or in the inMemoryDB.
+       */
+      assertTrue(recordTransformer.isInMemoryDBEmpty());
       for (int k = 1; k <= numKeys; ++k) {
         assertNull(clientWithRecordTransformer.get(k).get());
       }
@@ -522,7 +540,7 @@ public class DaVinciClientTest {
       clientWithRecordTransformer.subscribeAll().get();
       assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
 
-      // Test single-get access
+      // Records shouldn't be transformed
       for (int k = 1; k <= numKeys; ++k) {
         Object valueObj = clientWithRecordTransformer.get(k).get();
         String expectedValue = "a" + k;

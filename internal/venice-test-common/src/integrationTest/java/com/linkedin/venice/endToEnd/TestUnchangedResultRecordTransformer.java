@@ -11,18 +11,22 @@ public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransform
     super(storeVersion, storeRecordsInDaVinci);
   }
 
+  @Override
   public Schema getKeySchema() {
     return Schema.create(Schema.Type.INT);
   }
 
+  @Override
   public Schema getOutputValueSchema() {
     return Schema.create(Schema.Type.STRING);
   }
 
+  @Override
   public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
+  @Override
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     return;
   }

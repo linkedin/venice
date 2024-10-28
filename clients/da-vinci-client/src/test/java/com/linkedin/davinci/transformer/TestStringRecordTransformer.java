@@ -12,14 +12,17 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     super(storeVersion, storeRecordsInDaVinci);
   }
 
+  @Override
   public Schema getKeySchema() {
     return Schema.create(Schema.Type.INT);
   }
 
+  @Override
   public Schema getOutputValueSchema() {
     return Schema.create(Schema.Type.STRING);
   }
 
+  @Override
   public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     Object valueObj = value.get();
     String valueStr;
@@ -35,6 +38,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
+  @Override
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     return;
   }
