@@ -56,6 +56,10 @@ public interface DataWriterTaskTracker extends TaskTracker {
     return 0;
   }
 
+  default long getEmptyRecordCount() {
+    return 0;
+  }
+
   default long getTotalKeySize() {
     return 0;
   }
@@ -81,6 +85,10 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default long getWriteAclAuthorizationFailureCount() {
+    return 0;
+  }
+
+  default long getDuplicateKeyWithIdenticalValueCount() {
     return 0;
   }
 

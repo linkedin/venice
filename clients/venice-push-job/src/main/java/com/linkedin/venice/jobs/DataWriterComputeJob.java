@@ -114,7 +114,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
   protected abstract void runComputeJob();
 
   @Override
-  public void configure(VeniceProperties properties) {
+  public final void configure(VeniceProperties properties) {
     LOGGER.warn("Data writer compute job needs additional configs to be configured.");
   }
 

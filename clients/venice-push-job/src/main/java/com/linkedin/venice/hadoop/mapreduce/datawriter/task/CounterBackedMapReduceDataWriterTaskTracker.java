@@ -21,6 +21,11 @@ public class CounterBackedMapReduceDataWriterTaskTracker implements DataWriterTa
   }
 
   @Override
+  public long getEmptyRecordCount() {
+    return MRJobCounterHelper.getEmptyRecordCount(counters);
+  }
+
+  @Override
   public long getTotalKeySize() {
     return MRJobCounterHelper.getTotalKeySize(counters);
   }
@@ -53,6 +58,11 @@ public class CounterBackedMapReduceDataWriterTaskTracker implements DataWriterTa
   @Override
   public long getWriteAclAuthorizationFailureCount() {
     return MRJobCounterHelper.getWriteAclAuthorizationFailureCount(counters);
+  }
+
+  @Override
+  public long getDuplicateKeyWithIdenticalValueCount() {
+    return MRJobCounterHelper.getDuplicateKeyWithIdenticalCount(counters);
   }
 
   @Override

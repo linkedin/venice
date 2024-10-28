@@ -178,6 +178,10 @@ public class MRJobCounterHelper {
     incrAmountWithGroupCounterName(reporter, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME, amount);
   }
 
+  public static long getEmptyRecordCount(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, EMPTY_RECORD_COUNTER_NAME);
+  }
+
   public static long getWriteAclAuthorizationFailureCount(Reporter reporter) {
     return getCountWithGroupCounterName(reporter, WRITE_ACL_FAILURE_GROUP_COUNTER_NAME);
   }
@@ -214,8 +218,16 @@ public class MRJobCounterHelper {
     return getCountFromCounters(counters, OUTPUT_RECORD_COUNT_GROUP_COUNTER_NAME);
   }
 
+  public static long getEmptyRecordCount(Counters counters) {
+    return getCountFromCounters(counters, EMPTY_RECORD_COUNTER_NAME);
+  }
+
   public static long getWriteAclAuthorizationFailureCount(Counters counters) {
     return getCountFromCounters(counters, WRITE_ACL_FAILURE_GROUP_COUNTER_NAME);
+  }
+
+  public static long getDuplicateKeyWithIdenticalCount(Counters counters) {
+    return getCountFromCounters(counters, DUP_KEY_WITH_IDENTICAL_VALUE_GROUP_COUNTER_NAME);
   }
 
   public static long getDuplicateKeyWithDistinctCount(Counters counters) {
