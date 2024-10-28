@@ -20,14 +20,17 @@ public class DaVinciConfigTest {
       super(storeVersion, storeRecordsInDaVinci);
     }
 
+    @Override
     public Schema getKeySchema() {
       return Schema.create(Schema.Type.INT);
     }
 
+    @Override
     public Schema getOutputValueSchema() {
       return Schema.create(Schema.Type.INT);
     }
 
+    @Override
     public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value) {
       return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, value.get() + 1);
     }
