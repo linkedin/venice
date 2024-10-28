@@ -117,15 +117,6 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void testRecordTransformerWithIngestionIsolation() {
-    ClientConfig clientConfig = mock(ClientConfig.class);
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setIsolated(true);
-
-    assertThrows(VeniceClientException.class, () -> setUpClientWithRecordTransformer(clientConfig, daVinciConfig));
-  }
-
-  @Test
   public void testRecordTransformerClientValueClassMismatch() throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = mock(ClientConfig.class);
     when(clientConfig.getStoreName()).thenReturn("test_store");
@@ -134,6 +125,15 @@ public class AvroGenericDaVinciClientTest {
 
     AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
     assertThrows(VeniceClientException.class, () -> dvcClient.start());
+  }
+
+  @Test
+  public void testRecordTransformerWithIngestionIsolation() {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setIsolated(true);
+
+    assertThrows(VeniceClientException.class, () -> setUpClientWithRecordTransformer(clientConfig, daVinciConfig));
   }
 
   @Test
