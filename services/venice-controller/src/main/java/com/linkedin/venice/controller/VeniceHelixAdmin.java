@@ -6548,6 +6548,38 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return model.isLeader();
   }
 
+  @Override
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      List<String> instances,
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled) {
+    InstanceRemovableStatuses statuses = new InstanceRemovableStatuses();
+
+    // If current controller is not the leader, redirect with leader URL
+    if (!isLeaderControllerFor(cluster)) {
+      statuses.setRedirectUrl(getLeaderController(cluster).getUrl(isSSLEnabled));
+      return statuses;
+    }
+
+    Map<String, String> nonStoppableInstances = new HashMap<>();
+    List<String> stoppableInstances = new ArrayList<>();
+    statuses.setNonStoppableInstancesWithReasons(nonStoppableInstances);
+    statuses.setStoppableInstances(stoppableInstances);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(cluster);
+
+    List<NodeRemovableResult> removableResults =
+        InstanceStatusDecider.getInstanceStoppableStatuses(resources, cluster, instances, toBeStoppedInstances);
+    for (NodeRemovableResult nodeRemovableResult: removableResults) {
+      if (nodeRemovableResult.isRemovable()) {
+        stoppableInstances.add(nodeRemovableResult.getInstanceId());
+      } else {
+        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getBlockingReason());
+      }
+    }
+    return statuses;
+  }
+
   /**
    * Calculate number of partition for given store.
    */

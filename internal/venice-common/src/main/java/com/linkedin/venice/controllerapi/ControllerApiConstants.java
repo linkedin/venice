@@ -25,7 +25,12 @@ public class ControllerApiConstants {
   public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
-  public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
+
+  // We need the following 3 constants for Helix API aggregatedHealthStatus
+  public static final String CLUSTER_ID = "cluster_id";
+  public static final String INSTANCES = "instances";
+  public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
+
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
@@ -239,4 +244,6 @@ public class ControllerApiConstants {
 
   public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
   public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
+
+  public static final String AGGR_HEALTH_STATUS_URI = "/aggregatedHealthStatus";
 }

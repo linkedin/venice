@@ -573,6 +573,9 @@ public class AdminTool {
         case EXTRACT_VENICE_ZK_PATHS:
           extractVeniceZKPaths(cmd);
           break;
+        case AGGREGATED_HEALTH_STATUS:
+          getAggregatedHealthStatus(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -3094,6 +3097,18 @@ public class AdminTool {
         getRequiredArgument(cmd, Arg.OUTFILE),
         clusterNames,
         getRequiredArgument(cmd, Arg.BASE_PATH));
+  }
+
+  private static void getAggregatedHealthStatus(CommandLine cmd) throws JsonProcessingException {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String instances = getRequiredArgument(cmd, Arg.INSTANCES);
+    String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
+    ControllerResponse response = controllerClient.getAggregatedHealthStatus(
+        clusterName,
+        Utils.parseCommaSeparatedStringToList(instances),
+        Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
+    printObject(response);
+
   }
 
   private static void configureStoreView(CommandLine cmd) {
