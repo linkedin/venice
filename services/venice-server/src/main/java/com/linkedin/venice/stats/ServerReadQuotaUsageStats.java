@@ -65,15 +65,17 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   }
 
   public void setCurrentVersion(int version) {
-    if (version == currentVersion.get()) {
+    int oldCurrentVersion = currentVersion.get();
+    if (version == oldCurrentVersion) {
       // Defensive coding since set current version can be called multiple times with the same current version
       return;
     }
-    int oldCurrentVersion = currentVersion.getAndSet(version);
-    // Old current version becomes the backup. This should work even if:
-    // a) we rolled back current version
-    // b) current version used to be 0
-    backupVersion.set(oldCurrentVersion);
+    if (currentVersion.compareAndSet(oldCurrentVersion, version)) {
+      // Old current version becomes the backup. This should work even if:
+      // a) we rolled back current version
+      // b) current version used to be 0
+      backupVersion.set(oldCurrentVersion);
+    }
   }
 
   public void removeVersion(int version) {

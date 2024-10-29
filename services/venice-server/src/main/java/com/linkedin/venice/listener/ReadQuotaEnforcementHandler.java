@@ -301,6 +301,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    */
   private void updateQuota(PartitionAssignment partitionAssignment) {
     String topic = partitionAssignment.getTopic();
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int version = Version.parseVersionFromKafkaTopicName(topic);
     if (partitionAssignment.getAllPartitions().isEmpty()) {
       LOGGER.warn(
           "QuotaEnforcementHandler updated with an empty partition map for topic: {}. Skipping update process",
@@ -313,11 +315,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: {}",
           topic);
       storeVersionRateLimiters.remove(topic);
-      stats.getStoreStats(Version.parseStoreFromKafkaTopicName(topic))
-          .removeVersion(Version.parseVersionFromKafkaTopicName(topic));
+      stats.getStoreStats(storeName).removeVersion(version);
       return;
     }
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
     long quotaInRcu = storeRepository.getStore(storeName).getReadQuotaInCU();
     storeVersionRateLimiters.compute(topic, (k, v) -> {
       VeniceRateLimiter rateLimiter = getRateLimiter(
@@ -331,10 +331,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           clock);
 
       if (rateLimiter != v) {
-        stats.setNodeQuotaResponsibility(
-            storeName,
-            Version.parseVersionFromKafkaTopicName(topic),
-            (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
+        stats
+            .setNodeQuotaResponsibility(storeName, version, (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
       }
       return rateLimiter;
     });
