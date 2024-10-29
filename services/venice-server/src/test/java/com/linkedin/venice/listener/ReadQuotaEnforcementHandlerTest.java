@@ -482,6 +482,7 @@ public class ReadQuotaEnforcementHandlerTest {
     String storeName = Utils.getUniqueString("test-store");
     ServerReadQuotaUsageStats storeStats = mock(ServerReadQuotaUsageStats.class);
     doReturn(storeStats).when(stats).getStoreStats(storeName);
+    doReturn(storeStats).when(stats).getNullableStoreStats(storeName);
     int currentVersion = 1;
     String topic = Version.composeKafkaTopic(storeName, currentVersion);
     String nextTopic = Version.composeKafkaTopic(storeName, currentVersion + 1);
@@ -573,6 +574,8 @@ public class ReadQuotaEnforcementHandlerTest {
     verify(stats, times(expectedAllowedCount - 1)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
     verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
     verify(stats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
+    quotaEnforcementHandler.onRoutingDataDeleted(nextTopic);
+    verify(storeStats, atLeastOnce()).removeVersion(eq(currentVersion + 1));
   }
 
   @DataProvider(name = "Enable-Grpc-Test-Boolean")

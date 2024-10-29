@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
@@ -383,8 +384,11 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {
     storeVersionRateLimiters.remove(kafkaTopic);
-    stats.getStoreStats(Version.parseStoreFromKafkaTopicName(kafkaTopic))
-        .removeVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+    ServerReadQuotaUsageStats storeStats =
+        stats.getNullableStoreStats(Version.parseStoreFromKafkaTopicName(kafkaTopic));
+    if (storeStats != null) {
+      storeStats.removeVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+    }
   }
 
   @Override
@@ -472,8 +476,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     for (String topic: topicsToRemove) {
       customizedViewRepository.unSubscribeRoutingDataChange(topic, this);
       storeVersionRateLimiters.remove(topic);
-      stats.getStoreStats(Version.parseStoreFromKafkaTopicName(topic))
-          .removeVersion(Version.parseVersionFromKafkaTopicName(topic));
+      ServerReadQuotaUsageStats storeStats = stats.getNullableStoreStats(Version.parseStoreFromKafkaTopicName(topic));
+      if (storeStats != null) {
+        storeStats.removeVersion(Version.parseVersionFromKafkaTopicName(topic));
+      }
     }
   }
 

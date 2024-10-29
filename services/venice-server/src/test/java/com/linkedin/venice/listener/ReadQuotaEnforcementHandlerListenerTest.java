@@ -126,6 +126,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     Store store1 = getDummyStore("store1", Arrays.asList(new Integer[] { 1 }), 10);
     ServerReadQuotaUsageStats storeStats = mock(ServerReadQuotaUsageStats.class);
     doReturn(storeStats).when(stats).getStoreStats("store1");
+    doReturn(storeStats).when(stats).getNullableStoreStats("store1");
     store1.setCurrentVersion(1);
     quotaEnforcer.handleStoreCreated(store1);
     assertTrue(
@@ -141,6 +142,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     Store store2 = getDummyStore("store2", versions, 10);
     ServerReadQuotaUsageStats storeStats2 = mock(ServerReadQuotaUsageStats.class);
     doReturn(storeStats2).when(stats).getStoreStats("store2");
+    doReturn(storeStats2).when(stats).getNullableStoreStats("store2");
     store2.setCurrentVersion(3);
     quotaEnforcer.handleStoreCreated(store2);
     assertTrue(
