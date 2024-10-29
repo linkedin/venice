@@ -50,10 +50,10 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
       int producerQueueSize,
       Supplier<PubSubProducerAdapter> producerAdapterSupplier) {
     if (producerThreadCount <= 1) {
-      throw new VeniceException("'producerThreadCount' should be larger than 1");
+      throw new VeniceException("'producerThreadCount' should be larger than 1, but got " + producerThreadCount);
     }
     if (producerQueueSize <= 2 * 1024 * 1024) {
-      throw new VeniceException("'producerQueueSize' should be larger than 2MB");
+      throw new VeniceException("'producerQueueSize' should be larger than 2MB, but got " + producerQueueSize);
     }
     LOGGER.info(
         "Initializing a 'PubSubProducerAdapterConcurrentDelegator' instance for topic: {} with thread"

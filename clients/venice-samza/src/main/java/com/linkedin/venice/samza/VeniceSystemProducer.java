@@ -372,6 +372,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.putAll(additionalWriterConfigs);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
     return getVeniceWriter(store, veniceWriterProperties);
   }
@@ -385,7 +386,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       builder.setProducerThreadCount(producerThreadCount);
       if (producerThreadCount > 1) {
         /**
-         * Try to limit the producer buffer if this config is specified to reduce the total Kafka producer memory usage.
+         * Try to limit the producer buffer if the following config is not specified to reduce the total Kafka producer memory usage.
          */
         String kafkaBufferConfig = veniceWriterProperties.getProperty(KAFKA_BUFFER_MEMORY);
         if (kafkaBufferConfig == null) {
