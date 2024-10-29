@@ -47,6 +47,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -89,6 +96,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -131,6 +145,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -173,6 +194,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -215,6 +243,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -257,6 +292,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -299,6 +341,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -341,6 +390,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -383,6 +439,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -425,6 +488,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -467,6 +537,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -509,6 +586,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -551,6 +635,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -593,6 +684,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -635,6 +733,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -677,6 +782,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -719,6 +831,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -761,6 +880,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -803,6 +929,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -845,6 +978,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -887,6 +1027,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -929,6 +1076,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -971,6 +1125,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1013,6 +1174,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1055,6 +1223,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1097,6 +1272,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1139,6 +1321,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1181,6 +1370,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1223,6 +1419,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1265,6 +1468,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1307,6 +1517,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1350,6 +1567,13 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Test Reports
+        if: success() || failure()
+        uses: dorny/test-reporter@v1.9.1
+        with:
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
