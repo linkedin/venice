@@ -20,6 +20,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -91,6 +93,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -304,7 +307,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
-  private final DaVinciRecordTransformer recordTransformer;
+  private DaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -348,7 +351,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       Queue<VeniceNotifier> notifiers) {
     this.storeConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
@@ -443,16 +446,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
-    // Ensure getRecordTransformer does not return null
-    DaVinciRecordTransformer clientRecordTransformer =
-        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
-    this.recordTransformer =
-        clientRecordTransformer != null ? new BlockingDaVinciRecordTransformer(clientRecordTransformer) : null;
-    if (this.recordTransformer != null) {
+    if (recordTransformerFunction != null) {
+      DaVinciRecordTransformer clientRecordTransformer = recordTransformerFunction.apply(versionNumber);
+      this.recordTransformer = new BlockingDaVinciRecordTransformer(
+          clientRecordTransformer,
+          clientRecordTransformer.getStoreRecordsInDaVinci());
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
+
+      // onStartVersionIngestion called here instead of run() because this needs to finish running
+      // before bootstrapping starts
+      long startTime = System.currentTimeMillis();
+      recordTransformer.onStartVersionIngestion();
+      long endTime = System.currentTimeMillis();
+      versionedIngestionStats.recordTransformerLifecycleStartLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromMsToMs(startTime),
+          endTime);
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -583,8 +596,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
+    int partitionNumber = topicPartition.getPartitionNumber();
+
+    if (recordTransformer != null) {
+      recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
+    }
+
+    partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
     consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
   }
@@ -1526,17 +1544,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
-
-      if (recordTransformer != null) {
-        long startTime = System.currentTimeMillis();
-        recordTransformer.onStartIngestionTask();
-        long endTime = System.currentTimeMillis();
-        versionedIngestionStats.recordTransformerLifecycleStartLatency(
-            storeName,
-            versionNumber,
-            LatencyUtils.getElapsedTimeFromMsToMs(startTime),
-            endTime);
-      }
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
@@ -3491,20 +3498,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Check if put.getSchemaId is positive, if not default to 1
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
-        // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
-          long recordTransformStartTime = System.currentTimeMillis();
+          long recordTransformerStartTime = System.currentTimeMillis();
           ByteBuffer valueBytes = put.getPutValue();
           Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+          Lazy<RecordDeserializer> recordDeserializer =
+              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema));
 
-          // Decompress/assemble record
-          Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+          ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
               putSchemaId,
               keyBytes,
               valueBytes,
               consumerRecord.getOffset(),
-              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
               putSchemaId,
               compressor.get());
 
@@ -3515,25 +3521,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
+          Lazy<Object> lazyValue = Lazy.of(() -> {
+            try {
+              ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
+              return recordDeserializer.get().deserialize(decompressedAssembledObject);
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
+          });
 
-          Object transformedRecord = null;
+          DaVinciRecordTransformerResult transformerResult;
           try {
-            transformedRecord = recordTransformer.put(lazyKey, lazyValue);
+            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
           } catch (Exception e) {
             versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
             String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }
-          ByteBuffer transformedBytes =
-              recordTransformer.getValueBytes(recordTransformer.getValueOutputSchema(), transformedRecord);
+
+          // Record was skipped, so don't write to storage engine
+          if (transformerResult == null
+              || transformerResult.getResult() == DaVinciRecordTransformerResult.Result.SKIP) {
+            return 0;
+          }
+
+          ByteBuffer transformedBytes;
+          if (transformerResult.getResult() == DaVinciRecordTransformerResult.Result.UNCHANGED) {
+            // Use original value if the record wasn't transformed
+            transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, putSchemaId);
+          } else {
+            // Serialize and compress the new record if it was transformed
+            transformedBytes =
+                recordTransformer.prependSchemaIdToHeader(transformerResult.getValue(), putSchemaId, compressor.get());
+          }
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getElapsedTimeFromMsToMs(recordTransformStartTime),
+              LatencyUtils.getElapsedTimeFromMsToMs(recordTransformerStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
         } else {
@@ -3565,6 +3592,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           keyBytes = leaderProducedRecordContext.getKeyBytes();
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
+
+        if (recordTransformer != null) {
+          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          recordTransformer.processDelete(lazyKey);
+
+          // This is called here after processDelete because if the user stores their data somewhere other than
+          // Da Vinci, this function needs to execute to allow them to delete the data from the appropriate store
+          if (!recordTransformer.getStoreRecordsInDaVinci()) {
+            // If we're not storing in Da Vinci, then no need to try to delete from the storageEngine
+            break;
+          }
+        }
+
         keyLen = keyBytes.length;
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
@@ -3840,7 +3881,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();
-      recordTransformer.onEndIngestionTask();
+      recordTransformer.onEndVersionIngestion();
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleEndLatency(
           storeName,

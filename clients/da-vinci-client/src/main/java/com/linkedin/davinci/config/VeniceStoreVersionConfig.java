@@ -1,5 +1,6 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.RECORD_TRANSFORMER_VALUE_SCHEMA;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ENABLE_BLOB_TRANSFER;
 
@@ -44,6 +45,7 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
     // Stores all storage engine configs that are needed to be persisted to disk.
     this.persistStorageEngineConfigs = new PropertyBuilder()
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled())
+        .put(RECORD_TRANSFORMER_VALUE_SCHEMA, getRocksDBServerConfig().getTransformerValueSchema())
         .build();
   }
 

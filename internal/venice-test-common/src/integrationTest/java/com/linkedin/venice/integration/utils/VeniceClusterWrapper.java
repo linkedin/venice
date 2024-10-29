@@ -1006,7 +1006,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Stream<Map.Entry> batchData,
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator) {
-    return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData, CompressionStrategy.NO_OP, null);
+    return createStore(
+        DEFAULT_KEY_SCHEMA,
+        DEFAULT_VALUE_SCHEMA,
+        batchData,
+        compressionStrategy,
+        compressionDictionaryGenerator);
   }
 
   public String createStore(int keyCount, GenericRecord record) {
