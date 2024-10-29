@@ -29,6 +29,7 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.mock;
@@ -98,6 +99,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -274,6 +276,47 @@ public class DaVinciClientTest {
       for (int k = 1; k <= numKeys; ++k) {
         Object valueObj = clientWithRecordTransformer.get(k).get();
         String expectedValue = "a" + k + "Transformed";
+        assertEquals(valueObj.toString(), expectedValue);
+      }
+      clientWithRecordTransformer.unsubscribeAll();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
+  public void testTypeChangeRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+    String storeName = Utils.getUniqueString("test-store");
+    boolean pushStatusStoreEnabled = false;
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    int numKeys = 10;
+
+    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, numKeys);
+
+    VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
+    MetricsRepository metricsRepository = new MetricsRepository();
+
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+          (storeVersion) -> new TestIntToStringRecordTransformer(storeVersion, true),
+          String.class,
+          Schema.create(Schema.Type.STRING));
+      clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+
+      DaVinciClient<Integer, String> clientWithRecordTransformer =
+          factory.getAndStartGenericAvroClient(storeName, clientConfig, String.class);
+
+      // Test non-existent key access
+      clientWithRecordTransformer.subscribeAll().get();
+      assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
+
+      // Test single-get access
+      for (int k = 1; k <= numKeys; ++k) {
+        Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
       }
       clientWithRecordTransformer.unsubscribeAll();
@@ -1535,6 +1578,11 @@ public class DaVinciClientTest {
     }
   }
 
+  /*
+   * Batch data schema:
+   * Key: Integer
+   * Value: String
+   */
   private void setUpStore(
       String storeName,
       Consumer<UpdateStoreQueryParams> paramsConsumer,
@@ -1542,42 +1590,27 @@ public class DaVinciClientTest {
     setUpStore(storeName, paramsConsumer, propertiesConsumer, false);
   }
 
+  /*
+   * Batch data schema:
+   * Key: Integer
+   * Value: String
+   */
   private void setUpStore(
       String storeName,
       Consumer<UpdateStoreQueryParams> paramsConsumer,
       Consumer<Properties> propertiesConsumer,
-      boolean useDVCPushStatusStore) throws Exception {
-    // Produce input data.
-    writeSimpleAvroFileWithIntToStringSchema(inputDir);
+      boolean useDVCPushStatusStore) {
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
-    // Setup VPJ job properties.
-    Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
-    propertiesConsumer.accept(vpjProperties);
-    // Create & update store for test.
-    final int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions);
-    paramsConsumer.accept(params);
-
-    try (ControllerClient controllerClient =
-        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
-      cluster.createMetaSystemStore(storeName);
-      if (useDVCPushStatusStore) {
-        cluster.createPushStatusSystemStore(storeName);
+    Runnable writeAvroFileRunnable = () -> {
+      try {
+        writeSimpleAvroFileWithIntToStringSchema(inputDir);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
       }
-      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-      runVPJ(vpjProperties, 1, cluster);
-    }
-  }
-
-  private void setUpStore(
-      String storeName,
-      boolean useDVCPushStatusStore,
-      boolean chunkingEnabled,
-      CompressionStrategy compressionStrategy,
-      String customValue,
-      int numKeys) throws Exception {
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
+    };
+    String valueSchema = "\"string\"";
     setUpStore(
         storeName,
         paramsConsumer,
@@ -1585,8 +1618,73 @@ public class DaVinciClientTest {
         useDVCPushStatusStore,
         chunkingEnabled,
         compressionStrategy,
-        customValue,
-        numKeys);
+        writeAvroFileRunnable,
+        valueSchema);
+  }
+
+  /*
+   * Batch data schema:
+   * Key: Integer
+   * Value: String
+   */
+  private void setUpStore(
+      String storeName,
+      boolean useDVCPushStatusStore,
+      boolean chunkingEnabled,
+      CompressionStrategy compressionStrategy,
+      String customValue,
+      int numKeys) {
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    Runnable writeAvroFileRunnable = () -> {
+      try {
+        writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    };
+    String valueSchema = "\"string\"";
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        useDVCPushStatusStore,
+        chunkingEnabled,
+        compressionStrategy,
+        writeAvroFileRunnable,
+        valueSchema);
+  }
+
+  /*
+   * Batch data schema:
+   * Key: Integer
+   * Value: Integer
+   */
+  private void setUpStore(
+      String storeName,
+      boolean useDVCPushStatusStore,
+      boolean chunkingEnabled,
+      CompressionStrategy compressionStrategy,
+      int numKeys) {
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    Consumer<Properties> propertiesConsumer = properties -> {};
+    Runnable writeAvroFileRunnable = () -> {
+      try {
+        writeSimpleAvroFileWithIntToIntSchema(inputDir, numKeys);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    };
+    String valueSchema = "\"int\"";
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        useDVCPushStatusStore,
+        chunkingEnabled,
+        compressionStrategy,
+        writeAvroFileRunnable,
+        valueSchema);
   }
 
   private void setUpStore(
@@ -1596,10 +1694,10 @@ public class DaVinciClientTest {
       boolean useDVCPushStatusStore,
       boolean chunkingEnabled,
       CompressionStrategy compressionStrategy,
-      String customValue,
-      int numKeys) throws Exception {
+      Runnable writeAvroFileRunnable,
+      String valueSchema) {
     // Produce input data.
-    writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
+    writeAvroFileRunnable.run();
 
     // Setup VPJ job properties.
     Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
@@ -1613,7 +1711,7 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
 
     try (ControllerClient controllerClient =
-        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
+        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, valueSchema, vpjProperties)) {
       cluster.createMetaSystemStore(storeName);
       if (useDVCPushStatusStore) {
         cluster.createPushStatusSystemStore(storeName);
