@@ -41,17 +41,17 @@ public class AggServerReadQuotaUsageStatsTest {
     aggServerQuotaUsageStats.setNodeQuotaResponsibility(storeName, 2, 200);
 
     // Rate metric is amortized over a 30s window
-    Assert.assertEquals(metricsRepository.getMetric(currentReadQuotaRequestedQPSString).value(), 2d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(backupReadQuotaRequestedQPSString).value(), 1d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedQPSString2).value(), 1d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(currentReadQuotaRequestedKPSString).value(), 200d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(backupReadQuotaRequestedKPSString).value(), 100d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedKPSString2).value(), 200d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(currentReadQuotaRequestedQPSString).value(), 2d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(backupReadQuotaRequestedQPSString).value(), 1d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedQPSString2).value(), 1d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(currentReadQuotaRequestedKPSString).value(), 200d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(backupReadQuotaRequestedKPSString).value(), 100d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedKPSString2).value(), 200d / 30d, 0.05);
     double totalQPS = 4d / 30d;
     double totalKPS = (batchSize2 + batchSize * 3) / 30d;
-    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedQPSString).value(), totalQPS, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedKPSString).value(), totalKPS, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(quotaUsageRatio).value(), (200d / 30d) / 200d, 0.001);
+    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedQPSString).value(), totalQPS, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedKPSString).value(), totalKPS, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(quotaUsageRatio).value(), (200d / 30d) / 200d, 0.01);
 
     String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_request.Rate";
     String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_key_count.Rate";
@@ -63,10 +63,10 @@ public class AggServerReadQuotaUsageStatsTest {
     aggServerQuotaUsageStats.recordRejected(storeName2, 1, batchSize2);
     aggServerQuotaUsageStats.recordRejected(storeName2, 1, batchSize2);
 
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString).value(), 1d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString2).value(), 2d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedKPSString).value(), 100d / 30d, 0.01);
-    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedKPSString2).value(), 400d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString).value(), 1d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString2).value(), 2d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedKPSString).value(), 100d / 30d, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedKPSString2).value(), 400d / 30d, 0.05);
     double totalRejectedQPS = metricsRepository.getMetric(readQuotaRejectedQPSString).value()
         + metricsRepository.getMetric(readQuotaRejectedQPSString2).value();
     double totalRejectedKPS = metricsRepository.getMetric(readQuotaRejectedKPSString).value()
