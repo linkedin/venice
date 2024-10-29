@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
 
@@ -375,6 +376,29 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return getVeniceWriter(store, veniceWriterProperties);
   }
 
+  protected static void extractConcurrentProducerConfig(
+      Properties veniceWriterProperties,
+      VeniceWriterOptions.Builder builder) {
+    String producerThreadCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_THREAD_COUNT);
+    if (producerThreadCountProp != null) {
+      int producerThreadCount = Integer.parseInt(producerThreadCountProp);
+      builder.setProducerThreadCount(producerThreadCount);
+      if (producerThreadCount > 1) {
+        /**
+         * Try to limit the producer buffer if this config is specified to reduce the total Kafka producer memory usage.
+         */
+        String kafkaBufferConfig = veniceWriterProperties.getProperty(KAFKA_BUFFER_MEMORY);
+        if (kafkaBufferConfig == null) {
+          veniceWriterProperties.put(KAFKA_BUFFER_MEMORY, "8388608"); // 8MB
+        }
+      }
+    }
+    String producerQueueSizeProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_QUEUE_SIZE);
+    if (producerQueueSizeProp != null) {
+      builder.setProducerQueueSize(Integer.parseInt(producerQueueSizeProp));
+    }
+  }
+
   /**
    * Please don't remove this method since it is still being used by LinkedIn internally.
    */
@@ -394,13 +418,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     partitionerProperties.putAll(store.getPartitionerParams());
     VenicePartitioner venicePartitioner =
         PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), new VeniceProperties(partitionerProperties));
-    return constructVeniceWriter(
-        veniceWriterProperties,
-        new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)
-            .setPartitioner(venicePartitioner)
-            .setPartitionCount(partitionCount)
-            .setChunkingEnabled(isChunkingEnabled)
-            .build());
+    VeniceWriterOptions.Builder builder = new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)
+        .setPartitioner(venicePartitioner)
+        .setPartitionCount(partitionCount)
+        .setChunkingEnabled(isChunkingEnabled);
+    extractConcurrentProducerConfig(veniceWriterProperties, builder);
+    return constructVeniceWriter(veniceWriterProperties, builder.build());
   }
 
   // trickery for unit testing

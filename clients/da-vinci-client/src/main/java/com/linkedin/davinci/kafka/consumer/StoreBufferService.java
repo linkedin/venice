@@ -9,14 +9,13 @@ import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.ProtocolUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.Update;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -457,31 +456,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
       // N.B.: This is just an estimate. TODO: Consider if it is really useful, and whether to get rid of it.
       return this.consumerRecord.getKey().getEstimatedObjectSizeOnHeap()
-          + getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue()) + QUEUE_NODE_OVERHEAD_IN_BYTE;
-    }
-
-    private int getEstimateOfMessageEnvelopeSizeOnHeap(KafkaMessageEnvelope messageEnvelope) {
-      int kmeBaseOverhead = 100; // Super rough estimate. TODO: Measure with a more precise library and store statically
-      switch (MessageType.valueOf(messageEnvelope)) {
-        case PUT:
-          Put put = (Put) messageEnvelope.payloadUnion;
-          int size = put.putValue.capacity();
-          if (put.replicationMetadataPayload != null
-              /**
-               * N.B.: When using the {@link org.apache.avro.io.OptimizedBinaryDecoder}, the {@link put.putValue} and the
-               *       {@link put.replicationMetadataPayload} will be backed by the same underlying array. If that is the
-               *       case, then we don't want to account for the capacity twice.
-               */
-              && put.replicationMetadataPayload.array() != put.putValue.array()) {
-            size += put.replicationMetadataPayload.capacity();
-          }
-          return size + kmeBaseOverhead;
-        case UPDATE:
-          Update update = (Update) messageEnvelope.payloadUnion;
-          return update.updateValue.capacity() + kmeBaseOverhead;
-        default:
-          return kmeBaseOverhead;
-      }
+          + ProtocolUtils.getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue())
+          + QUEUE_NODE_OVERHEAD_IN_BYTE;
     }
 
     @Override

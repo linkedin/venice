@@ -185,6 +185,7 @@ import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import io.netty.channel.WriteBufferWaterMark;
 import java.io.File;
@@ -269,14 +270,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   /**
    * Considering the consumer thread could put various sizes of messages into the shared queue, the internal
-   * {@link com.linkedin.davinci.kafka.consumer.MemoryBoundBlockingQueue} won't notify the waiting thread (consumer thread)
+   * {@link MemoryBoundBlockingQueue} won't notify the waiting thread (consumer thread)
    * right away when some message gets processed until the freed memory hit the follow config: {@link #storeWriterBufferNotifyDelta}.
    * The reason behind this design:
    * When the buffered queue is full, and the processing thread keeps processing small message, the bigger message won't
    * have chance to get queued into the buffer since the memory freed by the processed small message is not enough to
    * fit the bigger message.
    *
-   * With this delta config, {@link com.linkedin.davinci.kafka.consumer.MemoryBoundBlockingQueue} will guarantee some fairness
+   * With this delta config, {@link MemoryBoundBlockingQueue} will guarantee some fairness
    * among various sizes of messages when buffered queue is full.
    *
    * When tuning this config, we need to consider the following tradeoffs:

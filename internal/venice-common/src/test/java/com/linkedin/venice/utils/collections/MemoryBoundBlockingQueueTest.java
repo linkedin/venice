@@ -1,4 +1,4 @@
-package com.linkedin.davinci.kafka.consumer;
+package com.linkedin.venice.utils.collections;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.utils.TestUtils;
