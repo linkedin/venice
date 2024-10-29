@@ -40,6 +40,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
@@ -931,6 +932,22 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         ArrayList<StoreInfo> response = admin.getClusterStores(cluster);
+        veniceResponse.setStoreInfoList(response);
+        veniceResponse.setCluster(cluster);
+      }
+    };
+  }
+
+  /**
+   * @see Admin#getStoresForCompaction(String)
+   */
+  public Route getStoresForCompaction(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreInfoResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_STORES_FOR_COMPACTION.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        ArrayList<StoreInfo> response = admin.getStoresForCompaction(cluster);
         veniceResponse.setStoreInfoList(response);
         veniceResponse.setCluster(cluster);
       }

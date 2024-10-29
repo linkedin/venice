@@ -1156,6 +1156,16 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORES_IN_CLUSTER, params, MultiStoreInfoResponse.class);
   }
 
+  /**
+   * This method gets a list of store names that are ready for compaction.
+   * @param clusterName, the name of the cluster to query for compaction eligible stores
+   * @return The list of store names that are ready for compaction.
+   */
+  public MultiStoreInfoResponse getStoresForCompaction(String clusterName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(ControllerRoute.GET_STORES_FOR_COMPACTION, params, MultiStoreInfoResponse.class);
+  }
+
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
     QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);

@@ -4802,6 +4802,70 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * TODO: description
+   * @param clusterName, the name of the cluster to search for stores that are ready for compaction
+   * @return a list of StoreInfo objects on stores that are ready for compaction
+   */
+  @Override
+  public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
+    ArrayList<StoreInfo> compactReadyStores = new ArrayList<>();
+    try {
+      Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
+
+      // iterate through child controllers
+      for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+
+        // add all store info to storeInfoList
+        MultiStoreInfoResponse response = controller.getValue().getClusterStores(clusterName);
+        storeInfoList.addAll(response.getStoreInfoList());
+      }
+
+      // filter out
+      for (StoreInfo storeInfo: storeInfoList) {
+        if (isCompactionReady(storeInfo)) {
+          compactReadyStores.add(storeInfo);
+        }
+      }
+    } catch (Exception e) {
+      throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
+    }
+    return compactReadyStores;
+  }
+
+  private boolean isCompactionReady(StoreInfo storeInfo) {
+    return isHybridStore(storeInfo) && isLastCompactionTimeOlderThanThresholdHours(24, storeInfo); // TODO: where to
+                                                                                                   // store log
+                                                                                                   // compaction
+                                                                                                   // threshold?
+  }
+
+  private boolean isHybridStore(StoreInfo storeInfo) {
+    return storeInfo.getHybridStoreConfig() != null;
+  }
+
+  /**
+   * This function will check if the last compaction time is older than the threshold.
+   * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
+   * @param storeInfo, the store to check the last compaction time for
+   * @return true if the last compaction time is older than the threshold, false otherwise
+   */
+  private boolean isLastCompactionTimeOlderThanThresholdHours(int compactionThresholdHours, StoreInfo storeInfo) {
+    // get the last compaction time
+    int currentVersionNumber = storeInfo.getCurrentVersion();
+    Optional<Version> currentVersion = storeInfo.getVersion(currentVersionNumber);
+    if (!currentVersion.isPresent()) {
+      throw new RuntimeException(
+          "Couldn't find current version: " + currentVersionNumber + " from store: " + storeInfo.getName());
+    }
+
+    long lastCompactionTimestamp = currentVersion.get().getCreatedTime();
+
+    // todo: calculate created time and diff
+    return true;// todo: placeholder
+  }
+
+  /**
    * @return the largest used version number for the given store from the store graveyard.
    */
   @Override

@@ -60,6 +60,7 @@ import org.apache.avro.Schema;
 
 
 public interface Admin extends AutoCloseable, Closeable {
+
   // Wrapper to include both overall offline push status and other extra useful info
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;
@@ -934,6 +935,12 @@ public interface Admin extends AutoCloseable, Closeable {
   ArrayList<StoreInfo> getClusterStores(String clusterName);
 
   Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
+
+  /**
+   * @param clusterName
+   * @return the list of stores ready for compaction
+   */
+  ArrayList<StoreInfo> getStoresForCompaction(String clusterName);
 
   /**
    * @return the largest used version number for the given store from store graveyard.

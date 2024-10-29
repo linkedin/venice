@@ -7468,6 +7468,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
+  public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
+    throw new UnsupportedOperationException("This function has no implementation.");
+  }
+
+  @Override
   public Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
       String storeName,
