@@ -109,7 +109,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    * Listeners may use this callback to clean up lingering state they may be holding about a consumer.
    */
   interface UnsubscriptionListener {
-    void call(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition);
+    void call(SharedKafkaConsumer consumer, PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition);
   }
 
   protected synchronized void updateCurrentAssignment(Set<PubSubTopicPartition> newAssignment) {
@@ -155,8 +155,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
     unSubscribeAction(() -> {
       this.delegate.unSubscribe(pubSubTopicPartition);
-      subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
-      unsubscriptionListener.call(this, pubSubTopicPartition);
+      PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+      unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       return Collections.singleton(pubSubTopicPartition);
     });
   }
@@ -166,8 +166,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     unSubscribeAction(() -> {
       this.delegate.batchUnsubscribe(pubSubTopicPartitionSet);
       for (PubSubTopicPartition pubSubTopicPartition: pubSubTopicPartitionSet) {
-        subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
-        unsubscriptionListener.call(this, pubSubTopicPartition);
+        PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+        unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       }
       return pubSubTopicPartitionSet;
     });

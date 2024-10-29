@@ -173,7 +173,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   /** May be overridden to clean up state in sub-classes */
-  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition topicPartition) {
+  void handleUnsubscription(
+      SharedKafkaConsumer consumer,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition topicPartition) {
   }
 
   private String getUniqueClientId(String kafkaUrl, int suffix) {

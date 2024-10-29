@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -20,16 +21,20 @@ import org.apache.logging.log4j.LogManager;
 
 
 /**
- * {@link StoreAwarePartitionWiseKafkaConsumerService} is used to allocate share consumer from consumer pool at partition granularity.
- * One shared consumer may have multiple topics, and each topic may have multiple consumers.
+ * {@link StoreAwarePartitionWiseKafkaConsumerService} is used to allocate share consumer from consumer pool at partition
+ * granularity. One shared consumer may have multiple topics, and each topic may have multiple consumers.
  * This is store-aware version of topic-wise shared consumer service. The topic partition assignment in this service has
- * a heuristic that we should distribute the all the subscriptions related to a same store as even as possible.
- * The load calculation for each consumer will be consumer assignment size + STORE_SUBSCRIPTION_LOAD * subscription count
- * that belongs to the same store, and we will pick the least loaded consumer for a new topic partition request.
+ * a heuristic that we should distribute the all the subscriptions related to a same store / version as even as possible.
+ * The load calculation for each consumer will be:
+ * Hybrid store: Consumer assignment size + STORE_SUBSCRIPTION_LOAD * subscription count for the same store;
+ * Batch only store: Consumer assignment size + STORE_SUBSCRIPTION_LOAD * subscription count for the same store version;
+ * and we will pick the least loaded consumer for a new topic partition request.
  */
 public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKafkaConsumerService {
   private static final long DEFAULT_STORE_SUBSCRIPTION_LOAD = 100;
-  private final Map<String, Map<PubSubConsumerAdapter, Integer>> storeToConsumerMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Map<PubSubConsumerAdapter, Integer>> resourceIdentifierToConsumerMap =
+      new VeniceConcurrentHashMap<>();
+  private final ReadOnlyStoreRepository storeRepository;
 
   StoreAwarePartitionWiseKafkaConsumerService(
       final ConsumerPoolType poolType,
@@ -71,12 +76,14 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         isUnregisterMetricForDeletedStoreEnabled);
     this.LOGGER =
         LogManager.getLogger(StoreAwarePartitionWiseKafkaConsumerService.class + " [" + kafkaUrlForLogger + "]");
+    this.storeRepository = metadataRepository;
   }
 
   @Override
   protected synchronized SharedKafkaConsumer pickConsumerForPartition(
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
+    String resourceIdentifier = getResourceIdentifier(versionTopic);
     Map<Integer, Long> consumerToLoadMap = new VeniceConcurrentHashMap<>();
     for (int i = 0; i < consumerToConsumptionTask.size(); i++) {
       SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(i).getKey();
@@ -90,8 +97,9 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         continue;
       }
       long baseAssignmentCount = consumer.getAssignmentSize();
-      long storeSubscriptionCount = storeToConsumerMap.getOrDefault(versionTopic.getStoreName(), Collections.emptyMap())
-          .getOrDefault(consumer, 0);
+      long storeSubscriptionCount =
+          resourceIdentifierToConsumerMap.getOrDefault(resourceIdentifier, Collections.emptyMap())
+              .getOrDefault(consumer, 0);
       long overallLoad = storeSubscriptionCount * DEFAULT_STORE_SUBSCRIPTION_LOAD + baseAssignmentCount;
       consumerToLoadMap.put(i, overallLoad);
     }
@@ -112,10 +120,9 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
     }
 
     SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(index).getKey();
-    // Update store to consumer load map.
-    String storeName = versionTopic.getStoreName();
+    // Update resource identifier to consumer load map.
     Map<PubSubConsumerAdapter, Integer> consumerMap =
-        storeToConsumerMap.computeIfAbsent(storeName, key -> new VeniceConcurrentHashMap<>());
+        resourceIdentifierToConsumerMap.computeIfAbsent(resourceIdentifier, key -> new VeniceConcurrentHashMap<>());
     int existCount = consumerMap.getOrDefault(consumer, 0);
     consumerMap.put(consumer, existCount + 1);
 
@@ -135,23 +142,51 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
   }
 
   @Override
-  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition) {
-    super.handleUnsubscription(consumer, pubSubTopicPartition);
+  void handleUnsubscription(
+      SharedKafkaConsumer consumer,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
+    super.handleUnsubscription(consumer, versionTopic, pubSubTopicPartition);
 
-    // Update Store to Consumer-Assignment map counting.
-    String storeName = Version.parseStoreFromKafkaTopicName(pubSubTopicPartition.getTopicName());
-    if (!storeToConsumerMap.containsKey(storeName)) {
-      throw new IllegalStateException("Store consumer map does not contain correct store name: " + storeName);
+    // Update resource identifier to consumer assignment map.
+    String resourceIdentifier = getResourceIdentifier(versionTopic);
+    if (!resourceIdentifierToConsumerMap.containsKey(resourceIdentifier)) {
+      throw new IllegalStateException(
+          "Resource identifier consumer map does not contain expected resource identifier: " + resourceIdentifier);
     }
-
-    int count = storeToConsumerMap.get(storeName).getOrDefault(consumer, 0);
+    int count = resourceIdentifierToConsumerMap.get(resourceIdentifier).getOrDefault(consumer, 0);
     if (count <= 0) {
       throw new IllegalStateException("Consumer assignment count map does not contain matching consumer: " + consumer);
     }
     if (count == 1) {
-      storeToConsumerMap.get(storeName).remove(consumer);
+      resourceIdentifierToConsumerMap.get(resourceIdentifier).remove(consumer);
+      if (resourceIdentifierToConsumerMap.get(resourceIdentifier).isEmpty()) {
+        resourceIdentifierToConsumerMap.remove(resourceIdentifier);
+      }
     } else {
-      storeToConsumerMap.get(storeName).put(consumer, count - 1);
+      resourceIdentifierToConsumerMap.get(resourceIdentifier).put(consumer, count - 1);
     }
+  }
+
+  String getResourceIdentifier(PubSubTopic topic) {
+    String storeName = topic.getStoreName();
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      LOGGER.warn("Unable to locate store: {}, will default to use store name as resource identifier.", storeName);
+      return storeName;
+    }
+    int versionNumber = Version.parseVersionFromVersionTopicName(topic.getName());
+    Version version = store.getVersion(versionNumber);
+    if (version == null) {
+      LOGGER.warn(
+          "Unable to locate version: {} for store name: {}, will rely on store's hybrid config to decide resource identifier.",
+          versionNumber,
+          storeName);
+      return store.isHybrid() ? storeName : topic.getName();
+    }
+    if (version.getHybridStoreConfig() == null) {
+      return topic.getName();
+    }
+    return storeName;
   }
 }

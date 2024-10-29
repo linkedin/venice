@@ -145,7 +145,10 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition) {
+  void handleUnsubscription(
+      SharedKafkaConsumer consumer,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       Set<PubSubConsumerAdapter> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(pubSubTopicPartition);
       if (rtTopicConsumers != null) {
