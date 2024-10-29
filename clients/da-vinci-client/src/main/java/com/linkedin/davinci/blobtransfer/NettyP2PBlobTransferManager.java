@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,21 +28,17 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private static final Logger LOGGER = LogManager.getLogger(NettyP2PBlobTransferManager.class);
   // Log messages format
   private static final String NO_PEERS_FOUND_ERROR_MSG_FORMAT =
-      "No peers are found for the requested blob. Store: %s Version: %d Partition: %d";
-  private static final String FETCHED_BLOB_SUCCESS_MSG_FORMAT =
-      "Successfully fetched blob from peer %s for store %s partition %d version %d in %d seconds";
-  private static final String SKIP_FETCHED_BLOB_MSG_FORMAT =
-      "Skipping peer %s for store %s partition %d version %d as one success blob transfer is already completed";
+      "Replica: %s are not found any peers for the requested blob.";
   private static final String NO_VALID_PEERS_MSG_FORMAT =
-      "Failed to connect to any peer for partition %d store %s version %d, after trying all possible hosts.";
-  private static final String PEER_CONNECTION_EXCEPTION_MSG_FORMAT =
-      "Get error when connect to peer: %s for store: %s version: %d partition: %d. Exception: %s";
-  private static final String PEER_NO_SNAPSHOT_MSG_FORMAT =
-      "Peer %s does not have the requested blob for store %s version %d partition %d. Exception: %s";
-  private static final String FAILED_TO_FETCH_BLOB_MSG_FORMAT =
-      "Failed to fetch blob from peer %s for store %s version %d partition %d. Exception: %s";
-  private static final String DELETE_PARTIALLY_DOWNLOADED_BLOBS_MSG_FORMAT =
-      "Deleted partially downloaded blobs for store %s version %d partition %d. Exception: %s";
+      "Replica %s failed to connect to any peer, after trying all possible hosts.";
+  private static final String FETCHED_BLOB_SUCCESS_MSG =
+      "Replica {} successfully fetched blob from peer {} in {} seconds";
+  private static final String PEER_CONNECTION_EXCEPTION_MSG =
+      "Replica {} get error when connect to peer: {}. Exception: {}";
+  private static final String PEER_NO_SNAPSHOT_MSG =
+      "Replica {} peer {} does not have the requested blob. Exception: {}";
+  private static final String FAILED_TO_FETCH_BLOB_MSG =
+      "Replica {} failed to fetch blob from peer {}. Deleting partially downloaded blobs. Exception: {}";
 
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
@@ -75,7 +72,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     if (response == null || response.isError() || response.getDiscoveryResult() == null
         || response.getDiscoveryResult().isEmpty()) {
       // error case 1: no peers are found for the requested blob
-      String errorMsg = String.format(NO_PEERS_FOUND_ERROR_MSG_FORMAT, storeName, version, partition);
+      String errorMsg =
+          String.format(NO_PEERS_FOUND_ERROR_MSG_FORMAT, Utils.getReplicaId(storeName + "_v" + version, partition));
       resultFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
       return resultFuture;
     }
@@ -115,14 +113,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @param version the version of the store
    * @param partition the partition of the store
    * @param resultFuture the future to complete with the InputStream of the blob
-   * @return the future that represents the all peers of processing
    */
-  private CompletableFuture<Void> processPeersSequentially(
+  private void processPeersSequentially(
       List<String> peers,
       String storeName,
       int version,
       int partition,
       CompletableFuture<InputStream> resultFuture) {
+    String replicaId = Utils.getReplicaId(storeName + "_v" + version, partition);
     Instant startTime = Instant.now();
 
     // Create a CompletableFuture that represents the chain of processing all peers
@@ -136,7 +134,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         String chosenHost = peers.get(peerIndex).split("_")[0];
 
         if (resultFuture.isDone()) {
-          LOGGER.info(String.format(SKIP_FETCHED_BLOB_MSG_FORMAT, chosenHost, storeName, partition, version));
+          // If the result future is already completed, skip the current peer
           return CompletableFuture.completedFuture(null);
         }
 
@@ -148,17 +146,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
             .thenAccept(inputStream -> {
               // Success case: Complete the future with the input stream
               LOGGER.info(
-                  String.format(
-                      FETCHED_BLOB_SUCCESS_MSG_FORMAT,
-                      chosenHost,
-                      storeName,
-                      partition,
-                      version,
-                      Duration.between(startTime, Instant.now()).getSeconds()));
+                  FETCHED_BLOB_SUCCESS_MSG,
+                  replicaId,
+                  chosenHost,
+                  Duration.between(startTime, Instant.now()).getSeconds());
               resultFuture.complete(inputStream);
             })
             .exceptionally(ex -> {
-              handlePeerFetchException(ex, chosenHost, storeName, version, partition);
+              handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
               return null;
             });
       });
@@ -166,11 +161,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
     // error case 2: no valid peers found for the requested blob after trying all possible hosts, skip bootstrapping
     // from blob.
-    return chainOfPeersFuture.thenRun(() -> {
+    chainOfPeersFuture.thenRun(() -> {
       if (!resultFuture.isDone()) {
-        String errorMessage = String.format(NO_VALID_PEERS_MSG_FORMAT, partition, storeName, version);
-        LOGGER.error(errorMessage);
-        resultFuture.completeExceptionally(new VenicePeersNotFoundException(errorMessage));
+        resultFuture.completeExceptionally(
+            new VenicePeersNotFoundException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
       }
     });
   }
@@ -178,26 +172,25 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   /**
    * Handle the exception thrown when fetching the blob from a peer.
    */
-  private void handlePeerFetchException(Throwable ex, String chosenHost, String storeName, int version, int partition) {
-    String errorMsg = null;
+  private void handlePeerFetchException(
+      Throwable ex,
+      String chosenHost,
+      String storeName,
+      int version,
+      int partition,
+      String replicaId) {
     if (ex.getCause() instanceof VenicePeersConnectionException) {
       // error case 3: failed to connect to the peer, move to the next possible host
-      errorMsg = String
-          .format(PEER_CONNECTION_EXCEPTION_MSG_FORMAT, chosenHost, storeName, version, partition, ex.getMessage());
+      LOGGER.error(PEER_CONNECTION_EXCEPTION_MSG, replicaId, chosenHost, ex.getMessage());
     } else if (ex.getCause() instanceof VeniceBlobTransferFileNotFoundException) {
       // error case 4: the connected host does not have the requested file, move to the next available host
-      errorMsg = String.format(PEER_NO_SNAPSHOT_MSG_FORMAT, chosenHost, storeName, version, partition, ex.getMessage());
+      LOGGER.error(PEER_NO_SNAPSHOT_MSG, replicaId, chosenHost, ex.getMessage());
     } else {
       // error case 5: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
       // expected, move to the next possible host
-      errorMsg =
-          String.format(FAILED_TO_FETCH_BLOB_MSG_FORMAT, chosenHost, storeName, version, partition, ex.getMessage());
-      String deletePartitionMsg =
-          String.format(DELETE_PARTIALLY_DOWNLOADED_BLOBS_MSG_FORMAT, storeName, version, partition, ex.getMessage());
       RocksDBUtils.deletePartitionDir(baseDir, storeName, version, partition);
-      LOGGER.error(deletePartitionMsg);
+      LOGGER.error(FAILED_TO_FETCH_BLOB_MSG, replicaId, chosenHost, ex.getMessage());
     }
-    LOGGER.error(errorMsg);
   }
 
   @Override
