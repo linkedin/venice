@@ -557,4 +557,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public void setThreadFactory(RandomAccessDaemonThreadFactory threadFactory) {
     this.threadFactory = threadFactory;
   }
+
+  IndexedMap<SharedKafkaConsumer, ConsumptionTask> getConsumerToConsumptionTask() {
+    return consumerToConsumptionTask;
+  }
 }

@@ -140,7 +140,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   protected boolean alreadySubscribedRealtimeTopicPartition(
       SharedKafkaConsumer consumer,
       PubSubTopicPartition topicPartition) {
-    Set<PubSubConsumerAdapter> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
+    Set<PubSubConsumerAdapter> consumers = getRtTopicPartitionToConsumerMap().get(topicPartition);
     return consumers != null && consumers.contains(consumer);
   }
 
@@ -155,5 +155,13 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         rtTopicConsumers.remove(consumer);
       }
     }
+  }
+
+  Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> getRtTopicPartitionToConsumerMap() {
+    return rtTopicPartitionToConsumerMap;
+  }
+
+  Logger getLOGGER() {
+    return LOGGER;
   }
 }
