@@ -86,6 +86,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public long getEmptyRecordCount() {
+    return accumulators.emptyRecordCounter.value();
+  }
+
+  @Override
   public long getTotalKeySize() {
     return accumulators.totalKeySizeCounter.value();
   }
@@ -118,6 +123,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getWriteAclAuthorizationFailureCount() {
     return accumulators.writeAclAuthorizationFailureCounter.value();
+  }
+
+  @Override
+  public long getDuplicateKeyWithIdenticalValueCount() {
+    return accumulators.duplicateKeyWithIdenticalValueCounter.value();
   }
 
   @Override

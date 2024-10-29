@@ -354,9 +354,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     return taskTracker;
   }
 
-  // This is a part of the public API. Do not remove.
-  @SuppressWarnings("unused")
-  protected VeniceProperties getJobProperties() {
+  @Override
+  public VeniceProperties getJobProperties() {
     return props;
   }
 

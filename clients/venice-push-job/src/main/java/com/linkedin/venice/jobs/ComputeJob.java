@@ -42,6 +42,11 @@ public interface ComputeJob extends Closeable {
 
   Throwable getFailureReason();
 
+  /**
+   * Return the job properties that were used to configure the job in {@link #configure(VeniceProperties)}
+   */
+  VeniceProperties getJobProperties();
+
   default void kill() {
   }
 

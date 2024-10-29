@@ -91,6 +91,7 @@ dependencies {
   implementation project(':clients:venice-thin-client') // Needed by the KME SchemaReader
 
   implementation libraries.commonsIo
+  implementation libraries.commonsCli
   implementation libraries.fastUtil
   implementation libraries.jacksonCore
   implementation libraries.jdom

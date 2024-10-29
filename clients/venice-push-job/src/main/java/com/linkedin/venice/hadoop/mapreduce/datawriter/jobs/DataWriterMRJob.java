@@ -348,6 +348,11 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   }
 
   @Override
+  public VeniceProperties getJobProperties() {
+    return vpjProperties;
+  }
+
+  @Override
   public PushJobSetting getPushJobSetting() {
     return pushJobSetting;
   }
