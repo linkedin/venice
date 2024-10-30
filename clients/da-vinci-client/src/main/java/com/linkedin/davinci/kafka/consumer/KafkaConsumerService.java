@@ -222,8 +222,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
       if (topicPartitionToConsumerMap != null) {
         topicPartitionToConsumerMap.forEach((topicPartition, sharedConsumer) -> {
-          sharedConsumer.unSubscribe(topicPartition);
-          removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
+          /**
+           * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+           * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+           */
+          synchronized (sharedConsumer) {
+            sharedConsumer.unSubscribe(topicPartition);
+            removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
+          }
         });
       }
       return null;
@@ -237,8 +243,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
-      consumer.unSubscribe(pubSubTopicPartition);
-      consumerToConsumptionTask.get(consumer).removeDataReceiver(pubSubTopicPartition);
+      /**
+       * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+       * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+       */
+      synchronized (consumer) {
+        consumer.unSubscribe(pubSubTopicPartition);
+        removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
+      }
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
         if (topicPartitionToConsumerMap != null) {
           topicPartitionToConsumerMap.remove(pubSubTopicPartition);
@@ -265,20 +277,25 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
      */
-    consumerUnSubTopicPartitionSet.forEach((c, tpSet) -> {
-      c.batchUnsubscribe(tpSet);
-      ConsumptionTask task = consumerToConsumptionTask.get(c);
-      tpSet.forEach(tp -> {
-        task.removeDataReceiver(tp);
-        versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
-          if (topicPartitionToConsumerMap != null) {
-            topicPartitionToConsumerMap.remove(tp);
-            return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
-          } else {
-            return null;
-          }
-        });
-      });
+    consumerUnSubTopicPartitionSet.forEach((sharedConsumer, tpSet) -> {
+      ConsumptionTask task = consumerToConsumptionTask.get(sharedConsumer);
+      /**
+       * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+       * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
+       */
+      synchronized (sharedConsumer) {
+        sharedConsumer.batchUnsubscribe(tpSet);
+        tpSet.forEach(task::removeDataReceiver);
+      }
+      tpSet.forEach(
+          tp -> versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
+            if (topicPartitionToConsumerMap != null) {
+              topicPartitionToConsumerMap.remove(tp);
+              return topicPartitionToConsumerMap.isEmpty() ? null : topicPartitionToConsumerMap;
+            } else {
+              return null;
+            }
+          }));
     });
   }
 
@@ -387,26 +404,32 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
-
     if (consumer == null) {
       // Defensive code. Shouldn't happen except in case of a regression.
       throw new VeniceException(
           "Shared consumer must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaUrl);
     }
-
-    ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
-    if (consumptionTask == null) {
-      // Defensive coding. Should never happen except in case of a regression.
-      throw new IllegalStateException(
-          "There should be a " + ConsumptionTask.class.getSimpleName() + " assigned for this "
-              + SharedKafkaConsumer.class.getSimpleName());
-    }
     /**
-     * N.B. it's important to set the {@link ConsumedDataReceiver} prior to subscribing, otherwise the
-     * {@link KafkaConsumerService.ConsumptionTask} will not be able to funnel the messages.
+     * It is possible that when one {@link StoreIngestionTask} thread finishes unsubscribing a topic partition but not
+     * finish removing data receiver, but the other {@link StoreIngestionTask} thread is setting data receiver for this
+     * topic partition before subscription. As {@link ConsumptionTask} does not allow 2 different data receivers for
+     * the same topic partition, it will throw exception.
      */
-    consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
-    consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadOffset);
+    synchronized (consumer) {
+      ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
+      if (consumptionTask == null) {
+        // Defensive coding. Should never happen except in case of a regression.
+        throw new IllegalStateException(
+            "There should be a " + ConsumptionTask.class.getSimpleName() + " assigned for this "
+                + SharedKafkaConsumer.class.getSimpleName());
+      }
+      /**
+       * N.B. it's important to set the {@link ConsumedDataReceiver} prior to subscribing, otherwise the
+       * {@link KafkaConsumerService.ConsumptionTask} will not be able to funnel the messages.
+       */
+      consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
+      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadOffset);
+    }
   }
 
   interface KCSConstructor {

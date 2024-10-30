@@ -181,10 +181,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier) {
     long currentPollTimes = pollTimes;
-    long startTime = System.currentTimeMillis();
     Set<PubSubTopicPartition> topicPartitions = supplier.get();
+    long startTime = System.currentTimeMillis();
     long elapsedTime = System.currentTimeMillis() - startTime;
-
     LOGGER.info(
         "Shared consumer {} unsubscribed {} partition(s): ({}) in {} ms",
         this.getClass().getSimpleName(),
@@ -347,5 +346,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
+  }
+
+  // Test only
+  public void setNextPollTimeOutSeconds(long seconds) {
+    this.nextPollTimeOutSeconds = seconds;
   }
 }
