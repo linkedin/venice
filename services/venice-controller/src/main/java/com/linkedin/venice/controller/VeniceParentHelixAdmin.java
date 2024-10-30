@@ -4834,10 +4834,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private boolean isCompactionReady(StoreInfo storeInfo) {
-    return isHybridStore(storeInfo) && isLastCompactionTimeOlderThanThresholdHours(24, storeInfo); // TODO: where to
-                                                                                                   // store log
-                                                                                                   // compaction
-                                                                                                   // threshold?
+    return isHybridStore(storeInfo) && isLastCompactionTimeOlderThanThresholdHours(24, storeInfo);
+    // TODO: code style: store compactionThresholdHours as final var/enum
   }
 
   private boolean isHybridStore(StoreInfo storeInfo) {
@@ -4859,10 +4857,13 @@ public class VeniceParentHelixAdmin implements Admin {
           "Couldn't find current version: " + currentVersionNumber + " from store: " + storeInfo.getName());
     }
 
-    long lastCompactionTimestamp = currentVersion.get().getCreatedTime();
+    // calculate hours since last compaction
+    long lastCompactionTime = currentVersion.get().getCreatedTime();
+    long currentTime = System.currentTimeMillis();
+    long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
+    long hoursSinceLastCompaction = TimeUnit.MICROSECONDS.toHours(millisecondsSinceLastCompaction);
 
-    // todo: calculate created time and diff
-    return true;// todo: placeholder
+    return hoursSinceLastCompaction > compactionThresholdHours;
   }
 
   /**
