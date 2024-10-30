@@ -3152,6 +3152,14 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         null);
 
+    if (hybridConfig.equals(HYBRID) && nodeType.equals(LEADER) && isAaWCParallelProcessingEnabled()) {
+      assertTrue(storeIngestionTaskUnderTest instanceof ActiveActiveStoreIngestionTask);
+      ActiveActiveStoreIngestionTask activeActiveStoreIngestionTask =
+          (ActiveActiveStoreIngestionTask) storeIngestionTaskUnderTest;
+      assertNotNull(activeActiveStoreIngestionTask.getIngestionBatchProcessor());
+      assertNotNull(activeActiveStoreIngestionTask.getIngestionBatchProcessor().getLockManager());
+    }
+
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
     TopicSwitch topicSwitchWithMultipleSourceKafkaServers = new TopicSwitch();

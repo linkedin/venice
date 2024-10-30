@@ -1,12 +1,13 @@
 package com.linkedin.davinci.utils;
 
+import com.linkedin.venice.utils.ByteUtils;
 import java.util.Arrays;
 
 
 /**
  * A low overhead immutable container of byte[] suitable for use as a map key.
  */
-public class ByteArrayKey {
+public class ByteArrayKey implements Comparable<ByteArrayKey> {
   private final byte[] content;
   private final int hashCode;
 
@@ -31,6 +32,10 @@ public class ByteArrayKey {
     return Arrays.equals(content, that.content);
   }
 
+  public byte[] getContent() {
+    return this.content;
+  }
+
   @Override
   public int hashCode() {
     return this.hashCode;
@@ -38,5 +43,10 @@ public class ByteArrayKey {
 
   public static ByteArrayKey wrap(byte[] content) {
     return new ByteArrayKey(content);
+  }
+
+  @Override
+  public int compareTo(ByteArrayKey o) {
+    return ByteUtils.compare(content, o.content);
   }
 }
