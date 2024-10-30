@@ -312,7 +312,7 @@ task generateGHCI() {
   def otherTest = "IntegrationTests_9999"
   appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "9999")
   jobs << otherTest
-  
+
   def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/VeniceCI-E2ETests.yml")
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
 }
