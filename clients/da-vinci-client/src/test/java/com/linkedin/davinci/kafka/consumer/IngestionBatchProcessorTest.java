@@ -32,7 +32,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
-import java.util.TreeMap;
+import java.util.NavigableMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.testng.annotations.Test;
 
@@ -121,7 +121,8 @@ public class IngestionBatchProcessorTest {
     /**
      * Switch the input order to make sure the `lockKeys` function would sort them when locking.
      */
-    TreeMap<ByteArrayKey, ReentrantLock> keyLockMap = batchProcessor.lockKeys(Arrays.asList(rtMessage2, rtMessage1));
+    NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap =
+        batchProcessor.lockKeys(Arrays.asList(rtMessage2, rtMessage1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key2));
     verify(lockForKey1).lock();

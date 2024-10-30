@@ -8,13 +8,13 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -83,7 +83,7 @@ public class IngestionBatchProcessor {
    * When {@link #lockManager} is not null, this function will try to lock all the keys
    * (except Control Messages) passed by the params.
    */
-  public TreeMap<ByteArrayKey, ReentrantLock> lockKeys(
+  public NavigableMap<ByteArrayKey, ReentrantLock> lockKeys(
       List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
     if (lockManager != null) {
       /**
@@ -92,8 +92,7 @@ public class IngestionBatchProcessor {
        * Considering there could be multiple consumers, which are executing this function concurrently, and if they
        * are trying to lock the same set of keys with different orders, deadlock can happen.
        */
-      TreeMap<ByteArrayKey, ReentrantLock> keyLockMap =
-          new TreeMap<>((o1, o2) -> ByteUtils.compare(o1.getContent(), o2.getContent()));
+      TreeMap<ByteArrayKey, ReentrantLock> keyLockMap = new TreeMap<>();
       records.forEach(r -> {
         if (!r.getKey().isControlMessage()) {
           keyLockMap.computeIfAbsent(ByteArrayKey.wrap(r.getKey().getKey()), k -> lockManager.acquireLockByKey(k));
@@ -102,10 +101,10 @@ public class IngestionBatchProcessor {
       keyLockMap.forEach((k, v) -> v.lock());
       return keyLockMap;
     }
-    return EMPTY_TREE_MAP;
+    return Collections.emptyNavigableMap();
   }
 
-  public void unlockKeys(TreeMap<ByteArrayKey, ReentrantLock> keyLockMap) {
+  public void unlockKeys(NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap) {
     if (lockManager != null) {
       keyLockMap.descendingMap().forEach((key, lock) -> {
         lock.unlock();
