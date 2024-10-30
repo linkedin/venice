@@ -171,7 +171,8 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.TestStuckConsumerRepair",
       "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
       "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience",
-      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"],
+      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup",
+      "com.linkedin.venice.endToEnd.BlobP2PTransferAmongServersTest"],
   "1200":[
       "com.linkedin.venice.endToEnd.TestVson*",
       "com.linkedin.venice.endToEnd.Push*"],

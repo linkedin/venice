@@ -7,6 +7,7 @@ import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
@@ -72,8 +73,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     if (response == null || response.isError() || response.getDiscoveryResult() == null
         || response.getDiscoveryResult().isEmpty()) {
       // error case 1: no peers are found for the requested blob
-      String errorMsg =
-          String.format(NO_PEERS_FOUND_ERROR_MSG_FORMAT, Utils.getReplicaId(storeName + "_v" + version, partition));
+      String errorMsg = String.format(
+          NO_PEERS_FOUND_ERROR_MSG_FORMAT,
+          Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
       resultFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
       return resultFuture;
     }
@@ -120,7 +122,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       int version,
       int partition,
       CompletableFuture<InputStream> resultFuture) {
-    String replicaId = Utils.getReplicaId(storeName + "_v" + version, partition);
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     Instant startTime = Instant.now();
 
     // Create a CompletableFuture that represents the chain of processing all peers
