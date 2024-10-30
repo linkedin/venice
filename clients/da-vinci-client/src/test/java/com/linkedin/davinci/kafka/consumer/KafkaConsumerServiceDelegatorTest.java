@@ -11,7 +11,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
@@ -491,9 +493,8 @@ public class KafkaConsumerServiceDelegatorTest {
    * To induce the race condition, we assume there are 5 store versions, with each version assigned to a dedicated
    * thread that continuously resubscribes to the same real-time topic partition. This continues until either a race
    * condition is encountered or the test times out (30 seconds).
-   * TODO: removing the invocationCount after the PR is approved.
    */
-  @Test(invocationCount = 100)
+  @Test
   public void testKafkaConsumerServiceResubscriptionConcurrency() throws Exception {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
@@ -581,6 +582,11 @@ public class KafkaConsumerServiceDelegatorTest {
     Boolean raceConditionFound = countDownLatch.await(30, TimeUnit.SECONDS);
     long elapsedTime = System.currentTimeMillis() - currentTime;
     for (Thread infiniteSubUnSubThread: infiniteSubUnSubThreads) {
+      assertTrue(
+          infiniteSubUnSubThread.getState().equals(Thread.State.WAITING)
+              || infiniteSubUnSubThread.getState().equals(Thread.State.TIMED_WAITING)
+              || infiniteSubUnSubThread.getState().equals(Thread.State.BLOCKED)
+              || infiniteSubUnSubThread.getState().equals(Thread.State.RUNNABLE));
       infiniteSubUnSubThread.interrupt();
       infiniteSubUnSubThread.join();
       assertEquals(Thread.State.TERMINATED, infiniteSubUnSubThread.getState());

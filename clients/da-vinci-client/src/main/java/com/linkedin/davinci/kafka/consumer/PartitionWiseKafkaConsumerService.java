@@ -114,12 +114,9 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
          * But one consumer cannot consume from several offsets of one partition at the same time.
          */
         if (alreadySubscribedRealtimeTopicPartition(consumer, topicPartition)) {
-          /*
           LOGGER.info(
               "Current consumer has already subscribed the same real time topic-partition: {} will skip it and try next consumer in consumer pool",
               topicPartition);
-          
-           */
           seekNewConsumer = true;
         } else {
           rtTopicPartitionToConsumerMap.computeIfAbsent(topicPartition, key -> new HashSet<>()).add(consumer);
@@ -132,13 +129,11 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       throw new IllegalStateException(
           "Did not find a suitable consumer after checking " + consumersChecked + " instances.");
     }
-    /*
     LOGGER.info(
         "Get shared consumer for: {} from the ingestion task belonging to version topic: {} with index: {}",
         topicPartition,
         versionTopic,
         consumerIndex);
-     */
     return consumer;
   }
 

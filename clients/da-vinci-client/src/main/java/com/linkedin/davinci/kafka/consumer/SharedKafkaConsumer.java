@@ -182,7 +182,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier) {
     long currentPollTimes = pollTimes;
     Set<PubSubTopicPartition> topicPartitions = supplier.get();
-    /*
     long startTime = System.currentTimeMillis();
     long elapsedTime = System.currentTimeMillis() - startTime;
     LOGGER.info(
@@ -191,7 +190,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         topicPartitions.size(),
         topicPartitions,
         elapsedTime);
-     */
     updateCurrentAssignment(delegate.getAssignment());
     waitAfterUnsubscribe(currentPollTimes, topicPartitions);
   }
@@ -207,12 +205,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       while (currentPollTimes > pollTimes) {
         long waitMs = timeoutMs - (time.getNanoseconds() / Time.NS_PER_MS);
         if (waitMs <= 0) {
-          /*
           LOGGER.warn(
               "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} seconds",
               topicPartitions,
               nextPollTimeOutSeconds);
-           */
           break;
         }
         wait(waitMs);
