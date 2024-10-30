@@ -47,11 +47,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -102,11 +102,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -157,11 +157,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -212,11 +212,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -267,11 +267,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -322,11 +322,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -377,11 +377,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -432,11 +432,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -487,11 +487,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -542,11 +542,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -597,11 +597,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -652,11 +652,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -707,11 +707,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -762,11 +762,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -817,11 +817,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -872,11 +872,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -927,11 +927,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -982,11 +982,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1037,11 +1037,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1092,11 +1092,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1147,11 +1147,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1202,11 +1202,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1257,11 +1257,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1312,11 +1312,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1367,11 +1367,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1422,11 +1422,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1477,11 +1477,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1532,11 +1532,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1587,11 +1587,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1642,11 +1642,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1697,11 +1697,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
@@ -1753,11 +1753,11 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Set Node.js Memory Limit
-        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
       - name: Generate Test Reports
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
         with:
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
