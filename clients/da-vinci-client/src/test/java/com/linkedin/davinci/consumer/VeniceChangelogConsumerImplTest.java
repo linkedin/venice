@@ -360,6 +360,7 @@ public class VeniceChangelogConsumerImplTest {
             .setStoreName(storeName)
             .setShouldCompactMessages(true)
             .setViewName("");
+    changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
