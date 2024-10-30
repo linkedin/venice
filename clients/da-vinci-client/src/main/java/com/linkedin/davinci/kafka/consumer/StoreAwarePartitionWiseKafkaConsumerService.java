@@ -15,7 +15,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 
 
@@ -88,6 +87,8 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
     String resourceIdentifier = getResourceIdentifier(versionTopic);
+    int minLoad = Integer.MAX_VALUE;
+    SharedKafkaConsumer minLoadConsumer = null;
     Map<Integer, Integer> consumerToLoadMap = new VeniceConcurrentHashMap<>();
     for (SharedKafkaConsumer consumer: getConsumerToConsumptionTask().keySet()) {
       int index = getConsumerToConsumptionTask().indexOf(consumer);
@@ -97,7 +98,6 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
             "Consumer id: {} has already subscribed the same real time topic-partition: {}, will assign MAX load to avoid being picked.",
             index,
             topicPartition);
-        consumerToLoadMap.put(index, Integer.MAX_VALUE);
         continue;
       }
       int baseAssignmentCount = consumer.getAssignmentSize();
@@ -105,43 +105,35 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
           getResourceIdentifierToConsumerMap().getOrDefault(resourceIdentifier, Collections.emptyMap())
               .getOrDefault(consumer, 0);
       int overallLoad = storeSubscriptionCount * IMPOSSIBLE_MAX_PARTITION_COUNT_PER_CONSUMER + baseAssignmentCount;
+      if (overallLoad < minLoad) {
+        minLoadConsumer = consumer;
+        minLoad = overallLoad;
+      }
       consumerToLoadMap.put(index, overallLoad);
     }
-    // Sort consumer by computed load.
-    Optional<Map.Entry<Integer, Integer>> leastLoadedEntry =
-        consumerToLoadMap.entrySet().stream().min(Map.Entry.comparingByValue());
-    if (!leastLoadedEntry.isPresent()) {
+    if (minLoad == Integer.MAX_VALUE) {
       throw new IllegalStateException(
           "Unable to find least loaded consumer entry. Current load map: " + consumerToLoadMap);
     }
-
-    int index = leastLoadedEntry.get().getKey();
-    long load = leastLoadedEntry.get().getValue();
-
-    if (load == Integer.MAX_VALUE) {
-      throw new IllegalStateException("Did not find a suitable consumer with valid load.");
-    }
-
-    SharedKafkaConsumer consumer = getConsumerToConsumptionTask().getByIndex(index).getKey();
     // Update resource identifier to consumer load map.
     Map<PubSubConsumerAdapter, Integer> consumerMap = getResourceIdentifierToConsumerMap()
         .computeIfAbsent(resourceIdentifier, key -> new VeniceConcurrentHashMap<>());
-    int existCount = consumerMap.getOrDefault(consumer, 0);
-    consumerMap.put(consumer, existCount + 1);
+    int existCount = consumerMap.getOrDefault(minLoadConsumer, 0);
+    consumerMap.put(minLoadConsumer, existCount + 1);
 
     // Update RT topic partition consumer map.
     if (topicPartition.getPubSubTopic().isRealTime()) {
-      getRtTopicPartitionToConsumerMap().computeIfAbsent(topicPartition, key -> new HashSet<>()).add(consumer);
+      getRtTopicPartitionToConsumerMap().computeIfAbsent(topicPartition, key -> new HashSet<>()).add(minLoadConsumer);
     }
 
     getLOGGER().info(
         "Picked consumer id: {}, assignment size: {}, computed load: {} for topic partition: {}, version topic: {}",
-        index,
-        consumer.getAssignmentSize(),
-        load,
+        getConsumerToConsumptionTask().indexOf(minLoadConsumer),
+        minLoadConsumer.getAssignmentSize(),
+        minLoad,
         topicPartition,
         versionTopic);
-    return consumer;
+    return minLoadConsumer;
   }
 
   @Override
