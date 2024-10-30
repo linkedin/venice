@@ -53,7 +53,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -108,7 +107,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -163,7 +161,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -218,7 +215,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -273,7 +269,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -328,7 +323,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -383,7 +377,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -438,7 +431,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -493,7 +485,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -548,7 +539,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -603,7 +593,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -658,7 +647,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -713,7 +701,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -768,7 +755,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -823,7 +809,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -878,7 +863,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -933,7 +917,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -988,7 +971,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1043,7 +1025,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1098,7 +1079,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1153,7 +1133,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1208,7 +1187,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1263,7 +1241,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1318,7 +1295,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1373,7 +1349,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1428,7 +1403,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1483,7 +1457,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1538,7 +1511,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1593,7 +1565,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1648,7 +1619,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1703,7 +1673,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1759,7 +1728,6 @@ jobs:
         if: success() || failure()
         uses: dorny/test-reporter@v1.9.1
         with:
-         export NODE_OPTIONS="--max-old-space-size=8192"
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
