@@ -424,6 +424,38 @@ public class KafkaConsumerServiceTest {
     Assert.assertEquals(consumerForT1P3, consumerForT2P1);
   }
 
+  @Test
+  public void testStoreAwarePartitionWiseReduceConsumerCount() {
+    String storeName1 = Utils.getUniqueString("test_consumer_service1");
+    String storeName2 = Utils.getUniqueString("test_consumer_service2");
+    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+    SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
+    StoreAwarePartitionWiseKafkaConsumerService consumerService =
+        mock(StoreAwarePartitionWiseKafkaConsumerService.class);
+    Map<String, Map<PubSubConsumerAdapter, Integer>> resourceIdentifierToConsumerMap = new VeniceConcurrentHashMap<>();
+    resourceIdentifierToConsumerMap.put(storeName1, new VeniceConcurrentHashMap<>());
+    resourceIdentifierToConsumerMap.get(storeName1).put(consumer1, 1);
+    resourceIdentifierToConsumerMap.get(storeName1).put(consumer2, 2);
+    when(consumerService.getResourceIdentifierToConsumerMap()).thenReturn(resourceIdentifierToConsumerMap);
+    doCallRealMethod().when(consumerService).getResourceIdentifier(any());
+    when(consumerService.getLOGGER())
+        .thenReturn(LogManager.getLogger(StoreAwarePartitionWiseKafkaConsumerService.class));
+    doCallRealMethod().when(consumerService).decreaseResourceIdentifierToConsumerCount(anyString(), any());
+    // Good case with cleanup.
+    consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer1);
+    Assert.assertFalse(resourceIdentifierToConsumerMap.get(storeName1).containsKey(consumer1));
+    // Good case.
+    consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer2);
+    Assert.assertEquals(resourceIdentifierToConsumerMap.get(storeName1).get(consumer2).intValue(), 1);
+    // None-existent consumer count.
+    Assert.assertThrows(() -> consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer1));
+    // None-existent id.
+    Assert.assertThrows(() -> consumerService.decreaseResourceIdentifierToConsumerCount(storeName2, consumer1));
+    // Good case with cleanup.
+    consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer2);
+    Assert.assertFalse(resourceIdentifierToConsumerMap.containsKey(storeName1));
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testStoreAwarePartitionWiseGetConsumer(boolean isHybridStore) {
 
