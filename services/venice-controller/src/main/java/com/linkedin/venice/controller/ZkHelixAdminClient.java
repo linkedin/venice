@@ -319,14 +319,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin.close();
   }
 
-  /**
-   * @see HelixAdminClient#addInstanceTag(String, String, String)()
-   */
-  @Override
-  public void addInstanceTag(String clusterName, String instanceName, String tag) {
-    helixAdmin.addInstanceTag(clusterName, instanceName, tag);
-  }
-
   public void setCloudConfig(String clusterName, VeniceControllerClusterConfig config) {
     String cloudId = config.getHelixCloudId();
     List<String> cloudInfoSources = config.getHelixCloudInfoSources();
