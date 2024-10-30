@@ -4802,9 +4802,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * TODO: description
+   * This function iterates over all of Helix Parent Admin's child controllers,
+   * in order to obtain the stores and respective store information of each child controller,
+   * and then filter out the stores that are ready for compaction.
    * @param clusterName, the name of the cluster to search for stores that are ready for compaction
-   * @return a list of StoreInfo objects on stores that are ready for compaction
+   * @return a list of StoreInfo objects of stores that are ready for compaction
    */
   @Override
   public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
@@ -4843,7 +4845,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * This function will check if the last compaction time is older than the threshold.
+   * This function checks if the last compaction time is older than the threshold.
    * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
    * @param storeInfo, the store to check the last compaction time for
    * @return true if the last compaction time is older than the threshold, false otherwise
