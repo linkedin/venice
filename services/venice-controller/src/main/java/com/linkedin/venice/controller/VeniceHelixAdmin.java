@@ -257,7 +257,6 @@ import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
-import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
@@ -271,6 +270,7 @@ import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
@@ -784,8 +784,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     InstanceType instanceType =
         isControllerClusterHAAS ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
     String zkAddress = multiClusterConfigs.getControllerClusterZkAddress();
+
+    InstanceConfig.Builder defaultInstanceConfigBuilder =
+        new InstanceConfig.Builder().setPort(Integer.toString(multiClusterConfigs.getAdminPort()));
+
+    List<String> instanceTagList = multiClusterConfigs.getControllerInstanceTagList();
+    for (String instanceTag: instanceTagList) {
+      defaultInstanceConfigBuilder.addTag(instanceTag);
+    }
+
     HelixManagerProperty helixManagerProperty =
-        HelixPropertyFactory.getInstance().getHelixManagerProperty(zkAddress, controllerClusterName);
+        new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
+
     SafeHelixManager tempManager = new SafeHelixManager(
         new ZKHelixManager(controllerClusterName, controllerName, instanceType, zkAddress, null, helixManagerProperty));
     StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
@@ -800,13 +810,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     controllerClusterKeyBuilder = new PropertyKey.Builder(tempManager.getClusterName());
     helixManager = tempManager;
-
-    List<String> instanceTagList = multiClusterConfigs.getControllerInstanceTagList();
-    for (String instanceTag: instanceTagList) {
-      helixAdminClient.addInstanceTag(controllerClusterName, helixManager.getInstanceName(), instanceTag);
-    }
     LOGGER.info("Connected to controller cluster {} with controller {}", controllerClusterName, controllerName);
-
   }
 
   public ZkClient getZkClient() {
