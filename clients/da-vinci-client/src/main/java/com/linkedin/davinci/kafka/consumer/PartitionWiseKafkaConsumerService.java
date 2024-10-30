@@ -35,7 +35,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   protected final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
       new VeniceConcurrentHashMap<>();
 
-  protected Logger LOGGER;
+  private final Logger LOGGER;
 
   private int shareConsumerIndex = 0;
 

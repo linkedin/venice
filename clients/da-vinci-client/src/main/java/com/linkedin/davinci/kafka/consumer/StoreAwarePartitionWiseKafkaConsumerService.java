@@ -95,7 +95,7 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       if (topicPartition.getPubSubTopic().isRealTime()
           && alreadySubscribedRealtimeTopicPartition(consumer, topicPartition)) {
         getLOGGER().info(
-            "Consumer id: {} has already subscribed the same real time topic-partition: {}, will assign MAX load to avoid being picked.",
+            "Consumer id: {} has already subscribed the same real time topic-partition: {} and thus cannot be picked",
             index,
             topicPartition);
         continue;
