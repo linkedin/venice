@@ -11,7 +11,7 @@ We recommend using a Unix-based environment for development, such as Linux or ma
 If you're on Windows, we recommend using [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install).
 
 ## Fork the Venice Repository
-Fork the Venice repo at https://github.com/linkedin/venice
+Fork the Venice repo at [https://github.com/linkedin/venice](https://github.com/linkedin/venice).
 
 ## Setting up the repository locally
 ```shell

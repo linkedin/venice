@@ -127,7 +127,7 @@ public class TestActiveActiveReplicationForIncPush {
    * regions. And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationForIncrementalPushToRT(Boolean isSeparateRealTimeTopicEnabled) throws Exception {
+  public void testAAReplicationForIncrementalPushToRT(boolean isSeparateRealTimeTopicEnabled) throws Exception {
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
@@ -239,7 +239,7 @@ public class TestActiveActiveReplicationForIncPush {
               .getTopicManagerRepo(
                   PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
                   100,
-                  0l,
+                  0L,
                   childDataCenter.getKafkaBrokerWrapper(),
                   pubSubTopicRepository)
               .getLocalTopicManager());

@@ -78,9 +78,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     };
-    // TODO: remove hybrid check after blob transfer in hybrid mode is fully supported
-    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || storeAndVersion.getFirst().isHybrid()
-        || blobTransferManager == null) {
+    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
       CompletionStage<Void> bootstrapFuture =
@@ -98,10 +96,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
   CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
-    // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
-    // though
-    // Only DVC would create blobTransferManager.
-    if (!store.isBlobTransferEnabled() || store.isHybrid() || blobTransferManager == null) {
+    if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
 

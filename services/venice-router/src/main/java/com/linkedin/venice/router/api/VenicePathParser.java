@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
+import static io.netty.handler.codec.http.HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_GATEWAY;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_REQUEST;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.MOVED_PERMANENTLY;
@@ -36,6 +37,7 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.Collections;
@@ -48,14 +50,19 @@ import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
 
 
-/***
- *   Inbound request to the router will look like:
- *   /read/storename/key?f=fmt
+/**
+ *   Inbound single get request to the router will look like:
+ *   GET /storage/storeName/key?f=fmt
  *
- *   'read' is a literal, meaning we will request the value for a single key
- *   storename will be the name of the requested store
+ *   'storage' is a literal, meaning we will request the value for a single key
+ *   storeName will be the name of the requested store
  *   key is the key being looked up
  *   fmt is an optional format parameter, one of 'string' or 'b64'. If omitted, assumed to be 'string'
+ *
+ *   Batch get requests look like:
+ *   POST /storage/storeName
+ *
+ *   And the keys are concatenated in the POST body.
  *
  *   The VenicePathParser is responsible for looking up the active version of the store, and constructing the store-version
  */
@@ -328,13 +335,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     } catch (VeniceException e) {
       Optional<RequestType> requestTypeOptional =
           (path == null) ? Optional.empty() : Optional.of(path.getRequestType());
+      HttpResponseStatus responseStatus = BAD_REQUEST;
       if (e instanceof VeniceStoreIsMigratedException) {
-        throw RouterExceptionAndTrackingUtils
-            .newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(), MOVED_PERMANENTLY, e.getMessage());
+        requestTypeOptional = Optional.empty();
+        responseStatus = MOVED_PERMANENTLY;
       }
       if (e instanceof VeniceKeyCountLimitException) {
         VeniceKeyCountLimitException keyCountLimitException = (VeniceKeyCountLimitException) e;
         requestTypeOptional = Optional.of(keyCountLimitException.getRequestType());
+        responseStatus = REQUEST_ENTITY_TOO_LARGE;
         routerStats.getStatsByType(keyCountLimitException.getRequestType())
             .recordBadRequestKeyCount(
                 keyCountLimitException.getStoreName(),
@@ -344,7 +353,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
        * Tracking the bad requests in {@link RouterExceptionAndTrackingUtils} by logging and metrics.
        */
       throw RouterExceptionAndTrackingUtils
-          .newRouterExceptionAndTracking(Optional.of(storeName), requestTypeOptional, BAD_REQUEST, e.getMessage());
+          .newRouterExceptionAndTracking(Optional.of(storeName), requestTypeOptional, responseStatus, e.getMessage());
     } finally {
       // Always record request usage in the single get stats, so we could compare it with the quota easily.
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.

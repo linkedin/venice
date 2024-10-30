@@ -4783,6 +4783,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
+    Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
+    Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5063,6 +5065,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       blobTransferEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setBlobTransferEnabled(aBoolean);
+        return store;
+      }));
+
+      nearlineProducerCompressionEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setNearlineProducerCompressionEnabled(aBoolean);
+        return store;
+      }));
+
+      nearlineProducerCountPerWriter.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setNearlineProducerCountPerWriter(aInt);
         return store;
       }));
 
@@ -6534,6 +6546,38 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return false;
     }
     return model.isLeader();
+  }
+
+  @Override
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      List<String> instances,
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled) {
+    InstanceRemovableStatuses statuses = new InstanceRemovableStatuses();
+
+    // If current controller is not the leader, redirect with leader URL
+    if (!isLeaderControllerFor(cluster)) {
+      statuses.setRedirectUrl(getLeaderController(cluster).getUrl(isSSLEnabled));
+      return statuses;
+    }
+
+    Map<String, String> nonStoppableInstances = new HashMap<>();
+    List<String> stoppableInstances = new ArrayList<>();
+    statuses.setNonStoppableInstancesWithReasons(nonStoppableInstances);
+    statuses.setStoppableInstances(stoppableInstances);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(cluster);
+
+    List<NodeRemovableResult> removableResults =
+        InstanceStatusDecider.getInstanceStoppableStatuses(resources, cluster, instances, toBeStoppedInstances);
+    for (NodeRemovableResult nodeRemovableResult: removableResults) {
+      if (nodeRemovableResult.isRemovable()) {
+        stoppableInstances.add(nodeRemovableResult.getInstanceId());
+      } else {
+        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getBlockingReason());
+      }
+    }
+    return statuses;
   }
 
   /**

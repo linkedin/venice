@@ -20,6 +20,7 @@ import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -176,7 +177,7 @@ public class TestHAASController {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testStartHAASControllerAsStorageClusterLeader() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
@@ -276,7 +277,7 @@ public class TestHAASController {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testConcurrentClusterInitialization() throws InterruptedException, ExecutionException {
     ExecutorService executorService = new ThreadPoolExecutor(
         3,
@@ -285,8 +286,8 @@ public class TestHAASController {
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("test-concurrent-cluster-init"));
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
-        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer();
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
@@ -323,10 +324,10 @@ public class TestHAASController {
     }
   }
 
-  @Test
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testCloudConfig() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
-        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer();
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
       CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
@@ -355,7 +356,7 @@ public class TestHAASController {
     }
   }
 
-  @Test
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testHelixUnknownInstanceOperation() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {

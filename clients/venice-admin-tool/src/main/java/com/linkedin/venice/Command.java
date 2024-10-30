@@ -51,6 +51,7 @@ import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.Arg.INFILE;
+import static com.linkedin.venice.Arg.INSTANCES;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
@@ -72,6 +73,8 @@ import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.Arg.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
@@ -119,6 +122,7 @@ import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
+import static com.linkedin.venice.Arg.TO_BE_STOPPED_NODES;
 import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
@@ -268,7 +272,8 @@ public enum Command {
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
-          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED }
+          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
+          NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -541,6 +546,11 @@ public enum Command {
       "extract-venice-zk-paths",
       "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
       new Arg[] { INFILE, OUTFILE, CLUSTER_LIST, BASE_PATH }
+  ),
+  AGGREGATED_HEALTH_STATUS(
+      "cluster-health-status",
+      "Returns the set of instances which can be safely remove and instances which cannot be removed.",
+      new Arg[] { URL, CLUSTER, INSTANCES, TO_BE_STOPPED_NODES }
   );
 
   private final String commandName;

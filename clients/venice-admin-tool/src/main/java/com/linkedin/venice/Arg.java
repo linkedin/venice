@@ -275,7 +275,16 @@ public enum Arg {
   ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
-  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not");
+  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
+  NEARLINE_PRODUCER_COMPRESSION_ENABLED(
+      "nearline-producer-compression-enabled", "npce", true,
+      "Flag to control whether KafkaProducer will use compression or not for nearline workload"
+  ),
+  NEARLINE_PRODUCER_COUNT_PER_WRITER(
+      "nearline-producer-count-per-writer", "npcpw", true,
+      "How many producers will be used to write nearline workload in Server"
+  ), INSTANCES("instances", "in", true, "Input list of helix ids of nodes to check if they can removed or not"),
+  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of helix ids of nodes assumed to be stopped");
 
   private final String argName;
   private final String first;

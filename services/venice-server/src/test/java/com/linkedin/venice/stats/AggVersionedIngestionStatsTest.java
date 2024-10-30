@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.util.ArrayList;
@@ -40,7 +41,7 @@ public class AggVersionedIngestionStatsTest {
    */
   @Test
   public void testIngestionOffsetRewind() {
-    MetricsRepository metricsRepo = new MetricsRepository();
+    MetricsRepository metricsRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
 
@@ -120,7 +121,7 @@ public class AggVersionedIngestionStatsTest {
 
   @Test
   public void testStatsCanUpdateVersionStatus() {
-    MetricsRepository metricsRepo = new MetricsRepository();
+    MetricsRepository metricsRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
 

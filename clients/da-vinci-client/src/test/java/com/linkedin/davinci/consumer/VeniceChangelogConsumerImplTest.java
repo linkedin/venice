@@ -253,7 +253,7 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
         new ImmutablePubSubMessage<>(KafkaKey.HEART_BEAT, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
-
+    doReturn(currentTimestamp).when(veniceChangelogConsumer).getSubscribeTime();
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertFalse(bootstrapStateMap.get(0));
     kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.SECONDS.toMillis(30);
