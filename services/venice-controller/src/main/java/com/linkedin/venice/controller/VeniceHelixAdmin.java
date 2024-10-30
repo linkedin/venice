@@ -6293,6 +6293,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       helixClusterProperties
           .put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), String.valueOf(delayedTime));
     }
+    helixClusterProperties
+        .put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
     // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
     // choose proper instance to hold the replica.
     helixClusterProperties
