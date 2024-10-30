@@ -43,8 +43,9 @@
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
-         list-tests: 'true'
-         list-suites: 'failed'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
          reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()

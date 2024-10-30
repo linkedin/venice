@@ -2,7 +2,7 @@
 
 name:  TestsDeCompatibilite
 
-on: [push, pull_request, workflow_dispatch]
+on: [workflow_dispatch]
 
 jobs:
 
