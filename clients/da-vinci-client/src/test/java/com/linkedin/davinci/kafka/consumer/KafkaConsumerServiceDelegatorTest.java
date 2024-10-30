@@ -11,8 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
@@ -494,7 +493,7 @@ public class KafkaConsumerServiceDelegatorTest {
    * condition is encountered or the test times out (30 seconds).
    * TODO: removing the invocationCount after the PR is approved.
    */
-  @Test(invocationCount = 20)
+  @Test(invocationCount = 100)
   public void testKafkaConsumerServiceResubscriptionConcurrency() throws Exception {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
@@ -584,6 +583,7 @@ public class KafkaConsumerServiceDelegatorTest {
     for (Thread infiniteSubUnSubThread: infiniteSubUnSubThreads) {
       infiniteSubUnSubThread.interrupt();
       infiniteSubUnSubThread.join();
+      assertEquals(Thread.State.TERMINATED, infiniteSubUnSubThread.getState());
     }
     Assert.assertFalse(
         raceConditionFound,
