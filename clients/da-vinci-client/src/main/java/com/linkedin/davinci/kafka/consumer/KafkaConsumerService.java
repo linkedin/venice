@@ -173,7 +173,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   /** May be overridden to clean up state in sub-classes */
-  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition topicPartition) {
+  void handleUnsubscription(
+      SharedKafkaConsumer consumer,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition topicPartition) {
   }
 
   private String getUniqueClientId(String kafkaUrl, int suffix) {
@@ -563,7 +566,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    */
   public enum ConsumerAssignmentStrategy {
     TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(TopicWiseKafkaConsumerService::new),
-    PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(PartitionWiseKafkaConsumerService::new);
+    PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(PartitionWiseKafkaConsumerService::new),
+    STORE_AWARE_PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(StoreAwarePartitionWiseKafkaConsumerService::new);
 
     final KCSConstructor constructor;
 
@@ -575,5 +579,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   // For testing only
   public void setThreadFactory(RandomAccessDaemonThreadFactory threadFactory) {
     this.threadFactory = threadFactory;
+  }
+
+  IndexedMap<SharedKafkaConsumer, ConsumptionTask> getConsumerToConsumptionTask() {
+    return consumerToConsumptionTask;
   }
 }
