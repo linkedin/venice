@@ -1730,6 +1730,6 @@ jobs:
     - name: AllIsWell
       shell: bash
       run: |
-        echo "LGTM!"
+        echo "Successfully ran all E2E tests!"
 
 
