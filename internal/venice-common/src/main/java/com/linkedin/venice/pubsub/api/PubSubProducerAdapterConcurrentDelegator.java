@@ -2,7 +2,6 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.ProtocolUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -11,6 +10,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.openjdk.jol.info.GraphLayout;
+import org.openjdk.jol.vm.VM;
 
 
 /**
@@ -31,7 +33,37 @@ import org.apache.logging.log4j.Logger;
  * 2. The writes to the same partition will be routed to the same queue all the time to guarantee ordering.
  * 3. PubSubProducer in each thread will constantly be polling the corresponding queue and write to broker.
  *
- * This pattern is mainly useful for stream processing as one container can write to multiple partitions.
+ * Here are the main reasons we would like to leverage this new strategy in streaming processing job:
+ * 1. In the batch push job, each reducer only produces to one single Venice partition, so the multiple-thread-multiple-producer
+ *    wouldn't help much.
+ * 2. In Venice-Server leader replica, it is natural to have multiple consumers (threads) producing to different
+ *    Venice partitions as it is using partition-wise shared consumer assignment strategy, and multiple producers
+ *    can help, and it will be covered by {@link PubSubProducerAdapterDelegator}.
+ * 3. Online writer is sharing a similar pattern as #2, but so far, we haven't heard any complains regarding online
+ *    writer performance, so we will leave it out of scope for now.
+ * 4. Streaming job is typically running inside container and single-threaded to guarantee ordering, but the writes
+ *    to Venice store can belong to several Venice partitions. We observed that KafkaProducer compression
+ *    would introduce a lot of overheads for large records, which will slow down Producer#send and if Producer#send is slow,
+ *    the streaming job throughput will be heavily affected.
+ *    This strategy considers the following aspects:
+ *    a. We still want to keep compression on producer end as the streaming app has enough cpu resources.
+ *    b. We would like to utilize more cpu resources to improve the producing throughput.
+ *    c. We would like to get round of the contention issue (KafkaProducer has several synchronized sections for sending
+ *       messages to broker) when running in a multiple-threaded env.
+ *
+ *    Here is how this strategy would fulfill #4.
+ *    1. Execute the Producer#send logic in a multi-thread env to better utilize cpu resources.
+ *    2. Each thread will have its own {@link PubSubProducerAdapter} to avoid contention.
+ *    3. The mapping between Venice partition and buffered producer is sticky, so the ordering is still guaranteed per
+ *       Venice partition.
+ *
+ *
+ * The above analysis is correct in the high-level, but there are still some nuances, where this new strategy can perform
+ * better than the default one in VPJ reducer and Venice Server leader replicas:
+ * 1. If the record processing time is comparable with the producer#send latency, the new strategy will delegate the producing
+ *    logic to a separate thread, which can potentially improve the overall throughput if there are enough cpu resources.
+ * 2. If the record processing time is minimal comparing with the producer#send latency, this new strategy won't help much.
+ *
  */
 public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(PubSubProducerAdapterConcurrentDelegator.class);
@@ -61,32 +93,32 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
         producingTopic,
         producerThreadCount,
         producerQueueSize);
-    this.blockingQueueList = new ArrayList<>(producerThreadCount);
+    List<MemoryBoundBlockingQueue<ProducerQueueNode>> tmpBlockingQueueList = new ArrayList<>(producerThreadCount);
     this.producerExecutor = Executors
         .newFixedThreadPool(producerThreadCount, new DaemonThreadFactory(producingTopic + "-concurrent-producer"));
     this.partitionQueueAssignment = new VeniceConcurrentHashMap<>();
     this.lastNodePerQueue = new VeniceConcurrentHashMap<>(producerThreadCount);
     this.producingTopic = producingTopic;
-    this.producers = new ArrayList<>(producerThreadCount);
-    this.drainers = new ArrayList<>(producerThreadCount);
+    List<PubSubProducerAdapter> tmpProducers = new ArrayList<>(producerThreadCount);
+    List<ProducerQueueDrainer> tmpDrainers = new ArrayList<>(producerThreadCount);
     for (int cur = 0; cur < producerThreadCount; ++cur) {
       PubSubProducerAdapter producer = producerAdapterSupplier.get();
-      this.producers.add(producer);
+      tmpProducers.add(producer);
 
       MemoryBoundBlockingQueue<ProducerQueueNode> blockingQueue =
           new MemoryBoundBlockingQueue<>(producerQueueSize, 1 * 1024 * 1024l);
-      ProducerQueueDrainer drainer = new ProducerQueueDrainer(blockingQueue, cur, producer);
-      this.blockingQueueList.add(blockingQueue);
-      this.drainers.add(drainer);
+      ProducerQueueDrainer drainer = new ProducerQueueDrainer(producingTopic, blockingQueue, cur, producer);
+      tmpBlockingQueueList.add(blockingQueue);
+      tmpDrainers.add(drainer);
       this.producerExecutor.submit(drainer);
     }
+
+    this.blockingQueueList = Collections.unmodifiableList(tmpBlockingQueueList);
+    this.producers = Collections.unmodifiableList(tmpProducers);
+    this.drainers = Collections.unmodifiableList(tmpDrainers);
   }
 
   public static class ProducerQueueNode implements Measurable {
-    /**
-     * Considering the overhead of {@link PubSubMessage} and its internal structures.
-     */
-    private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
     private final String topic;
     private final int partition;
     private final KafkaKey key;
@@ -112,30 +144,36 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
       this.produceFuture = produceFuture;
     }
 
+    /**
+     * When calculating the object size, we need to be very cautious about the deep size as if the object
+     * is referencing to some large objects, the deep size will be huge and the referenced objects might be
+     * counted multiple times unexpectedly.
+     * For example {@link #callback} can reference some big objects and if we calculate the deep size
+     * of {@link ProducerQueueNode}, the size will be unexpected.
+     */
     @Override
-    public int getSize() {
-      int headerSize = 0;
-      if (headers != null) {
-        for (PubSubMessageHeader header: headers.toList()) {
-          headerSize += header.key().length() + header.value().length;
-        }
-      }
-      return topic.length() + key.getEstimatedObjectSizeOnHeap()
-          + ProtocolUtils.getEstimateOfMessageEnvelopeSizeOnHeap(value) + headerSize + QUEUE_NODE_OVERHEAD_IN_BYTE;
+    public long getSize() {
+      return GraphLayout.parseInstance(topic).totalSize() // Deep object size
+          + GraphLayout.parseInstance(partition).totalSize() + GraphLayout.parseInstance(key).totalSize()
+          + GraphLayout.parseInstance(value).totalSize() + GraphLayout.parseInstance(headers).totalSize()
+          + VM.current().sizeOf(this); // Shallow object size
     }
   }
 
   public static class ProducerQueueDrainer implements Runnable {
-    private final Logger LOGGER = LogManager.getLogger(ProducerQueueDrainer.class);
+    private static final Logger LOGGER = LogManager.getLogger(ProducerQueueDrainer.class);
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
+    private final String producingTopic;
     private final BlockingQueue<ProducerQueueNode> blockingQueue;
     private final int drainerIndex;
     private final PubSubProducerAdapter producer;
 
     public ProducerQueueDrainer(
+        String producingTopic,
         BlockingQueue<ProducerQueueNode> blockingQueue,
         int drainerIndex,
         PubSubProducerAdapter producer) {
+      this.producingTopic = producingTopic;
       this.blockingQueue = blockingQueue;
       this.drainerIndex = drainerIndex;
       this.producer = producer;
@@ -143,7 +181,8 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
 
     @Override
     public void run() {
-      LOGGER.info("Starting ProducerQueueDrainer Thread for drainer: {}...", drainerIndex);
+      LOGGER
+          .info("Starting ProducerQueueDrainer Thread for drainer: {} to topic: {} ...", drainerIndex, producingTopic);
       while (isRunning.get()) {
         try {
           final ProducerQueueNode node = blockingQueue.take();
@@ -167,11 +206,17 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
             throw ex;
           }
         } catch (InterruptedException e) {
-          LOGGER.warn("Got interrupted when executing producer drainer with index: {}", drainerIndex);
+          LOGGER.warn(
+              "Got interrupted when executing producer drainer to topic: {} with index: {}",
+              producingTopic,
+              drainerIndex);
         }
       }
       isRunning.set(false);
-      LOGGER.info("Current ProducerQueueDrainer Thread for drainer: {} stopped", drainerIndex);
+      LOGGER.info(
+          "Current ProducerQueueDrainer Thread for drainer: {} to topic: {} stopped",
+          drainerIndex,
+          producingTopic);
     }
 
     public void stop() {

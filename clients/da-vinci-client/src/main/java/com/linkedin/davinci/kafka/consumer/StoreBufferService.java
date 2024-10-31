@@ -9,7 +9,6 @@ import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.ProtocolUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -32,6 +31,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.openjdk.jol.info.GraphLayout;
+import org.openjdk.jol.vm.VM;
 
 
 /**
@@ -379,10 +380,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
   private static class QueueNode implements Measurable {
-    /**
-     * Considering the overhead of {@link PubSubMessage} and its internal structures.
-     */
-    private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
@@ -447,17 +444,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return consumerRecord.hashCode();
     }
 
+    /**
+     * When calculating the object size, we need to be very cautious about the deep size as if the object
+     * is referencing to some large objects, the deep size will be huge and the referenced objects might be
+     * counted multiple times unexpectedly.
+     */
     @Override
-    public int getSize() {
-      // For FakePubSubMessage, the key and the value are null, return 0.
-      if (consumerRecord instanceof FakePubSubMessage) {
-        return 0;
-      }
-
-      // N.B.: This is just an estimate. TODO: Consider if it is really useful, and whether to get rid of it.
-      return this.consumerRecord.getKey().getEstimatedObjectSizeOnHeap()
-          + ProtocolUtils.getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue())
-          + QUEUE_NODE_OVERHEAD_IN_BYTE;
+    public long getSize() {
+      return GraphLayout.parseInstance(consumerRecord).totalSize() // Deep size
+          + VM.current().sizeOf(this); // Shallow size
     }
 
     @Override

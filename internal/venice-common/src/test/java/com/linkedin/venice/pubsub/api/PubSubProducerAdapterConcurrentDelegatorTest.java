@@ -27,6 +27,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import org.openjdk.jol.info.GraphLayout;
+import org.openjdk.jol.vm.VM;
 import org.testng.annotations.Test;
 
 
@@ -130,7 +132,7 @@ public class PubSubProducerAdapterConcurrentDelegatorTest {
     doReturn(exceptionFuture).when(producer).sendMessage(eq(topic), eq(1), eq(key2), any(), any(), any());
 
     PubSubProducerAdapterConcurrentDelegator.ProducerQueueDrainer drainer =
-        new PubSubProducerAdapterConcurrentDelegator.ProducerQueueDrainer(queue, 1, producer);
+        new PubSubProducerAdapterConcurrentDelegator.ProducerQueueDrainer(topic, queue, 1, producer);
 
     Thread drainerThread = new Thread(() -> drainer.run());
     drainerThread.start();
@@ -207,5 +209,18 @@ public class PubSubProducerAdapterConcurrentDelegatorTest {
 
     delegator.getBrokerAddress();
     verify(mockProducer1).getBrokerAddress();
+  }
+
+  /**
+   * This test is trying to make sure the object size measurement function works.
+   */
+  @Test
+  public void testObjectSize() {
+    String testStr = "01234567890123456789";
+    long deepSize = GraphLayout.parseInstance(testStr).totalSize();
+    long shallowSize = VM.current().sizeOf(testStr);
+    assertTrue(deepSize > 0); // deep size
+    assertTrue(shallowSize > 0); // shallow size
+    assertTrue(deepSize > shallowSize);
   }
 }
