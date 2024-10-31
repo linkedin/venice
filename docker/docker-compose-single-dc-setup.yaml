@@ -76,3 +76,17 @@ services:
     depends_on:
       venice-router:
         condition: service_healthy
+
+  venice-client-jupyter:
+    build:
+      args:
+        spark_version: 3.1.2
+    image: venice-client-jupyter
+    container_name: venice-client-jupyter
+    hostname: venice-client-jupyter
+    ports:
+      - 8888:8888
+    tty: true
+    depends_on:
+      venice-router:
+        condition: service_healthy
