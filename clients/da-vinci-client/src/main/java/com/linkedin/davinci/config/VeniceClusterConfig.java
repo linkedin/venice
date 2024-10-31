@@ -29,6 +29,7 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -227,8 +228,8 @@ public class VeniceClusterConfig {
      * case, the resolver needs not lookup anything, and it will always return the same input with potentially filtering
      */
     this.kafkaClusterUrlResolver = this.kafkaClusterIdToUrlMap.size() == this.kafkaClusterUrlToIdMap.size()
-        ? this::resolveKafkaUrlForSepTopic
-        : url -> resolveKafkaUrlForSepTopic(kafkaUrlResolution.getOrDefault(url, url));
+        ? Utils::resolveKafkaUrlForSepTopic
+        : url -> Utils.resolveKafkaUrlForSepTopic(kafkaUrlResolution.getOrDefault(url, url));
     this.kafkaBootstrapServers = this.kafkaClusterUrlResolver.apply(baseKafkaBootstrapServers);
     if (this.kafkaBootstrapServers == null || this.kafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
@@ -383,19 +384,6 @@ public class VeniceClusterConfig {
   }
 
   /**
-   * Check whether the given kafka url has "_sep" or not.
-   * If it has, return the kafka url without "_sep". Otherwise, return the original kafka url.
-   * @param kafkaUrl
-   * @return
-   */
-  public String resolveKafkaUrlForSepTopic(String kafkaUrl) {
-    if (kafkaUrl != null && kafkaUrl.endsWith(SEPARATE_TOPIC_SUFFIX)) {
-      return kafkaUrl.substring(0, kafkaUrl.length() - SEPARATE_TOPIC_SUFFIX.length());
-    }
-    return kafkaUrl;
-  }
-
-  /**
    *  For the separate incremental push topic feature, we need to resolve the cluster id to the original one for monitoring
    *  purposes as the incremental push topic essentially uses the same pubsub clusters s the regular push topic, though
    *  it looks like having a different cluster id
@@ -404,10 +392,10 @@ public class VeniceClusterConfig {
    */
   public int getEquivalentKafkaClusterIdForSepTopic(int clusterId) {
     String alias = kafkaClusterIdToAliasMap.get(clusterId);
-    if (alias == null || !alias.endsWith(SEPARATE_TOPIC_SUFFIX)) {
+    if (alias == null || !alias.endsWith(Utils.SEPARATE_TOPIC_SUFFIX)) {
       return clusterId;
     }
-    String originalAlias = alias.substring(0, alias.length() - SEPARATE_TOPIC_SUFFIX.length());
+    String originalAlias = alias.substring(0, alias.length() - Utils.SEPARATE_TOPIC_SUFFIX.length());
     return kafkaClusterAliasToIdMap.getInt(originalAlias);
   }
 }

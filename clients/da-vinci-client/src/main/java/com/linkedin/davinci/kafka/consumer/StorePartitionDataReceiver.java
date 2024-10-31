@@ -135,4 +135,9 @@ public class StorePartitionDataReceiver
     return this.getClass().getSimpleName() + "{" + "VT=" + storeIngestionTask.getVersionTopic() + ", topicPartition="
         + topicPartition + '}';
   }
+
+  // for testing purpose only
+  public int getKafkaClusterId() {
+    return this.kafkaClusterId;
+  }
 }

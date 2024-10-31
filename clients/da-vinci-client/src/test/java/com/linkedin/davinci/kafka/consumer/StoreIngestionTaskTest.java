@@ -4903,6 +4903,32 @@ public abstract class StoreIngestionTaskTest {
     }, AA_OFF);
   }
 
+  @Test
+  public void testGetTopicManager() throws Exception {
+    String localKafkaBootstrapServer = inMemoryLocalKafkaBroker.getKafkaBootstrapServer();
+    String remoteKafkaBootstrapServer = inMemoryRemoteKafkaBroker.getKafkaBootstrapServer();
+    TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository)
+        .getTopicManager(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
+        .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      // local url returns the local manager
+      Assert.assertSame(mockTopicManager, storeIngestionTaskUnderTest.getTopicManager(localKafkaBootstrapServer));
+      Assert.assertSame(
+          mockTopicManager,
+          storeIngestionTaskUnderTest.getTopicManager(localKafkaBootstrapServer + "_sep"));
+      // remote url returns the remote manager
+      Assert.assertSame(
+          mockTopicManagerRemoteKafka,
+          storeIngestionTaskUnderTest.getTopicManager(remoteKafkaBootstrapServer));
+      Assert.assertSame(
+          mockTopicManagerRemoteKafka,
+          storeIngestionTaskUnderTest.getTopicManager(remoteKafkaBootstrapServer + "_sep"));
+    }, AA_OFF);
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config
