@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,21 +36,12 @@ public class VeniceClusterConfigTest {
   }
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     Properties props = new Properties();
     props.setProperty(CLUSTER_NAME, "test_cluster");
     props.setProperty(ZOOKEEPER_ADDRESS, "fake_zk_addr");
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, "fake_kafka_addr");
     config = new VeniceClusterConfig(new VeniceProperties(props), KAFKA_CLUSTER_MAP);
-  }
-
-  @Test
-  public void testResolveKafkaUrlForSepTopic() {
-    String originalKafkaUrl = "localhost:12345";
-    String originalKafkaUrlForSep = "localhost:12345_sep";
-    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
-    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
-    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
   }
 
   @Test

@@ -202,4 +202,13 @@ public class UtilsTest {
     Assert.assertTrue(setWithSpaces.contains("b"));
     Assert.assertTrue(setWithSpaces.contains("c"));
   }
+
+  @Test
+  public void testResolveKafkaUrlForSepTopic() {
+    String originalKafkaUrl = "localhost:12345";
+    String originalKafkaUrlForSep = "localhost:12345_sep";
+    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
+    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
+    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+  }
 }

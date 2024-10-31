@@ -113,10 +113,6 @@ public class AggKafkaConsumerServiceTest {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     TopicManager topicManager = mock(TopicManager.class);
 
-    Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
-    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
-    kafkaServerToConsumerServiceMap.put(PUBSUB_URL, consumerService);
-
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, PUBSUB_URL);
     aggKafkaConsumerService.createKafkaConsumerService(props);

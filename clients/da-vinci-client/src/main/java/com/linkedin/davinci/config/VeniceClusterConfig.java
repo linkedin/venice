@@ -385,8 +385,8 @@ public class VeniceClusterConfig {
 
   /**
    *  For the separate incremental push topic feature, we need to resolve the cluster id to the original one for monitoring
-   *  purposes as the incremental push topic essentially uses the same pubsub clusters s the regular push topic, though
-   *  it looks like having a different cluster id
+   *  purposes as the incremental push topic essentially uses the same pubsub clusters as the regular push topic, though
+   *  it appears to have a different cluster id
    * @param clusterId
    * @return
    */
