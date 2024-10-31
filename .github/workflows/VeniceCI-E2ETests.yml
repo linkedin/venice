@@ -25,7 +25,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -35,10 +35,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1000"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1000
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -49,7 +49,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -67,7 +67,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -77,10 +77,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1010"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1010
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -91,7 +91,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -109,7 +109,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -119,10 +119,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1020"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1020
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -133,7 +133,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -151,7 +151,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -161,10 +161,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1030"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1030
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -175,7 +175,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -193,7 +193,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -203,10 +203,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1040"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1040
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -217,7 +217,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -235,7 +235,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -245,10 +245,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1050"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1050
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -259,7 +259,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -277,7 +277,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -287,10 +287,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1060"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1060
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -301,7 +301,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -319,7 +319,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -329,10 +329,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1070"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1070
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -343,7 +343,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -361,7 +361,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -371,10 +371,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1080"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1080
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -385,7 +385,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -403,7 +403,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -413,10 +413,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1090"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1090
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -427,7 +427,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -445,7 +445,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -455,10 +455,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1100"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1100
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -469,7 +469,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -487,7 +487,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -497,10 +497,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1110"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1110
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -511,7 +511,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -529,7 +529,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -539,10 +539,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1120"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1120
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -553,7 +553,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -571,7 +571,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -581,10 +581,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1130"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1130
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -595,7 +595,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -613,7 +613,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -623,10 +623,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1200"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1200
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -637,7 +637,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -655,7 +655,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -665,10 +665,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1210"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1210
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -679,7 +679,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -697,7 +697,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -707,10 +707,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1220"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1220
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -721,7 +721,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -739,7 +739,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -749,10 +749,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1230"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1230
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -763,7 +763,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -781,7 +781,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -791,10 +791,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1240"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1240
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -805,7 +805,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -823,7 +823,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -833,10 +833,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1250"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1250
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -847,7 +847,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -865,7 +865,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -875,10 +875,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1260"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1260
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -889,7 +889,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -907,7 +907,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -917,10 +917,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1270"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1270
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -931,7 +931,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -949,7 +949,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -959,10 +959,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1280"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1280
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -973,7 +973,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -991,7 +991,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1001,10 +1001,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1400"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1400
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1015,7 +1015,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1033,7 +1033,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1043,10 +1043,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1410"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1410
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1057,7 +1057,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1075,7 +1075,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1085,10 +1085,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1420"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1420
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1099,7 +1099,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1117,7 +1117,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1127,10 +1127,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1430"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1430
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1141,7 +1141,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1159,7 +1159,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1169,10 +1169,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1440"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1440
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1183,7 +1183,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1201,7 +1201,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1211,10 +1211,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1500"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1500
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1225,7 +1225,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1243,7 +1243,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1253,10 +1253,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1550"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1550
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1267,7 +1267,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1285,7 +1285,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1295,10 +1295,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9999"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9999
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1309,7 +1309,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -1328,7 +1328,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -1338,10 +1338,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "clean"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Integration Tests
+        run: ./gradlew clean
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1352,7 +1352,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz

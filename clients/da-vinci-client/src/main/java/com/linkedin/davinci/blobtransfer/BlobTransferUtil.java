@@ -73,7 +73,8 @@ public class BlobTransferUtil {
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
-          new DaVinciBlobFinder(storeClient));
+          new DaVinciBlobFinder(storeClient),
+          baseDir);
       manager.start();
       return manager;
     } catch (Exception e) {
@@ -111,7 +112,8 @@ public class BlobTransferUtil {
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
-          new ServerBlobFinder(customizedViewFuture));
+          new ServerBlobFinder(customizedViewFuture),
+          baseDir);
       manager.start();
       return manager;
     } catch (Exception e) {

@@ -1,5 +1,7 @@
 FROM  mcr.microsoft.com/openjdk/jdk:11-ubuntu
 
+LABEL org.opencontainers.image.description="Venice Server: Acts as a Venice storage node, handling data ingestion, storage, and serving from RocksDB."
+
 ENV VENICE_DIR=/opt/venice
 
 RUN apt-get update

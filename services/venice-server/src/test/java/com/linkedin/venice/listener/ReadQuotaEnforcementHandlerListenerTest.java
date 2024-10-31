@@ -2,9 +2,11 @@ package com.linkedin.venice.listener;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -25,6 +27,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -121,6 +124,9 @@ public class ReadQuotaEnforcementHandlerListenerTest {
 
     // Add a store (call store created) verify all versions in buckets and in subscriptions
     Store store1 = getDummyStore("store1", Arrays.asList(new Integer[] { 1 }), 10);
+    ServerReadQuotaUsageStats storeStats = mock(ServerReadQuotaUsageStats.class);
+    doReturn(storeStats).when(stats).getStoreStats("store1");
+    doReturn(storeStats).when(stats).getNullableStoreStats("store1");
     store1.setCurrentVersion(1);
     quotaEnforcer.handleStoreCreated(store1);
     assertTrue(
@@ -134,6 +140,9 @@ public class ReadQuotaEnforcementHandlerListenerTest {
 
     List<Integer> versions = Arrays.asList(new Integer[] { 2, 3 });
     Store store2 = getDummyStore("store2", versions, 10);
+    ServerReadQuotaUsageStats storeStats2 = mock(ServerReadQuotaUsageStats.class);
+    doReturn(storeStats2).when(stats).getStoreStats("store2");
+    doReturn(storeStats2).when(stats).getNullableStoreStats("store2");
     store2.setCurrentVersion(3);
     quotaEnforcer.handleStoreCreated(store2);
     assertTrue(
@@ -147,7 +156,9 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     versions = Arrays.asList(new Integer[] { 3, 4 });
     store2 = getDummyStore("store2", versions, 10);
     store2.setCurrentVersion(4);
-    quotaEnforcer.handleStoreCreated(store2);
+    quotaEnforcer.handleStoreChanged(store2);
+    verify(storeStats2, atLeastOnce()).removeVersion(2);
+    verify(stats, atLeastOnce()).setCurrentVersion("store2", 4);
     assertTrue(
         registeredTopics.contains(Version.composeKafkaTopic(store2.getName(), 4)),
         "After adding a store with version " + 4 + ", the throttler should be subscribed to updates for that topic");

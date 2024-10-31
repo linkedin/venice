@@ -1,5 +1,7 @@
 FROM  mcr.microsoft.com/openjdk/jdk:11-ubuntu
 
+LABEL org.opencontainers.image.description="Venice Controller: responsible for managing administrative operations such as store creation, deletion, updates, and starting new pushes or versions."
+
 ENV VENICE_DIR=/opt/venice
 
 RUN apt-get update

@@ -40,6 +40,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -51,7 +52,10 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
-
+  // Maximum timeout for blob transfer in minutes per partition
+  // TODO: make this configurable in store level
+  private static final int MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN = 30;
+  private static final String TRANSFER_TIMEOUT_ERROR_MSG_FORMAT = "Timeout for transferring blob %s file %s";
   private boolean useZeroCopy = false;
   private final String baseDir;
   private BlobSnapshotManager blobSnapshotManager;
@@ -131,8 +135,19 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         return;
       }
 
+      // Set up the time limitation for the transfer
+      long startTime = System.currentTimeMillis();
+
       // transfer files
       for (File file: files) {
+        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN)) {
+          String errMessage = String
+              .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
+          LOGGER.error(errMessage);
+          setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
+          return;
+        }
+
         sendFile(file, ctx);
       }
 

@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -31,6 +32,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.testng.annotations.Test;
 
@@ -116,21 +118,38 @@ public class IngestionBatchProcessorTest {
         true,
         mock(AggVersionedIngestionStats.class),
         mock(HostLevelIngestionStats.class));
-    List<ReentrantLock> locks = batchProcessor.lockKeys(Arrays.asList(rtMessage1, rtMessage2));
+    /**
+     * Switch the input order to make sure the `lockKeys` function would sort them when locking.
+     */
+    NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap =
+        batchProcessor.lockKeys(Arrays.asList(rtMessage2, rtMessage1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key1));
     verify(mockKeyLevelLocksManager).acquireLockByKey(ByteArrayKey.wrap(key2));
     verify(lockForKey1).lock();
     verify(lockForKey2).lock();
-    assertEquals(locks.get(0), lockForKey1);
-    assertEquals(locks.get(1), lockForKey2);
+    // Verify the order
+    ReentrantLock[] locks = keyLockMap.values().toArray(new ReentrantLock[0]);
+    assertEquals(locks[0], lockForKey1);
+    assertEquals(locks[1], lockForKey2);
 
     // unlock test
-    batchProcessor.unlockKeys(Arrays.asList(rtMessage1, rtMessage2), locks);
+    batchProcessor.unlockKeys(keyLockMap);
 
     verify(lockForKey1).unlock();
     verify(lockForKey2).unlock();
     verify(mockKeyLevelLocksManager).releaseLock(ByteArrayKey.wrap(key1));
     verify(mockKeyLevelLocksManager).releaseLock(ByteArrayKey.wrap(key2));
+
+    // Duplicate messages in the batch
+    keyLockMap = batchProcessor.lockKeys(Arrays.asList(rtMessage1, rtMessage2, rtMessage1));
+    verify(mockKeyLevelLocksManager, times(2)).acquireLockByKey(ByteArrayKey.wrap(key1));
+    verify(mockKeyLevelLocksManager, times(2)).acquireLockByKey(ByteArrayKey.wrap(key2));
+    verify(lockForKey1, times(2)).lock();
+    verify(lockForKey2, times(2)).lock();
+    // Verify the order
+    locks = keyLockMap.values().toArray(new ReentrantLock[0]);
+    assertEquals(locks[0], lockForKey1);
+    assertEquals(locks[1], lockForKey2);
   }
 
   @Test

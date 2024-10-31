@@ -153,14 +153,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
       if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-        LOGGER.info("AA/WC workload parallel processing enabled is false");
+        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
         return null;
       }
-      LOGGER.info("AA/WC workload parallel processing enabled is true");
+      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
       return new IngestionBatchProcessor(
           kafkaVersionTopic,
           parallelProcessingThreadPool,
-          null,
+          keyLevelLocksManager.get(),
           this::processActiveActiveMessage,
           isWriteComputationEnabled,
           isActiveActiveReplicationEnabled(),

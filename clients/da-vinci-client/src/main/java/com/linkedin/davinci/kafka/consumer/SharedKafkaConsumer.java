@@ -109,7 +109,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    * Listeners may use this callback to clean up lingering state they may be holding about a consumer.
    */
   interface UnsubscriptionListener {
-    void call(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition);
+    void call(SharedKafkaConsumer consumer, PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition);
   }
 
   protected synchronized void updateCurrentAssignment(Set<PubSubTopicPartition> newAssignment) {
@@ -155,8 +155,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
     unSubscribeAction(() -> {
       this.delegate.unSubscribe(pubSubTopicPartition);
-      subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
-      unsubscriptionListener.call(this, pubSubTopicPartition);
+      PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+      unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       return Collections.singleton(pubSubTopicPartition);
     });
   }
@@ -166,8 +166,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     unSubscribeAction(() -> {
       this.delegate.batchUnsubscribe(pubSubTopicPartitionSet);
       for (PubSubTopicPartition pubSubTopicPartition: pubSubTopicPartitionSet) {
-        subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
-        unsubscriptionListener.call(this, pubSubTopicPartition);
+        PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+        unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       }
       return pubSubTopicPartitionSet;
     });
@@ -181,10 +181,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier) {
     long currentPollTimes = pollTimes;
-    long startTime = System.currentTimeMillis();
     Set<PubSubTopicPartition> topicPartitions = supplier.get();
+    long startTime = System.currentTimeMillis();
     long elapsedTime = System.currentTimeMillis() - startTime;
-
     LOGGER.info(
         "Shared consumer {} unsubscribed {} partition(s): ({}) in {} ms",
         this.getClass().getSimpleName(),
@@ -347,5 +346,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
+  }
+
+  // Test only
+  public void setNextPollTimeOutSeconds(long seconds) {
+    this.nextPollTimeOutSeconds = seconds;
   }
 }
