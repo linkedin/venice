@@ -20,9 +20,7 @@ import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -34,7 +32,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -44,6 +41,7 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -425,131 +423,71 @@ public class KafkaConsumerServiceTest {
   }
 
   @Test
-  public void testStoreAwarePartitionWiseReduceConsumerCount() {
-    String storeName1 = Utils.getUniqueString("test_consumer_service1");
-    String storeName2 = Utils.getUniqueString("test_consumer_service2");
-    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
-    SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
-    StoreAwarePartitionWiseKafkaConsumerService consumerService =
-        mock(StoreAwarePartitionWiseKafkaConsumerService.class);
-    Map<String, Map<PubSubConsumerAdapter, Integer>> resourceIdentifierToConsumerMap = new VeniceConcurrentHashMap<>();
-    resourceIdentifierToConsumerMap.put(storeName1, new VeniceConcurrentHashMap<>());
-    resourceIdentifierToConsumerMap.get(storeName1).put(consumer1, 1);
-    resourceIdentifierToConsumerMap.get(storeName1).put(consumer2, 2);
-    when(consumerService.getResourceIdentifierToConsumerMap()).thenReturn(resourceIdentifierToConsumerMap);
-    doCallRealMethod().when(consumerService).getResourceIdentifier(any());
-    when(consumerService.getLOGGER())
-        .thenReturn(LogManager.getLogger(StoreAwarePartitionWiseKafkaConsumerService.class));
-    doCallRealMethod().when(consumerService).decreaseResourceIdentifierToConsumerCount(anyString(), any());
-    // Good case with cleanup.
-    consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer1);
-    Assert.assertFalse(resourceIdentifierToConsumerMap.get(storeName1).containsKey(consumer1));
-    // Good case.
-    consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer2);
-    Assert.assertEquals(resourceIdentifierToConsumerMap.get(storeName1).get(consumer2).intValue(), 1);
-    // None-existent consumer count.
-    Assert.assertThrows(() -> consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer1));
-    // None-existent id.
-    Assert.assertThrows(() -> consumerService.decreaseResourceIdentifierToConsumerCount(storeName2, consumer1));
-    // Good case with cleanup.
-    consumerService.decreaseResourceIdentifierToConsumerCount(storeName1, consumer2);
-    Assert.assertFalse(resourceIdentifierToConsumerMap.containsKey(storeName1));
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStoreAwarePartitionWiseGetConsumer(boolean isHybridStore) {
-
+  public void testStoreAwarePartitionWiseGetConsumer() {
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
     String topicForStoreName1 = Version.composeKafkaTopic(storeName1, 1);
     PubSubTopic pubSubTopicForStoreName1 = pubSubTopicRepository.getTopic(topicForStoreName1);
-    String topicForStoreName1_v2 = Version.composeKafkaTopic(storeName1, 2);
-    PubSubTopic pubSubTopicForStoreName1_v2 = pubSubTopicRepository.getTopic(topicForStoreName1_v2);
-    String topicForStoreName1_v3 = Version.composeKafkaTopic(storeName1, 3);
 
     String storeName2 = Utils.getUniqueString("test_consumer_service2");
     String topicForStoreName2 = Version.composeKafkaTopic(storeName2, 1);
     PubSubTopic pubSubTopicForStoreName2 = pubSubTopicRepository.getTopic(topicForStoreName2);
 
+    String storeName3 = Utils.getUniqueString("test_consumer_service3");
+    String topicForStoreName3 = Version.composeKafkaTopic(storeName3, 1);
+    PubSubTopic pubSubTopicForStoreName3 = pubSubTopicRepository.getTopic(topicForStoreName3);
+
     SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
     SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
-    when(consumer1.getAssignmentSize()).thenReturn(0);
-    when(consumer2.getAssignmentSize()).thenReturn(0);
     ConsumptionTask consumptionTask = mock(ConsumptionTask.class);
 
     StoreAwarePartitionWiseKafkaConsumerService consumerService =
         mock(StoreAwarePartitionWiseKafkaConsumerService.class);
 
+    // Prepare for the mock.
     IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumptionTaskIndexedMap = new IndexedHashMap<>(2);
     consumptionTaskIndexedMap.put(consumer1, consumptionTask);
     consumptionTaskIndexedMap.put(consumer2, consumptionTask);
-
     when(consumerService.getConsumerToConsumptionTask()).thenReturn(consumptionTaskIndexedMap);
-
-    Map<String, Map<PubSubConsumerAdapter, Integer>> resourceIdentifierToConsumerMap = new VeniceConcurrentHashMap<>();
-    when(consumerService.getResourceIdentifierToConsumerMap()).thenReturn(resourceIdentifierToConsumerMap);
 
     Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
         new VeniceConcurrentHashMap<>();
     when(consumerService.getRtTopicPartitionToConsumerMap()).thenReturn(rtTopicPartitionToConsumerMap);
-    doCallRealMethod().when(consumerService).getResourceIdentifier(any());
-
-    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    when(consumerService.getStoreRepository()).thenReturn(storeRepository);
-    Store store1 = mock(Store.class);
-    Version version1 = mock(Version.class);
-    Version version2 = mock(Version.class);
-    doReturn(version1).when(store1).getVersion(1);
-    doReturn(version2).when(store1).getVersion(2);
-    if (isHybridStore) {
-      doReturn(true).when(store1).isHybrid();
-      doReturn(mock(HybridStoreConfig.class)).when(version1).getHybridStoreConfig();
-      doReturn(mock(HybridStoreConfig.class)).when(version2).getHybridStoreConfig();
-    }
-    doReturn(store1).when(storeRepository).getStore(storeName1);
-
     when(consumerService.getLOGGER())
         .thenReturn(LogManager.getLogger(StoreAwarePartitionWiseKafkaConsumerService.class));
     doCallRealMethod().when(consumerService).pickConsumerForPartition(any(), any());
+    doCallRealMethod().when(consumerService).getConsumerStoreLoad(any(), anyString());
 
-    SharedKafkaConsumer consumerForT1P0 = consumerService
-        .pickConsumerForPartition(pubSubTopicForStoreName1, new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 0));
-    when(consumerForT1P0.getAssignmentSize()).thenReturn(1);
-    SharedKafkaConsumer consumerForT2P0 = consumerService
-        .pickConsumerForPartition(pubSubTopicForStoreName2, new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 0));
-    Assert.assertNotEquals(consumerForT1P0, consumerForT2P0);
-    when(consumerForT2P0.getAssignmentSize()).thenReturn(1);
-    SharedKafkaConsumer consumerForT1P1 = consumerService.pickConsumerForPartition(
-        pubSubTopicForStoreName1_v2,
-        new PubSubTopicPartitionImpl(pubSubTopicForStoreName1_v2, 1));
+    when(consumer1.getAssignmentSize()).thenReturn(1);
+    when(consumer1.getAssignment())
+        .thenReturn(Collections.singleton(new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 100)));
+    Set<PubSubTopicPartition> tpSet = new HashSet<>();
+    tpSet.add(new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 100));
+    tpSet.add(new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 101));
+    when(consumer2.getAssignmentSize()).thenReturn(2);
+    when(consumer2.getAssignment()).thenReturn(tpSet);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName1), 10001);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName2), 1);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName3), 1);
+
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer2, storeName2), 20002);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer2, storeName1), 2);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer2, storeName3), 2);
+
     Assert.assertEquals(
-        consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName2)),
-        storeName2);
-
-    if (isHybridStore) {
-      Assert.assertNotEquals(consumerForT1P0, consumerForT1P1);
-      Assert.assertEquals(consumerService.getResourceIdentifierToConsumerMap().size(), 2);
-      Assert.assertEquals(
-          consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName1)),
-          storeName1);
-      Assert.assertEquals(
-          consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName1_v2)),
-          storeName1);
-      Assert.assertEquals(
-          consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName1_v3)),
-          storeName1);
-    } else {
-      Assert.assertEquals(consumerForT1P0, consumerForT1P1);
-      Assert.assertEquals(consumerService.getResourceIdentifierToConsumerMap().size(), 3);
-      Assert.assertEquals(
-          consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName1)),
-          topicForStoreName1);
-      Assert.assertEquals(
-          consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName1_v2)),
-          topicForStoreName1_v2);
-      Assert.assertEquals(
-          consumerService.getResourceIdentifier(pubSubTopicRepository.getTopic(topicForStoreName1_v3)),
-          topicForStoreName1_v3);
-    }
+        consumerService.pickConsumerForPartition(
+            pubSubTopicForStoreName1,
+            new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 0)),
+        consumer2);
+    Assert.assertEquals(
+        consumerService.pickConsumerForPartition(
+            pubSubTopicForStoreName2,
+            new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 0)),
+        consumer1);
+    Assert.assertEquals(
+        consumerService.pickConsumerForPartition(
+            pubSubTopicForStoreName3,
+            new PubSubTopicPartitionImpl(pubSubTopicForStoreName3, 0)),
+        consumer1);
   }
 
   @Test
