@@ -4810,7 +4810,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
-    ArrayList<StoreInfo> compactReadyStores = new ArrayList<>();
+    ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     try {
       Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
@@ -4824,15 +4824,21 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       // filter out
-      for (StoreInfo storeInfo: storeInfoList) {
-        if (isCompactionReady(storeInfo)) {
-          compactReadyStores.add(storeInfo);
-        }
-      }
+      filterStoresForCompaction(storeInfoList, compactionReadyStores);
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
     }
-    return compactReadyStores;
+    return compactionReadyStores;
+  }
+
+  private void filterStoresForCompaction(
+      ArrayList<StoreInfo> storeInfoList,
+      ArrayList<StoreInfo> compactionReadyStores) {
+    for (StoreInfo storeInfo: storeInfoList) {
+      if (isCompactionReady(storeInfo)) {
+        compactionReadyStores.add(storeInfo);
+      }
+    }
   }
 
   // This function abstracts the criteria for a store to be ready for compaction
@@ -4857,8 +4863,8 @@ public class VeniceParentHelixAdmin implements Admin {
     int currentVersionNumber = storeInfo.getCurrentVersion();
     Optional<Version> currentVersion = storeInfo.getVersion(currentVersionNumber);
     if (!currentVersion.isPresent()) {
-      throw new RuntimeException(
-          "Couldn't find current version: " + currentVersionNumber + " from store: " + storeInfo.getName());
+      LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
+      return false; // invalid store because no current version, this store is not eligible for compaction
     }
 
     // calculate hours since last compaction
