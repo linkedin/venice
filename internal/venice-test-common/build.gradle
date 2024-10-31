@@ -317,7 +317,7 @@ task generateGHCI() {
   jobs << otherTest
 
   // define a job that depends others to manage the status check
-  appendToGHCI(completionFileContent, targetFilePath, "E2ETestsCompletion", 20, "clean", jobs)
+  appendToGHCI(completionFileContent, targetFilePath, "E2ETestsCompletion", 20, "null", jobs)
 
   def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/VeniceCI-E2ETests.yml")
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
