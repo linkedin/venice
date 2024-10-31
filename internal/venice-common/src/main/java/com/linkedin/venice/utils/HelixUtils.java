@@ -15,8 +15,10 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
@@ -380,5 +382,28 @@ public class HelixUtils {
    */
   public static String instanceIdToUrl(String instanceId) {
     return "https://" + instanceId.replace("_", ":");
+  }
+
+  public static CloudConfig getCloudConfig(
+      CloudProvider cloudProvider,
+      String cloudId,
+      List<String> cloudInfoSources,
+      String cloudInfoProcessorName) {
+    CloudConfig.Builder cloudConfigBuilder =
+        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(cloudProvider);
+
+    if (!cloudId.isEmpty()) {
+      cloudConfigBuilder.setCloudID(cloudId);
+    }
+
+    if (!cloudInfoSources.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
+    }
+
+    if (!cloudInfoProcessorName.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
+    }
+
+    return cloudConfigBuilder.build();
   }
 }
