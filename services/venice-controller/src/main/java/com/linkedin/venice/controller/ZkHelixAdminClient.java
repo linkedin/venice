@@ -164,7 +164,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           AutoRebalanceStrategy.class.getName());
       VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
-      idealState.setMinActiveReplicas(controllerClusterReplicaCount);
+      idealState.setMinActiveReplicas(Math.max(controllerClusterReplicaCount - 1, 1));
       idealState.setRebalancerClassName(WagedRebalancer.class.getName());
 
       String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
@@ -259,7 +259,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       // We don't set the delayed time per resource, we will use the cluster level helix config to decide
       // the delayed rebalance time
       idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-      idealState.setMinActiveReplicas(replicationFactor - 1);
+      idealState.setMinActiveReplicas(Math.max(replicationFactor - 1, 1));
       idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
       helixAdmin.setResourceIdealState(clusterName, kafkaTopic, idealState);
       LOGGER.info("Enabled delayed re-balance for resource: {}", kafkaTopic);
@@ -317,14 +317,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void close() {
     helixAdmin.close();
-  }
-
-  /**
-   * @see HelixAdminClient#addInstanceTag(String, String, String)()
-   */
-  @Override
-  public void addInstanceTag(String clusterName, String instanceName, String tag) {
-    helixAdmin.addInstanceTag(clusterName, instanceName, tag);
   }
 
   public void setCloudConfig(String clusterName, VeniceControllerClusterConfig config) {

@@ -123,6 +123,8 @@ public class TestWriteUtils {
   // Push Input Folder Schema
   public static final Schema INT_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema INT_TO_INT_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(INT_SCHEMA).build();
   public static final Schema STRING_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
@@ -296,11 +298,27 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir) throws IOException {
+    return writeSimpleAvroFileWithIntToStringSchema(parentDir, "name ", DEFAULT_USER_DATA_RECORD_COUNT);
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir, String customValue, int numKeys)
+      throws IOException {
     return writeAvroFile(parentDir, "int2string.avro", INT_TO_STRING_SCHEMA, (recordSchema, writer) -> {
-      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+      for (int i = 1; i <= numKeys; ++i) {
         GenericRecord i2s = new GenericData.Record(recordSchema);
         i2s.put(DEFAULT_KEY_FIELD_PROP, i);
-        i2s.put(DEFAULT_VALUE_FIELD_PROP, "name " + i);
+        i2s.put(DEFAULT_VALUE_FIELD_PROP, customValue + i);
+        writer.append(i2s);
+      }
+    });
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, int numKeys) throws IOException {
+    return writeAvroFile(parentDir, "int2int.avro", INT_TO_INT_SCHEMA, (recordSchema, writer) -> {
+      for (int i = 1; i <= numKeys; ++i) {
+        GenericRecord i2s = new GenericData.Record(recordSchema);
+        i2s.put(DEFAULT_KEY_FIELD_PROP, i);
+        i2s.put(DEFAULT_VALUE_FIELD_PROP, i);
         writer.append(i2s);
       }
     });

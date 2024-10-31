@@ -5,7 +5,7 @@ import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
@@ -72,7 +72,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
@@ -113,7 +112,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     super(
         builder,
         store,
@@ -124,7 +123,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerFunction);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 
@@ -154,14 +153,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
       if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-        LOGGER.info("AA/WC workload parallel processing enabled is false");
+        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
         return null;
       }
-      LOGGER.info("AA/WC workload parallel processing enabled is true");
+      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
       return new IngestionBatchProcessor(
           kafkaVersionTopic,
           parallelProcessingThreadPool,
-          null,
+          keyLevelLocksManager.get(),
           this::processActiveActiveMessage,
           isWriteComputationEnabled,
           isActiveActiveReplicationEnabled(),
@@ -859,7 +858,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionId;
       deletePayload.replicationMetadataPayload = mergeConflictResultWrapper.getUpdatedRmdBytes();
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
-          (callback, sourceTopicOffset) -> veniceWriter.get()
+          (callback, sourceTopicOffset) -> partitionConsumptionState.getVeniceWriterLazyRef()
+              .get()
               .delete(
                   key,
                   callback,
@@ -888,6 +888,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
+          partitionConsumptionState,
           key,
           updatedValueBytes,
           updatedRmdBytes,
@@ -1538,6 +1539,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
+      PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       ByteBuffer updatedValueBytes,
       ByteBuffer updatedRmdBytes,
@@ -1555,7 +1557,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));
       }
-      getVeniceWriter().get()
+      getVeniceWriter(partitionConsumptionState).get()
           .put(
               key,
               ByteUtils.extractByteArray(updatedValueBytes),

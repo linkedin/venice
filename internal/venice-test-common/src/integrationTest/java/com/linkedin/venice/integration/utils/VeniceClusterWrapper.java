@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SSL;
@@ -11,6 +12,7 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.writeBatchData;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.google.common.base.Preconditions;
@@ -934,6 +936,36 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public static final String DEFAULT_KEY_SCHEMA = "\"int\"";
   public static final String DEFAULT_VALUE_SCHEMA = "\"int\"";
 
+  /**
+   * Alternative to {@link IntegrationTestPushUtils#createStoreForJob(String, Schema, Properties)} in cases where you do
+   * not need to reuse the controller client (which is almost always the case, since you can always call
+   * {@link #useControllerClient(Consumer)} instead...).
+   */
+  public void createStoreForJob(Schema recordSchema, Properties props) {
+    String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
+    String keySchemaStr = IntegrationTestPushUtils.getKeySchemaString(recordSchema, props);
+    String valueSchemaStr = IntegrationTestPushUtils.getValueSchemaString(recordSchema, props);
+
+    UpdateStoreQueryParams storeParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setCompressionStrategy(CompressionStrategy.NO_OP)
+            .setBatchGetLimit(2000)
+            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
+            .setChunkingEnabled(false)
+            .setIncrementalPushEnabled(false);
+
+    useControllerClient(cc -> {
+      NewStoreResponse newStoreResponse =
+          cc.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr);
+
+      if (newStoreResponse.isError()) {
+        throw new VeniceException("Could not create store " + storeName);
+      }
+
+      updateStore(storeName, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+    });
+  }
+
   public String createStore(int keyCount) {
     int nextVersionId = 1;
     return createStore(
@@ -974,7 +1006,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Stream<Map.Entry> batchData,
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator) {
-    return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData, CompressionStrategy.NO_OP, null);
+    return createStore(
+        DEFAULT_KEY_SCHEMA,
+        DEFAULT_VALUE_SCHEMA,
+        batchData,
+        compressionStrategy,
+        compressionDictionaryGenerator);
   }
 
   public String createStore(int keyCount, GenericRecord record) {

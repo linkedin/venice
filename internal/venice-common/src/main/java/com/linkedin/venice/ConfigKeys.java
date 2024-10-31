@@ -1761,6 +1761,10 @@ public class ConfigKeys {
       "davinci.push.status.scan.max.offline.instance.ratio";
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
+      "blob.transfer.snapshot.retention.time.in.min";
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
@@ -2301,4 +2305,14 @@ public class ConfigKeys {
   public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
       "server.aa.wc.workload.parallel.processing.thread.pool.size";
   public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
+
+  /**
+   * Whether to enable producer throughput optimization for realtime workload or not.
+   * Two strategies:
+   * 1. Disable compression.
+   * 2. Utilizing multiple producers per write.
+   * These two options are controlled via store-level config.
+   */
+  public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
+      "server.nearline.workload.producer.throughput.optimization.enabled";
 }

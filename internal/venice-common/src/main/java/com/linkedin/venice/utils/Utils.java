@@ -467,6 +467,13 @@ public class Utils {
     return Utils.setOf(rawString.split(",\\s*"));
   }
 
+  public static List<String> parseCommaSeparatedStringToList(String rawString) {
+    if (StringUtils.isEmpty(rawString)) {
+      return Collections.emptyList();
+    }
+    return Arrays.asList(rawString.split("\\s*,\\s*"));
+  }
+
   /**
    * @param value the double value to be rounded
    * @param precision the number of decimal places by which to round

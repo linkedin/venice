@@ -573,6 +573,9 @@ public class AdminTool {
         case EXTRACT_VENICE_ZK_PATHS:
           extractVeniceZKPaths(cmd);
           break;
+        case AGGREGATED_HEALTH_STATUS:
+          getAggregatedHealthStatus(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -1155,6 +1158,12 @@ public class AdminTool {
     integerParam(cmd, Arg.MAX_NEARLINE_RECORD_SIZE_BYTES, params::setMaxNearlineRecordSizeBytes, argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);
     booleanParam(cmd, Arg.BLOB_TRANSFER_ENABLED, p -> params.setBlobTransferEnabled(p), argSet);
+    booleanParam(
+        cmd,
+        Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED,
+        p -> params.setNearlineProducerCompressionEnabled(p),
+        argSet);
+    integerParam(cmd, Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER, p -> params.setNearlineProducerCountPerWriter(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -3088,6 +3097,18 @@ public class AdminTool {
         getRequiredArgument(cmd, Arg.OUTFILE),
         clusterNames,
         getRequiredArgument(cmd, Arg.BASE_PATH));
+  }
+
+  private static void getAggregatedHealthStatus(CommandLine cmd) throws JsonProcessingException {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String instances = getRequiredArgument(cmd, Arg.INSTANCES);
+    String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
+    ControllerResponse response = controllerClient.getAggregatedHealthStatus(
+        clusterName,
+        Utils.parseCommaSeparatedStringToList(instances),
+        Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
+    printObject(response);
+
   }
 
   private static void configureStoreView(CommandLine cmd) {

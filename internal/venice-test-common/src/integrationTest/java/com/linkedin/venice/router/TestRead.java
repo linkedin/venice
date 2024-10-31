@@ -465,8 +465,7 @@ public abstract class TestRead {
       });
 
       // Single get quota test
-      int throttledRequestsForSingleGet =
-          (int) getAggregateRouterMetricValue(".total--multiget_throttled_request.Count");
+      int throttledRequestsForSingleGet = (int) getAggregateRouterMetricValue(".total--throttled_request.Count");
       Assert.assertEquals(
           throttledRequestsForSingleGet,
           0,

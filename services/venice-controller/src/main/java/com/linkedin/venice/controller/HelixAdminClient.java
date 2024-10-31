@@ -123,9 +123,4 @@ public interface HelixAdminClient {
    * Release resources.
    */
   void close();
-
-  /**
-   * Adds a tag to an instance
-   */
-  void addInstanceTag(String clusterName, String instanceName, String tag);
 }

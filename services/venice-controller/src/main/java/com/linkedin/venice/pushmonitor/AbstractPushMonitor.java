@@ -149,6 +149,7 @@ public abstract class AbstractPushMonitor
     pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
+
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);

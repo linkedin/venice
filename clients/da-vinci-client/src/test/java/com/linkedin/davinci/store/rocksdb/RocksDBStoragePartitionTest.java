@@ -932,17 +932,17 @@ public class RocksDBStoragePartitionTest {
         storeConfig);
 
     try (MockedStatic<BlobSnapshotManager> mockedBlobSnapshotManager = Mockito.mockStatic(BlobSnapshotManager.class)) {
-      mockedBlobSnapshotManager.when(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()))
+      mockedBlobSnapshotManager.when(() -> BlobSnapshotManager.createSnapshot(Mockito.any(), Mockito.any()))
           .thenAnswer(invocation -> {
             return null;
           });
       storagePartition.createSnapshot();
       if (blobTransferEnabled) {
         mockedBlobSnapshotManager
-            .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.times(1));
+            .verify(() -> BlobSnapshotManager.createSnapshot(Mockito.any(), Mockito.any()), Mockito.times(1));
       } else {
         mockedBlobSnapshotManager
-            .verify(() -> BlobSnapshotManager.createSnapshotForBatch(Mockito.any(), Mockito.any()), Mockito.never());
+            .verify(() -> BlobSnapshotManager.createSnapshot(Mockito.any(), Mockito.any()), Mockito.never());
       }
     }
 

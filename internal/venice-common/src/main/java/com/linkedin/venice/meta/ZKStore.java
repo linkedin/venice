@@ -228,6 +228,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
+    setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
+    setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -901,6 +903,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isBlobTransferEnabled() {
     return this.storeProperties.blobTransferEnabled;
+  }
+
+  @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return this.storeProperties.nearlineProducerCompressionEnabled;
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    this.storeProperties.nearlineProducerCompressionEnabled = compressionEnabled;
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return this.storeProperties.nearlineProducerCountPerWriter;
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    this.storeProperties.nearlineProducerCountPerWriter = producerCnt;
   }
 
   /**

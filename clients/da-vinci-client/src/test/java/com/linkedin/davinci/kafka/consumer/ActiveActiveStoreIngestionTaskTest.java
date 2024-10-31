@@ -324,7 +324,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
     when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
-    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
+    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
         .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
@@ -370,7 +370,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
     when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
-    when(ingestionTask.getVeniceWriter()).thenReturn(Lazy.of(() -> writer));
+    when(ingestionTask.getVeniceWriter(any())).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {
       stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
@@ -402,6 +402,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         partitionConsumptionState,
         leaderProducedRecordContext,
         ingestionTask.getProduceToTopicFunction(
+            partitionConsumptionState,
             updatedKeyBytes,
             updatedValueBytes,
             updatedRmdBytes,

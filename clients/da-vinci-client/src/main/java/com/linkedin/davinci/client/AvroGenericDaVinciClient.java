@@ -78,7 +78,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -138,6 +137,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final AbstractAvroChunkingAdapter<V> chunkingAdapter;
   private final Executor readChunkExecutorForLargeRequest;
 
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
+
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
@@ -180,8 +181,17 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.managedClients = managedClients;
     this.icProvider = icProvider;
     this.chunkingAdapter = chunkingAdapter;
+    this.recordTransformerConfig = daVinciConfig.getRecordTransformerConfig();
     this.readChunkExecutorForLargeRequest =
         readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
+
+    if (daVinciConfig.isIsolated() && recordTransformerConfig != null) {
+      // When both are enabled, this causes the storage engine to be deleted everytime the client starts,
+      // since the record transformer config is never persisted to disk. Additionally, this will spawn multiple
+      // transformers per version, and if the user's transformer is stateful this could cause issues.
+      throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
+    }
+
     preValidation.run();
   }
 
@@ -657,7 +667,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return GenericRecordChunkingAdapter.INSTANCE;
   }
 
-  private D2ServiceDiscoveryResponse discoverService() {
+  // Visible for testing
+  protected D2ServiceDiscoveryResponse discoverService() {
     try (TransportClient client = getTransportClient(clientConfig)) {
       if (!(client instanceof D2TransportClient)) {
         throw new VeniceClientException(
@@ -688,6 +699,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     if (kafkaBootstrapServers == null) {
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
+
     VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
@@ -703,8 +715,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(
             RECORD_TRANSFORMER_VALUE_SCHEMA,
             daVinciConfig.isRecordTransformerEnabled()
-                // We're creating a new record transformer here just to get the schema
-                ? daVinciConfig.getRecordTransformer(0).getValueOutputSchema().toString()
+                ? recordTransformerConfig.getOutputValueSchema().toString()
                 : "null")
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
                                                                                    // in Isolated Process
@@ -714,13 +725,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return new VeniceConfigLoader(config, config);
   }
 
-  private void initBackend(
+  // Visible for testing
+  protected void initBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
@@ -732,7 +744,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
                 managedClients,
                 icProvider,
                 cacheConfig,
-                getRecordTransformer),
+                recordTransformerFunction),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -776,7 +788,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         managedClients,
         icProvider,
         cacheConfig,
-        daVinciConfig::getRecordTransformer);
+        daVinciConfig.getRecordTransformerFunction());
 
     try {
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
@@ -795,12 +807,28 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
       this.genericRecordStoreDeserializerCache =
           new AvroStoreDeserializerCache(daVinciBackend.get().getSchemaRepository(), getStoreName(), true);
-      this.storeDeserializerCache = clientConfig.isSpecificClient()
-          ? new AvroSpecificStoreDeserializerCache<>(
+
+      if (clientConfig.isSpecificClient()) {
+        if (daVinciConfig.isRecordTransformerEnabled()) {
+          if (recordTransformerConfig.getOutputValueClass() != clientConfig.getSpecificValueClass()) {
+            throw new VeniceClientException(
+                "Specific value class mismatch between ClientConfig and DaVinciRecordTransformer, expected="
+                    + clientConfig.getSpecificValueClass() + ", actual="
+                    + recordTransformerConfig.getOutputValueClass());
+          }
+
+          this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
+              recordTransformerConfig.getOutputValueSchema(),
+              clientConfig.getSpecificValueClass());
+        } else {
+          this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
               daVinciBackend.get().getSchemaRepository(),
               getStoreName(),
-              clientConfig.getSpecificValueClass())
-          : (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
+              clientConfig.getSpecificValueClass());
+        }
+      } else {
+        this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
+      }
 
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());

@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -28,10 +28,10 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run Avro Compatibility Tests
+        run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -42,7 +42,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -63,7 +63,7 @@ jobs:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
       - name: Check if files have changed
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: check_alpini_files_changed
         with:
           filters: |
@@ -74,7 +74,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           java-version: ${{ matrix.jdk }}
@@ -97,11 +97,12 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
+      - name: Setup Gradle
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest"
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run alpini unit tests
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        run: ./gradlew --continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest
       - name: Package Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         shell: bash
@@ -112,7 +113,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -133,7 +134,7 @@ jobs:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
       - name: Check if files have changed
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: check_alpini_files_changed
         with:
           filters: |
@@ -144,7 +145,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           java-version: ${{ matrix.jdk }}
@@ -167,11 +168,12 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
+      - name: Setup Gradle
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest"
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run alpini functional tests
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        run: ./gradlew --continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest
       - name: Package Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         shell: bash
@@ -182,7 +184,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -200,7 +202,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -211,7 +213,7 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/actions/setup-gradle@v4
       - name: Build with gradle
         run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 
@@ -244,7 +246,7 @@ jobs:
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz

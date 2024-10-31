@@ -751,4 +751,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public boolean hasMemorySpaceLeft() {
     return true;
   }
+
+  public AbstractStorageIterator getIterator(int partitionId) {
+    throw new UnsupportedOperationException("Method not supported for storage engine");
+  }
 }

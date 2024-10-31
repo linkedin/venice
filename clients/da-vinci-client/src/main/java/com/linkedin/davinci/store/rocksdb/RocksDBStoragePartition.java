@@ -6,6 +6,7 @@ import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -489,7 +490,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      BlobSnapshotManager.createSnapshotForBatch(rocksDB, fullPathForPartitionDBSnapshot);
+      BlobSnapshotManager.createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
   }
 
@@ -986,5 +987,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   // Visible for testing
   public RocksDBSstFileWriter getRocksDBSstFileWriter() {
     return rocksDBSstFileWriter;
+  }
+
+  @Override
+  public AbstractStorageIterator getIterator() {
+    return new RocksDBStorageIterator(rocksDB.newIterator());
   }
 }

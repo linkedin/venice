@@ -799,7 +799,9 @@ public class TestChangelogConsumer {
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       VeniceChangelogConsumer<Utf8, TestChangelogValue> specificChangelogConsumer =
           veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0", TestChangelogValue.class);
+
       specificChangelogConsumer.subscribeAll().get();
+
       Assert.assertFalse(specificChangelogConsumer.isCaughtUp());
 
       Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
