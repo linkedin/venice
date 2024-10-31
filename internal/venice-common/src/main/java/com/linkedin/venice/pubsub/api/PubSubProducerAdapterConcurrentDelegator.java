@@ -64,6 +64,8 @@ import org.openjdk.jol.vm.VM;
  *    logic to a separate thread, which can potentially improve the overall throughput if there are enough cpu resources.
  * 2. If the record processing time is minimal comparing with the producer#send latency, this new strategy won't help much.
  *
+ * We will explore ^ after validating this new strategy in stream processing app.
+ *
  */
 public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(PubSubProducerAdapterConcurrentDelegator.class);
