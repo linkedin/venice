@@ -4835,11 +4835,13 @@ public class VeniceParentHelixAdmin implements Admin {
     return compactReadyStores;
   }
 
+  // This function abstracts the criteria for a store to be ready for compaction
   private boolean isCompactionReady(StoreInfo storeInfo) {
     return isHybridStore(storeInfo) && isLastCompactionTimeOlderThanThresholdHours(24, storeInfo);
     // TODO: code style: store compactionThresholdHours as final var/enum
   }
 
+  // START isCompactionReady() helper methods: each method below encapsulates a log compaction readiness criterion
   private boolean isHybridStore(StoreInfo storeInfo) {
     return storeInfo.getHybridStoreConfig() != null;
   }
@@ -4867,6 +4869,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     return hoursSinceLastCompaction > compactionThresholdHours;
   }
+  // END isCompactionReady() helper methods
 
   /**
    * @return the largest used version number for the given store from the store graveyard.
