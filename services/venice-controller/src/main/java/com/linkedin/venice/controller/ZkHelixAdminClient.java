@@ -24,6 +24,7 @@ import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
+import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -114,10 +115,10 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceStorageCluster(String, ClusterConfig)
+   * @see HelixAdminClient#createVeniceStorageCluster(String, ClusterConfig, RESTConfig)
    */
   @Override
-  public void createVeniceStorageCluster(String clusterName, ClusterConfig helixClusterConfig) {
+  public void createVeniceStorageCluster(String clusterName, ClusterConfig helixClusterConfig, RESTConfig restConfig) {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceStorageClusterCreated(clusterName)) {
         if (!helixAdmin.addCluster(clusterName, false)) {
@@ -129,6 +130,10 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
         if (clusterConfig.isStorageClusterHelixCloudEnabled()) {
           helixAdmin.addCloudConfig(clusterName, clusterConfig.getHelixCloudConfig());
+        }
+
+        if (restConfig != null) {
+          updateRESTConfigs(clusterName, restConfig);
         }
       }
       return true;
@@ -213,6 +218,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
     Map<String, String> helixClusterProperties = new HashMap<>(clusterConfig.getRecord().getSimpleFields());
     helixAdmin.setConfig(configScope, helixClusterProperties);
+  }
+
+  /**
+   * @see HelixAdminClient#updateRESTConfigs(String, RESTConfig)
+   */
+  @Override
+  public void updateRESTConfigs(String clusterName, RESTConfig restConfig) {
+    HelixConfigScope configScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.REST).forCluster(clusterName).build();
+    Map<String, String> helixRestProperties = new HashMap<>(restConfig.getRecord().getSimpleFields());
+    helixAdmin.setConfig(configScope, helixRestProperties);
   }
 
   /**

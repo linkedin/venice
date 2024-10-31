@@ -52,6 +52,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -367,6 +368,8 @@ public class VeniceControllerClusterConfig {
   private final boolean controllerClusterHelixCloudEnabled;
   private final boolean storageClusterHelixCloudEnabled;
   private final CloudConfig helixCloudConfig;
+
+  private final String helixRestCustomizedHealthUrl;
 
   private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
@@ -929,6 +932,8 @@ public class VeniceControllerClusterConfig {
     } else {
       helixCloudConfig = null;
     }
+
+    this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1578,6 +1583,10 @@ public class VeniceControllerClusterConfig {
 
   public CloudConfig getHelixCloudConfig() {
     return helixCloudConfig;
+  }
+
+  public String getHelixRestCustomizedHealthUrl() {
+    return helixRestCustomizedHealthUrl;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {

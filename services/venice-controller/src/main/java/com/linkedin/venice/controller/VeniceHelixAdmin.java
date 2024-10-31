@@ -274,6 +274,7 @@ import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
+import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
@@ -6298,7 +6299,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       helixClusterConfig.setTopology("/" + HelixUtils.TOPOLOGY_CONSTRAINT);
       helixClusterConfig.setFaultZoneType(HelixUtils.TOPOLOGY_CONSTRAINT);
 
-      helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig);
+      RESTConfig restConfig = null;
+      if (!StringUtils.isEmpty(clusterConfigs.getHelixRestCustomizedHealthUrl())) {
+        restConfig = new RESTConfig(clusterName);
+        restConfig.set(RESTConfig.SimpleFields.CUSTOMIZED_HEALTH_URL, clusterConfigs.getHelixRestCustomizedHealthUrl());
+      }
+
+      helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig, restConfig);
     }
     if (!helixAdminClient.isClusterInGrandCluster(clusterName)) {
       helixAdminClient.addClusterToGrandCluster(clusterName);

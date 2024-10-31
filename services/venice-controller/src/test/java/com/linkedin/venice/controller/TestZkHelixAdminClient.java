@@ -26,6 +26,7 @@ import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.RESTConfig;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -120,25 +121,35 @@ public class TestZkHelixAdminClient {
     when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
 
     doReturn(true).when(mockHelixAdmin).addCluster(clusterName, false);
-    doCallRealMethod().when(zkHelixAdminClient).createVeniceStorageCluster(any(), any());
+    doCallRealMethod().when(zkHelixAdminClient).createVeniceStorageCluster(any(), any(), any());
 
-    // When the cluster is not Helix cloud enabled
     ClusterConfig helixClusterConfig = mock(ClusterConfig.class);
-    zkHelixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig);
+    zkHelixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig, null);
 
     verify(zkHelixAdminClient).updateClusterConfigs(clusterName, helixClusterConfig);
     verify(mockHelixAdmin, never()).addCloudConfig(any(), any());
+    verify(zkHelixAdminClient, never()).updateRESTConfigs(any(), any());
 
     clearInvocations(zkHelixAdminClient);
 
-    // When the cluster is Helix cloud enabled
     doReturn(true).when(mockClusterConfig).isStorageClusterHelixCloudEnabled();
     CloudConfig cloudConfig = mock(CloudConfig.class);
     doReturn(cloudConfig).when(mockClusterConfig).getHelixCloudConfig();
-    zkHelixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig);
+    zkHelixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig, null);
 
     verify(zkHelixAdminClient).updateClusterConfigs(clusterName, helixClusterConfig);
     verify(mockHelixAdmin).addCloudConfig(clusterName, cloudConfig);
+    verify(zkHelixAdminClient, never()).updateRESTConfigs(any(), any());
+
+    clearInvocations(zkHelixAdminClient, mockHelixAdmin);
+    doReturn(false).when(mockClusterConfig).isStorageClusterHelixCloudEnabled();
+
+    RESTConfig restConfig = mock(RESTConfig.class);
+    zkHelixAdminClient.createVeniceStorageCluster(clusterName, helixClusterConfig, restConfig);
+
+    verify(zkHelixAdminClient).updateClusterConfigs(clusterName, helixClusterConfig);
+    verify(mockHelixAdmin, never()).addCloudConfig(any(), any());
+    verify(zkHelixAdminClient).updateRESTConfigs(clusterName, restConfig);
   }
 
   @Test
@@ -182,5 +193,32 @@ public class TestZkHelixAdminClient {
     }).when(mockHelixAdmin).setConfig(any(), any());
 
     zkHelixAdminClient.updateClusterConfigs(clusterName, clusterConfig);
+  }
+
+  @Test
+  public void testUpdateRESTConfigs() {
+    doCallRealMethod().when(zkHelixAdminClient).updateRESTConfigs(anyString(), any());
+
+    String clusterName = "testCluster";
+    String restUrl = "http://localhost:8080";
+    RESTConfig restConfig = new RESTConfig(clusterName);
+
+    restConfig.set(RESTConfig.SimpleFields.CUSTOMIZED_HEALTH_URL, restUrl);
+    restConfig.getRecord().setSimpleField("FIELD1", "VALUE1");
+
+    doAnswer(invocation -> {
+      HelixConfigScope scope = invocation.getArgument(0);
+      Map<String, String> restProps = invocation.getArgument(1);
+
+      assertEquals(scope.getType(), HelixConfigScope.ConfigScopeProperty.REST);
+      assertEquals(scope.getClusterName(), clusterName);
+      assertEquals(restProps.size(), 2);
+      assertEquals(restProps.get(RESTConfig.SimpleFields.CUSTOMIZED_HEALTH_URL.name()), restUrl);
+      assertEquals(restProps.get("FIELD1"), "VALUE1");
+
+      return null;
+    }).when(mockHelixAdmin).setConfig(any(), any());
+
+    zkHelixAdminClient.updateRESTConfigs(clusterName, restConfig);
   }
 }

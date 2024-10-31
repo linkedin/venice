@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import java.util.List;
 import java.util.Map;
 import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.RESTConfig;
 
 
 /**
@@ -31,8 +32,9 @@ public interface HelixAdminClient {
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
    * @param clusterConfig {@link ClusterConfig} for the new cluster.
+   * @param restConfig {@link RESTConfig} for the new cluster.
    */
-  void createVeniceStorageCluster(String clusterName, ClusterConfig clusterConfig);
+  void createVeniceStorageCluster(String clusterName, ClusterConfig clusterConfig, RESTConfig restConfig);
 
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
@@ -66,6 +68,13 @@ public interface HelixAdminClient {
    * @param clusterConfig {@link ClusterConfig} for the new cluster.
    */
   void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig);
+
+  /**
+   * Update some Helix cluster properties for the given cluster.
+   * @param clusterName of the cluster to be updated.
+   * @param restConfig {@link RESTConfig} for the new cluster.
+   */
+  void updateRESTConfigs(String clusterName, RESTConfig restConfig);
 
   /**
    * Disable or enable a list of partitions on an instance.
