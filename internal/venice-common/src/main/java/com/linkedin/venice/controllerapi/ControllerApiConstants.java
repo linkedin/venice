@@ -25,7 +25,12 @@ public class ControllerApiConstants {
   public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
-  public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
+
+  // We need the following 3 constants for Helix API aggregatedHealthStatus
+  public static final String CLUSTER_ID = "cluster_id";
+  public static final String INSTANCES = "instances";
+  public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
+
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
@@ -56,6 +61,7 @@ public class ControllerApiConstants {
   public static final String CHUNKING_ENABLED = "chunking_enabled";
   public static final String RMD_CHUNKING_ENABLED = "rmd_chunking_enabled";
   public static final String INCREMENTAL_PUSH_ENABLED = "incremental_push_enabled";
+  public static final String SEPARATE_REAL_TIME_TOPIC_ENABLED = "separate_realtime_topic_enabled";
   public static final String SINGLE_GET_ROUTER_CACHE_ENABLED = "single_get_router_cache_enabled";
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
   public static final String BATCH_GET_LIMIT = "batch_get_limit";
@@ -228,10 +234,16 @@ public class ControllerApiConstants {
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 
   public static final String MAX_RECORD_SIZE_BYTES = "max_record_size_bytes";
+  public static final String MAX_NEARLINE_RECORD_SIZE_BYTES = "max_nearline_record_size_bytes";
 
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
+
+  public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
+  public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
+
+  public static final String AGGR_HEALTH_STATUS_URI = "/aggregatedHealthStatus";
 }

@@ -1,8 +1,11 @@
 package com.linkedin.venice.fastclient.utils;
 
+import static org.mockito.Mockito.mock;
+
 import com.google.common.collect.Sets;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.data.ByteString;
 import com.linkedin.r2.message.RequestContext;
 import com.linkedin.r2.message.rest.RestException;
@@ -94,6 +97,8 @@ public class TestClientSimulator implements Client {
   public final RecordDeserializer<Utf8> keyDeserializer;
   public final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseSerializer;
   public final RecordDeserializer<MultiGetRouterRequestKeyV1> multiGetRequestDeserializer;
+  private final D2Client mockD2Client = mock(D2Client.class);
+  private final String dummyD2Discovery = "testD2Endpoint";
   private boolean speculativeQueryEnabled = false;
   private Map<String, String> keyValues = new HashMap<>(); // all keys in the simulation
   private Map<String, String> requestedKeyValues = new HashMap<>(); // subset/all of keyValues are a part of requests
@@ -544,9 +549,16 @@ public class TestClientSimulator implements Client {
 
     // TODO: need to add tests for simulating dual read
     clientConfigBuilder.setDualReadEnabled(false);
+    clientConfigBuilder.setD2Client(mockD2Client);
+    clientConfigBuilder.setClusterDiscoveryD2Service(dummyD2Discovery);
     clientConfig = clientConfigBuilder.build();
 
     AbstractStoreMetadata metadata = new AbstractStoreMetadata(clientConfig) {
+      @Override
+      public String getClusterName() {
+        return "test-cluster";
+      }
+
       @Override
       public int getCurrentStoreVersion() {
         return 1;

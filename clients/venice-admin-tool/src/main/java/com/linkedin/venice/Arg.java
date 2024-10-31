@@ -100,6 +100,10 @@ public enum Arg {
   ),
   INCREMENTAL_PUSH_ENABLED(
       "incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"
+  ),
+  SEPARATE_REALTIME_TOPIC_ENABLED(
+      "separate-realtime-topic-enabled", "srte", true,
+      "a flag to see if the store supports separate real-time topic or not"
   ), BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),
   NUM_VERSIONS_TO_PRESERVE("num-versions-to-preserve", "nvp", true, "Number of version that store should preserve."),
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),
@@ -251,7 +255,11 @@ public enum Arg {
   ),
   MAX_RECORD_SIZE_BYTES(
       "max-record-size-bytes", "mrsb", true,
-      "Store-level max record size in bytes. Used by VeniceWriter to fail batch push jobs and pause consumption on nearline jobs with partial update."
+      "Store-level max record size for VeniceWriter to determine whether to fail batch push jobs. This setting can potentially converge with the nearline setting in the future."
+  ),
+  MAX_NEARLINE_RECORD_SIZE_BYTES(
+      "max-nearline-record-size-bytes", "mnrsb", true,
+      "Store-level max record size for VeniceWriter to determine whether to pause consumption on nearline jobs with partial updates."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
@@ -267,7 +275,16 @@ public enum Arg {
   ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
-  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not");
+  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
+  NEARLINE_PRODUCER_COMPRESSION_ENABLED(
+      "nearline-producer-compression-enabled", "npce", true,
+      "Flag to control whether KafkaProducer will use compression or not for nearline workload"
+  ),
+  NEARLINE_PRODUCER_COUNT_PER_WRITER(
+      "nearline-producer-count-per-writer", "npcpw", true,
+      "How many producers will be used to write nearline workload in Server"
+  ), INSTANCES("instances", "in", true, "Input list of helix ids of nodes to check if they can removed or not"),
+  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of helix ids of nodes assumed to be stopped");
 
   private final String argName;
   private final String first;

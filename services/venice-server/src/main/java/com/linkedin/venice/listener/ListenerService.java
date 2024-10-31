@@ -26,6 +26,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -62,10 +63,6 @@ public class ListenerService extends AbstractVeniceService {
 
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
-
-  private StorageReadRequestHandler storageReadRequestHandler;
-
-  private boolean isDaVinciClient;
 
   public ListenerService(
       StorageEngineRepository storageEngineRepository,
@@ -117,13 +114,8 @@ public class ListenerService extends AbstractVeniceService {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         diskHealthService,
-        serverConfig.isComputeFastAvroEnabled(),
-        serverConfig.isEnableParallelBatchGet(),
-        serverConfig.getParallelBatchGetChunkSize(),
         compressorFactory,
         resourceReadUsageTracker);
-
-    storageReadRequestHandler = requestHandler;
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
@@ -162,7 +154,14 @@ public class ListenerService extends AbstractVeniceService {
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
-        .childOption(ChannelOption.TCP_NODELAY, true);
+        .childOption(ChannelOption.TCP_NODELAY, true)
+        // A higher buffer watermark will allow more data write for a given channel and it would be useful for H2,
+        // as H2 works with a smaller number of connections.
+        .childOption(
+            ChannelOption.WRITE_BUFFER_WATER_MARK,
+            new WriteBufferWaterMark(
+                WriteBufferWaterMark.DEFAULT.low(),
+                serverConfig.getChannelOptionWriteBufferHighBytes()));
 
     if (isGrpcEnabled && grpcServer == null) {
       List<ServerInterceptor> interceptors = channelInitializer.initGrpcInterceptors();
@@ -232,12 +231,10 @@ public class ListenerService extends AbstractVeniceService {
       IngestionMetadataRetriever ingestionMetadataRetriever,
       ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService diskHealthService,
-      boolean fastAvroEnabled,
-      boolean parallelBatchGetEnabled,
-      int parallelBatchGetChunkSize,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
     return new StorageReadRequestHandler(
+        serverConfig,
         executor,
         computeExecutor,
         storageEngineRepository,
@@ -246,10 +243,6 @@ public class ListenerService extends AbstractVeniceService {
         ingestionMetadataRetriever,
         readMetadataRetriever,
         diskHealthService,
-        fastAvroEnabled,
-        parallelBatchGetEnabled,
-        parallelBatchGetChunkSize,
-        serverConfig,
         compressorFactory,
         resourceReadUsageTracker);
   }

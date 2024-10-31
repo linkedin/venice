@@ -65,6 +65,8 @@ public class TestAvroSchema {
     ps.upstreamOffsetMap = upstreamOffsetMap;
     ps.producerStates = Collections.emptyMap();
     ps.previousStatuses = Collections.emptyMap();
+    ps.pendingReportIncrementalPushVersions = Collections.emptyList();
+    ps.setRealtimeTopicProducerStates(Collections.emptyMap());
 
     AvroSerializer serializer = new AvroSerializer(ps.getSchema());
     byte[] serializedBytes = serializer.serialize(ps);

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -51,10 +52,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
+import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -91,6 +95,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private ThreadPoolExecutor leaderFollowerHelixStateTransitionThreadPool;
   private VeniceOfflinePushMonitorAccessor veniceOfflinePushMonitorAccessor;
+  private BlobTransferManager<Void> blobTransferManager;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   // This is ONLY for testing purpose.
@@ -111,7 +116,8 @@ public class HelixParticipationService extends AbstractVeniceService
       int port,
       String hostname,
       CompletableFuture<SafeHelixManager> managerFuture,
-      HeartbeatMonitoringService heartbeatMonitoringService) {
+      HeartbeatMonitoringService heartbeatMonitoringService,
+      BlobTransferManager blobTransferManager) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
@@ -125,6 +131,7 @@ public class HelixParticipationService extends AbstractVeniceService
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, hostname, port);
     this.managerFuture = managerFuture;
+    this.blobTransferManager = blobTransferManager;
     this.partitionPushStatusAccessorFuture = new CompletableFuture<>();
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
@@ -134,8 +141,8 @@ public class HelixParticipationService extends AbstractVeniceService
         storageMetadataService,
         (KafkaStoreIngestionService) storeIngestionService,
         storageService,
-        null,
-        null);
+        blobTransferManager,
+        veniceConfigLoader.getVeniceServerConfig());
   }
 
   // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
@@ -154,13 +161,34 @@ public class HelixParticipationService extends AbstractVeniceService
     return helixStateTransitionThreadPool;
   }
 
+  public HelixManagerProperty buildHelixManagerProperty(VeniceServerConfig config) {
+    InstanceConfig.Builder defaultInstanceConfigBuilder =
+        new InstanceConfig.Builder().setPort(Integer.toString(config.getListenerPort()));
+
+    // For a participant to auto-register with Helix without causing a rebalance everytime a new participant joins
+    // the cluster (i.e. during deployment), we need to set the instance operation to UNKNOWN. Then these participants
+    // would be ENABLED in a batch, so it only rebalances once.
+    if (config.isHelixJoinAsUnknownEnabled()) {
+      defaultInstanceConfigBuilder.setInstanceOperation(InstanceConstants.InstanceOperation.UNKNOWN);
+    }
+
+    return new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
+  }
+
   @Override
   public boolean startInner() {
     LOGGER.info("Attempting to start HelixParticipation service");
-    helixManager = new SafeHelixManager(
-        HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
-
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
+    HelixManagerProperty helixManagerProperty = buildHelixManagerProperty(config);
+    helixManager = new SafeHelixManager(
+        new ZKHelixManager(
+            clusterName,
+            this.participantName,
+            InstanceType.PARTICIPANT,
+            zkAddress,
+            null,
+            helixManagerProperty));
+
     leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
         config.getMaxLeaderFollowerStateTransitionThreadNumber(),
         "Venice-L/F-state-transition");
@@ -252,6 +280,13 @@ public class HelixParticipationService extends AbstractVeniceService
       LOGGER.info("Helix Manager is null.");
     }
     ingestionBackend.close();
+    if (blobTransferManager != null) {
+      try {
+        blobTransferManager.close();
+      } catch (Exception e) {
+        LOGGER.error("Swallowed an exception while trying to close the blobTransferManager.", e);
+      }
+    }
     LOGGER.info("Closed VeniceIngestionBackend.");
     leaderFollowerParticipantModelFactory.shutDownExecutor();
 
@@ -370,7 +405,8 @@ public class HelixParticipationService extends AbstractVeniceService
           partitionPushStatusAccessor,
           statusStoreWriter,
           helixReadOnlyStoreRepository,
-          instance.getNodeId());
+          instance.getNodeId(),
+          veniceServerConfig.getIncrementalPushStatusWriteMode());
 
       ingestionBackend.getStoreIngestionService().addIngestionNotifier(pushStatusNotifier);
 

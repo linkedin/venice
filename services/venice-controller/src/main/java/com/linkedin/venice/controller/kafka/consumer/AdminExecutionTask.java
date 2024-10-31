@@ -486,6 +486,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBatchGetLimit(message.batchGetLimit)
         .setNumVersionsToPreserve(message.numVersionsToPreserve)
         .setIncrementalPushEnabled(message.incrementalPushEnabled)
+        .setSeparateRealTimeTopicEnabled(message.separateRealTimeTopicEnabled)
         .setStoreMigration(message.isMigrating)
         .setWriteComputationEnabled(message.writeComputationEnabled)
         .setReadComputationEnabled(message.readComputationEnabled)
@@ -497,7 +498,9 @@ public class AdminExecutionTask implements Callable<Void> {
         .setMigrationDuplicateStore(message.migrationDuplicateStore)
         .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId)
         .setBlobTransferEnabled(message.blobTransferEnabled)
-        .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled);
+        .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
+        .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
+        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -541,6 +544,7 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);
+    params.setMaxNearlineRecordSizeBytes(message.maxNearlineRecordSizeBytes);
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {

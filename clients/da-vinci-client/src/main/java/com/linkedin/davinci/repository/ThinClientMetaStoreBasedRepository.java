@@ -9,7 +9,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
@@ -19,10 +19,16 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 
 public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository {
@@ -80,21 +86,21 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
 
   @Override
   protected StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key) {
-    StoreMetaValue value;
-    try {
-      if (icProvider != null) {
-        value =
-            icProvider.call(getClass().getCanonicalName(), () -> getAvroClientForMetaStore(storeName).get(key)).get();
-      } else {
-        value = getAvroClientForMetaStore(storeName).get(key).get();
+    final Callable<CompletableFuture<StoreMetaValue>> supplier = () -> getAvroClientForMetaStore(storeName).get(key);
+    Callable<CompletableFuture<StoreMetaValue>> wrappedSupplier =
+        icProvider == null ? supplier : () -> icProvider.call(getClass().getCanonicalName(), supplier);
+    StoreMetaValue value = RetryUtils.executeWithMaxAttempt(() -> {
+      try {
+        return wrappedSupplier.call().get(5, TimeUnit.SECONDS);
+      } catch (ServiceDiscoveryException e) {
+        throw e;
+      } catch (Exception e) {
+        throw new VeniceRetriableException(
+            "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
+            e);
       }
-    } catch (ServiceDiscoveryException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new VeniceException(
-          "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
-          e);
-    }
+    }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
+
     if (value == null) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());
     }
@@ -106,10 +112,9 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
       ClientConfig<StoreMetaValue> clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
           .setStoreName(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))
           .setSpecificValueClass(StoreMetaValue.class)
-          .setRetryOnAllErrors(true)
-          .setRetryCount(THIN_CLIENT_RETRY_COUNT)
-          .setForceClusterDiscoveryAtStartTime(true)
-          .setRetryBackOffInMs(THIN_CLIENT_RETRY_BACKOFF_MS);
+          .setRetryOnRouterError(false)
+          .setRetryOnAllErrors(false)
+          .setForceClusterDiscoveryAtStartTime(true);
       return ClientFactory.getAndStartSpecificAvroClient(clonedClientConfig);
     });
   }

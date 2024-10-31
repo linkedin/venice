@@ -1,19 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
@@ -36,6 +23,19 @@ import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToUserWithStringMapSchema;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -44,8 +44,14 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
+import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
@@ -65,7 +71,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
+import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -75,6 +81,10 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -83,6 +93,7 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.tehuti.MetricsUtils;
@@ -133,7 +144,15 @@ public class PartialUpdateTest {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final int TEST_TIMEOUT_MS = 180_000;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
+
+  private static final int REPLICATION_FACTOR = 2;
   private static final String CLUSTER_NAME = "venice-cluster0";
+
+  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
+  private static VeniceJsonSerializer<Map<String, Map<String, TopicPartitionIngestionInfo>>> VENICE_JSON_SERIALIZER =
+      new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
+      });
 
   private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
@@ -142,9 +161,20 @@ public class PartialUpdateTest {
   private VeniceControllerWrapper parentController;
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
+  protected boolean isAAWCParallelProcessingEnabled() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
+    serverProperties.put(ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
+    serverProperties.put(
+        ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
+        KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name());
+    serverProperties.put(
+        ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED,
+        Boolean.toString(isAAWCParallelProcessingEnabled()));
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -154,7 +184,7 @@ public class PartialUpdateTest {
         1,
         2,
         1,
-        2,
+        REPLICATION_FACTOR,
         Optional.of(controllerProps),
         Optional.of(controllerProps),
         Optional.of(serverProperties),
@@ -925,8 +955,8 @@ public class PartialUpdateTest {
     MetricsUtils.validateMetricRange(assembledRmdSizes, 290000, 740000);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
+  public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
@@ -948,7 +978,7 @@ public class PartialUpdateTest {
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setCompressionStrategy(compressionStrategy)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
@@ -1162,7 +1192,13 @@ public class PartialUpdateTest {
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
-
+    String realTimeTopicName = Version.composeRealTimeTopic(storeName);
+    PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
+    PubSubTopic storeVersionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
+    PubSubTopic storeVersionTopicV2 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopicPartition realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
+    PubSubTopicPartition storeVersionTopicPartitionV1 = new PubSubTopicPartitionImpl(storeVersionTopicV1, 0);
+    PubSubTopicPartition storeVersionTopicPartitionV2 = new PubSubTopicPartitionImpl(storeVersionTopicV2, 0);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
           parentControllerClient
@@ -1171,7 +1207,6 @@ public class PartialUpdateTest {
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
               .setRmdChunkingEnabled(true)
               .setHybridRewindSeconds(1L)
@@ -1180,14 +1215,125 @@ public class PartialUpdateTest {
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
+      // Generate v1 without AA and Write-compute:
+      // leader: CURRENT_VERSION_NON_AAWC_LEADER
+      // follower: CURRENT_VERSION_NON_AAWC_LEADER
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
       TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
+          storeVersionTopicV1.getName(),
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            realTimeTopicPartition,
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            storeVersionTopicPartitionV1,
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            REPLICATION_FACTOR - 1);
+      });
+      // Enable write-compute for v1:
+      // leader: CURRENT_VERSION_NON_AAWC_LEADER => CURRENT_VERSION_AAWC_LEADER
+      // follower: CURRENT_VERSION_NON_AAWC_LEADER
+      UpdateStoreQueryParams updateStoreParamsEnableWriteCompute =
+          new UpdateStoreQueryParams().setWriteComputationEnabled(true);
+      updateStoreResponse = parentControllerClient
+          .retryableRequest(5, c -> c.updateStore(storeName, updateStoreParamsEnableWriteCompute));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            realTimeTopicPartition,
+            ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+            1,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            storeVersionTopicPartitionV1,
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            REPLICATION_FACTOR - 1);
+      });
+      // Disable write-compute for v1:
+      // leader: CURRENT_VERSION_AAWC_LEADER => CURRENT_VERSION_NON_AAWC_LEADER
+      // follower: CURRENT_VERSION_NON_AAWC_LEADER
+      UpdateStoreQueryParams updateStoreParamsDisableWriteCompute =
+          new UpdateStoreQueryParams().setWriteComputationEnabled(false);
+      updateStoreResponse = parentControllerClient
+          .retryableRequest(5, c -> c.updateStore(storeName, updateStoreParamsDisableWriteCompute));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            realTimeTopicPartition,
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            storeVersionTopicPartitionV1,
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            REPLICATION_FACTOR - 1);
+      });
+      // Enable AA and push a new version to get v2, to verify pool change
+      // For v1 without AA:
+      // leader: CURRENT_VERSION_NON_AAWC_LEADER => NON_CURRENT_VERSION_NON_AAWC_LEADER
+      // follower: CURRENT_VERSION_NON_AAWC_LEADER => CURRENT_VERSION_AAWC_LEADER
+      // For v2 with AA:
+      // leader : CURRENT_VERSION_AAWC_LEADER
+      // follower: CURRENT_VERSION_NON_AAWC_LEADER
+      UpdateStoreQueryParams updateStoreParamsForEnablingAA =
+          new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+      updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParamsForEnablingAA));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+      response = parentControllerClient.emptyPush(storeName, "test_push_id for 2", 1000);
+
+      assertEquals(response.getVersion(), 2);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          storeVersionTopicV2.getName(),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        // Version 1 has active-active and write compute disabled, so each server host will ingest from local data
+        // center for leader.
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            realTimeTopicPartition,
+            ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV1,
+            storeVersionTopicPartitionV1,
+            ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            REPLICATION_FACTOR - 1);
+        // Version 2 has active-active enabled, so each server host will ingest from two data centers for leader.
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV2,
+            realTimeTopicPartition,
+            ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+            NUMBER_OF_CHILD_DATACENTERS,
+            1);
+        verifyConsumerThreadPoolFor(
+            storeVersionTopicV2,
+            storeVersionTopicPartitionV2,
+            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            1,
+            REPLICATION_FACTOR - 1);
+      });
     }
 
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -1224,19 +1370,55 @@ public class PartialUpdateTest {
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
     }
 
+    // Enable AA and push a new version to get v3, to verify pool change
+    // For v2 with AA:
+    // leader : CURRENT_VERSION_AAWC_LEADER => NON_CURRENT_VERSION_AAWC_LEADER
+    // follower: CURRENT_VERSION_NON_AAWC_LEADER => NON_CURRENT_VERSION_NON_AAWC_LEADER
+    // For v3 with AA:
+    // leader : CURRENT_VERSION_AAWC_LEADER
+    // follower: CURRENT_VERSION_NON_AAWC_LEADER
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     TestWriteUtils.runPushJob("Run repush job 1", props);
+    PubSubTopic storeVersionTopicV3 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 3));
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 2),
+          storeVersionTopicV3.getName(),
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
     }
+    PubSubTopicPartition storeVersionTopicPartitionV3 = new PubSubTopicPartitionImpl(storeVersionTopicV3, 0);
+    TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+      // Version 2 become backup version.
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV2,
+          realTimeTopicPartition,
+          ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
+          NUMBER_OF_CHILD_DATACENTERS,
+          1);
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV2,
+          storeVersionTopicPartitionV2,
+          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+          1,
+          REPLICATION_FACTOR - 1);
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV3,
+          realTimeTopicPartition,
+          ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
+          NUMBER_OF_CHILD_DATACENTERS,
+          1);
+      verifyConsumerThreadPoolFor(
+          storeVersionTopicV3,
+          storeVersionTopicPartitionV3,
+          ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+          1,
+          REPLICATION_FACTOR - 1);
+    });
     // Need to create a new producer to update partial update config from store response.
     veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
     UpdateBuilder builder = new UpdateBuilderImpl(partialUpdateSchema);
@@ -1256,6 +1438,54 @@ public class PartialUpdateTest {
           }
         });
       }
+    }
+  }
+
+  private void verifyConsumerThreadPoolFor(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition,
+      ConsumerPoolType consumerPoolType,
+      int expectedSourceRegionNumOnServer,
+      int expectedReplicaNumPerRegion) {
+    for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+      int replicaPerRegionCount = 0;
+      for (VeniceServerWrapper serverWrapper: veniceMultiClusterWrapper.getClusters()
+          .get(CLUSTER_NAME)
+          .getVeniceServers()) {
+        KafkaStoreIngestionService kafkaStoreIngestionService =
+            serverWrapper.getVeniceServer().getKafkaStoreIngestionService();
+        TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
+            kafkaStoreIngestionService.getTopicPartitionIngestionContext(
+                versionTopic.getName(),
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber());
+        try {
+          Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContexts = VENICE_JSON_SERIALIZER
+              .deserialize(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(), "");
+          if (!topicPartitionIngestionContexts.isEmpty()) {
+            int regionCount = 0;
+            for (Map.Entry<String, Map<String, TopicPartitionIngestionInfo>> entry: topicPartitionIngestionContexts
+                .entrySet()) {
+              Map<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = entry.getValue();
+              for (Map.Entry<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoEntry: topicPartitionIngestionInfoMap
+                  .entrySet()) {
+                String topicPartitionStr = topicPartitionIngestionInfoEntry.getKey();
+                if (pubSubTopicPartition.toString().equals(topicPartitionStr)) {
+                  TopicPartitionIngestionInfo topicPartitionIngestionInfo = topicPartitionIngestionInfoEntry.getValue();
+                  assertTrue(topicPartitionIngestionInfo.getConsumerIdStr().contains(consumerPoolType.getStatSuffix()));
+                  regionCount += 1;
+                }
+              }
+            }
+            // To ensure exactly one consumer from specific pool is allocated for each region.
+            Assert.assertEquals(regionCount, expectedSourceRegionNumOnServer);
+            replicaPerRegionCount += 1;
+          }
+        } catch (IOException e) {
+          throw new VeniceException("Got IO Exception during consumer pool check.", e);
+        }
+      }
+      Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
   }
 
@@ -1402,7 +1632,7 @@ public class PartialUpdateTest {
           serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
       ValueRecord result = SingleGetChunkingAdapter
-          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null, null);
+          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
       // Avoid assertion failure logging massive RMD record.
       boolean nullRmd = (result == null);
       assertFalse(nullRmd);
@@ -1968,7 +2198,7 @@ public class PartialUpdateTest {
     byte[] serializedKeyBytes =
         ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key));
     byte[] manifestValueBytes = isRmd
-        ? storageEngine.getReplicationMetadata(partition, serializedKeyBytes)
+        ? storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(serializedKeyBytes))
         : storageEngine.get(partition, serializedKeyBytes);
     if (manifestValueBytes == null) {
       return null;
@@ -1990,7 +2220,8 @@ public class PartialUpdateTest {
     for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
       byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
       byte[] valueBytes = storageEngine.get(partition, chunkKeyBytes);
-      byte[] rmdBytes = isAAEnabled ? storageEngine.getReplicationMetadata(partition, chunkKeyBytes) : null;
+      byte[] rmdBytes =
+          isAAEnabled ? storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(chunkKeyBytes)) : null;
       validationFlow.accept(valueBytes, rmdBytes);
     }
   }

@@ -214,6 +214,10 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+  // What instance group tag to assign to a cluster resource
+  public static final String CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG = "controller.resource.instance.group.tag";
+  // What tags to assign to a controller instance
+  public static final String CONTROLLER_INSTANCE_TAG_LIST = "controller.instance.tag.list";
 
   /** List of forbidden admin paths */
   public static final String CONTROLLER_DISABLED_ROUTES = "controller.cluster.disabled.routes";
@@ -316,9 +320,35 @@ public class ConfigKeys {
   public static final String ALLOW_CLUSTER_WIPE = "allow.cluster.wipe";
 
   /**
-   * Whether the controller is in Azure fabric. Default is false.
+   * Whether the controller cluster is in a cloud environment. Default is false.
    */
-  public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
+  public static final String CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED = "controller.cluster.helix.cloud.enabled";
+
+  /**
+   * Whether the controller storage cluster is in a cloud environment. Default is false.
+   */
+  public static final String CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED =
+      "controller.storage.cluster.helix.cloud.enabled";
+
+  /**
+   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider} Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
+
+  /**
+   * Specific id in cloud environment that belongs to this cluster. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_ID = "controller.helix.cloud.id";
+
+  /**
+   * Sources for retrieving the cloud information. Default is empty list.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";
+
+  /**
+   * Name of the function that processes the fetching and parsing of cloud information. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 
   /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
@@ -422,6 +452,10 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
+  /**
+   * Whether to join a Helix cluster in an UNKNOWN state
+   */
+  public static final String SERVER_HELIX_JOIN_AS_UNKNOWN = "server.helix.join.as.unknown";
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
@@ -527,6 +561,27 @@ public class ConfigKeys {
    * Number of Read Capacity Units per second that the node can handle across all stores.
    */
   public static final String SERVER_NODE_CAPACITY_RCU = "server.node.capacity.rcu.per.second";
+
+  /**
+   * Rate limiter for store version level read quota enforcement.
+   */
+  public static final String SERVER_STORE_VERSION_QPS_RATE_LIMITER = "server.store.version.qps.rate.limiter";
+
+  /**
+   * Rate limiter for storage node level read quota enforcement.
+   */
+  public static final String SERVER_STORAGE_NODE_RATE_LIMITER = "server.storage.node.rate.limiter";
+
+  /**
+   * Server quota enforcement interval in milliseconds.
+   */
+  public static final String SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS =
+      "server.quota.enforcement.interval.in.millis";
+
+  /**
+   * Server quota enforcement capacity multiple.
+   */
+  public static final String SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE = "server.quota.enforcement.capacity.multiple";
 
   /**
    * This config is used to control the maximum records returned by every poll request.
@@ -723,6 +778,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
       "server.ingestion.isolation.heartbeat.request.timeout.seconds";
+
+  public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
+      "server.batch.report.end.of.incremental.push.status.enabled";
+
+  /**
+   * This config dictates where the server should write the end of incremental push status.
+   */
+  public static final String SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE = "server.incremental.push.status.write.mode";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
@@ -1164,6 +1227,14 @@ public class ConfigKeys {
    */
   public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
       "enable.incremental.push.for.hybrid.active.active.user.stores";
+
+  /**
+   * We will use this config to determine whether we should enable separate real-time topic for incremental push enabled stores.
+   * If this config is set to true, we will enable separate real-time topic for incremental push enabled stores.
+   */
+  public static final String ENABLE_SEPARATE_REAL_TIME_TOPIC_FOR_STORE_WITH_INCREMENTAL_PUSH =
+      "enable.separate.real.time.topic.for.store.with.incremental.push";
+
   /**
    * We will use this config to determine whether we should enable partial update for hybrid active-active user stores.
    * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value
@@ -1690,6 +1761,10 @@ public class ConfigKeys {
       "davinci.push.status.scan.max.offline.instance.ratio";
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
+      "blob.transfer.snapshot.retention.time.in.min";
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
@@ -1722,6 +1797,13 @@ public class ConfigKeys {
    */
   public static final String USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR =
       "use.da.vinci.specific.execution.status.for.error";
+
+  /**
+   * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
+   * update events; DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci
+   * node, and decide whether to send a status update event. This config controls the interval between each check.
+   */
+  public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
   /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
@@ -1779,13 +1861,6 @@ public class ConfigKeys {
    * This config defines the allowed linger time for a leaked resource.
    */
   public static final String LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS = "leaked.resource.allowed.linger.time.ms";
-
-  /**
-   * This config controls whether to use da-vinci based implementation of the system store repository when
-   * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
-   */
-  public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY =
-      "client.use.da.vinci.based.system.store.repository";
 
   /**
    *
@@ -2147,6 +2222,19 @@ public class ConfigKeys {
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
 
   /**
+   * Configure in controllers to provide a custom list of checkpoints to define user errors and to
+   * override the default checkpoint list {@link PushJobCheckpoints#DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS}.
+   * This is useful to emit the push job failure metrics due to user errors or not due
+   * to user errors based on the custom checkpoint list.
+   *
+   * Check {@link PushJobCheckpoints} for the list of supported checkpoints: Config should contain one or more
+   * of the checkpoints strings separated by comma. In case of invalid config, the default list of checkpoints
+   * will be used.
+   */
+  public static final String PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR =
+      "push.job.failure.checkpoints.to.define.user.error";
+
+  /**
    * Config for the default value which is filled in when the store-level config
    * {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} is left unset. Used as a controller config for
    * batch push jobs. Used as a server config for nearline jobs / partial updates.
@@ -2207,4 +2295,24 @@ public class ConfigKeys {
       "server.non.current.version.aa.wc.leader.quota.records.per.second";
   public static final String SERVER_NON_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.non.current.version.non.aa.wc.leader.quota.records.per.second";
+
+  public static final String SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES =
+      "server.channel.option.write.buffer.watermark.high.bytes";
+
+  public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED =
+      "server.aa.wc.workload.parallel.processing.enabled";
+
+  public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
+      "server.aa.wc.workload.parallel.processing.thread.pool.size";
+  public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
+
+  /**
+   * Whether to enable producer throughput optimization for realtime workload or not.
+   * Two strategies:
+   * 1. Disable compression.
+   * 2. Utilizing multiple producers per write.
+   * These two options are controlled via store-level config.
+   */
+  public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
+      "server.nearline.workload.producer.throughput.optimization.enabled";
 }

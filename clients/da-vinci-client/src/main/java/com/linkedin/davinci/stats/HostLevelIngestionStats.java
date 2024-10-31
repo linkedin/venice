@@ -1,5 +1,11 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_ERROR;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_RECORDS;
+import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
@@ -57,6 +63,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
+
+  private final Sensor resubscriptionFailureSensor;
 
   private final Sensor viewProducerLatencySensor;
   /**
@@ -135,6 +143,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Measure the count of tombstones created
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
+
+  private final Sensor leaderProduceLatencySensor;
+  private final LongAdderRateGauge batchProcessingRequestSensor;
+  private final Sensor batchProcessingRequestSizeSensor;
+  private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
+  private final Sensor batchProcessingRequestLatencySensor;
+  private final LongAdderRateGauge batchProcessingRequestErrorSensor;
 
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
@@ -325,6 +340,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.ingestionFailureSensor,
         new Count());
 
+    this.resubscriptionFailureSensor = registerPerStoreAndTotalSensor(
+        "resubscription_failure",
+        totalStats,
+        () -> totalStats.resubscriptionFailureSensor,
+        new Count());
+
     this.leaderProducerSynchronizeLatencySensor = registerPerStoreAndTotalSensor(
         "leader_producer_synchronize_latency",
         totalStats,
@@ -427,6 +448,37 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderIngestionActiveActiveDeleteLatencySensor,
         avgAndMax());
+
+    this.leaderProduceLatencySensor = registerPerStoreAndTotalSensor(
+        "leader_produce_latency",
+        totalStats,
+        () -> totalStats.leaderProduceLatencySensor,
+        avgAndMax());
+    this.batchProcessingRequestSensor = registerOnlyTotalRate(
+        BATCH_PROCESSING_REQUEST,
+        totalStats,
+        () -> totalStats.batchProcessingRequestSensor,
+        time);
+    this.batchProcessingRequestErrorSensor = registerOnlyTotalRate(
+        BATCH_PROCESSING_REQUEST_ERROR,
+        totalStats,
+        () -> totalStats.batchProcessingRequestErrorSensor,
+        time);
+    this.batchProcessingRequestRecordsSensor = registerOnlyTotalRate(
+        BATCH_PROCESSING_REQUEST_RECORDS,
+        totalStats,
+        () -> totalStats.batchProcessingRequestRecordsSensor,
+        time);
+    this.batchProcessingRequestSizeSensor = registerOnlyTotalSensor(
+        BATCH_PROCESSING_REQUEST_SIZE,
+        totalStats,
+        () -> totalStats.batchProcessingRequestSizeSensor,
+        avgAndMax());
+    this.batchProcessingRequestLatencySensor = registerOnlyTotalSensor(
+        BATCH_PROCESSING_REQUEST_LATENCY,
+        totalStats,
+        () -> totalStats.batchProcessingRequestLatencySensor,
+        avgAndMax());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -485,6 +537,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordIngestionFailure() {
     ingestionFailureSensor.record();
+  }
+
+  public void recordResubscriptionFailure() {
+    resubscriptionFailureSensor.record();
   }
 
   public void recordLeaderProducerSynchronizeLatency(double latency) {
@@ -601,5 +657,23 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
+  }
+
+  public void recordLeaderProduceLatency(double latency) {
+    leaderProduceLatencySensor.record(latency);
+  }
+
+  public void recordBatchProcessingRequest(int size) {
+    batchProcessingRequestSensor.record();
+    batchProcessingRequestRecordsSensor.record(size);
+    batchProcessingRequestSizeSensor.record(size);
+  }
+
+  public void recordBatchProcessingRequestError() {
+    batchProcessingRequestErrorSensor.record();
+  }
+
+  public void recordBatchProcessingRequestLatency(double latency) {
+    batchProcessingRequestLatencySensor.record(latency);
   }
 }

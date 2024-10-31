@@ -27,11 +27,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -49,6 +52,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
@@ -135,6 +139,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
+            .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -402,6 +407,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getIncrementalPushEnabled() {
     return getBoolean(INCREMENTAL_PUSH_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    return putBoolean(SEPARATE_REAL_TIME_TOPIC_ENABLED, separateRealTimeTopicEnabled);
+  }
+
+  public Optional<Boolean> getSeparateRealTimeTopicEnabled() {
+    return getBoolean(SEPARATE_REAL_TIME_TOPIC_ENABLED);
   }
 
   public UpdateStoreQueryParams setBatchGetLimit(int batchGetLimit) {
@@ -676,6 +689,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getInteger(MAX_RECORD_SIZE_BYTES);
   }
 
+  public UpdateStoreQueryParams setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    return putInteger(MAX_NEARLINE_RECORD_SIZE_BYTES, maxNearlineRecordSizeBytes);
+  }
+
+  public Optional<Integer> getMaxNearlineRecordSizeBytes() {
+    return getInteger(MAX_NEARLINE_RECORD_SIZE_BYTES);
+  }
+
   public UpdateStoreQueryParams setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     return putBoolean(UNUSED_SCHEMA_DELETION_ENABLED, unusedSchemaDeletionEnabled);
   }
@@ -690,6 +711,22 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getBlobTransferEnabled() {
     return getBoolean(BLOB_TRANSFER_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    return putBoolean(NEARLINE_PRODUCER_COMPRESSION_ENABLED, compressionEnabled);
+  }
+
+  public Optional<Boolean> getNearlineProducerCompressionEnabled() {
+    return getBoolean(NEARLINE_PRODUCER_COMPRESSION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setNearlineProducerCountPerWriter(int producerCnt) {
+    return putInteger(NEARLINE_PRODUCER_COUNT_PER_WRITER, producerCnt);
+  }
+
+  public Optional<Integer> getNearlineProducerCountPerWriter() {
+    return getInteger(NEARLINE_PRODUCER_COUNT_PER_WRITER);
   }
 
   // ***************** above this line are getters and setters *****************

@@ -324,9 +324,13 @@ public class RouterBackedSchemaReader implements SchemaReader {
         valueSchemaIdSet = fetchAllValueSchemaIdsFromRouter();
       } catch (Exception e) {
         LOGGER.warn(
-            "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.");
+            "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.",
+            e);
         // Fall back to fetch all value schema.
         for (SchemaEntry valueSchemaEntry: fetchAllValueSchemaEntriesFromRouter()) {
+          if (!isValidSchemaEntry(valueSchemaEntry)) {
+            continue;
+          }
           valueSchemaEntryMap.put(valueSchemaEntry.getId(), valueSchemaEntry);
           cacheValueAndCanonicalSchemas(valueSchemaEntry.getSchema(), valueSchemaEntry.getId());
         }
@@ -441,7 +445,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
        * one active value schema.
        */
       synchronized (this) {
-        if (latest != null && !shouldRefreshLatestValueSchemaEntry.get()) {
+        if (latest != null && !shouldRefreshLatestValueSchemaEntry.get() && isValidSchemaEntry(latest)) {
           return latest;
         }
         updateAllValueSchemaEntriesAndLatestValueSchemaEntry(false);
@@ -449,6 +453,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
         latestValueSchemaEntry.set(latestValueSchemaEntry.get());
         latest = latestValueSchemaEntry.get();
       }
+    }
+    if (latest == null || !isValidSchemaEntry(latest)) {
+      throw new VeniceClientException("Failed to get latest value schema for store: " + storeName);
     }
     return latest;
   }

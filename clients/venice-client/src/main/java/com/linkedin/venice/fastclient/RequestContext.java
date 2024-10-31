@@ -1,21 +1,18 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
  * This class is used to include all the intermediate fields required for the communication between the different tiers.
  */
-public class RequestContext {
-  private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong();
-
+public abstract class RequestContext {
   int currentVersion = -1;
-  final long requestId;
   boolean noAvailableReplica = false;
 
   double decompressionTime = -1;
@@ -32,7 +29,10 @@ public class RequestContext {
 
   Map<String, CompletableFuture<Integer>> routeRequestMap = new VeniceConcurrentHashMap<>();
 
+  String serverClusterName;
+
   public RequestContext() {
-    this.requestId = REQUEST_ID_GENERATOR.getAndIncrement();
   }
+
+  public abstract RequestType getRequestType();
 }

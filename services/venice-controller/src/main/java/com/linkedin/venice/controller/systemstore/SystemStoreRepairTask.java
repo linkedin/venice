@@ -224,7 +224,6 @@ public class SystemStoreRepairTask implements Runnable {
       }
 
       long retrievedHeartbeatTimestamp = getHeartbeatFromSystemStore(clusterName, entry.getKey());
-      LOGGER.info("DEBUGGING: {} {} {}", entry.getKey(), entry.getValue(), retrievedHeartbeatTimestamp);
       if (retrievedHeartbeatTimestamp < entry.getValue()) {
         newUnhealthySystemStoreSet.add(entry.getKey());
         if (retrievedHeartbeatTimestamp == -1) {

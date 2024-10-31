@@ -27,7 +27,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -40,7 +39,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_O
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
@@ -66,6 +64,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZ
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -73,6 +72,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.meta.Version.PushType;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -86,6 +87,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -112,6 +114,7 @@ import org.apache.logging.log4j.Logger;
 
 public class ControllerClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ControllerClient.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -713,23 +716,38 @@ public class ControllerClient implements Closeable {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
     }
-    int currentAttempt = 1;
-    while (true) {
-      R response = request.apply(client);
+    Exception exception = null;
+    R response = null;
+
+    for (int currentAttempt = 1; currentAttempt <= totalAttempts; currentAttempt++) {
+      try {
+        response = request.apply(client);
+      } catch (Exception e) {
+        exception = e;
+      }
       // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return
       // INVALID schema ID in the response.
-      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)
-          || abortRetryCondition.apply(response)) {
+      if (exception == null && (!response.isError() || valueSchemaNotFoundSchemaResponse(response)
+          || abortRetryCondition.apply(response))) {
         return response;
       } else {
-        LOGGER.warn(
-            "Error on attempt {}/{} of querying the Controller: {}",
-            currentAttempt,
-            totalAttempts,
-            response.getError());
-        currentAttempt++;
+        if (exception != null) {
+          LOGGER
+              .warn("Exception on attempt {}/{} of querying the Controller", currentAttempt, totalAttempts, exception);
+        } else {
+          LOGGER.warn(
+              "Error on attempt {}/{} of querying the Controller: {}",
+              currentAttempt,
+              totalAttempts,
+              response.getError());
+        }
         Utils.sleep(2000);
       }
+    }
+    if (exception != null) {
+      throw new VeniceException("Could not execute query even after " + totalAttempts + " attempts.", exception);
+    } else {
+      return response;
     }
   }
 
@@ -807,13 +825,6 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, QUERY_JOB_STATUS_TIMEOUT, 1, null);
   }
 
-  // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
-  public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
-    QueryParams params =
-        newParams().add(NAME, storeName).add(VERSION, version).add(PUSH_JOB_DETAILS, pushJobDetailsString);
-    return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class);
-  }
-
   public ControllerResponse sendPushJobDetails(String storeName, int version, byte[] pushJobDetails) {
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
     return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class, pushJobDetails);
@@ -883,7 +894,7 @@ public class ControllerClient implements Closeable {
 
   public NodeStatusResponse isNodeRemovable(String instanceId, List<String> lockedNodeIds) {
     QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId)
-        .add(LOCKED_STORAGE_NODE_IDS, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
+        .add(TO_BE_STOPPED_INSTANCES, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 
@@ -904,6 +915,21 @@ public class ControllerClient implements Closeable {
 
   public MultiNodeResponse listStorageNodes() {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
+  }
+
+  public StoppableNodeStatusResponse getAggregatedHealthStatus(
+      String clusterName,
+      List<String> instances,
+      List<String> toBeStoppedInstances) throws JsonProcessingException {
+
+    AggregatedHealthStatusRequest request =
+        new AggregatedHealthStatusRequest(instances, toBeStoppedInstances, clusterName);
+    String requestString = OBJECT_MAPPER.writeValueAsString(request);
+    return request(
+        ControllerRoute.AGGREGATED_HEALTH_STATUS,
+        newParams(),
+        StoppableNodeStatusResponse.class,
+        requestString.getBytes());
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {
@@ -1434,6 +1460,8 @@ public class ControllerClient implements Closeable {
           }
           // leader controller has changed. Let's wait for a new leader to realize it.
           lastException = e;
+        } catch (Exception e) {
+          lastException = e;
         }
 
         if (attempt < maxAttempts) {
@@ -1459,14 +1487,14 @@ public class ControllerClient implements Closeable {
     return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 
-  private <T extends ControllerResponse> T makeErrorResponse(
+  private static <T extends ControllerResponse> T makeErrorResponse(
       String message,
       Exception exception,
       Class<T> responseType) {
     return makeErrorResponse(message, exception, responseType, true);
   }
 
-  private <T extends ControllerResponse> T makeErrorResponse(
+  private static <T extends ControllerResponse> T makeErrorResponse(
       String message,
       Exception exception,
       Class<T> responseType,

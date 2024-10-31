@@ -9,16 +9,20 @@ import static org.apache.hc.core5.http.HttpStatus.SC_TOO_MANY_REQUESTS;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AppTimeOutTrackingCompletableFuture;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.StreamingResponseTracker;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.stats.ClusterRouteStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -36,6 +40,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private final FastClientStats clientStatsForStreamingBatchGet;
   private final FastClientStats clientStatsForStreamingCompute;
   private final ClusterStats clusterStats;
+  private final MetricsRepository metricsRepository;
+  private final ClusterRouteStats clusterRouteStats;
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate, clientConfig);
@@ -43,6 +49,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
     this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
+    this.metricsRepository = clientConfig.getMetricsRepository();
+    this.clusterRouteStats = ClusterRouteStats.get();
   }
 
   @Override
@@ -62,7 +70,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     super.streamingBatchGet(
         requestContext,
         keys,
-        new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext));
+        new StatTrackingStreamingCallBack<>(
+            callback,
+            statFuture,
+            requestContext,
+            clientStatsForStreamingBatchGet,
+            keys.size(),
+            startTimeInNS));
     recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForStreamingBatchGet);
   }
 
@@ -81,7 +95,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         computeRequestWrapper,
         keys,
         resultSchema,
-        new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext),
+        new StatTrackingStreamingCallBack<>(
+            callback,
+            statFuture,
+            requestContext,
+            clientStatsForStreamingCompute,
+            keys.size(),
+            startTimeInNS),
         preRequestTimeInNS);
     recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForStreamingCompute);
   }
@@ -122,8 +142,20 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
       // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
       // requests from metrics point of view.
-      boolean exceptionReceived = throwable != null || (requestContext instanceof MultiKeyRequestContext
-          && ((MultiKeyRequestContext) requestContext).isCompletedSuccessfullyWithPartialResponse());
+      boolean exceptionReceived = false;
+      if (throwable != null) {
+        exceptionReceived = true;
+      } else {
+        // check for partial failures for multi-key requests
+        if (requestContext instanceof MultiKeyRequestContext) {
+          MultiKeyRequestContext multiKeyRequestContext = (MultiKeyRequestContext) requestContext;
+          if (multiKeyRequestContext.isCompletedSuccessfullyWithPartialResponse()) {
+            exceptionReceived = true;
+            throwable = (Throwable) multiKeyRequestContext.getPartialResponseException().get();
+          }
+        }
+      }
+
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
@@ -179,14 +211,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         clientStats.recordFanoutSize(multiKeyRequestContext.getFanoutSize());
         if (multiKeyRequestContext.retryContext != null
             && multiKeyRequestContext.retryContext.retryRequestContext != null) {
+          MultiKeyRequestContext retryRequestContext = multiKeyRequestContext.retryContext.retryRequestContext;
           clientStats.recordLongTailRetryRequest();
-          clientStats
-              .recordRetryRequestKeyCount(multiKeyRequestContext.retryContext.retryRequestContext.numKeysInRequest);
-          clientStats.recordRetryFanoutSize(multiKeyRequestContext.retryContext.retryRequestContext.getFanoutSize());
+          clientStats.recordRetryRequestKeyCount(retryRequestContext.numKeysInRequest);
+          clientStats.recordRetryFanoutSize(retryRequestContext.getFanoutSize());
           if (!exceptionReceived) {
-            clientStats.recordRetryRequestSuccessKeyCount(
-                multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get());
-            if (multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() > 0) {
+            clientStats.recordRetryRequestSuccessKeyCount(retryRequestContext.numKeysCompleted.get());
+            if (retryRequestContext.numKeysCompleted.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
@@ -217,9 +248,17 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
       replicaRequestFuture.forEach((instance, future) -> {
         future.whenComplete((status, throwable) -> {
-          if (monitor != null) {
-            clusterStats.recordPendingRequestCount(instance, monitor.getPendingRequestCounter(instance));
-          }
+          ClusterRouteStats.RouteStats routeStats = clusterRouteStats.getRouteStats(
+              metricsRepository,
+              /**
+               * There is a race condition during store migration and the cluster name might not match
+               * with the requested instance.
+               * It is fine for tracking purpose as it would only happen for a very short period and
+               * the wrong cluster/instance combination will be deprecated soon because of a short lifetime.
+               */
+              requestContext.serverClusterName,
+              instance,
+              requestContext.getRequestType());
 
           if (throwable != null) {
             status = (throwable instanceof VeniceClientHttpException)
@@ -227,29 +266,28 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
                 : SC_SERVICE_UNAVAILABLE;
           }
 
-          clientStats.recordRequest(instance);
-          clientStats
-              .recordResponseWaitingTime(instance, LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
+          routeStats.recordRequest();
+          routeStats.recordResponseWaitingTime(LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
           switch (status) {
             case SC_OK:
             case SC_NOT_FOUND:
-              clientStats.recordHealthyRequest(instance);
+              routeStats.recordHealthyRequest();
               break;
             case SC_TOO_MANY_REQUESTS:
-              clientStats.recordQuotaExceededRequest(instance);
+              routeStats.recordQuotaExceededRequest();
               break;
             case SC_INTERNAL_SERVER_ERROR:
-              clientStats.recordInternalServerErrorRequest(instance);
+              routeStats.recordInternalServerErrorRequest();
               break;
             case SC_GONE:
               /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
-              clientStats.recordLeakedRequest(instance);
+              routeStats.recordLeakedRequest();
               break;
             case SC_SERVICE_UNAVAILABLE:
-              clientStats.recordServiceUnavailableRequest(instance);
+              routeStats.recordServiceUnavailableRequest();
               break;
             default:
-              clientStats.recordOtherErrorRequest(instance);
+              routeStats.recordOtherErrorRequest();
           }
         });
       });
@@ -262,17 +300,24 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     private final CompletableFuture<Void> statFuture;
     private final MultiKeyRequestContext requestContext;
 
+    private final StreamingResponseTracker streamingResponseTracker;
+
     StatTrackingStreamingCallBack(
         StreamingCallback<K, V> callback,
         CompletableFuture<Void> statFuture,
-        MultiKeyRequestContext requestContext) {
+        MultiKeyRequestContext requestContext,
+        ClientStats stats,
+        int keyCount,
+        long startTimeInNS) {
       this.inner = callback;
       this.statFuture = statFuture;
       this.requestContext = requestContext;
+      this.streamingResponseTracker = new StreamingResponseTracker(stats, keyCount, startTimeInNS);
     }
 
     @Override
     public void onRecordReceived(K key, V value) {
+      streamingResponseTracker.recordReceived();
       if (value != null) {
         requestContext.successRequestKeyCount.incrementAndGet();
       }

@@ -30,8 +30,7 @@ public class ClientTestUtils {
   public static final Object[] REQUEST_TYPES_SMALL =
       { RequestType.SINGLE_GET, RequestType.MULTI_GET, RequestType.COMPUTE };
 
-  public static final Object[] STORE_METADATA_FETCH_MODES =
-      { StoreMetadataFetchMode.SERVER_BASED_METADATA, StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA };
+  public static final Object[] STORE_METADATA_FETCH_MODES = { StoreMetadataFetchMode.SERVER_BASED_METADATA };
 
   private static Client setupTransportClientFactory(FastClientHTTPVariant fastClientHTTPVariant) {
     /**

@@ -17,8 +17,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -67,21 +68,20 @@ import org.apache.logging.log4j.Logger;
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
 public abstract class KafkaConsumerService extends AbstractKafkaConsumerService {
-  private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
-  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
-
-  private final ExecutorService consumerExecutor;
   protected final String kafkaUrl;
   protected final String kafkaUrlForLogger;
-  private final Logger LOGGER;
-
-  protected AggKafkaConsumerServiceStats aggStats;
+  protected final ConsumerPoolType poolType;
+  protected final AggKafkaConsumerServiceStats aggStats;
   protected final IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask;
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
-  protected final ConsumerPoolType poolType;
+  private RandomAccessDaemonThreadFactory threadFactory;
+  private final Logger LOGGER;
+  private final ExecutorService consumerExecutor;
+  private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -111,9 +111,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.poolType = poolType;
 
     // Initialize consumers and consumerExecutor
-    consumerExecutor = Executors.newFixedThreadPool(
-        numOfConsumersPerKafkaCluster,
-        new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
+    String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
+    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix);
+    consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride
@@ -158,7 +158,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           time);
 
       ConsumptionTask consumptionTask = new ConsumptionTask(
-          this.kafkaUrl,
+          consumerNamePrefix,
           i,
           readCycleDelayMs,
           pollFunction,
@@ -360,12 +360,20 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     if (maxElapsedTimeSinceLastPollInConsumerPool > Time.MS_PER_MINUTE) {
       String slowestTaskIdString = kafkaUrl + slowestTaskId;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(slowestTaskIdString)) {
+        /**
+         * We assume task id is the same as the number for thread. This is because both of them
+         * are zero-based and ConsumptionTasks are submitted to the executor in order.
+         */
+        Thread slowestThread = threadFactory.getThread(slowestTaskId);
+
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
-            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms!",
+            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}",
             kafkaUrl,
             slowestTaskId,
-            maxElapsedTimeSinceLastPollInConsumerPool);
+            maxElapsedTimeSinceLastPollInConsumerPool,
+            slowestThread != null ? slowestThread.getName() : null,
+            ExceptionUtils.threadToThrowableToString(slowestThread));
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
@@ -423,6 +431,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         boolean unregisterMetricForDeletedStoreEnabled);
   }
 
+  /**
+   * This metric function will be called when any {@link SharedKafkaConsumer} inside this class attempt to subscribe or
+   * un-subscribe.
+   */
   final void recordPartitionsPerConsumerSensor() {
     int totalPartitions = 0;
     int minPartitionsPerConsumer = Integer.MAX_VALUE;
@@ -440,6 +452,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     aggStats.recordTotalAvgPartitionsPerConsumer(avgPartitionsPerConsumer);
     aggStats.recordTotalMaxPartitionsPerConsumer(maxPartitionsPerConsumer);
     aggStats.recordTotalMinPartitionsPerConsumer(minPartitionsPerConsumer);
+    aggStats.recordTotalSubscribedPartitionsNum(totalPartitions);
   }
 
   public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
@@ -488,7 +501,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
-      int consumerIdx = consumptionTask.getTaskId();
+      String consumerIdStr = consumptionTask.getTaskIdStr();
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);
@@ -500,14 +513,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           elapsedTimeSinceLastPollInMs =
               LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
         }
-        PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(pubSubTopicPartition);
+        PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
         String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
         TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
             latestOffset,
             offsetLag,
             msgRate,
             byteRate,
-            consumerIdx,
+            consumerIdStr,
             elapsedTimeSinceLastPollInMs,
             destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
@@ -536,4 +549,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
+  // For testing only
+  public void setThreadFactory(RandomAccessDaemonThreadFactory threadFactory) {
+    this.threadFactory = threadFactory;
+  }
 }

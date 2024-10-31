@@ -10,6 +10,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 
+import com.linkedin.davinci.config.VeniceServerConfig.IncrementalPushStatusWriteMode;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -21,6 +22,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.RetryUtils;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import org.apache.helix.HelixException;
 import org.apache.logging.log4j.LogManager;
@@ -32,25 +34,27 @@ import org.apache.logging.log4j.Logger;
  */
 public class PushStatusNotifier implements VeniceNotifier {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusNotifier.class);
-
   private final OfflinePushAccessor offLinePushAccessor;
-  private HelixPartitionStatusAccessor helixPartitionStatusAccessor;
+  private final HelixPartitionStatusAccessor helixPartitionStatusAccessor;
 
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ReadOnlyStoreRepository storeRepository;
   private final String instanceId;
+  private final IncrementalPushStatusWriteMode incrementalPushStatusWriteMode;
 
   public PushStatusNotifier(
       OfflinePushAccessor offlinePushAccessor,
       HelixPartitionStatusAccessor helixPartitionStatusAccessor,
       PushStatusStoreWriter pushStatusStoreWriter,
       ReadOnlyStoreRepository storeRepository,
-      String instanceId) {
+      String instanceId,
+      IncrementalPushStatusWriteMode incrementalPushStatusWriteMode) {
     this.offLinePushAccessor = offlinePushAccessor;
     this.helixPartitionStatusAccessor = helixPartitionStatusAccessor;
     this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.storeRepository = storeRepository;
     this.instanceId = instanceId;
+    this.incrementalPushStatusWriteMode = incrementalPushStatusWriteMode;
   }
 
   @Override
@@ -116,19 +120,56 @@ public class PushStatusNotifier implements VeniceNotifier {
 
   @Override
   public void startOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
-    offLinePushAccessor
-        .updateReplicaStatus(topic, partitionId, instanceId, START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    updateIncrementalPushStatus(topic, message, partitionId, START_OF_INCREMENTAL_PUSH_RECEIVED);
+    updateIncrementalPushStatus(topic, partitionId, offset, message, START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   @Override
   public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
-    offLinePushAccessor
-        .updateReplicaStatus(topic, partitionId, instanceId, END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    updateIncrementalPushStatus(topic, message, partitionId, END_OF_INCREMENTAL_PUSH_RECEIVED);
+    updateIncrementalPushStatus(topic, partitionId, offset, message, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   private void updateIncrementalPushStatus(
+      String topic,
+      int partitionId,
+      long offset,
+      String message,
+      ExecutionStatus status) {
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.ZOOKEEPER_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, status, offset, message);
+    }
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.PUSH_STATUS_SYSTEM_STORE_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      updateIncrementalPushStatusToPushStatusStore(topic, message, partitionId, status);
+    }
+  }
+
+  @Override
+  public void batchEndOfIncrementalPushReceived(
+      String topic,
+      int partitionId,
+      long offset,
+      List<String> pendingReportIncPushVersionList) {
+
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.ZOOKEEPER_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      offLinePushAccessor
+          .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, pendingReportIncPushVersionList);
+    }
+    if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.PUSH_STATUS_SYSTEM_STORE_ONLY
+        || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
+      // We don't need to report redundant SOIP for these stale inc push versions as they've all received EOIP.
+      for (String incPushVersion: pendingReportIncPushVersionList) {
+        updateIncrementalPushStatusToPushStatusStore(
+            topic,
+            incPushVersion,
+            partitionId,
+            END_OF_INCREMENTAL_PUSH_RECEIVED);
+      }
+    }
+  }
+
+  private void updateIncrementalPushStatusToPushStatusStore(
       String kafkaTopic,
       String incPushVersion,
       int partitionId,
@@ -147,6 +188,12 @@ public class PushStatusNotifier implements VeniceNotifier {
           storeName,
           e);
     }
+    LOGGER.info(
+        "Update server inc push status for topic: {}, partition: {}, inc push version: {}, status: {} to push status store",
+        kafkaTopic,
+        partitionId,
+        incPushVersion,
+        status);
     pushStatusStoreWriter.writePushStatus(
         storeName,
         Version.parseVersionFromKafkaTopicName(kafkaTopic),

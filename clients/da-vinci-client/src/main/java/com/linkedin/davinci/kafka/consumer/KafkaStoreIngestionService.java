@@ -13,7 +13,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -111,7 +111,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
@@ -175,7 +174,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final Function<Integer, DaVinciRecordTransformer> getRecordTransformer;
+  private final DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -188,6 +187,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
+  private final ExecutorService aaWCWorkLoadProcessingThreadPool;
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -206,14 +206,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
       HeartbeatMonitoringService heartbeatMonitoringService) {
     this.cacheBackend = cacheBackend;
-    this.getRecordTransformer = getRecordTransformer;
+    this.recordTransformerFunction = recordTransformerFunction;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -438,6 +438,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
 
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
+          serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
+          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING"));
+    } else {
+      this.aaWCWorkLoadProcessingThreadPool = null;
+    }
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageEngineRepository(storageEngineRepository)
@@ -463,6 +471,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
+        .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .build();
   }
 
@@ -518,7 +527,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerFunction);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -547,6 +556,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public boolean hasCurrentVersionBootstrapping() {
+    return hasCurrentVersionBootstrapping(topicNameToIngestionTaskMap);
+  }
+
+  public static boolean hasCurrentVersionBootstrapping(Map<String, StoreIngestionTask> ingestionTaskMap) {
+    for (Map.Entry<String, StoreIngestionTask> entry: ingestionTaskMap.entrySet()) {
+      StoreIngestionTask task = entry.getValue();
+      if (task.isCurrentVersion() && !task.hasAllPartitionReportedCompleted()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Stops all the Kafka consumption tasks.
    * Closes all the Kafka clients.
@@ -568,6 +591,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
+
+    shutdownExecutorService(aaWCWorkLoadProcessingThreadPool, "aaWCWorkLoadProcessingThreadPool", true);
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 
@@ -1183,7 +1208,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.error(
           "Caught exception when deserializing offset record byte array: {} for replica: {}",
           Arrays.toString(offsetRecordByteArray),
-          Utils.getReplicaId(topicName, partition));
+          Utils.getReplicaId(topicName, partition),
+          e);
       throw e;
     }
     storageMetadataService.put(topicName, partition, offsetRecord);

@@ -340,6 +340,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return zkSharedStore.isSeparateRealTimeTopicEnabled();
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    throwUnsupportedOperationException("setSeparateRealTimeTopicEnabled");
+  }
+
+  @Override
   public boolean isAccessControlled() {
     return zkSharedStore.isAccessControlled();
   }
@@ -657,6 +667,36 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
     throwUnsupportedOperationException("setMaxRecordSizeBytes");
+  }
+
+  @Override
+  public int getMaxNearlineRecordSizeBytes() {
+    return zkSharedStore.getMaxNearlineRecordSizeBytes();
+  }
+
+  @Override
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    throwUnsupportedOperationException("setMaxNearlineRecordSizeBytes");
+  }
+
+  @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return zkSharedStore.isNearlineProducerCompressionEnabled();
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    throwUnsupportedOperationException("setNearlineProducerCompressionEnabled");
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return zkSharedStore.getNearlineProducerCountPerWriter();
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throwUnsupportedOperationException("setNearlineProducerCountPerWriter");
   }
 
   @Override

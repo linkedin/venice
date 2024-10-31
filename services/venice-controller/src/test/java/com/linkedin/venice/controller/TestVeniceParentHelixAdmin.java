@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -69,6 +70,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -92,6 +94,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -1789,7 +1792,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setBootstrapToOnlineTimeoutInHours(48)
         .setReplicationFactor(2)
         .setBlobTransferEnabled(false)
-        .setMaxRecordSizeBytes(7777);
+        .setMaxRecordSizeBytes(7777)
+        .setMaxNearlineRecordSizeBytes(6666);
 
     parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
@@ -1822,6 +1826,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.replicationFactor, 2);
     Assert.assertFalse(updateStore.blobTransferEnabled);
     Assert.assertEquals(updateStore.maxRecordSizeBytes, 7777);
+    Assert.assertEquals(updateStore.maxNearlineRecordSizeBytes, 6666);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
@@ -1880,14 +1885,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin
         .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc1"));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     assertEquals(
         updateStore.nativeReplicationSourceFabric.toString(),
@@ -1943,14 +1941,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         storeName,
         new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1).setHybridRewindSeconds(-1));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertFalse(internalAdmin.isHybrid(updateStore.getHybridStoreConfig()));
     Assert.assertFalse(updateStore.incrementalPushEnabled);
@@ -1960,69 +1951,69 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testSetStoreViewConfig() {
     String storeName = Utils.getUniqueString("testUpdateStore");
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    store.setActiveActiveReplicationEnabled(true);
-    store.setChunkingEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-
-    parentAdmin.initStorageCluster(clusterName);
+    setupForStoreViewConfigUpdateTest(storeName);
     Map<String, String> viewConfig = new HashMap<>();
     viewConfig.put(
         "changeCapture",
         "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
   }
 
   @Test
+  public void testSetRePartitionViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    setupForStoreViewConfigUpdateTest(storeName);
+    Map<String, String> viewConfig = new HashMap<>();
+    String rePartitionViewConfigString = "{\"viewClassName\" : \"%s\", \"viewParameters\" : {\"%s\":\"%s\"}}";
+    String rePartitionViewName = "rePartitionViewA";
+    int rePartitionViewPartitionCount = 10;
+    String viewString = String.format(
+        rePartitionViewConfigString,
+        MaterializedView.class.getCanonicalName(),
+        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        rePartitionViewPartitionCount);
+
+    // Invalid re-partition view name
+    viewConfig.put(rePartitionViewName + VERSION_SEPARATOR, viewString);
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig)));
+
+    viewConfig.clear();
+    viewConfig.put(rePartitionViewName, viewString);
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
+    Map<String, CharSequence> rePartitionViewParameters =
+        updateStore.getViews().get(rePartitionViewName).viewParameters;
+    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertEquals(
+        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewName);
+    Assert.assertEquals(
+        Integer.parseInt(
+            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+        rePartitionViewPartitionCount);
+  }
+
+  @Test
   public void testInsertStoreViewConfig() {
     String storeName = Utils.getUniqueString("testUpdateStore");
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    store.setActiveActiveReplicationEnabled(true);
-    store.setChunkingEnabled(true);
+    Store store = setupForStoreViewConfigUpdateTest(storeName);
     store.setViewConfigs(
         Collections.singletonMap("testView", new ViewConfigImpl("testViewClassDummyName", Collections.emptyMap())));
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-
-    parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateStore(
         clusterName,
         storeName,
         new UpdateStoreQueryParams().setViewName("changeCapture")
             .setViewClassName(ChangeCaptureView.class.getCanonicalName()));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     assertEquals(updateStore.getViews().size(), 2);
     Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
@@ -2030,6 +2021,51 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         updateStore.getViews().get("changeCapture").viewClassName.toString(),
         ChangeCaptureView.class.getCanonicalName());
     Assert.assertTrue(updateStore.getViews().get("changeCapture").viewParameters.isEmpty());
+  }
+
+  @Test
+  public void testInsertMaterializedViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = setupForStoreViewConfigUpdateTest(storeName);
+    store.setViewConfigs(
+        Collections.singletonMap("testView", new ViewConfigImpl("testViewClassDummyName", Collections.emptyMap())));
+    String rePartitionViewName = "rePartitionViewA";
+    int rePartitionViewPartitionCount = 10;
+    Map<String, String> viewClassParams = new HashMap<>();
+    viewClassParams.put(
+        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        Integer.toString(rePartitionViewPartitionCount));
+
+    // Invalid re-partition view name
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setViewName(rePartitionViewName + VERSION_SEPARATOR)
+                .setViewClassName(MaterializedView.class.getCanonicalName())
+                .setViewClassParams(viewClassParams)));
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setViewName(rePartitionViewName)
+            .setViewClassName(MaterializedView.class.getCanonicalName())
+            .setViewClassParams(viewClassParams));
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    assertEquals(updateStore.getViews().size(), 2);
+    Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
+    Map<String, CharSequence> rePartitionViewParameters =
+        updateStore.getViews().get(rePartitionViewName).viewParameters;
+    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertEquals(
+        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewName);
+    Assert.assertEquals(
+        Integer.parseInt(
+            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+        rePartitionViewPartitionCount);
   }
 
   @Test
@@ -2832,5 +2868,33 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
     finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
     assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+  }
+
+  private Store setupForStoreViewConfigUpdateTest(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setChunkingEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    parentAdmin.initStorageCluster(clusterName);
+    return store;
+  }
+
+  private AdminOperation verifyAndGetSingleAdminOperation() {
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    return adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
   }
 }

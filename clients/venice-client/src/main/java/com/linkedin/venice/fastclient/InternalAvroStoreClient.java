@@ -34,7 +34,7 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   @Override
   public CompletableFuture<V> get(K key) throws VeniceClientException {
-    return get(new GetRequestContext(false), key);
+    return get(new GetRequestContext(), key);
   }
 
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
@@ -53,9 +53,6 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
     streamingResultFuture.whenComplete((response, throwable) -> {
       if (throwable != null) {
         resultFuture.completeExceptionally(throwable);
-      } else if (!requestContext.isPartialSuccessAllowed && requestContext.getPartialResponseException().isPresent()) {
-        resultFuture.completeExceptionally(
-            new VeniceClientException("Response was not complete", requestContext.getPartialResponseException().get()));
       } else {
         resultFuture.complete(response);
       }

@@ -4,27 +4,31 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.STOP_CONSUMPTION;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.main.MainPartitionIngestionStatus;
+import com.linkedin.davinci.ingestion.main.MainTopicIngestionStatus;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,6 +54,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
   private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
+  private final Function<String, Integer> currentVersionSupplier;
   private Process isolatedIngestionServiceProcess;
 
   public IsolatedIngestionBackend(
@@ -58,7 +63,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
       StorageService storageService,
-      BlobTransferManager blobTransferManager) {
+      BlobTransferManager blobTransferManager,
+      Function<String, Integer> currentVersionSupplier) {
     super(
         storageMetadataService,
         storeIngestionService,
@@ -68,6 +74,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
+    this.currentVersionSupplier = currentVersionSupplier;
     // Create the ingestion request client.
     mainIngestionRequestClient = new MainIngestionRequestClient(configLoader);
     // Create the forked isolated ingestion process.
@@ -192,6 +199,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     return mainIngestionMonitorService;
   }
 
+  Function<String, Integer> getCurrentVersionSupplier() {
+    return currentVersionSupplier;
+  }
+
   public MainIngestionRequestClient getMainIngestionRequestClient() {
     return mainIngestionRequestClient;
   }
@@ -216,6 +227,31 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     } catch (Exception e) {
       LOGGER.info("Unable to close {}", getClass().getSimpleName(), e);
     }
+  }
+
+  public boolean hasCurrentVersionBootstrapping() {
+    if (super.hasCurrentVersionBootstrapping()) {
+      return true;
+    }
+
+    Map<String, MainTopicIngestionStatus> topicIngestionStatusMap =
+        getMainIngestionMonitorService().getTopicIngestionStatusMap();
+    for (Map.Entry<String, MainTopicIngestionStatus> entry: topicIngestionStatusMap.entrySet()) {
+      String topicName = entry.getKey();
+      MainTopicIngestionStatus ingestionStatus = entry.getValue();
+      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+      int version = Version.parseVersionFromKafkaTopicName(topicName);
+      /**
+       * If the current version is still being ingested by isolated process, it means the bootstrapping hasn't finished
+       * yet as the ingestion task should be handled over to main process if all partitions complete ingestion.
+       */
+      if (getCurrentVersionSupplier().apply(storeName) == version
+          && ingestionStatus.hasPartitionIngestingInIsolatedProcess()) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {

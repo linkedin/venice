@@ -1,15 +1,13 @@
 package com.linkedin.davinci.repository;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static java.lang.Thread.currentThread;
 
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -26,22 +24,20 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
@@ -63,9 +59,6 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class NativeMetadataRepository
     implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
-  protected static final int THIN_CLIENT_RETRY_COUNT = 3;
-  protected static final long THIN_CLIENT_RETRY_BACKOFF_MS = 10000;
-
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final Logger LOGGER = LogManager.getLogger(NativeMetadataRepository.class);
 
@@ -84,13 +77,23 @@ public abstract class NativeMetadataRepository
 
   private final long refreshIntervalInSeconds;
 
+  private final NativeMetadataRepositoryStats nativeMetadataRepositoryStats;
+
+  private final Clock clock;
   private AtomicBoolean started = new AtomicBoolean(false);
 
   protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
+    this(clientConfig, backendConfig, Clock.systemUTC());
+  }
+
+  protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig, Clock clock) {
     refreshIntervalInSeconds = backendConfig.getLong(
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
     this.clientConfig = clientConfig;
+    this.nativeMetadataRepositoryStats =
+        new NativeMetadataRepositoryStats(clientConfig.getMetricsRepository(), "native_metadata_repository", clock);
+    this.clock = clock;
   }
 
   public synchronized void start() {
@@ -122,31 +125,11 @@ public abstract class NativeMetadataRepository
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       ICProvider icProvider) {
-    if (backendConfig.getBoolean(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)) {
-      LOGGER.info(
-          "Initializing {} with {}",
-          NativeMetadataRepository.class.getSimpleName(),
-          DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
-      ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
-          .setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
-          .setSpecificValueClass(StoreMetaValue.class);
-      return new DaVinciClientMetaStoreBasedRepository(
-          clientConfig,
-          backendConfig,
-          new CachingDaVinciClientFactory(
-              clientConfig.getD2Client(),
-              clientConfig.getD2ServiceName(),
-              Optional.ofNullable(clientConfig.getMetricsRepository())
-                  .orElse(TehutiUtils.getMetricsRepository("davinci-client")),
-              backendConfig),
-          ClientFactory.getSchemaReader(clonedClientConfig, null));
-    } else {
-      LOGGER.info(
-          "Initializing {} with {}",
-          NativeMetadataRepository.class.getSimpleName(),
-          ThinClientMetaStoreBasedRepository.class.getSimpleName());
-      return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
-    }
+    LOGGER.info(
+        "Initializing {} with {}",
+        NativeMetadataRepository.class.getSimpleName(),
+        ThinClientMetaStoreBasedRepository.class.getSimpleName());
+    return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
   }
 
   @Override
@@ -198,6 +181,7 @@ public abstract class NativeMetadataRepository
       if (newStore != null && !storeConfig.isDeleting()) {
         putStore(newStore);
         getAndCacheSchemaDataFromSystemStore(storeName);
+        nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
       } else {
         removeStore(storeName);
       }
@@ -493,6 +477,7 @@ public abstract class NativeMetadataRepository
   protected Store removeStore(String storeName) {
     // Remove the store name from the subscription.
     Store oldStore = subscribedStoreMap.remove(storeName);
+    nativeMetadataRepositoryStats.removeCacheTimestamp(storeName);
     if (oldStore != null) {
       totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
       notifyStoreDeleted(oldStore);

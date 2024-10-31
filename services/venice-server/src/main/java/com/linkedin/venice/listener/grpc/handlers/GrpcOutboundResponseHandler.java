@@ -6,10 +6,10 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.ServerStatsContext;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -53,7 +53,7 @@ public class GrpcOutboundResponseHandler extends VeniceServerGrpcHandler {
     ctx.setError();
     statsContext.setResponseStatus(NOT_FOUND);
     veniceServerResponseBuilder.setData(ByteString.EMPTY);
-    veniceServerResponseBuilder.setErrorCode(GrpcErrorCodes.KEY_NOT_FOUND);
+    veniceServerResponseBuilder.setErrorCode(VeniceReadResponseStatus.KEY_NOT_FOUND);
     veniceServerResponseBuilder.setErrorMessage("Key not found");
     invokeNextHandler(ctx);
   }

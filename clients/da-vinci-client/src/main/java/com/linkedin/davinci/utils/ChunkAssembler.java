@@ -1,5 +1,6 @@
 package com.linkedin.davinci.utils;
 
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -16,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /*
- * This class serves as a utility to deserialize and assemble chunks consumed from a Kafka topic 
+ * This class serves as a utility to deserialize and assemble chunks consumed from a Kafka topic
  */
 public class ChunkAssembler {
   private static final Logger LOGGER = LogManager.getLogger(ChunkAssembler.class);
@@ -43,6 +44,12 @@ public class ChunkAssembler {
     this.inMemoryStorageEngine.suppressLogs(true);
   }
 
+  /**
+   * Buffers and assembles chunks of a record.
+   *
+   * If the record is chunked, it stores the chunks and returns null.
+   * Once all chunks of a record are received, it assembles, decompresses, and deserializes the record.
+   */
   public <T> T bufferAndAssembleRecord(
       PubSubTopicPartition pubSubTopicPartition,
       int schemaId,
@@ -52,7 +59,46 @@ public class ChunkAssembler {
       Lazy<RecordDeserializer<T>> recordDeserializer,
       int readerSchemaId,
       VeniceCompressor compressor) {
-    T assembledRecord = null;
+    ByteBuffer assembledRecord = bufferAndAssembleRecord(
+        pubSubTopicPartition,
+        schemaId,
+        keyBytes,
+        valueBytes,
+        recordOffset,
+        readerSchemaId,
+        compressor);
+    T decompressedAndDeserializedRecord = null;
+
+    // Record is a chunk. Return null
+    if (assembledRecord == null) {
+      return decompressedAndDeserializedRecord;
+    }
+
+    try {
+      decompressedAndDeserializedRecord =
+          decompressAndDeserialize(recordDeserializer.get(), compressor, assembledRecord);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    return decompressedAndDeserializedRecord;
+  }
+
+  /**
+   * Buffers and assembles chunks of a record.
+   *
+   * If the record is chunked, it stores the chunks and returns null.
+   * Once all chunks of a record are received, it returns the compressed and serialized assembled record.
+   */
+  public ByteBuffer bufferAndAssembleRecord(
+      PubSubTopicPartition pubSubTopicPartition,
+      int schemaId,
+      byte[] keyBytes,
+      ByteBuffer valueBytes,
+      long recordOffset,
+      int readerSchemaId,
+      VeniceCompressor compressor) {
+    ByteBuffer assembledRecord = null;
 
     if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
       inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
@@ -71,21 +117,18 @@ public class ChunkAssembler {
           keyBytes,
           ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
-        assembledRecord = decompressAndDeserialize(
-            recordDeserializer.get(),
+        assembledRecord = RawBytesChunkingAdapter.INSTANCE.get(
+            inMemoryStorageEngine,
+            pubSubTopicPartition.getPartitionNumber(),
+            ByteBuffer.wrap(keyBytes),
+            false,
+            null,
+            null,
+            NoOpReadResponseStats.SINGLETON,
+            readerSchemaId,
+            RawBytesStoreDeserializerCache.getInstance(),
             compressor,
-            RawBytesChunkingAdapter.INSTANCE.get(
-                inMemoryStorageEngine,
-                pubSubTopicPartition.getPartitionNumber(),
-                ByteBuffer.wrap(keyBytes),
-                false,
-                null,
-                null,
-                null,
-                readerSchemaId,
-                RawBytesStoreDeserializerCache.getInstance(),
-                compressor,
-                null));
+            null);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -97,9 +140,9 @@ public class ChunkAssembler {
             pubSubTopicPartition.getPubSubTopic().getName());
       }
     } else {
-      // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
+      // this is a fully specified record, no need to buffer and assemble it, just return the valueBytes
       try {
-        assembledRecord = decompressAndDeserialize(recordDeserializer.get(), compressor, valueBytes);
+        assembledRecord = valueBytes;
       } catch (Exception e) {
         throw new RuntimeException(e);
       }

@@ -8,85 +8,86 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_BATCH_BYTES_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFER_VERSION_SWAP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_SSL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.HADOOP_TMP_DIR;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.JOB_EXEC_ID;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.JOB_EXEC_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.JOB_SERVER_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.NON_CRITICAL_EXCEPTION;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.NOT_SET;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PERMISSION_700;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PERMISSION_777;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SORTED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TEMP_DIR_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_BATCH_BYTES_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_TMP_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_SERVER_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NON_CRITICAL_EXCEPTION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NOT_SET;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SORTED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -104,14 +105,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
-import com.linkedin.venice.hadoop.heartbeat.DefaultPushJobHeartbeatSenderFactory;
-import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSender;
-import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
-import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
-import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
-import com.linkedin.venice.hadoop.jobs.ComputeJob;
-import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
 import com.linkedin.venice.hadoop.mapreduce.common.JobUtils;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
@@ -123,6 +117,13 @@ import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.hadoop.validation.NoOpValidator;
 import com.linkedin.venice.hadoop.validation.Validator;
+import com.linkedin.venice.heartbeat.DefaultPushJobHeartbeatSenderFactory;
+import com.linkedin.venice.heartbeat.NoOpPushJobHeartbeatSender;
+import com.linkedin.venice.heartbeat.NoOpPushJobHeartbeatSenderFactory;
+import com.linkedin.venice.heartbeat.PushJobHeartbeatSender;
+import com.linkedin.venice.heartbeat.PushJobHeartbeatSenderFactory;
+import com.linkedin.venice.jobs.ComputeJob;
+import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -259,34 +260,8 @@ public class VenicePushJob implements AutoCloseable {
 
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
+  private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
-
-  /**
-   * Different successful checkpoints and known error scenarios of the VPJ flow.
-   * 1. The enums are not sequential
-   * 2. Non-negative enums are successful checkpoints
-   * 3. Negative enums are error scenarios (Can be user or system errors)
-   */
-  public enum PushJobCheckpoints {
-    INITIALIZE_PUSH_JOB(0), NEW_VERSION_CREATED(1), START_DATA_WRITER_JOB(2), DATA_WRITER_JOB_COMPLETED(3),
-    START_JOB_STATUS_POLLING(4), JOB_STATUS_POLLING_COMPLETED(5), START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB(6),
-    VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED(7), QUOTA_EXCEEDED(-1), WRITE_ACL_FAILED(-2),
-    DUP_KEY_WITH_DIFF_VALUE(-3), INPUT_DATA_SCHEMA_VALIDATION_FAILED(-4),
-    EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED(-5), RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7),
-    DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9), ZSTD_DICTIONARY_CREATION_FAILED(-10),
-    DVC_INGESTION_ERROR_DISK_FULL(-11), DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(-12),
-    DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES(-13), DVC_INGESTION_ERROR_OTHER(-14);
-
-    private final int value;
-
-    PushJobCheckpoints(int value) {
-      this.value = value;
-    }
-
-    public int getValue() {
-      return value;
-    }
-  }
 
   /**
    * @param jobId  id of the job
@@ -675,7 +650,6 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
-    PushJobHeartbeatSender pushJobHeartbeatSender = null;
     try {
       Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
           pushJobSetting.enableSSL,
@@ -874,8 +848,6 @@ public class VenicePushJob implements AutoCloseable {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-      updatePushJobDetailsWithConfigs();
-      updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
@@ -903,8 +875,6 @@ public class VenicePushJob implements AutoCloseable {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
         pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-        updatePushJobDetailsWithConfigs();
-        updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
@@ -924,6 +894,7 @@ public class VenicePushJob implements AutoCloseable {
       Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
       if (pushJobHeartbeatSender != null) {
         pushJobHeartbeatSender.stop();
+        pushJobHeartbeatSender = null;
       }
       inputDataInfoProvider = null;
       if (pushJobSetting.rmdSchemaDir != null) {
@@ -1018,7 +989,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void updatePushJobDetailsWithLivenessHeartbeatException(PushJobHeartbeatSender pushJobHeartbeatSender) {
+  private void updatePushJobDetailsWithLivenessHeartbeatException() {
     if (pushJobHeartbeatSender == null || this.pushJobDetails == null) {
       return;
     }
@@ -1036,7 +1007,8 @@ public class VenicePushJob implements AutoCloseable {
     } catch (Exception e) {
       if (pushJobSetting.extendedSchemaValidityCheckEnabled) {
         LOGGER.error(
-            "The schema of the input data failed strict Avro schema validation. Verify if the schema is a valid Avro schema.");
+            "The schema of the input data failed strict Avro schema validation. Verify if the schema is a valid Avro schema.",
+            e);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(e);
       }
@@ -1046,7 +1018,8 @@ public class VenicePushJob implements AutoCloseable {
         AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(inputDataSchemaString);
       } catch (Exception looseValidationException) {
         LOGGER.error(
-            "The schema of the input data failed loose Avro schema validation. Verify if the schema is a valid Avro schema.");
+            "The schema of the input data failed loose Avro schema validation. Verify if the schema is a valid Avro schema.",
+            looseValidationException);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(looseValidationException);
       }
@@ -1840,6 +1813,12 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
       return;
     }
+
+    // update push job details with more info if needed
+    updatePushJobDetailsWithConfigs();
+    updatePushJobDetailsWithLivenessHeartbeatException();
+
+    // send push job details to controller
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
       int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
@@ -2031,7 +2010,7 @@ public class VenicePushJob implements AutoCloseable {
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
       MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
       if (response.isError()) {
-        LOGGER.error("Failed to fetch all value schemas, so they will not be printed.");
+        LOGGER.error("Failed to fetch all value schemas, so they will not be printed. " + response.getError());
       } else {
         LOGGER.info("All currently registered value schemas:");
         for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
@@ -2779,7 +2758,6 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
     pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-    updatePushJobDetailsWithConfigs();
     sendPushJobDetailsToController();
   }
 

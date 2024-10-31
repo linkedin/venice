@@ -78,13 +78,11 @@ public class TestVeniceServer extends VeniceServer {
           IngestionMetadataRetriever ingestionMetadataRetriever,
           ReadMetadataRetriever readMetadataRetriever,
           DiskHealthCheckService diskHealthService,
-          boolean fastAvroEnabled,
-          boolean parallelBatchGetEnabled,
-          int parallelBatchGetChunkSize,
           StorageEngineBackedCompressorFactory compressorFactory,
           Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
 
         return new StorageReadRequestHandler(
+            serverConfig,
             executor,
             computeExecutor,
             storageEngineRepository,
@@ -93,10 +91,6 @@ public class TestVeniceServer extends VeniceServer {
             ingestionMetadataRetriever,
             readMetadataRetriever,
             diskHealthService,
-            fastAvroEnabled,
-            parallelBatchGetEnabled,
-            parallelBatchGetChunkSize,
-            serverConfig,
             compressorFactory,
             resourceReadUsageTracker) {
           @Override

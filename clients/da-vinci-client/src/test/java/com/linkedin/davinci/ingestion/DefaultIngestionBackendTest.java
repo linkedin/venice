@@ -4,18 +4,22 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -26,7 +30,6 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -108,6 +111,18 @@ public class DefaultIngestionBackendTest {
 
     CompletableFuture<Void> future =
         ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION).toCompletableFuture();
-    Assert.assertTrue(future.isDone());
+    assertTrue(future.isDone());
+  }
+
+  @Test
+  public void testHasCurrentVersionBootstrapping() {
+    KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
+    DefaultIngestionBackend ingestionBackend =
+        new DefaultIngestionBackend(null, mockIngestionService, null, null, null);
+    doReturn(true).when(mockIngestionService).hasCurrentVersionBootstrapping();
+    assertTrue(ingestionBackend.hasCurrentVersionBootstrapping());
+
+    doReturn(false).when(mockIngestionService).hasCurrentVersionBootstrapping();
+    assertFalse(ingestionBackend.hasCurrentVersionBootstrapping());
   }
 }

@@ -2,9 +2,11 @@ package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -77,7 +79,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final WriteOptions writeOptions;
   private final String fullPathForTempSSTFileDir;
-  private final String fullPathForTempSnapshotFileDir;
+  private final String fullPathForPartitionDBSnapshot;
 
   private final EnvOptions envOptions;
 
@@ -205,7 +207,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeNameAndVersion, partitionId);
-    this.fullPathForTempSnapshotFileDir =
+    this.fullPathForPartitionDBSnapshot =
         blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId) : null;
 
     if (deferredWrite) {
@@ -217,8 +219,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           options,
           fullPathForTempSSTFileDir,
           false,
-          rocksDBServerConfig,
-          blobTransferEnabled);
+          rocksDBServerConfig);
     }
 
     /**
@@ -484,16 +485,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
-
-    if (blobTransferEnabled) {
-      createSnapshot();
-    }
   }
 
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      rocksDBSstFileWriter.createSnapshot(rocksDB);
+      BlobSnapshotManager.createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
   }
 
@@ -833,7 +830,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // Remove extra SST files first
     deleteFilesInDirectory(fullPathForTempSSTFileDir);
     // remove snapshots files
-    deleteFilesInDirectory(fullPathForTempSnapshotFileDir);
+    deleteFilesInDirectory(fullPathForPartitionDBSnapshot);
     // Remove partition directory
     deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for replica:{} was dropped.", replicaId);
@@ -990,5 +987,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   // Visible for testing
   public RocksDBSstFileWriter getRocksDBSstFileWriter() {
     return rocksDBSstFileWriter;
+  }
+
+  @Override
+  public AbstractStorageIterator getIterator() {
+    return new RocksDBStorageIterator(rocksDB.newIterator());
   }
 }

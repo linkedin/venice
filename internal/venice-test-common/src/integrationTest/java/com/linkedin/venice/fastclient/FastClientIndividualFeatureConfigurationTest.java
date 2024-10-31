@@ -93,8 +93,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
-    String readQuotaStorageNodeTokenBucketRemaining =
-        ".venice-storage-node-token-bucket--QuotaRcuTokensRemaining.Gauge";
     String readQuotaRequestedQPSString = "." + storeName + "--quota_request.Rate";
     String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_request.Rate";
     String readQuotaRequestedKPSString = "." + storeName + "--quota_request_key_count.Rate";
@@ -108,7 +106,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     String routerConnectionCountRateString = ".server_connection_stats--router_connection_request.OccurrenceRate";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
-        assertNotNull(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining));
         assertNotNull(serverMetric.getMetric(readQuotaRequestedQPSString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedQPSString));
         assertNotNull(serverMetric.getMetric(readQuotaRequestedKPSString));
@@ -134,7 +131,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       assertEquals(serverMetric.getMetric(readQuotaRejectedQPSString).value(), 0d);
       assertEquals(serverMetric.getMetric(readQuotaRejectedKPSString).value(), 0d);
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
-      assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
     assertTrue(quotaRequestedQPSSum >= 0, "Quota request sum: " + quotaRequestedQPSSum);
     assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
@@ -201,7 +197,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (MetricsRepository serverMetric: serverMetrics) {
       quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
-      assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
     assertTrue(quotaRequestedQPSSum >= 0, "Quota request sum: " + quotaRequestedQPSSum);
   }
@@ -245,9 +240,11 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
           .project(VALUE_FIELD_NAME)
           .execute(Collections.singleton(key))
           .get(TIME_OUT, TimeUnit.MILLISECONDS);
-      fail();
+      fail("The compute request should have thrown an exception.");
     } catch (Exception clientException) {
-      assertTrue(ExceptionUtils.recursiveMessageContains(clientException, "Read compute is not enabled for the store"));
+      if (!ExceptionUtils.recursiveMessageContains(clientException, "Read compute is not enabled for the store")) {
+        fail("The exception message did not contain the expected string.", clientException);
+      }
     }
 
     VeniceResponseMap<String, ComputeGenericRecord> responseMapWhenComputeDisabled = genericFastClient.compute()

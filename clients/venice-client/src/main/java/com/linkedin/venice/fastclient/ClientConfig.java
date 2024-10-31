@@ -16,7 +16,9 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
@@ -51,7 +53,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
-  private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   /**
    * Config to enable/disable warm up connection to instances from fetched metadata.
    */
@@ -92,6 +93,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long longTailRetryBudgetEnforcementWindowInMs;
 
   private boolean projectionFieldValidation;
+  private Set<String> harClusters;
+
+  private final MetricsRepository metricsRepository;
 
   private ClientConfig(
       String storeName,
@@ -111,7 +115,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
-      AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore,
       boolean isMetadataConnWarmupEnabled,
       long metadataRefreshIntervalInSeconds,
       long metadataConnWarmupTimeoutInSeconds,
@@ -128,7 +131,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean useGrpc,
       GrpcClientConfig grpcClientConfig,
       boolean projectionFieldValidation,
-      long longTailRetryBudgetEnforcementWindowInMs) {
+      long longTailRetryBudgetEnforcementWindowInMs,
+      Set<String> harClusters) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -143,17 +147,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
-    if (metricsRepository == null) {
-      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
-    }
+    this.metricsRepository =
+        metricsRepository != null ? metricsRepository : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
     for (RequestType requestType: RequestType.values()) {
       clientStatsMap.put(
           requestType,
-          FastClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
+          FastClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
     }
-    this.clusterStats = new ClusterStats(metricsRepository, storeName);
+    this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
@@ -195,7 +198,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         : 50;
 
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
-    this.thinClientForMetaStore = thinClientForMetaStore;
     this.isMetadataConnWarmupEnabled = isMetadataConnWarmupEnabled;
     this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
     this.metadataConnWarmupTimeoutInSeconds = metadataConnWarmupTimeoutInSeconds;
@@ -260,6 +262,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.projectionFieldValidation = projectionFieldValidation;
     this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryBudgetEnforcementWindowInMs;
+    this.harClusters = harClusters;
   }
 
   public String getStoreName() {
@@ -268,6 +271,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public Client getR2Client() {
     return r2Client;
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
   }
 
   public FastClientStats getStats(RequestType requestType) {
@@ -320,10 +327,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
     return daVinciClientForMetaStore;
-  }
-
-  public AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> getThinClientForMetaStore() {
-    return thinClientForMetaStore;
   }
 
   public boolean isMetadataConnWarmupEnabled() {
@@ -403,6 +406,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryBudgetEnforcementWindowInMs;
   }
 
+  public Set<String> getHarClusters() {
+    return Collections.unmodifiableSet(harClusters);
+  }
+
   public ClientConfig setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
     this.projectionFieldValidation = projectionFieldValidation;
     return this;
@@ -444,7 +451,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
 
     private boolean isVsonStore = false;
-    private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
+    private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.SERVER_BASED_METADATA;
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
     private boolean useGrpc = false;
@@ -453,6 +460,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean projectionFieldValidation = true;
 
     private long longTailRetryBudgetEnforcementWindowInMs = 60000; // 1 minute
+
+    private Set<String> harClusters = Collections.EMPTY_SET;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -642,6 +651,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setHARClusters(Set<String> clusters) {
+      this.harClusters = clusters;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -677,7 +691,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setUseGrpc(useGrpc)
           .setGrpcClientConfig(grpcClientConfig)
           .setProjectionFieldValidationEnabled(projectionFieldValidation)
-          .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs);
+          .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
+          .setHARClusters(harClusters);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -699,7 +714,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           daVinciClientForMetaStore,
-          thinClientForMetaStore,
           isMetadataConnWarmupEnabled,
           metadataRefreshIntervalInSeconds,
           metadataConnWarmupTimeoutInSeconds,
@@ -716,7 +730,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           useGrpc,
           grpcClientConfig,
           projectionFieldValidation,
-          longTailRetryBudgetEnforcementWindowInMs);
+          longTailRetryBudgetEnforcementWindowInMs,
+          harClusters);
     }
   }
 }

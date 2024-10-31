@@ -107,7 +107,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     // list of store configs for the sake of correctness, but async scheduled threads can be the bane
     // of reliable unit tests. TODO: Return a real list of store configs in this mock.
     readOnlyStoreConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
-    doReturn(Collections.emptyList()).when(readOnlyStoreConfigRepository).getAllStoreConfigs();
     doReturn(readOnlyStoreConfigRepository).when(internalAdmin).getStoreConfigRepo();
 
     personaRepository = mock(StoragePersonaRepository.class);

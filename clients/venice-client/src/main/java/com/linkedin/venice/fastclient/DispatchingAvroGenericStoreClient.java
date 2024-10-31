@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_COMPUTE;
 import static org.apache.hc.core5.http.HttpStatus.SC_BAD_GATEWAY;
 import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
@@ -26,13 +25,13 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
+import com.linkedin.venice.read.RequestHeadersProvider;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -56,6 +55,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -68,6 +68,8 @@ import org.apache.logging.log4j.Logger;
  * This class is in charge of routing and serialization/de-serialization.
  */
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
+  private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong();
+
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
   private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
@@ -94,10 +96,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private static final RecordDeserializer<StreamingFooterRecordV1> STREAMING_FOOTER_RECORD_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
-
-  private static final Map<String, String> HEADERS_FOR_MULTIGET_REQUEST = Collections.singletonMap(
-      HttpConstants.VENICE_API_VERSION,
-      Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
     /**
@@ -197,6 +195,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     verifyMetadataInitialized();
+    requestContext.serverClusterName = metadata.getClusterName();
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     if (requestContext.requestUri == null) {
       /**
@@ -217,7 +216,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
      * might return more than required number of routes
      */
     List<String> routes = metadata.getReplicas(
-        requestContext.requestId,
+        REQUEST_ID_GENERATOR.getAndIncrement(),
         currentVersion,
         partitionId,
         requiredReplicaCount,
@@ -369,7 +368,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         keys,
         callback,
         composeRouteForBatchGetRequest(requestContext),
-        HEADERS_FOR_MULTIGET_REQUEST,
+        RequestHeadersProvider.getStreamingBatchGetHeaders(keys.size()),
         this::serializeMultiGetRequest,
         (MultiKeyStreamingRouteResponseHandler<K>) (
             keysForRoutes,
@@ -425,6 +424,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       return;
     }
 
+    long requestId = REQUEST_ID_GENERATOR.getAndIncrement();
+
+    requestContext.serverClusterName = metadata.getClusterName();
     /* Prepare each of the routes needed to query the keys */
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     int currentVersion = requestContext.currentVersion;
@@ -438,7 +440,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       List<String> routes = partitionRouteMap.computeIfAbsent(
           partitionId,
           (ignored) -> metadata.getReplicas(
-              requestContext.requestId,
+              requestId,
               currentVersion,
               partitionId,
               1,
@@ -501,7 +503,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         LOGGER.error(errorMessage);
       }
       VeniceClientHttpException clientException = new VeniceClientHttpException(errorMessage, SC_BAD_GATEWAY);
-      requestContext.setPartialResponseException(clientException);
+      requestContext.setPartialResponseExceptionIfNull(clientException);
       CompletableFuture<Integer> placeholderFailedFuture = new CompletableFuture<>();
       placeholderFailedFuture.completeExceptionally(clientException);
       requestCompletionFutures[routeIndex] = placeholderFailedFuture;
@@ -616,21 +618,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     verifyMetadataInitialized();
-    Map<String, String> headers = new HashMap<>(2);
-    headers.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
-    headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(computeRequest.getValueSchemaID()));
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
         getComputeResultRecordDeserializer(resultSchema);
+    // TODO: client side compute is not supported for fast-client yet, hence hard coding isRemoteComputationOnly to true
     multiKeyStreamingRequest(
         requestContext,
         RequestType.COMPUTE_STREAMING,
         keys,
         callback,
         composeRouteForComputeRequest(requestContext),
-        headers,
+        RequestHeadersProvider.getStreamingComputeHeaderMap(keys.size(), computeRequest.getValueSchemaID(), true),
         (keysForRoutes) -> serializeComputeRequest(computeRequest, keysForRoutes),
         (MultiKeyStreamingRouteResponseHandler<K>) (keysForRoutes, response, throwable) -> {
           ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(

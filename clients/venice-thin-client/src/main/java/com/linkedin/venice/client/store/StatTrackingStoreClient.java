@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.StreamingResponseTracker;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
@@ -21,7 +22,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -161,12 +161,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private static class StatTrackingStreamingCallback<K, V> extends DelegatingTrackingCallback<K, V> {
     private final ClientStats stats;
     private final Optional<ClientStats> statsOptional;
-    private final int keyCntForP50;
-    private final int keyCntForP90;
-    private final int keyCntForP95;
-    private final int keyCntForP99;
     private final long preRequestTimeInNS;
-    private final AtomicInteger receivedKeyCnt = new AtomicInteger(0);
+    private final StreamingResponseTracker streamingResponseTracker;
 
     public StatTrackingStreamingCallback(
         StreamingCallback<K, V> callback,
@@ -176,11 +172,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       super(callback);
       this.stats = stats;
       this.statsOptional = Optional.of(stats);
-      this.keyCntForP50 = keyCnt / 2;
-      this.keyCntForP90 = keyCnt * 9 / 10;
-      this.keyCntForP95 = keyCnt * 95 / 100;
-      this.keyCntForP99 = keyCnt * 99 / 100;
       this.preRequestTimeInNS = preRequestTimeInNS;
+      streamingResponseTracker = new StreamingResponseTracker(stats, keyCnt, preRequestTimeInNS);
     }
 
     @Override
@@ -190,31 +183,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
     @Override
     public void onRecordDeserialized() {
-      int currentKeyCnt = receivedKeyCnt.incrementAndGet();
-      /**
-       * Here is not short-circuiting because the key cnt for each percentile could be same if the total key count
-       * is very small.
-       */
-      if (currentKeyCnt == 1) {
-        stats
-            .recordStreamingResponseTimeToReceiveFirstRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
-      }
-      if (currentKeyCnt == keyCntForP50) {
-        stats
-            .recordStreamingResponseTimeToReceive50PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
-      }
-      if (currentKeyCnt == keyCntForP90) {
-        stats
-            .recordStreamingResponseTimeToReceive90PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
-      }
-      if (currentKeyCnt == keyCntForP95) {
-        stats
-            .recordStreamingResponseTimeToReceive95PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
-      }
-      if (currentKeyCnt == keyCntForP99) {
-        stats
-            .recordStreamingResponseTimeToReceive99PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
-      }
+      streamingResponseTracker.recordReceived();
     }
 
     @Override

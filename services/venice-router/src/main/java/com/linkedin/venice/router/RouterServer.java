@@ -17,7 +17,6 @@ import com.linkedin.alpini.router.impl.Router;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -40,6 +39,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.acl.RouterStoreAclHandler;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.MetaStoreShadowReader;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -349,11 +349,7 @@ public class RouterServer extends AbstractVeniceService {
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
-    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        adapter,
-        config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs());
+    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
     this.pushStatusStoreReader = new PushStatusStoreReader(
@@ -686,8 +682,9 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     RouterSslVerificationHandler routerSslVerificationHandler = new RouterSslVerificationHandler(securityStats);
-    StoreAclHandler aclHandler =
-        accessController.isPresent() ? new StoreAclHandler(accessController.get(), metadataRepository) : null;
+    RouterStoreAclHandler aclHandler = accessController.isPresent()
+        ? new RouterStoreAclHandler(identityParser, accessController.get(), metadataRepository)
+        : null;
     final SslInitializer sslInitializer;
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
@@ -748,7 +745,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
-      pipeline.addLast("StoreAclHandler", aclHandler);
+      pipeline.addLast("RouterStoreAclHandler", aclHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
       addOptionalChannelHandlersToPipeline(pipeline);

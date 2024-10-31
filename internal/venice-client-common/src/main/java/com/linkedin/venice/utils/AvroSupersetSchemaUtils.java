@@ -26,7 +26,7 @@ public class AvroSupersetSchemaUtils {
    * @return True if {@param s1} is {@param s2}'s superset schema and false otherwise.
    */
   public static boolean isSupersetSchema(Schema s1, Schema s2) {
-    final Schema supersetSchema = generateSuperSetSchema(s1, s2);
+    final Schema supersetSchema = generateSupersetSchema(s1, s2);
     return AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, supersetSchema);
   }
 
@@ -34,12 +34,12 @@ public class AvroSupersetSchemaUtils {
    * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
-   * schemas and the generated schema will pick the default value from s1.
+   * schemas and the generated schema will pick the default value from new value schema.
    * @param existingSchema schema existing in the repo
    * @param newSchema schema to be added.
    * @return super-set schema of existingSchema abd newSchema
    */
-  public static Schema generateSuperSetSchema(Schema existingSchema, Schema newSchema) {
+  public static Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
     if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
@@ -79,9 +79,9 @@ public class AvroSupersetSchemaUtils {
         superSetSchema.setFields(mergeFieldSchemas(existingSchema, newSchema));
         return superSetSchema;
       case ARRAY:
-        return Schema.createArray(generateSuperSetSchema(existingSchema.getElementType(), newSchema.getElementType()));
+        return Schema.createArray(generateSupersetSchema(existingSchema.getElementType(), newSchema.getElementType()));
       case MAP:
-        return Schema.createMap(generateSuperSetSchema(existingSchema.getValueType(), newSchema.getValueType()));
+        return Schema.createMap(generateSupersetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
         return unionSchema(existingSchema, newSchema);
       default:
@@ -89,21 +89,26 @@ public class AvroSupersetSchemaUtils {
     }
   }
 
-  private static Schema unionSchema(Schema s1, Schema s2) {
+  /**
+   * Merge union schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
+   * generate the superset schema of these two versions of the same field, with new schema's information taking higher
+   * priority.
+   */
+  private static Schema unionSchema(Schema existingSchema, Schema newSchema) {
     List<Schema> combinedSchema = new ArrayList<>();
-    Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
-    for (Schema subSchemaInS1: s1.getTypes()) {
-      final String fieldName = subSchemaInS1.getName();
-      final Schema subSchemaWithSameNameInS2 = s2Schema.get(fieldName);
-      if (subSchemaWithSameNameInS2 == null) {
-        combinedSchema.add(subSchemaInS1);
+    Map<String, Schema> existingSchemaTypeMap =
+        existingSchema.getTypes().stream().collect(Collectors.toMap(Schema::getName, s -> s));
+    for (Schema subSchemaInNewSchema: newSchema.getTypes()) {
+      final String fieldName = subSchemaInNewSchema.getName();
+      final Schema subSchemaInExistingSchema = existingSchemaTypeMap.get(fieldName);
+      if (subSchemaInExistingSchema == null) {
+        combinedSchema.add(subSchemaInNewSchema);
       } else {
-        combinedSchema.add(generateSuperSetSchema(subSchemaInS1, subSchemaWithSameNameInS2));
-        s2Schema.remove(fieldName);
+        combinedSchema.add(generateSupersetSchema(subSchemaInExistingSchema, subSchemaInNewSchema));
+        existingSchemaTypeMap.remove(fieldName);
       }
     }
-    s2Schema.forEach((k, v) -> combinedSchema.add(v));
-
+    existingSchemaTypeMap.forEach((k, v) -> combinedSchema.add(v));
     return Schema.createUnion(combinedSchema);
   }
 
@@ -116,41 +121,50 @@ public class AvroSupersetSchemaUtils {
     });
   }
 
-  private static FieldBuilder deepCopySchemaField(Schema.Field field) {
+  private static FieldBuilder deepCopySchemaFieldWithoutFieldProps(Schema.Field field) {
     FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(null)
         .setName(field.name())
         .setSchema(field.schema())
         .setDoc(field.doc())
         .setOrder(field.order());
-    copyFieldProperties(fieldBuilder, field);
-
     // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
     if (field.hasDefaultValue()) {
       fieldBuilder.setDefault(getFieldDefault(field));
     }
-
     return fieldBuilder;
   }
 
-  private static List<Schema.Field> mergeFieldSchemas(Schema s1, Schema s2) {
+  private static FieldBuilder deepCopySchemaField(Schema.Field field) {
+    FieldBuilder fieldBuilder = deepCopySchemaFieldWithoutFieldProps(field);
+    copyFieldProperties(fieldBuilder, field);
+    return fieldBuilder;
+  }
+
+  /**
+   * Merge field schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
+   * generate the superset schema of these two versions of the same field, with new schema's information taking higher
+   * priority.
+   * @param newSchema new schema
+   * @param existingSchema old schema
+   * @return merged schema field
+   */
+  private static List<Schema.Field> mergeFieldSchemas(Schema existingSchema, Schema newSchema) {
     List<Schema.Field> fields = new ArrayList<>();
 
-    for (Schema.Field f1: s1.getFields()) {
-      Schema.Field f2 = s2.getField(f1.name());
+    for (Schema.Field fieldInNewSchema: newSchema.getFields()) {
+      Schema.Field fieldInExistingSchema = existingSchema.getField(fieldInNewSchema.name());
 
-      FieldBuilder fieldBuilder = deepCopySchemaField(f1);
-      if (f2 != null) {
-        fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
-            .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
-        // merge props from f2
-        copyFieldProperties(fieldBuilder, f2);
+      FieldBuilder fieldBuilder = deepCopySchemaField(fieldInNewSchema);
+      if (fieldInExistingSchema != null) {
+        fieldBuilder.setSchema(generateSupersetSchema(fieldInExistingSchema.schema(), fieldInNewSchema.schema()))
+            .setDoc(fieldInNewSchema.doc() != null ? fieldInNewSchema.doc() : fieldInExistingSchema.doc());
       }
       fields.add(fieldBuilder.build());
     }
 
-    for (Schema.Field f2: s2.getFields()) {
-      if (s1.getField(f2.name()) == null) {
-        fields.add(deepCopySchemaField(f2).build());
+    for (Schema.Field fieldInExistingSchema: existingSchema.getFields()) {
+      if (newSchema.getField(fieldInExistingSchema.name()) == null) {
+        fields.add(deepCopySchemaField(fieldInExistingSchema).build());
       }
     }
     return fields;
@@ -192,6 +206,10 @@ public class AvroSupersetSchemaUtils {
     return updateSchema;
   }
 
+  /**
+   * * Validate if the Subset Value Schema is a subset of the Superset Value Schema, here the field props are not used to
+   * check if the field is same or not.
+   */
   public static boolean validateSubsetValueSchema(Schema subsetValueSchema, String supersetSchemaStr) {
     Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(supersetSchemaStr);
     for (Schema.Field field: subsetValueSchema.getFields()) {
@@ -199,11 +217,13 @@ public class AvroSupersetSchemaUtils {
       if (fieldInSupersetSchema == null) {
         return false;
       }
-      if (!field.equals(fieldInSupersetSchema)) {
+      Schema.Field subsetValueSchemaWithoutFieldProps = deepCopySchemaFieldWithoutFieldProps(field).build();
+      Schema.Field fieldInSupersetSchemaWithoutFieldProps =
+          deepCopySchemaFieldWithoutFieldProps(fieldInSupersetSchema).build();
+      if (!subsetValueSchemaWithoutFieldProps.equals(fieldInSupersetSchemaWithoutFieldProps)) {
         return false;
       }
     }
     return true;
   }
-
 }

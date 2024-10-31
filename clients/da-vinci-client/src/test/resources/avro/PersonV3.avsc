@@ -3,6 +3,14 @@
   "type": "record",
   "fields": [
     {
+      "name": "stringMap",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    },
+    {
       "name": "nullableListField",
       "type": [
         "null",
@@ -43,14 +51,6 @@
         "items": "string"
       },
       "default": []
-    },
-    {
-      "name": "stringMap",
-      "type": {
-        "type": "map",
-        "values": "string"
-      },
-      "default": {}
     }
   ]
 }

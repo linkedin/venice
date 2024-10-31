@@ -1,8 +1,8 @@
 package com.linkedin.venice.compression;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
+import java.util.List;
 
 
 /**
@@ -15,13 +15,14 @@ public enum CompressionStrategy implements VeniceEnumValue {
   private final int value;
   private final boolean compressionEnabled;
 
-  private static final CompressionStrategy[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(CompressionStrategy.class);
+  private static final List<CompressionStrategy> TYPES = EnumUtils.getEnumValuesList(CompressionStrategy.class);
 
   CompressionStrategy(int value, boolean compressionEnabled) {
     this.value = value;
     this.compressionEnabled = compressionEnabled;
   }
 
+  @Override
   public int getValue() {
     return value;
   }
@@ -31,14 +32,10 @@ public enum CompressionStrategy implements VeniceEnumValue {
   }
 
   public static CompressionStrategy valueOf(int value) {
-    try {
-      return TYPES_ARRAY[value];
-    } catch (IndexOutOfBoundsException e) {
-      throw new VeniceException("Invalid compression strategy: " + value);
-    }
+    return EnumUtils.valueOf(TYPES, value, CompressionStrategy.class);
   }
 
   public static int getCompressionStrategyTypesArrayLength() {
-    return TYPES_ARRAY.length;
+    return TYPES.size();
   }
 }

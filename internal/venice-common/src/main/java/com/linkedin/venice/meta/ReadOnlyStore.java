@@ -484,6 +484,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isSeparateRealTimeTopicEnabled() {
+      return this.delegate.isSeparateRealTimeTopicEnabled();
+    }
+
+    @Override
+    public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean isBlobTransferEnabled() {
       return this.delegate.isBlobTransferEnabled();
     }
@@ -956,6 +966,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return this.delegate.isSeparateRealTimeTopicEnabled();
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public boolean isAccessControlled() {
     return this.delegate.isAccessControlled();
   }
@@ -1353,6 +1373,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public int getMaxNearlineRecordSizeBytes() {
+    return this.delegate.getMaxNearlineRecordSizeBytes();
+  }
+
+  @Override
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     throw new UnsupportedOperationException();
   }
@@ -1370,6 +1400,26 @@ public class ReadOnlyStore implements Store {
   @Override
   public boolean isBlobTransferEnabled() {
     return this.delegate.isBlobTransferEnabled();
+  }
+
+  @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return delegate.isNearlineProducerCompressionEnabled();
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return delegate.getNearlineProducerCountPerWriter();
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throw new UnsupportedOperationException();
   }
 
   @Override

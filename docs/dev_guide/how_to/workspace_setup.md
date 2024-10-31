@@ -11,7 +11,7 @@ We recommend using a Unix-based environment for development, such as Linux or ma
 If you're on Windows, we recommend using [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install).
 
 ## Fork the Venice Repository
-Fork the Venice repo at https://github.com/linkedin/venice
+Fork the Venice repo at [https://github.com/linkedin/venice](https://github.com/linkedin/venice).
 
 ## Setting up the repository locally
 ```shell
@@ -23,6 +23,9 @@ git fetch upstream
 
 ## Setting up Java
 We use Java 17 for development. You can download it [here](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html).
+
+Make sure to set the `JAVA_HOME` environment variable to the location of your JDK installation.
+How to do this will be dependent on your OS.
 
 ## Setting up the IDE
 We recommend using IntelliJ IDEA for development to take advantage of the debugger, and provide instructions for it.

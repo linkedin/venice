@@ -148,15 +148,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   private void logWithRedundantFilter(Level logLevel, String msg) {
     if (!redundantExceptionFilter.isRedundantException(msg)) {
-      if (logLevel == Level.DEBUG) {
-        LOGGER.debug(msg);
-      } else if (logLevel == Level.WARN) {
-        LOGGER.warn(msg);
-      } else if (logLevel == Level.ERROR) {
-        LOGGER.error(msg);
-      } else {
-        LOGGER.info(msg);
-      }
+      LOGGER.log(logLevel, msg);
     }
   }
 

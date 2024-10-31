@@ -150,6 +150,10 @@ public interface Store {
 
   void setIncrementalPushEnabled(boolean incrementalPushEnabled);
 
+  boolean isSeparateRealTimeTopicEnabled();
+
+  void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled);
+
   boolean isAccessControlled();
 
   void setAccessControlled(boolean accessControlled);
@@ -306,6 +310,10 @@ public interface Store {
 
   void setMaxRecordSizeBytes(int maxRecordSizeBytes);
 
+  int getMaxNearlineRecordSizeBytes();
+
+  void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes);
+
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 
   boolean isUnusedSchemaDeletionEnabled();
@@ -313,4 +321,12 @@ public interface Store {
   boolean isBlobTransferEnabled();
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
+
+  boolean isNearlineProducerCompressionEnabled();
+
+  void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
+
+  int getNearlineProducerCountPerWriter();
+
+  void setNearlineProducerCountPerWriter(int producerCnt);
 }

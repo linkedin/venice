@@ -1,10 +1,8 @@
 package com.linkedin.davinci.storage.chunking;
 
-import com.linkedin.davinci.listener.response.ReadResponse;
-import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -31,8 +29,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * @param bytesLength
    * @param reusedValue    a previous instance of {@type VALUE} to be re-used in order to minimize GC
    * @param reusedDecoder  a previous instance of {@link BinaryDecoder} to be re-used in order to minimize GC
-   * @param response       the response returned by the query path, which carries certain metrics to be recorded at the
-   *                       end
+   * @param responseStats  the {@link ReadResponseStats} which carries certain metrics to be recorded at the end
    * @param writerSchemaId schema used to serialize the value
    * @param readerSchemaId
    */
@@ -41,7 +38,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       int bytesLength,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponse response,
+      ReadResponseStats responseStats,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
@@ -60,8 +57,6 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
 
   /**
    * This function can be implemented by the adapters which need fewer parameters.
-   *
-   * @see #constructValue(int, int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor)
    */
   default VALUE constructValue(int schemaId, byte[] fullBytes) {
     throw new VeniceException("Not implemented.");
@@ -93,8 +88,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    *                        {@link #constructValue(int, Object)}:
    * @param reusedValue     a previous instance of {@type VALUE} to be re-used in order to minimize GC
    * @param reusedDecoder   a previous instance of {@link BinaryDecoder} to be re-used in order to minimize GC
-   * @param response        the response returned by the query path, which carries certain metrics to be recorded at the
-   *                        end
+   * @param responseStats  the {@link ReadResponseStats} which carries certain metrics to be recorded at the end
    * @param writerSchemaId  of the user's value
    * @param readerSchemaId
    */
@@ -102,7 +96,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       CHUNKS_CONTAINER chunksContainer,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      ReadResponse response,
+      ReadResponseStats responseStats,
       int writerSchemaId,
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
@@ -112,8 +106,6 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
 
   /**
    * This function can be implemented by the adapters which need fewer parameters.
-   *
-   * @see #constructValue(int, Object, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor)
    */
   default VALUE constructValue(int schemaId, CHUNKS_CONTAINER chunksContainer) {
     throw new VeniceException("Not implemented.");

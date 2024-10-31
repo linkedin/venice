@@ -19,41 +19,44 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   private final DaVinciRecordTransformer recordTransformer;
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
-  public BlockingDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer) {
-    super(recordTransformer.getStoreVersion());
+  public BlockingDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer, boolean storeRecordsInDaVinci) {
+    super(recordTransformer.getStoreVersion(), storeRecordsInDaVinci);
     this.recordTransformer = recordTransformer;
   }
 
-  public Schema getKeyOutputSchema() {
-    return this.recordTransformer.getKeyOutputSchema();
+  public Schema getKeySchema() {
+    return this.recordTransformer.getKeySchema();
   }
 
-  public Schema getValueOutputSchema() {
-    return this.recordTransformer.getValueOutputSchema();
+  public Schema getOutputValueSchema() {
+    return this.recordTransformer.getOutputValueSchema();
   }
 
-  public O put(Lazy<K> key, Lazy<V> value) {
+  public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value) {
+    return this.recordTransformer.transform(key, value);
+  }
+
+  public void processPut(Lazy<K> key, Lazy<O> value) {
     try {
       // Waiting for onStartIngestionTask to complete before proceeding
       startLatch.await();
-      return (O) this.recordTransformer.put(key, value);
+      this.recordTransformer.processPut(key, value);
     } catch (InterruptedException e) {
       // Restore the interrupt status
       Thread.currentThread().interrupt();
-      return null;
     }
   }
 
-  public O delete(Lazy<K> key) {
-    return (O) this.recordTransformer.delete(key);
+  public void processDelete(Lazy<K> key) {
+    this.recordTransformer.processDelete(key);
   }
 
-  public void onStartIngestionTask() {
-    this.recordTransformer.onStartIngestionTask();
+  public void onStartVersionIngestion() {
+    this.recordTransformer.onStartVersionIngestion();
     startLatch.countDown();
   }
 
-  public void onEndIngestionTask() {
-    this.recordTransformer.onEndIngestionTask();
+  public void onEndVersionIngestion() {
+    this.recordTransformer.onEndVersionIngestion();
   }
 }

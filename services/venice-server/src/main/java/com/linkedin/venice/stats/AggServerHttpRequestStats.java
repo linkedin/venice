@@ -68,14 +68,6 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     totalStats.recordErrorRequestLatency(latency);
   }
 
-  public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
-    totalStats.recordStorageExecutionHandlerSubmissionWaitTime(submissionWaitTime);
-  }
-
-  public void recordStorageExecutionQueueLen(int len) {
-    totalStats.recordStorageExecutionQueueLen(len);
-  }
-
   public void recordMisroutedStoreVersionRequest() {
     totalStats.recordMisroutedStoreVersionRequest();
   }

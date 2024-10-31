@@ -17,11 +17,9 @@ import com.linkedin.venice.listener.grpc.handlers.GrpcStatsHandler;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
-import com.linkedin.venice.stats.AggServerQuotaTokenBucketStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -61,8 +59,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
   private final ServerConnectionStats serverConnectionStats;
-  AggServerQuotaUsageStats quotaUsageStats;
-  AggServerQuotaTokenBucketStats quotaTokenBucketStats;
+  private AggServerQuotaUsageStats quotaUsageStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
 
@@ -113,8 +110,12 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
+
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
+    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+
     this.storeAclHandler = storeAccessController.isPresent()
-        ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository))
+        ? Optional.of(new ServerStoreAclHandler(identityParser, storeAccessController.get(), storeMetadataRepository))
         : Optional.empty();
     /**
      * If the store-level access handler is present, we don't want to fail fast if the access gets denied by {@link ServerAclHandler}.
@@ -128,19 +129,12 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
       this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
-          serverConfig.getNodeCapacityInRcu(),
+          serverConfig,
           storeMetadataRepository,
           customizedViewRepository,
           nodeId,
           quotaUsageStats,
           metricsRepository);
-
-      // Token Bucket Stats for a store must be initialized when that store is created
-      this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
-      storeMetadataRepository.registerStoreDataChangedListener(quotaTokenBucketStats);
-      for (Store store: storeMetadataRepository.getAllStores()) {
-        this.quotaTokenBucketStats.initializeStatsForStore(store.getName());
-      }
     } else {
       this.quotaEnforcer = null;
     }
@@ -156,9 +150,6 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
 
     serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
-
-    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
-    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
   }
 
   /*

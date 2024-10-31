@@ -343,10 +343,13 @@ public class IsolatedIngestionUtils {
     } catch (Exception e) {
       if (command.contains("kill")) {
         throw new VeniceException("Encountered exception when executing shell command: " + command, e);
+      } else if (e.getMessage().contains("No such file or directory")) {
+        // This is a common case, so we mute the full exception stacktrace.
+        LOGGER.info("Command not found. Exception message: {}", e.getMessage());
       } else {
         LOGGER.info("Encounter exception when executing shell command: {}", command, e);
-        return "";
       }
+      return "";
     }
   }
 

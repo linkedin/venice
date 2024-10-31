@@ -52,6 +52,10 @@ public class TestVeniceHostHealth {
         "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostOfflineInstance(deadInstance.getNodeId());
+
+    // When trying to make a dead instance as unhealthy, the dead instance shouldn't be counted as unhealthy instances.
+    hostHealth.setHostAsUnhealthy(deadInstance);
+    verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostCountCausedByRouterHeartBeat(0);
   }
 
   @Test

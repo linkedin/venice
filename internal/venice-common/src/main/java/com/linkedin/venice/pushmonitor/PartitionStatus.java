@@ -1,10 +1,10 @@
 package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
-import static com.linkedin.venice.utils.Utils.*;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -47,6 +47,20 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
     replicaStatus.setCurrentProgress(progress);
   }
 
+  public void batchUpdateReplicaIncPushStatus(String instanceId, List<String> incPushVersionList, long progress) {
+    ReplicaStatus replicaStatus = null;
+    for (String incrementalPushVersion: incPushVersionList) {
+      replicaStatus = updateReplicaStatus(
+          instanceId,
+          ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+          incrementalPushVersion,
+          true);
+    }
+    if (replicaStatus != null) {
+      replicaStatus.setCurrentProgress(progress);
+    }
+  }
+
   private ReplicaStatus updateReplicaStatus(
       String instanceId,
       ExecutionStatus newStatus,
@@ -54,8 +68,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
       boolean enableStatusHistory) {
     ReplicaStatus replicaStatus =
         replicaStatusMap.compute(instanceId, (k, v) -> v == null ? new ReplicaStatus(k, enableStatusHistory) : v);
-    replicaStatus.setIncrementalPushVersion(incrementalPushVersion);
-    replicaStatus.updateStatus(newStatus);
+    replicaStatus.updateStatus(newStatus, incrementalPushVersion);
     return replicaStatus;
   }
 
@@ -90,7 +103,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   public boolean hasFatalDataValidationError() {
     for (ReplicaStatus replicaStatus: replicaStatusMap.values()) {
       if (ExecutionStatus.isError(replicaStatus.getCurrentStatus()) && replicaStatus.getIncrementalPushVersion() != null
-          && replicaStatus.getIncrementalPushVersion().contains(FATAL_DATA_VALIDATION_ERROR)) {
+          && replicaStatus.getIncrementalPushVersion().contains(Utils.FATAL_DATA_VALIDATION_ERROR)) {
         return true;
       }
     }

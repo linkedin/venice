@@ -423,6 +423,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  /**
+   * Create snapshot for the given partition
+   * @param storagePartitionConfig
+   */
+  public synchronized void createSnapshot(StoragePartitionConfig storagePartitionConfig) {
+    AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
+    partition.createSnapshot();
+  }
+
   private void executeWithSafeGuard(int partitionId, Runnable runnable) {
     executeWithSafeGuard(partitionId, () -> {
       runnable.run();
@@ -538,7 +547,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  public byte[] getReplicationMetadata(int partitionId, byte[] key) {
+  public byte[] getReplicationMetadata(int partitionId, ByteBuffer key) {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       return partition.getReplicationMetadata(key);
@@ -741,5 +750,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public boolean hasMemorySpaceLeft() {
     return true;
+  }
+
+  public AbstractStorageIterator getIterator(int partitionId) {
+    throw new UnsupportedOperationException("Method not supported for storage engine");
   }
 }

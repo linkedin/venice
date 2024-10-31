@@ -7,6 +7,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -16,7 +17,8 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
-      ICProvider icProvider) {
+      ICProvider icProvider,
+      Executor readChunkExecutorForLargeRequest) {
     super(
         daVinciConfig,
         clientConfig,
@@ -27,6 +29,7 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
         () -> {
           Class<V> valueClass = clientConfig.getSpecificValueClass();
           FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
-        });
+        },
+        readChunkExecutorForLargeRequest);
   }
 }

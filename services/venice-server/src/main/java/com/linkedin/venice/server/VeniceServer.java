@@ -1,6 +1,8 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -114,6 +116,7 @@ public class VeniceServer {
   StorageEngineBackedCompressorFactory compressorFactory;
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
+  private BlobTransferManager<Void> blobTransferManager;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -415,9 +418,11 @@ public class VeniceServer {
     services.add(storeValueSchemasCacheService);
 
     serverReadMetadataRepository = new ServerReadMetadataRepository(
+        clusterConfig.getClusterName(),
         metricsRepository,
         metadataRepo,
         schemaRepo,
+        veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture));
 
@@ -440,6 +445,24 @@ public class VeniceServer {
     services.add(listenerService);
 
     /**
+     * Initialize Blob transfer manager for Service
+     */
+    if (serverConfig.isBlobTransferManagerEnabled()) {
+      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
+          serverConfig.getDvcP2pBlobTransferServerPort(),
+          serverConfig.getDvcP2pBlobTransferClientPort(),
+          serverConfig.getRocksDBPath(),
+          customizedViewFuture,
+          storageMetadataService,
+          metadataRepo,
+          storageService.getStorageEngineRepository(),
+          serverConfig.getMaxConcurrentSnapshotUser(),
+          serverConfig.getSnapshotRetentionTimeInMin());
+    } else {
+      blobTransferManager = null;
+    }
+
+    /**
      * Helix participator service should start last since we need to make sure current Storage Node is ready to take
      * read requests if it claims to be available in Helix.
      */
@@ -456,7 +479,8 @@ public class VeniceServer {
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
         veniceConfigLoader.getVeniceServerConfig().getListenerHostname(),
         managerFuture,
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        blobTransferManager);
     services.add(helixParticipationService);
 
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case

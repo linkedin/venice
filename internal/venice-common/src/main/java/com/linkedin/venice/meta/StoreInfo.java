@@ -71,8 +71,11 @@ public class StoreInfo {
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
+    storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
+    storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
+    storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     return storeInfo;
   }
 
@@ -315,9 +318,14 @@ public class StoreInfo {
 
   private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
+  private int maxNearlineRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
+
+  private boolean nearlineProducerCompressionEnabled;
+  private int nearlineProducerCountPerWriter;
 
   public StoreInfo() {
   }
@@ -784,6 +792,14 @@ public class StoreInfo {
     this.maxRecordSizeBytes = maxRecordSizeBytes;
   }
 
+  public int getMaxNearlineRecordSizeBytes() {
+    return this.maxNearlineRecordSizeBytes;
+  }
+
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    this.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     this.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled;
   }
@@ -798,5 +814,21 @@ public class StoreInfo {
 
   public boolean isBlobTransferEnabled() {
     return this.blobTransferEnabled;
+  }
+
+  public boolean isNearlineProducerCompressionEnabled() {
+    return nearlineProducerCompressionEnabled;
+  }
+
+  public void setNearlineProducerCompressionEnabled(boolean nearlineProducerCompressionEnabled) {
+    this.nearlineProducerCompressionEnabled = nearlineProducerCompressionEnabled;
+  }
+
+  public int getNearlineProducerCountPerWriter() {
+    return nearlineProducerCountPerWriter;
+  }
+
+  public void setNearlineProducerCountPerWriter(int nearlineProducerCountPerWriter) {
+    this.nearlineProducerCountPerWriter = nearlineProducerCountPerWriter;
   }
 }

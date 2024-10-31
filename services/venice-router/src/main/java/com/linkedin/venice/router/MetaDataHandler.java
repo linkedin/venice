@@ -311,11 +311,19 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         responseObject.setSuperSetSchemaId(superSetSchemaId);
       }
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);
-      int schemaNum = valueSchemaEntries.size();
+      int schemaNum = (int) valueSchemaEntries.stream().filter(schemaEntry -> schemaEntry.getId() > 0).count();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
       int index = 0;
       for (SchemaEntry entry: valueSchemaEntries) {
         int schemaId = entry.getId();
+        if (schemaId < 1) {
+          LOGGER.warn(
+              "Got an invalid schema id ({}) for store {} in handleValueSchemaLookup; will not include this in the {}.",
+              entry.getId(),
+              storeName,
+              responseObject.getClass().getSimpleName());
+          continue;
+        }
         schemas[index] = new MultiSchemaResponse.Schema();
         schemas[index].setId(schemaId);
         schemas[index].setSchemaStr(entry.getSchema().toString());
@@ -385,6 +393,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
     Set<Integer> schemaIdSet = new HashSet<>();
     for (SchemaEntry entry: schemaRepo.getValueSchemas(storeName)) {
+      if (entry.getId() < 1) {
+        LOGGER.warn(
+            "Got an invalid schema id ({}) for store {} in handleValueSchemaIdsLookup; will not include this in the {}.",
+            entry.getId(),
+            storeName,
+            responseObject.getClass().getSimpleName());
+        continue;
+      }
       schemaIdSet.add(entry.getId());
     }
     responseObject.setSchemaIdSet(schemaIdSet);
@@ -670,13 +686,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_STREAM_HYBRID_STORE_QUOTA + "/${storeName}");
-    if (!storeConfigRepo.getStoreConfig(storeName).isPresent()) {
+    Store store = storeRepository.getStore(storeName);
+    if (!storeConfigRepo.getStoreConfig(storeName).isPresent() || store == null) {
       byte[] errBody = ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: "
           + storeName + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
-    String topicName = Version.composeKafkaTopic(storeName, storeRepository.getStore(storeName).getCurrentVersion());
+    String topicName = Version.composeKafkaTopic(storeName, store.getCurrentVersion());
     prepareHybridStoreQuotaStatusResponse(topicName, ctx);
   }
 

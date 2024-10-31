@@ -290,6 +290,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   String getRealTimeTopic(String clusterName, String storeName);
 
+  String getSeparateRealTimeTopic(String clusterName, String storeName);
+
   /**
    * Right now, it will return the latest version recorded in parent controller. There are a couple of edge cases.
    * 1. If a push fails in some colos, the version will be inconsistent among colos
@@ -529,6 +531,12 @@ public interface Admin extends AutoCloseable, Closeable {
   TopicManager getTopicManager();
 
   TopicManager getTopicManager(String pubSubServerAddress);
+
+  InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      List<String> instances,
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

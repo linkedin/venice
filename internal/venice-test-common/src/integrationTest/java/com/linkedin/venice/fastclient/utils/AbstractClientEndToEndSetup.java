@@ -1,19 +1,11 @@
 package com.linkedin.venice.fastclient.utils;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode.SERVER_BASED_METADATA;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
-import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -21,9 +13,6 @@ import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -51,17 +40,12 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.system.store.MetaStoreDataType;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
@@ -99,15 +83,7 @@ public abstract class AbstractClientEndToEndSetup {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   protected Client r2Client;
   protected D2Client d2Client;
-
-  // da-vinci client for the da-vinci client based metadata
-  private VeniceProperties daVinciBackendConfig;
-  CachingDaVinciClientFactory daVinciClientFactory = null;
-  protected DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
-
-  // thin client for the thin client based metadata
-  protected AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore = null;
-
+  protected String controllerUrl;
   protected ClientConfig clientConfig;
 
   protected static final int TIME_OUT = 60 * Time.MS_PER_SECOND;
@@ -156,7 +132,7 @@ public abstract class AbstractClientEndToEndSetup {
           return false;
         }
       }
-      if (storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
+      if (storeMetadataFetchMode != SERVER_BASED_METADATA) {
         if (retryEnabled || speculativeQueryEnabled) {
           return false;
         }
@@ -225,6 +201,7 @@ public abstract class AbstractClientEndToEndSetup {
         .toAbsolutePath()
         .toString();
 
+    controllerUrl = veniceCluster.getAllControllersURLs();
     prepareData();
     prepareMetaSystemStore();
     waitForRouterD2();
@@ -274,7 +251,6 @@ public abstract class AbstractClientEndToEndSetup {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
           .getStore()
@@ -298,38 +274,6 @@ public abstract class AbstractClientEndToEndSetup {
           30,
           TimeUnit.SECONDS);
     });
-
-    daVinciBackendConfig = new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
-        .put(DATA_BASE_PATH, dataPath)
-        .build();
-
-    // Verify meta system store received the snapshot writes.
-    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaClient =
-        com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
-            com.linkedin.venice.client.store.ClientConfig
-                .defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
-                .setVeniceURL(veniceCluster.getRandomRouterURL())
-                .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
-      StoreMetaKey replicaStatusKey =
-          MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-            {
-              put(KEY_STRING_STORE_NAME, storeName);
-              put(KEY_STRING_CLUSTER_NAME, veniceCluster.getClusterName());
-              put(
-                  KEY_STRING_VERSION_NUMBER,
-                  Integer.toString(Version.parseVersionFromVersionTopicName(storeVersionName)));
-              put(KEY_STRING_PARTITION_ID, "0");
-            }
-          });
-      TestUtils.waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          true,
-          () -> assertNotNull(metaClient.get(replicaStatusKey).get()));
-    }
   }
 
   private void waitForRouterD2() {
@@ -415,70 +359,22 @@ public abstract class AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
     clientConfigBuilder.setStoreMetadataFetchMode(storeMetadataFetchMode);
-    switch (storeMetadataFetchMode) {
-      case SERVER_BASED_METADATA:
-        clientConfigBuilder.setD2Client(d2Client);
-        clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-        clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
-        // Validate the metadata response schema forward compat support setup
-        veniceCluster.useControllerClient(controllerClient -> {
-          String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
-          MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
-          assertFalse(multiSchemaResponse.isError());
-          assertEquals(
-              AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(),
-              multiSchemaResponse.getSchemas().length);
-        });
-        break;
-      case THIN_CLIENT_BASED_METADATA:
-        setupThinClientBasedStoreMetadata();
-        clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
-        break;
-      case DA_VINCI_CLIENT_BASED_METADATA:
-        setupDaVinciClientForMetaStore();
-        clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
+    if (storeMetadataFetchMode == SERVER_BASED_METADATA) {
+      clientConfigBuilder.setD2Client(d2Client);
+      clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+      clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+      // Validate the metadata response schema forward compat support setup
+      veniceCluster.useControllerClient(controllerClient -> {
+        String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
+        MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
+        assertFalse(multiSchemaResponse.isError());
+        assertEquals(
+            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(),
+            multiSchemaResponse.getSchemas().length);
+      });
+    } else {
+      throw new UnsupportedOperationException("Unsupported store metadata fetch mode: " + storeMetadataFetchMode);
     }
-  }
-
-  private void setupThinClientBasedStoreMetadata() {
-    if (thinClientForMetaStore == null) {
-      thinClientForMetaStore = com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
-          com.linkedin.venice.client.store.ClientConfig
-              .defaultSpecificClientConfig(
-                  VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
-                  StoreMetaValue.class)
-              .setVeniceURL(veniceCluster.getRandomRouterURL())
-              .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
-    }
-  }
-
-  private void setupDaVinciClientForMetaStore() {
-    cleanupDaVinciClientForMetaStore();
-    daVinciClientFactory = new CachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
-        daVinciBackendConfig);
-    daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
-        VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
-        new DaVinciConfig(),
-        StoreMetaValue.class);
-  }
-
-  // Helper for runTest()
-  /**
-   * Note that both daVinciClientBasedStoreMetadata and routerBasedStoreMetaData
-   * will be closed when the respective client closes. The below function
-   * needs to clean up the daVinciClient and its client factory alone.
-   *
-   * TODO: Explore to see if we can reuse these for all the tests rather than cleaning it up everytime.
-   * */
-  protected void cleanupDaVinciClientForMetaStore() {
-    Utils.closeQuietlyWithErrorLogged(daVinciClientForMetaStore);
-    daVinciClientForMetaStore = null;
-
-    Utils.closeQuietlyWithErrorLogged(daVinciClientFactory);
-    daVinciClientFactory = null;
   }
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {

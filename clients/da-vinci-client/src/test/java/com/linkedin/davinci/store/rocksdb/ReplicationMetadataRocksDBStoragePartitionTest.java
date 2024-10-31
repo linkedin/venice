@@ -202,7 +202,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] key = entry.getKey().getBytes();
       byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
-      byte[] metadata = storagePartition.getReplicationMetadata(key);
+      byte[] metadata = storagePartition.getReplicationMetadata(ByteBuffer.wrap(key));
       ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
       int replicationMetadataWithValueSchemaInt = replicationMetadataWithValueSchema.getInt();
 
@@ -222,7 +222,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] value = storagePartition.get(key);
       Assert.assertNull(value);
 
-      byte[] metadata = storagePartition.getReplicationMetadata(key);
+      byte[] metadata = storagePartition.getReplicationMetadata(ByteBuffer.wrap(key));
       ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
       int replicationMetadataWithValueSchemaInt = replicationMetadataWithValueSchema.getInt();
 
@@ -248,7 +248,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] key = entry.getKey().getBytes();
       byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
-      Assert.assertNull(storagePartition.getReplicationMetadata(key));
+      Assert.assertNull(storagePartition.getReplicationMetadata(ByteBuffer.wrap(key)));
     }
 
     for (Map.Entry<String, Pair<String, String>> entry: inputRecordsBatch.entrySet()) {
@@ -263,7 +263,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] value = storagePartition.get(key);
       Assert.assertNull(value);
 
-      byte[] metadata = storagePartition.getReplicationMetadata(key);
+      byte[] metadata = storagePartition.getReplicationMetadata(ByteBuffer.wrap(key));
       ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
       int replicationMetadataWithValueSchemaInt = replicationMetadataWithValueSchema.getInt();
 
@@ -426,7 +426,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), bytes);
       if (sorted) {
         Assert.assertEquals(
-            storagePartition.getReplicationMetadata(entry.getKey().getBytes()),
+            storagePartition.getReplicationMetadata(ByteBuffer.wrap(entry.getKey().getBytes())),
             entry.getValue().getSecond().getBytes());
       }
     }

@@ -13,8 +13,11 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
@@ -69,6 +72,8 @@ public class OffsetRecord {
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
+    emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
     return emptyPartitionState;
   }
 
@@ -141,6 +146,34 @@ public class OffsetRecord {
 
   public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
+  }
+
+  public synchronized void setRealtimeTopicProducerState(
+      String kafkaUrl,
+      GUID producerGuid,
+      ProducerPartitionState state) {
+    partitionState.getRealtimeTopicProducerStates()
+        .computeIfAbsent(kafkaUrl, url -> new VeniceConcurrentHashMap<>())
+        .put(guidToUtf8(producerGuid), state);
+  }
+
+  public synchronized void removeRealTimeTopicProducerState(String kafkaUrl, GUID producerGuid) {
+    if (partitionState.getRealtimeTopicProducerStates().get(kafkaUrl) == null) {
+      return;
+    }
+    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(guidToUtf8(producerGuid));
+  }
+
+  public synchronized ProducerPartitionState getRealTimeProducerState(String kafkaUrl, GUID producerGuid) {
+    Map<CharSequence, ProducerPartitionState> map = partitionState.getRealtimeTopicProducerStates().get(kafkaUrl);
+    if (map == null) {
+      return null;
+    }
+    return map.get(guidToUtf8(producerGuid));
+  }
+
+  private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
+    return partitionState.getRealtimeTopicProducerStates();
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
@@ -250,13 +283,26 @@ public class OffsetRecord {
     return (partitionState.leaderHostId != null) ? partitionState.leaderHostId.toString() : null;
   }
 
+  public List<String> getPendingReportIncPushVersionList() {
+    if (partitionState.pendingReportIncrementalPushVersions == null) {
+      return new ArrayList<>();
+    }
+    return partitionState.pendingReportIncrementalPushVersions.stream()
+        .map(CharSequence::toString)
+        .collect(Collectors.toList());
+  }
+
+  public void setPendingReportIncPushVersionList(List<String> incPushVersionList) {
+    partitionState.pendingReportIncrementalPushVersions = new ArrayList<>(incPushVersionList);
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
    * @param guid to be converted
    * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
    */
-  private CharSequence guidToUtf8(GUID guid) {
+  CharSequence guidToUtf8(GUID guid) {
     return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
@@ -266,7 +312,7 @@ public class OffsetRecord {
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
   }
 
   /**

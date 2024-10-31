@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -15,7 +16,10 @@ import org.testng.annotations.Test;
 
 public class ClientConfigTest {
   private ClientConfig.ClientConfigBuilder getClientConfigWithMinimumRequiredInputs() {
-    return new ClientConfig.ClientConfigBuilder<>().setStoreName("test_store").setR2Client(mock(Client.class));
+    return new ClientConfig.ClientConfigBuilder<>().setStoreName("test_store")
+        .setR2Client(mock(Client.class))
+        .setD2Client(mock(D2Client.class))
+        .setClusterDiscoveryD2Service("test_server_discovery");
   }
 
   @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "storeName param shouldn't be empty")

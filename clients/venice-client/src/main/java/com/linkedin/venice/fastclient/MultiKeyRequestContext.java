@@ -85,6 +85,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   }
 
   void complete() {
+    if (completed) {
+      return;
+    }
     completed = true;
     // Roll up route stats into overall stats
     long decompressionTimeNS = 0;
@@ -144,8 +147,12 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     return Optional.ofNullable(partialResponseException.get());
   }
 
-  void setPartialResponseException(Throwable exception) {
+  void setPartialResponseExceptionIfNull(Throwable exception) {
     this.partialResponseException.compareAndSet(null, exception);
+  }
+
+  void setPartialResponseException(Throwable exception) {
+    this.partialResponseException.set(exception);
   }
 
   /* Utility validation methods */

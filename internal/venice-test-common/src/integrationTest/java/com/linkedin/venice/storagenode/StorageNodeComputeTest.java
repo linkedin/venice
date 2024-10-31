@@ -31,6 +31,7 @@ import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -75,16 +76,6 @@ public class StorageNodeComputeTest {
     }
   }
 
-  enum ValueSize {
-    SMALL_VALUE(false), LARGE_VALUE(true);
-
-    final boolean config;
-
-    ValueSize(boolean config) {
-      this.config = config;
-    }
-  }
-
   private VeniceClusterWrapper veniceCluster;
   private AvroGenericStoreClient<String, Object> client;
   private int valueSchemaId;
@@ -107,9 +98,11 @@ public class StorageNodeComputeTest {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
-    // Add one more server with fast-avro enabled
+    // Add one more server with all the bells and whistles: fast-avro, parallel batch get
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
+    serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true);
+    serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 100);
     veniceCluster.addVeniceServer(new Properties(), serverProperties);
 
     // To trigger long-tail retry

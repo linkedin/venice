@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -27,8 +27,8 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 
 
 public class StoreIngestionTaskFactory {
@@ -51,7 +51,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           builder,
@@ -63,7 +63,7 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          getRecordTransformer);
+          recordTransformerFunction);
     }
     return new LeaderFollowerStoreIngestionTask(
         builder,
@@ -75,7 +75,7 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerFunction);
   }
 
   /**
@@ -116,6 +116,7 @@ public class StoreIngestionTaskFactory {
     private StorageEngineBackedCompressorFactory compressorFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
+    private ExecutorService aaWCWorkLoadProcessingThreadPool;
 
     private interface Setter {
       void apply();
@@ -317,6 +318,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setRunnableForKillIngestionTasksForNonCurrentVersions(Runnable runnable) {
       return set(() -> this.runnableForKillIngestionTasksForNonCurrentVersions = runnable);
+    }
+
+    public Builder setAAWCWorkLoadProcessingThreadPool(ExecutorService executorService) {
+      return set(() -> this.aaWCWorkLoadProcessingThreadPool = executorService);
+    }
+
+    public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
+      return this.aaWCWorkLoadProcessingThreadPool;
     }
   }
 }

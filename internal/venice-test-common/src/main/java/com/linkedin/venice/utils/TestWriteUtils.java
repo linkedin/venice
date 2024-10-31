@@ -1,23 +1,23 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_ZSTD_COMPRESSION_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_ZSTD_COMPRESSION_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
@@ -95,6 +95,17 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV3.avsc"));
   public static final Schema NAME_RECORD_V4_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV4.avsc"));
+  public static final Schema NAME_RECORD_V5_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV5.avsc"));
+  public static final Schema NAME_RECORD_V6_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV6.avsc"));
+
+  public static final Schema UNION_RECORD_V1_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UnionV1.avsc"));
+  public static final Schema UNION_RECORD_V2_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UnionV2.avsc"));
+  public static final Schema UNION_RECORD_V3_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UnionV3.avsc"));
 
   // ETL Schema
   public static final Schema ETL_KEY_SCHEMA = AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/Key.avsc"));
@@ -112,6 +123,8 @@ public class TestWriteUtils {
   // Push Input Folder Schema
   public static final Schema INT_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema INT_TO_INT_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(INT_SCHEMA).build();
   public static final Schema STRING_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
@@ -285,11 +298,27 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir) throws IOException {
+    return writeSimpleAvroFileWithIntToStringSchema(parentDir, "name ", DEFAULT_USER_DATA_RECORD_COUNT);
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir, String customValue, int numKeys)
+      throws IOException {
     return writeAvroFile(parentDir, "int2string.avro", INT_TO_STRING_SCHEMA, (recordSchema, writer) -> {
-      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+      for (int i = 1; i <= numKeys; ++i) {
         GenericRecord i2s = new GenericData.Record(recordSchema);
         i2s.put(DEFAULT_KEY_FIELD_PROP, i);
-        i2s.put(DEFAULT_VALUE_FIELD_PROP, "name " + i);
+        i2s.put(DEFAULT_VALUE_FIELD_PROP, customValue + i);
+        writer.append(i2s);
+      }
+    });
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, int numKeys) throws IOException {
+    return writeAvroFile(parentDir, "int2int.avro", INT_TO_INT_SCHEMA, (recordSchema, writer) -> {
+      for (int i = 1; i <= numKeys; ++i) {
+        GenericRecord i2s = new GenericData.Record(recordSchema);
+        i2s.put(DEFAULT_KEY_FIELD_PROP, i);
+        i2s.put(DEFAULT_VALUE_FIELD_PROP, i);
         writer.append(i2s);
       }
     });
@@ -357,6 +386,13 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(File parentDir) throws IOException {
+    return writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(parentDir, 1, 100);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(
+      File parentDir,
+      int startIndex,
+      int endIndex) throws IOException {
     return writeAvroFile(
         parentDir,
         "string2record.avro",
@@ -364,7 +400,7 @@ public class TestWriteUtils {
         (recordSchema, writer) -> {
           String firstName = "first_name_";
           String lastName = "last_name_";
-          for (int i = 1; i <= 100; ++i) {
+          for (int i = startIndex; i <= endIndex; ++i) {
             GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
             keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
             GenericRecord valueRecord =

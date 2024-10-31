@@ -402,8 +402,11 @@ usage: Parameters:
  -mcls,--min-compaction-lag-seconds <arg>                        Min compaction lag seconds for version topic of hybrid stores
  -mpa,--max_poll_attempts <arg>                                  The max amount of attempts to poll new data from a Kafka topic (should no
                                                                  new data be available).
- -mrsb,--max-record-size-bytes <arg>                             Store-level max record size in bytes. Used by VeniceWriter to fail batch
-                                                                 push jobs and pause consumption on nearline jobs.
+ -mrsb,--max-record-size-bytes <arg>                             Store-level max record size for VeniceWriter to determine whether to fail
+                                                                 batch push jobs. This setting can potentially converge with the
+                                                                 nearline setting in the future.
+ -mnrsb,--max-nearline-record-size-bytes <arg>                   Store-level max record size for VeniceWriter to determine whether to
+                                                                 pause consumption on nearline jobs with partial updates.
  -mxcls,--max-compaction-lag-seconds <arg>                       Max compaction lag seconds for version topic of hybrid stores
  -n,--storage-node <arg>                                         Helix instance ID for a storage node, eg. lva1-app1234_1690
  -nita,--non-interactive                                         non-interactive mode

@@ -16,10 +16,12 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
+  private final AtomicBoolean stopped = new AtomicBoolean(false);
   private final Set<String> childRegions;
   private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -88,6 +91,8 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final Map<PubSubTopic, Integer> danglingTopicOccurrenceCounter;
   private final int danglingTopicOccurrenceThresholdForCleanup;
   private final long danglingTopicCleanupIntervalMs;
+  public final static Comparator<PubSubTopic> topicPriorityComparator =
+      Comparator.comparingInt(topic -> (topic.isRealTime() ? -1 : 1));
 
   public TopicCleanupService(
       Admin admin,
@@ -151,8 +156,28 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    // N.B.: The two stop mechanisms below are decomposed for the sake of being able to test them separately.
+    stopViaFlag();
+    stopViaInterrupt();
+  }
+
+  /** Package-private for tests. */
+  void stopViaFlag() {
     stop.set(true);
+  }
+
+  /** Package-private for tests. */
+  void stopViaInterrupt() {
     cleanupThread.interrupt();
+  }
+
+  /**
+   * Package-private for tests.
+   *
+   * @return whether the service has fully stopped.
+   */
+  boolean isStopped() {
+    return this.stopped.get();
   }
 
   TopicManager getTopicManager() {
@@ -169,14 +194,10 @@ public class TopicCleanupService extends AbstractVeniceService {
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
-        } catch (InterruptedException e) {
-          LOGGER.error("Received InterruptedException during sleep in TopicCleanup thread");
-          break;
-        }
-        if (stop.get()) {
-          break;
-        }
-        try {
+
+          if (stop.get()) {
+            break;
+          }
           if (admin.isLeaderControllerOfControllerCluster()) {
             if (!isLeaderControllerOfControllerCluster) {
               /**
@@ -193,10 +214,15 @@ public class TopicCleanupService extends AbstractVeniceService {
             isLeaderControllerOfControllerCluster = false;
           }
         } catch (Exception e) {
+          if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            LOGGER.info("Received InterruptedException in TopicCleanupTask. Will stop.");
+            break;
+          }
           LOGGER.error("Received exception when cleaning up topics", e);
         }
       }
       LOGGER.info("TopicCleanupTask stopped");
+      stopped.set(true);
     }
   }
 
@@ -209,7 +235,7 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   void cleanupVeniceTopics() {
-    PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>((s1, s2) -> s1.isRealTime() ? -1 : 0);
+    PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>(topicPriorityComparator);
     populateDeprecatedTopicQueue(allTopics);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();

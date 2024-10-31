@@ -5,7 +5,8 @@ import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
@@ -71,7 +72,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
@@ -91,6 +91,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
+  private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
@@ -111,7 +112,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     super(
         builder,
         store,
@@ -122,21 +123,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerFunction);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 
     this.aggVersionedIngestionStats = versionedIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
-    int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
+
     int initialPoolSize = knownKafkaClusterNumber + 1;
-    /**
-     * In theory, the maximum # of keys each ingestion task can process is the # of consumers allocated for it.
-     */
-    int maxKeyLevelLocksPoolSize =
-        Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
-    this.keyLevelLocksManager =
-        Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic().getName(), initialPoolSize, maxKeyLevelLocksPoolSize));
+    this.keyLevelLocksManager = Lazy.of(
+        () -> new KeyLevelLocksManager(
+            getVersionTopic().getName(),
+            initialPoolSize,
+            getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, storeVersionPartitionCount)));
     StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
         new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
 
@@ -152,22 +151,57 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             isWriteComputationEnabled,
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
+    this.ingestionBatchProcessorLazy = Lazy.of(() -> {
+      if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+        LOGGER.info("AA/WC workload parallel processing enabled is false");
+        return null;
+      }
+      LOGGER.info("AA/WC workload parallel processing enabled is true");
+      return new IngestionBatchProcessor(
+          kafkaVersionTopic,
+          parallelProcessingThreadPool,
+          null,
+          this::processActiveActiveMessage,
+          isWriteComputationEnabled,
+          isActiveActiveReplicationEnabled(),
+          aggVersionedIngestionStats,
+          getHostLevelIngestionStats());
+    });
+  }
+
+  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
+    int consumerPoolSizeForLeaderConsumption = 0;
+    if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader();
+    } else if (serverConfig.getConsumerPoolStrategyType()
+        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
+          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
+    } else {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    }
+    int multiplier = 1;
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
+    }
+    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
+        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
   @Override
   protected DelegateConsumerRecordResult delegateConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingPerRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
-    if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+    if (!consumerRecordWrapper.getMessage().getTopicPartition().getPubSubTopic().isRealTime()) {
       /**
        * We don't need to lock the partition here because during VT consumption there is only one consumption source.
        */
       return super.delegateConsumerRecord(
-          consumerRecord,
+          consumerRecordWrapper,
           partition,
           kafkaUrl,
           kafkaClusterId,
@@ -185,12 +219,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
        * -> [fabric B thread]update transient record cache -> [fabric B thread]produce to VT -> [fabric A thread]update transient record cache
        * -> [fabric A thread]produce to VT
        */
-      final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecord.getKey().getKey());
+      final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecordWrapper.getMessage().getKey().getKey());
       ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
       keyLevelLock.lock();
       try {
         return super.delegateConsumerRecord(
-            consumerRecord,
+            consumerRecordWrapper,
             partition,
             kafkaUrl,
             kafkaClusterId,
@@ -206,6 +240,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
+
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
       StorageOperationType storageOperationType =
           getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
@@ -350,7 +385,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result = SingleGetChunkingAdapter
-        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), null, rmdManifestContainer);
+        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
@@ -360,9 +395,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return result.serialize();
   }
 
-  // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
-  // this function.
-  protected void processMessageAndMaybeProduceToKafka(
+  @Override
+  protected IngestionBatchProcessor getIngestionBatchProcessor() {
+    return ingestionBatchProcessorLazy.get();
+  }
+
+  private PubSubMessageProcessedResult processActiveActiveMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
@@ -370,24 +408,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
-    /**
-     * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
-     * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
-     * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
-     * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
-     */
-    if (!partitionConsumptionState.isEndOfPushReceived()
-        || isDataRecovery && partitionConsumptionState.getTopicSwitch() != null) {
-      super.processMessageAndMaybeProduceToKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          beforeProcessingBatchRecordsTimestampMs);
-      return;
-    }
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
@@ -421,6 +441,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
             beforeProcessingBatchRecordsTimestampMs));
+    if (hasChangeCaptureView) {
+      /**
+       * Since this function will update the transient cache before writing the view, and if there is
+       * a change capture view writer, we need to lookup first, otherwise the transient cache will be populated
+       * when writing to the view after this function.
+       */
+      oldValueProvider.get();
+    }
 
     final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
         partitionConsumptionState,
@@ -434,6 +462,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
         ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
         : Collections.singletonList(0L);
+
     // get the source offset and the id
     long sourceOffset = consumerRecord.getOffset();
     final MergeConflictResult mergeConflictResult;
@@ -446,7 +475,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
-            unwrapByteBufferFromOldValueProvider(oldValueProvider),
+            oldValueByteBufferProvider,
             rmdWithValueSchemaID,
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
@@ -454,8 +483,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             sourceOffset,
             kafkaClusterId,
             kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
-                           // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
-                           // config to represent the mapping from Kafka server URLs to colo ID.
+        // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
+        // config to represent the mapping from Kafka server URLs to colo ID.
         );
         getHostLevelIngestionStats()
             .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
@@ -498,9 +527,106 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Record the last ignored offset
       partitionConsumptionState
           .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
+      return new PubSubMessageProcessedResult(
+          new MergeConflictResultWrapper(
+              mergeConflictResult,
+              oldValueProvider,
+              oldValueByteBufferProvider,
+              rmdWithValueSchemaID,
+              valueManifestContainer,
+              null,
+              null));
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
+      final ByteBuffer updatedValueBytes = maybeCompressData(
+          consumerRecord.getTopicPartition().getPartitionNumber(),
+          mergeConflictResult.getNewValue(),
+          partitionConsumptionState);
+
+      final int valueSchemaId = mergeConflictResult.getValueSchemaId();
+
+      GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
+      final ByteBuffer updatedRmdBytes =
+          rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
+
+      if (updatedValueBytes == null) {
+        hostLevelIngestionStats.recordTombstoneCreatedDCR();
+        aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
+        partitionConsumptionState
+            .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, valueSchemaId, rmdRecord);
+      } else {
+        int valueLen = updatedValueBytes.remaining();
+        partitionConsumptionState.setTransientRecord(
+            kafkaClusterId,
+            consumerRecord.getOffset(),
+            keyBytes,
+            updatedValueBytes.array(),
+            updatedValueBytes.position(),
+            valueLen,
+            valueSchemaId,
+            rmdRecord);
+      }
+      return new PubSubMessageProcessedResult(
+          new MergeConflictResultWrapper(
+              mergeConflictResult,
+              oldValueProvider,
+              oldValueByteBufferProvider,
+              rmdWithValueSchemaID,
+              valueManifestContainer,
+              updatedValueBytes,
+              updatedRmdBytes));
+    }
+  }
+
+  // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
+  // this function.
+  protected void processMessageAndMaybeProduceToKafka(
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    /**
+     * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
+     * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
+     * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
+     * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
+     */
+    if (!partitionConsumptionState.isEndOfPushReceived()
+        || isDataRecovery && partitionConsumptionState.getTopicSwitch() != null) {
+      super.processMessageAndMaybeProduceToKafka(
+          consumerRecordWrapper,
+          partitionConsumptionState,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs);
+      return;
+    }
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    byte[] keyBytes = kafkaKey.getKey();
+    final MergeConflictResultWrapper mergeConflictResultWrapper;
+    if (consumerRecordWrapper.getProcessedResult() != null
+        && consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper() != null) {
+      mergeConflictResultWrapper = consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper();
+    } else {
+      mergeConflictResultWrapper = processActiveActiveMessage(
+          consumerRecord,
+          partitionConsumptionState,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs).getMergeConflictResultWrapper();
+    }
+
+    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
+    if (!mergeConflictResult.isUpdateIgnored()) {
       // Apply this update to any views for this store
       // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
       // the
@@ -523,8 +649,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         int index = 0;
         // The first future is for the previous write to VT
         viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
-        ByteBuffer oldValueBB = oldValueByteBufferProvider.get();
-        int oldValueSchemaId = oldValueBB == null ? -1 : oldValueProvider.get().writerSchemaId();
+        ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
+        int oldValueSchemaId =
+            oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
         for (VeniceViewWriter writer: viewWriters.values()) {
           viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
@@ -539,16 +666,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
             producePutOrDeleteToKafka(
-                mergeConflictResult,
+                mergeConflictResultWrapper,
                 partitionConsumptionState,
                 keyBytes,
                 consumerRecord,
                 partition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestampNs,
-                valueManifestContainer.getManifest(),
-                rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+                beforeProcessingRecordTimestampNs);
             currentVersionTopicWrite.complete(null);
           } else {
             VeniceException veniceException = new VeniceException(exception);
@@ -562,16 +687,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // after
         // this call.
         producePutOrDeleteToKafka(
-            mergeConflictResult,
+            mergeConflictResultWrapper,
             partitionConsumptionState,
             keyBytes,
             consumerRecord,
             partition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestampNs,
-            valueManifestContainer.getManifest(),
-            rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+            beforeProcessingRecordTimestampNs);
       }
     }
   }
@@ -701,7 +824,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
    * this function.
    *
-   * @param mergeConflictResult       The result of conflict resolution.
+   * @param mergeConflictResultWrapper       The result of conflict resolution.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key                       The key bytes of the incoming record.
    * @param consumerRecord            The {@link PubSubMessage} for the current record.
@@ -709,39 +832,34 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param kafkaUrl
    */
   private void producePutOrDeleteToKafka(
-      MergeConflictResult mergeConflictResult,
+      MergeConflictResultWrapper mergeConflictResultWrapper,
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
-
-    final ByteBuffer updatedValueBytes = maybeCompressData(
-        consumerRecord.getTopicPartition().getPartitionNumber(),
-        mergeConflictResult.getNewValue(),
-        partitionConsumptionState);
-
+      long beforeProcessingRecordTimestampNs) {
+    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
+    ByteBuffer updatedValueBytes = mergeConflictResultWrapper.getUpdatedValueBytes();
+    ByteBuffer updatedRmdBytes = mergeConflictResultWrapper.getUpdatedRmdBytes();
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
-    GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-    final ByteBuffer updatedRmdBytes =
-        rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
-    // finally produce and update the transient record map.
-    if (updatedValueBytes == null) {
+    ChunkedValueManifest oldValueManifest = mergeConflictResultWrapper.getOldValueManifestContainer().getManifest();
+    ChunkedValueManifest oldRmdManifest = mergeConflictResultWrapper.getOldRmdWithValueSchemaId() == null
+        ? null
+        : mergeConflictResultWrapper.getOldRmdWithValueSchemaId().getRmdManifest();
+    // finally produce
+    if (mergeConflictResultWrapper.getUpdatedValueBytes() == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
       aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState
-          .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), key, valueSchemaId, rmdRecord);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionId;
-      deletePayload.replicationMetadataPayload = updatedRmdBytes;
+      deletePayload.replicationMetadataPayload = mergeConflictResultWrapper.getUpdatedRmdBytes();
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
-          (callback, sourceTopicOffset) -> veniceWriter.get()
+          (callback, sourceTopicOffset) -> partitionConsumptionState.getVeniceWriterLazyRef()
+              .get()
               .delete(
                   key,
                   callback,
@@ -762,17 +880,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           kafkaClusterId,
           beforeProcessingRecordTimestampNs);
     } else {
-      int valueLen = updatedValueBytes.remaining();
-      partitionConsumptionState.setTransientRecord(
-          kafkaClusterId,
-          consumerRecord.getOffset(),
-          key,
-          updatedValueBytes.array(),
-          updatedValueBytes.position(),
-          valueLen,
-          valueSchemaId,
-          rmdRecord);
-
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils
           .prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, mergeConflictResult.doesResultReuseInput());
@@ -781,6 +888,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
+          partitionConsumptionState,
           key,
           updatedValueBytes,
           updatedRmdBytes,
@@ -1431,6 +1539,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
+      PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       ByteBuffer updatedValueBytes,
       ByteBuffer updatedRmdBytes,
@@ -1448,7 +1557,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));
       }
-      getVeniceWriter().get()
+      getVeniceWriter(partitionConsumptionState).get()
           .put(
               key,
               ByteUtils.extractByteArray(updatedValueBytes),

@@ -255,4 +255,19 @@ public class AggVersionedIngestionStats
     getStats(storeName, version).registerTransformerErrorSensor();
     getTotalStats(storeName).registerTransformerErrorSensor();
   }
+
+  public void recordBatchProcessingRequest(String storeName, int version, int size, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBatchProcessingRequest(size, timestamp));
+  }
+
+  public void recordBatchProcessingRequestError(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBatchProcessingRequestError());
+  }
+
+  public void recordBatchProcessingLatency(String storeName, int version, double latency, long timestamp) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordBatchProcessingRequestLatency(latency, timestamp));
+  }
 }

@@ -198,6 +198,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setBatchGetLimit(store.getBatchGetLimit());
     setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     setIncrementalPushEnabled(store.isIncrementalPushEnabled());
+    setSeparateRealTimeTopicEnabled(store.isSeparateRealTimeTopicEnabled());
     setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     setMigrating(store.isMigrating());
     setWriteComputationEnabled(store.isWriteComputationEnabled());
@@ -225,7 +226,10 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
+    setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
+    setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
+    setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -541,6 +545,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     this.storeProperties.incrementalPushEnabled = incrementalPushEnabled;
+  }
+
+  @Override
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return this.storeProperties.separateRealTimeTopicEnabled;
+  }
+
+  @Override
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    this.storeProperties.separateRealTimeTopicEnabled = separateRealTimeTopicEnabled;
   }
 
   /**
@@ -862,6 +876,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public int getMaxNearlineRecordSizeBytes() {
+    return this.storeProperties.maxNearlineRecordSizeBytes;
+  }
+
+  @Override
+  public void setMaxNearlineRecordSizeBytes(int maxNearlineRecordSizeBytes) {
+    this.storeProperties.maxNearlineRecordSizeBytes = maxNearlineRecordSizeBytes;
+  }
+
+  @Override
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
     this.storeProperties.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled;
   }
@@ -879,6 +903,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isBlobTransferEnabled() {
     return this.storeProperties.blobTransferEnabled;
+  }
+
+  @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return this.storeProperties.nearlineProducerCompressionEnabled;
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    this.storeProperties.nearlineProducerCompressionEnabled = compressionEnabled;
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return this.storeProperties.nearlineProducerCountPerWriter;
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    this.storeProperties.nearlineProducerCountPerWriter = producerCnt;
   }
 
   /**

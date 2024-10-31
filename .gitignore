@@ -17,6 +17,7 @@ build/
 internal/venice-test-common/tmp/
 internal/venice-test-common/dump.complete.hprof
 internal/venice-test-common/src/jmh/generated
+internal/venice-test-common/file:/
 .jekyll-cache/
 _site/
 Gemfile.lock

@@ -77,6 +77,20 @@ dependencies {
   implementation project(':internal:alpini:router:alpini-router-api')
   implementation project(':internal:alpini:router:alpini-router-base')
 
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metrics-common:1.4.1:jdk8')
+
   implementation libraries.avroUtilCompatHelper
   implementation libraries.avroUtilFastserde
   implementation libraries.commonsCli
@@ -85,7 +99,6 @@ dependencies {
   implementation (libraries.hadoopCommon) {
     exclude group: 'javax.servlet'
   }
-  implementation libraries.helix
   implementation libraries.httpAsyncClient
   implementation libraries.javax
   implementation libraries.kafka
@@ -120,73 +133,104 @@ def integrationTestConfigs = {
 }
 
 def integrationTestBuckets = [
-  "A": [
+  "1000": [
       "com.linkedin.davinci.*",
-      "com.linkedin.venice.endToEnd.DaVinciClient*"],
-  "B": [
+      "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
+      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest"],
+  "1010": [
+       "com.linkedin.venice.endToEnd.DaVinciClientTest"],
+  "1020": [
       "com.linkedin.venice.endToEnd.DaVinciCluster*",
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
-  "C": [
+  "1030": [
+      "com.linkedin.venice.consumer.*"],
+  "1040": [
       "com.linkedin.venice.endToEnd.ActiveActive*"],
-  "D": [
-      "com.linkedin.venice.endToEnd.TestActiveActive*",
-      "com.linkedin.venice.endToEnd.TestChangelogConsumer",
-      "com.linkedin.venice.endToEnd.TestBootstrappingChangelogConsumer"],
-  "E": [
+  "1050": [
+      "com.linkedin.venice.endToEnd.TestActiveActive*"],
+  "1060": [
       "com.linkedin.venice.helix.*",
       "com.linkedin.venice.helixrebalance.*"],
-  "F": [
+  "1070": [
       "com.linkedin.venice.fastclient.*"],
-  "G": [
+  "1080": [
       "com.linkedin.venice.endToEnd.TestEmptyPush",
-      "com.linkedin.venice.router.*",
       "com.linkedin.venice.ingestionHeartbeat.*"],
-  "H": [
-      "com.linkedin.venice.server.*",
-      "com.linkedin.venice.storagenode.*",
+  "1090": [
+      "com.linkedin.venice.router.*"
+        ],
+  "1100": [
+      "com.linkedin.venice.server.*"],
+  "1110": [
       "com.linkedin.venice.restart.*"],
-  "I": [
+  "1120": [
+      "com.linkedin.venice.storagenode.*"],
+  "1130": [
       "com.linkedin.venice.endToEnd.TestStoreMigration",
       "com.linkedin.venice.endToEnd.TestStuckConsumerRepair",
       "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
       "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience",
-      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"
-  ],
-  "J": [
-      "com.linkedin.venice.hadoop.*",
+      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"],
+  "1200":[
       "com.linkedin.venice.endToEnd.TestVson*",
       "com.linkedin.venice.endToEnd.Push*"],
-  "K": [
+  "1210": [
+      "com.linkedin.venice.hadoop.*"],
+  "1220": [
       "com.linkedin.venice.endToEnd.TestPushJob*"],
-  "L": [
+  "1230": [
       "com.linkedin.venice.endToEnd.TestBatch*"],
-  "M": [
+  "1240": [
       "com.linkedin.venice.kafka.*",
       "com.linkedin.venice.samza.*",
-      "com.linkedin.venice.writer.*",
-      "com.linkedin.venice.endToEnd.PartialUpdateTest",
+      "com.linkedin.venice.writer.*"],
+  "1250": [
+      "com.linkedin.venice.endToEnd.PartialUpdateTest"],
+  "1260": [
+      "com.linkedin.venice.endToEnd.PartialUpdateWithParallelProcessingTest"],
+  "1270": [
       "com.linkedin.venice.endToEnd.TestWritePathComputation",
-      "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest"],
-  "N": [
+      "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest",
       "com.linkedin.venice.endToEnd.StoragePersona*",
       "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
-      "com.linkedin.venice.persona.*",
+      "com.linkedin.venice.persona.*"],
+  "1280": [
       "com.linkedin.venice.pubsub.*"],
-  "O": [
+  "1400": [
       "com.linkedin.venice.endToEnd.TestHybrid*"],
-  "P": [
+  "1410": [
       "com.linkedin.venice.controller.server.*",
       "com.linkedin.venice.controller.kafka.consumer.*",
-      "com.linkedin.venice.controller.migration.*",
+      "com.linkedin.venice.controller.migration.*"],
+  "1420": [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
-  "Q": [
-      "com.linkedin.venice.controller.Test*"]
+  "1430": [
+      "com.linkedin.venice.controller.Test*"],
+  "1440": [
+      "com.linkedin.venice.endToEnd.DataRecoveryTest",
+      "com.linkedin.venice.controllerapi.TestControllerClient"],
+  "1500":[
+      "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
+      "com.linkedin.venice.endToEnd.MetaSystemStoreTest",
+      "com.linkedin.venice.zk.TestMigrateVeniceZKPaths",
+      "com.linkedin.venice.throttle.TestRouterReadQuotaThrottler"],
+  "1550": [
+        "com.linkedin.venice.stats.TestZkClientStatusStats",
+        "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
+        "com.linkedin.venice.integration.utils.SystemExitPrevention",
+        "com.linkedin.venice.integration.StorageNodeServiceTest",
+        "com.linkedin.venice.endToEnd.TestStoreGraveyardCleanupService",
+        "com.linkedin.venice.endToEnd.TestStoreBackupVersionDeletion",
+        "com.linkedin.venice.endToEnd.TestStaleDataVisibility"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
-  task "integrationTest${name}" (type: Test) {
+  task "integrationTests_${name}" (type: Test) {
+    ext {
+      suiteStartTime = 0
+    }
     filter {
       patterns.each { pattern ->
         includeTestsMatching pattern
@@ -197,10 +241,21 @@ integrationTestBuckets.each { name, patterns ->
       excludeGroups 'flaky'
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
     }
+    beforeSuite { descriptor ->
+      suiteStartTime = System.currentTimeMillis()
+    }
+    afterSuite { descriptor, result ->
+      if (descriptor.name.startsWith("com.linkedin")) {
+        println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+      }
+    }
   }
 }
 
-task integrationTestZ(type: Test) {
+task integrationTests_9999(type: Test) {
+  ext {
+    suiteStartTime = 0
+  }
   filter {
     integrationTestBuckets.each { name, patterns ->
       patterns.each { pattern ->
@@ -208,11 +263,18 @@ task integrationTestZ(type: Test) {
       }
     }
   }
-
+  beforeSuite { descriptor ->
+    suiteStartTime = System.currentTimeMillis()
+  }
   configure integrationTestConfigs
   useTestNG {
     excludeGroups 'flaky'
     listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
+  }
+  afterSuite { descriptor, result ->
+    if (descriptor.name.startsWith("com.linkedin")) {
+      println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+    }
   }
 }
 
@@ -240,14 +302,14 @@ task generateGHCI() {
 
   def common = "--continue --no-daemon "
 
-  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
+  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTests_"
   integrationTestBuckets.each { name, patterns ->
-    def flowName = "IntegrationTests" + name
+    def flowName = "IntegrationTests_" + name
     jobs << flowName
     appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
   }
-  def otherTest = "IntegrationTestsZ"
-  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
+  def otherTest = "IntegrationTests_9999"
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "9999")
   jobs << otherTest
 
   // define a job that depends others to manage the status check

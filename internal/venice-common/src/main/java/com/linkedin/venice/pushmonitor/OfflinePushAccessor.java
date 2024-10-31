@@ -69,6 +69,14 @@ public interface OfflinePushAccessor {
       ExecutionStatus status,
       String message);
 
+  default void batchUpdateReplicaIncPushStatus(
+      String kafkaTopic,
+      int partitionId,
+      String instanceId,
+      long progress,
+      List<String> pendingReportIncPushVersionList) {
+  }
+
   /**
    * Subscribe the data change of partition status.
    */

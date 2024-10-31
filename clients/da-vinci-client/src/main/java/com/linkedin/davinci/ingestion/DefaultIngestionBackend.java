@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -7,7 +8,6 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -16,11 +16,9 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -80,12 +78,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     };
-
-    // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
-    // though
-    // Only DVC would create blobTransferManager.
-    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || storeAndVersion.getFirst().isHybrid()
-        || blobTransferManager == null) {
+    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
       CompletionStage<Void> bootstrapFuture =
@@ -103,42 +96,31 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
   CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
-    // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
-    // though
-    // Only DVC would create blobTransferManager.
-    if (!store.isBlobTransferEnabled() || store.isHybrid() || blobTransferManager == null) {
+    if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
 
     String storeName = store.getName();
     String baseDir = serverConfig.getRocksDBPath();
     try {
-      CompletableFuture<InputStream> p2pFuture =
-          blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
-      LOGGER.info(
-          "Bootstrapping from blobs for store {}, version {}, partition {}",
+      blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
+    } catch (VenicePeersNotFoundException e) {
+      LOGGER.warn(
+          "No valid peers founds for store {}, version {}, partition {}, giving up the blob transfer bootstrap",
           storeName,
           versionNumber,
           partitionId);
-      return CompletableFuture.runAsync(() -> {
-        try {
-          p2pFuture.get(30, TimeUnit.MINUTES);
-        } catch (Exception e) {
-          LOGGER.warn(
-              "Failed bootstrapping from blobs for store {}, version {}, partition {}",
-              storeName,
-              versionNumber,
-              partitionId,
-              e);
-          RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
-          p2pFuture.cancel(true);
-          // TODO: close channels
-        }
-      });
-    } catch (VenicePeersNotFoundException e) {
-      LOGGER.warn("No peers founds for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
-      return CompletableFuture.completedFuture(null);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed bootstrapping from blobs for store {}, version {}, partition {} with exception, "
+              + "giving up the blob transfer bootstrap.",
+          storeName,
+          versionNumber,
+          partitionId,
+          e);
+      RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
     }
+    return CompletableFuture.completedFuture(null);
   }
 
   @Override
@@ -189,6 +171,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
     } else {
       topicStorageEngineReferenceMap.put(topicName, storageEngineReference);
     }
+  }
+
+  @Override
+  public boolean hasCurrentVersionBootstrapping() {
+    return getStoreIngestionService().hasCurrentVersionBootstrapping();
   }
 
   @Override
