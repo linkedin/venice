@@ -19,6 +19,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +75,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -129,6 +131,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -184,6 +187,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -239,6 +243,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -294,6 +299,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -349,6 +355,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -404,6 +411,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -459,6 +467,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -514,6 +523,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -569,6 +579,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -624,6 +635,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -679,6 +691,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -734,6 +747,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -789,6 +803,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -844,6 +859,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -899,6 +915,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -954,6 +971,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1009,6 +1027,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1064,6 +1083,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1119,6 +1139,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1174,6 +1195,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1229,6 +1251,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1284,6 +1307,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1339,6 +1363,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1394,6 +1419,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1449,6 +1475,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1504,6 +1531,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1559,6 +1587,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1614,6 +1643,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1669,6 +1699,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1724,8 +1755,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
+    permissions: write-all
     needs: [IntegrationTests_1000, IntegrationTests_1010, IntegrationTests_1020, IntegrationTests_1030, IntegrationTests_1040, IntegrationTests_1050, IntegrationTests_1060, IntegrationTests_1070, IntegrationTests_1080, IntegrationTests_1090, IntegrationTests_1100, IntegrationTests_1110, IntegrationTests_1120, IntegrationTests_1130, IntegrationTests_1200, IntegrationTests_1210, IntegrationTests_1220, IntegrationTests_1230, IntegrationTests_1240, IntegrationTests_1250, IntegrationTests_1260, IntegrationTests_1270, IntegrationTests_1280, IntegrationTests_1400, IntegrationTests_1410, IntegrationTests_1420, IntegrationTests_1430, IntegrationTests_1440, IntegrationTests_1500, IntegrationTests_1550, IntegrationTests_9999]
     timeout-minutes: 20
     steps:

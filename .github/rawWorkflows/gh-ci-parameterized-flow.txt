@@ -4,6 +4,7 @@
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions: write-all
     needs: $Dependency
     if: $Conditional
     timeout-minutes: $TimeOut
