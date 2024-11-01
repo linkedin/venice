@@ -5,9 +5,9 @@
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
-     contents: read
-     checks: write
+     contents: write
+     pull-requests: write
+     repository-projects: write
     needs: $Dependency
     if: $Conditional
     timeout-minutes: $TimeOut
