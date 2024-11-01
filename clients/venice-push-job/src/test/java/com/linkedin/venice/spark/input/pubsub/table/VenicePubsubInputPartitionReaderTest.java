@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.spark.sql.catalyst.InternalRow;
-import org.testng.annotations.BeforeTest;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -36,7 +36,7 @@ public class VenicePubsubInputPartitionReaderTest {
   private VenicePubsubInputPartitionReader reader;
   private VenicePubsubInputPartition inputPartition;
 
-  @BeforeTest
+  @BeforeMethod
   public void setUp() {
     Properties jobConfig = new Properties();
     int startingOffset = 0; // starting offset other than 0 needs mocking of subscription ...
@@ -51,14 +51,14 @@ public class VenicePubsubInputPartitionReaderTest {
 
     PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
 
-    long numRecords = endingOffset - startingOffset;
+    long numRecords = endingOffset - startingOffset + 1;
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordList = new ArrayList<>();
 
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), targetPartitionNumber);
 
     // fill the topic message array
-    for (int i = startingOffset; i < numRecords; ++i) {
+    for (int i = startingOffset; i <= numRecords; ++i) {
       byte[] keyBytes = (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes();
       byte[] valueBytes = (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes();
 
@@ -93,12 +93,12 @@ public class VenicePubsubInputPartitionReaderTest {
 
   @Test
   public void testNext() {
-    assertTrue(reader.next());
-    for (int i = 0; i < 99; i++) {
+    System.out.println();
+    assertTrue(reader.next()); // first record 0
+    for (int i = 0; i < 98; i++) { // 99 more records
       reader.get();
       assertTrue(reader.next());
     }
-    reader.get();
     assertFalse(reader.next());
     reader.close();
   }

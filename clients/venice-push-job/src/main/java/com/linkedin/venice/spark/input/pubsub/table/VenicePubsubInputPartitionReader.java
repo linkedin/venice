@@ -64,7 +64,6 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   private Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerBuffer =
       new HashMap<>();
   // the buffer that holds the relevant messages for the current partition
-  private List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessagesBuffer = new ArrayList<>();
 
   public VenicePubsubInputPartitionReader(VeniceProperties jobConfig, VenicePubsubInputPartition inputPartition) {
     this(
@@ -119,7 +118,8 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   }
 
   private void initialize() {
-    next(); // get the first record ready to go.
+    next();// get the first record ready to go.
+    recordsServed = 0; // reset the counter
   }
 
   // if it returns a row, it's going to be key and value and offset in the row in that order
@@ -132,7 +132,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   @Override
   public boolean next() {
     // Are we past the finish line ?
-    if (currentOffset > endingOffset) {
+    if (currentOffset >= endingOffset) {
       return false;
     }
 
@@ -158,10 +158,13 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
 
   // borrowing Gaojie's code for dealing with empty polls.
   private void loadRecords() {
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessagesBuffer = new ArrayList<>();
+
     int retry = 0;
     while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
       consumerBuffer = pubSubConsumer.poll(CONSUMER_POLL_TIMEOUT);
-      partitionMessagesBuffer = consumerBuffer.get(targetPubSubTopicPartition);
+
+      partitionMessagesBuffer.addAll(consumerBuffer.get(targetPubSubTopicPartition));
       if (!partitionMessagesBuffer.isEmpty()) {
         // we got some records back for the desired partition.
         break;
@@ -185,6 +188,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
       throw new RuntimeException("Empty poll after " + retry + " retries");
     }
     messageBuffer.addAll(partitionMessagesBuffer);
+
   }
 
   private InternalRow processPubSubMessageToRow(
