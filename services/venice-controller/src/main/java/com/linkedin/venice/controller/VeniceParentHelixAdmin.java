@@ -4831,9 +4831,9 @@ public class VeniceParentHelixAdmin implements Admin {
     return compactionReadyStores;
   }
 
-  private void filterStoresForCompaction(
-      ArrayList<StoreInfo> storeInfoList,
-      ArrayList<StoreInfo> compactionReadyStores) {
+  // TODO: make this private
+  // package exclusive for testing
+  void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
         compactionReadyStores.add(storeInfo);
@@ -4871,7 +4871,7 @@ public class VeniceParentHelixAdmin implements Admin {
     long lastCompactionTime = currentVersion.get().getCreatedTime();
     long currentTime = System.currentTimeMillis();
     long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-    long hoursSinceLastCompaction = TimeUnit.MICROSECONDS.toHours(millisecondsSinceLastCompaction);
+    long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
 
     return hoursSinceLastCompaction > compactionThresholdHours;
   }
