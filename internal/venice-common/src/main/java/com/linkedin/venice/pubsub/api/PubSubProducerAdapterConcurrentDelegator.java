@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ProtocolUtils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
@@ -23,8 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.openjdk.jol.info.GraphLayout;
-import org.openjdk.jol.vm.VM;
 
 
 /**
@@ -121,6 +120,9 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
   }
 
   public static class ProducerQueueNode implements Measurable {
+    // Rough estimation.
+    private static final int PRODUCER_QUEUE_NODE_OVERHEAD = 256;
+
     private final String topic;
     private final int partition;
     private final KafkaKey key;
@@ -146,19 +148,11 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
       this.produceFuture = produceFuture;
     }
 
-    /**
-     * When calculating the object size, we need to be very cautious about the deep size as if the object
-     * is referencing to some large objects, the deep size will be huge and the referenced objects might be
-     * counted multiple times unexpectedly.
-     * For example {@link #callback} can reference some big objects and if we calculate the deep size
-     * of {@link ProducerQueueNode}, the size will be unexpected.
-     */
     @Override
-    public long getSize() {
-      return GraphLayout.parseInstance(topic).totalSize() // Deep object size
-          + GraphLayout.parseInstance(partition).totalSize() + GraphLayout.parseInstance(key).totalSize()
-          + GraphLayout.parseInstance(value).totalSize() + GraphLayout.parseInstance(headers).totalSize()
-          + VM.current().sizeOf(this); // Shallow object size
+    public int getSize() {
+      return topic.length() + 4 + key.getEstimatedObjectSizeOnHeap()
+          + ProtocolUtils.getEstimateOfMessageEnvelopeSizeOnHeap(value) + headers.getSize()
+          + PRODUCER_QUEUE_NODE_OVERHEAD;
     }
   }
 

@@ -77,4 +77,10 @@ public class KafkaKey {
     return getClass().getSimpleName() + "(" + (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE") + ", "
         + ByteUtils.toHexString(key) + ")";
   }
+
+  public int getEstimatedObjectSizeOnHeap() {
+    // This constant is the estimated size of the enclosing object + the byte[]'s overhead.
+    // TODO: Find a library that would allow us to precisely measure this and store it in a static constant.
+    return getKeyLength() + 36;
+  }
 }

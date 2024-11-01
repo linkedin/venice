@@ -4,29 +4,26 @@ import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.openjdk.jol.info.GraphLayout;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MemoryBoundBlockingQueueTest {
   private static class MeasurableObject implements Measurable {
-    @Override
-    public long getSize() {
-      return GraphLayout.parseInstance(this).totalSize();
-    }
+    public static final int SIZE = 10;
 
-    public static long getObjectSize() {
-      return new MeasurableObject().getSize();
+    @Override
+    public int getSize() {
+      return SIZE;
     }
   }
 
   @Test
   public void testPut() throws InterruptedException {
-    long memoryCap = 5000;
+    int memoryCap = 5000;
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, 1000);
-    long objectCntAtMost =
-        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.getObjectSize());
+    int objectCntAtMost =
+        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE);
     Thread t = new Thread(() -> {
       while (true) {
         try {
@@ -48,10 +45,10 @@ public class MemoryBoundBlockingQueueTest {
 
   @Test
   public void testTake() throws InterruptedException {
-    long memoryCap = 5000;
+    int memoryCap = 5000;
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, 1000);
-    long objectCntAtMost =
-        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.getObjectSize());
+    int objectCntAtMost =
+        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE);
     for (int i = 0; i < objectCntAtMost; ++i) {
       queue.put(new MeasurableObject());
     }
@@ -80,11 +77,11 @@ public class MemoryBoundBlockingQueueTest {
 
   @Test
   public void testThrottling() throws InterruptedException {
-    long memoryCap = 5000;
+    int memoryCap = 5000;
     int notifyDelta = 1000;
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, notifyDelta);
-    long objectCntAtMost =
-        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.getObjectSize());
+    int objectCntAtMost =
+        memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE);
     Thread t = new Thread(() -> {
       while (true) {
         try {
@@ -105,8 +102,7 @@ public class MemoryBoundBlockingQueueTest {
       int previousQueueSize = queue.size();
       // Here we need to take out some objects to allow more put
       double objectCntTakenAtLeast = Math.ceil(
-          (double) notifyDelta
-              / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.getObjectSize()));
+          (double) notifyDelta / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.SIZE));
       for (int i = 1; i < objectCntTakenAtLeast; ++i) {
         queue.take();
         Assert.assertEquals(queue.size(), previousQueueSize - 1);
