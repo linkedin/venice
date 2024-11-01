@@ -2892,9 +2892,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     mockAdmin.filterStoresForCompaction(storeInfoList, compactionReadyStores);
 
     // Assert the expected outcome
-    assertEquals(2, compactionReadyStores.size());
-    assertEquals(true, compactionReadyStores.contains(store1));
-    assertEquals(true, compactionReadyStores.contains(store2));
-    assertEquals(false, compactionReadyStores.contains(store3));
+    assertEquals(compactionReadyStores.size(), 2);
+    assertEquals(compactionReadyStores.contains(store1), true);
+    assertEquals(compactionReadyStores.contains(store2), true);
+    assertEquals(compactionReadyStores.contains(store3), false);
   }
 }
