@@ -641,7 +641,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
       // Write to views
-      if (this.viewWriters.size() > 0) {
+      if (!this.viewWriters.isEmpty()) {
         /**
          * The ordering guarantees we want is the following:
          *
@@ -650,24 +650,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
          *    producer (but not necessarily acked).
          */
         long preprocessingTime = System.currentTimeMillis();
-        CompletableFuture currentVersionTopicWrite = new CompletableFuture();
-        CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
-        int index = 0;
-        // The first future is for the previous write to VT
-        viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
-        ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
-        int oldValueSchemaId =
-            oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
-        for (VeniceViewWriter writer: viewWriters.values()) {
-          viewWriterFutures[index++] = writer.processRecord(
-              mergeConflictResult.getNewValue(),
-              oldValueBB,
-              keyBytes,
-              versionNumber,
-              mergeConflictResult.getValueSchemaId(),
-              oldValueSchemaId,
-              mergeConflictResult.getRmdRecord());
-        }
+        CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
+        CompletableFuture[] viewWriterFutures =
+            processViewWriters(partitionConsumptionState, keyBytes, mergeConflictResultWrapper, null);
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
           hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
@@ -1439,6 +1424,33 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
     }
     return false;
+  }
+
+  @Override
+  protected CompletableFuture[] processViewWriters(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      MergeConflictResultWrapper mergeConflictResultWrapper,
+      WriteComputeResultWrapper writeComputeResultWrapper) {
+    CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
+    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
+    int index = 0;
+    // The first future is for the previous write to VT
+    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+    ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
+    int oldValueSchemaId =
+        oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
+    for (VeniceViewWriter writer: viewWriters.values()) {
+      viewWriterFutures[index++] = writer.processRecord(
+          mergeConflictResult.getNewValue(),
+          oldValueBB,
+          keyBytes,
+          versionNumber,
+          mergeConflictResult.getValueSchemaId(),
+          oldValueSchemaId,
+          mergeConflictResult.getRmdRecord());
+    }
+    return viewWriterFutures;
   }
 
   Runnable buildRepairTask(

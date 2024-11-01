@@ -70,7 +70,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameterKeys;
+import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -1999,7 +1999,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String viewString = String.format(
         rePartitionViewConfigString,
         MaterializedView.class.getCanonicalName(),
-        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
         rePartitionViewPartitionCount);
 
     // Invalid re-partition view name
@@ -2016,13 +2016,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
     Map<String, CharSequence> rePartitionViewParameters =
         updateStore.getViews().get(rePartitionViewName).viewParameters;
-    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameters.MATERIALIZED_VIEW_NAME.name()));
     Assert.assertEquals(
-        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewParameters.get(ViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
         rePartitionViewName);
     Assert.assertEquals(
         Integer.parseInt(
-            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+            rePartitionViewParameters.get(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
         rePartitionViewPartitionCount);
   }
 
@@ -2057,9 +2057,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String rePartitionViewName = "rePartitionViewA";
     int rePartitionViewPartitionCount = 10;
     Map<String, String> viewClassParams = new HashMap<>();
-    viewClassParams.put(
-        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
-        Integer.toString(rePartitionViewPartitionCount));
+    viewClassParams
+        .put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(rePartitionViewPartitionCount));
 
     // Invalid re-partition view name
     Assert.assertThrows(
@@ -2083,13 +2082,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
     Map<String, CharSequence> rePartitionViewParameters =
         updateStore.getViews().get(rePartitionViewName).viewParameters;
-    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameters.MATERIALIZED_VIEW_NAME.name()));
     Assert.assertEquals(
-        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewParameters.get(ViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
         rePartitionViewName);
     Assert.assertEquals(
         Integer.parseInt(
-            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+            rePartitionViewParameters.get(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
         rePartitionViewPartitionCount);
   }
 

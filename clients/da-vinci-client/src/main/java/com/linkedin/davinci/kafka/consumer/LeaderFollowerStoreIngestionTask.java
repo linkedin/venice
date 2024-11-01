@@ -9,6 +9,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
@@ -30,6 +31,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
+import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -55,6 +57,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -197,6 +200,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasChangeCaptureView;
+  protected final boolean hasMaterializedView;
+  protected final boolean hasVersionCompleted;
 
   protected final AvroStoreDeserializerCache storeDeserializerCache;
 
@@ -329,17 +334,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               version.getNumber(),
               schemaRepository.getKeySchema(store.getName()).getSchema());
       boolean tmpValueForHasChangeCaptureViewWriter = false;
+      boolean tmpValueForHasMaterializedViewWriter = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
+        } else if (viewWriter.getValue() instanceof MaterializedViewWriter) {
+          tmpValueForHasMaterializedViewWriter = true;
+        }
+        if (tmpValueForHasChangeCaptureViewWriter && tmpValueForHasMaterializedViewWriter) {
           break;
         }
       }
       hasChangeCaptureView = tmpValueForHasChangeCaptureViewWriter;
+      hasMaterializedView = tmpValueForHasMaterializedViewWriter;
     } else {
       viewWriters = Collections.emptyMap();
       hasChangeCaptureView = false;
+      hasMaterializedView = false;
     }
+    hasVersionCompleted = version.getStatus().equals(VersionStatus.ONLINE);
     this.storeDeserializerCache = new AvroStoreDeserializerCache(
         builder.getSchemaRepo(),
         getStoreName(),
@@ -2402,7 +2415,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
       // UPDATE message is only expected in LEADER which must be produced to kafka.
       MessageType msgType = MessageType.valueOf(kafkaValue);
-      if (msgType == MessageType.UPDATE && !produceToLocalKafka) {
+      if (msgType == UPDATE && !produceToLocalKafka) {
         throw new VeniceMessageException(
             ingestionTaskName + " hasProducedToKafka: Received UPDATE message in non-leader for: "
                 + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
@@ -2435,6 +2448,39 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Just to be extra safe
           partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
+        }
+        /**
+         * For materialized view we still need to produce to the view topic when we are consuming batch data from the
+         * local VT for the very first time for a new version. Once the version has completed any new SIT will have its
+         * {@link hasVersionCompleted} set to true to prevent duplicate processing of batch records by the view writers.
+         * Duplicate processing is still possible in the case when leader replica crashes before the version becomes
+         * ONLINE, but it should be harmless since eventually it will be correct.
+         * TODO We need to introduce additional checkpointing and rewind for L/F transition during batch processing to
+         * prevent data loss in the view topic for the following scenario:
+         *   1. VT contains 100 batch records between SOP and EOP
+         *   2. Initial leader consumed to 50th record while followers consumed to 80th
+         *   3. Initial leader crashes and one of the followers becomes the new leader and start processing and writing
+         *      to view topic from 80th record until ingestion is completed and version becomes ONLINE.
+         *   4. View topic will have a gap for batch data between 50th record and 80th record.
+         */
+        if (hasMaterializedView && shouldViewWritersProcessBatchRecords(partitionConsumptionState)
+            && msgType == MessageType.PUT) {
+          WriteComputeResultWrapper writeComputeResultWrapper =
+              new WriteComputeResultWrapper((Put) kafkaValue.payloadUnion, null, false);
+          long preprocessingTime = System.currentTimeMillis();
+          CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
+          CompletableFuture[] viewWriterFutures =
+              processViewWriters(partitionConsumptionState, kafkaKey.getKey(), null, writeComputeResultWrapper);
+          CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+            hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+            if (exception == null) {
+              currentVersionTopicWrite.complete(null);
+            } else {
+              VeniceException veniceException = new VeniceException(exception);
+              this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+              currentVersionTopicWrite.completeExceptionally(veniceException);
+            }
+          });
         }
         return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
       }
@@ -3334,9 +3380,60 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           beforeProcessingRecordTimestampNs,
           beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
+    if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
+      return;
+    }
+    // Write to views
+    if (viewWriters != null && !viewWriters.isEmpty()) {
+      long preprocessingTime = System.currentTimeMillis();
+      CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
+      CompletableFuture[] viewWriterFutures =
+          processViewWriters(partitionConsumptionState, keyBytes, null, writeComputeResultWrapper);
+      CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+        hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+        if (exception == null) {
+          produceToLocalKafkaHelper(
+              consumerRecord,
+              partitionConsumptionState,
+              writeComputeResultWrapper,
+              partition,
+              kafkaUrl,
+              kafkaClusterId,
+              beforeProcessingRecordTimestampNs);
+          currentVersionTopicWrite.complete(null);
+        } else {
+          VeniceException veniceException = new VeniceException(exception);
+          this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+          currentVersionTopicWrite.completeExceptionally(veniceException);
+        }
+      });
+      partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+    } else {
+      produceToLocalKafkaHelper(
+          consumerRecord,
+          partitionConsumptionState,
+          writeComputeResultWrapper,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+    }
+  }
 
-    Put newPut = writeComputeResultWrapper.getNewPut();
+  private void produceToLocalKafkaHelper(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      WriteComputeResultWrapper writeComputeResultWrapper,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
     LeaderProducedRecordContext leaderProducedRecordContext;
+    Put newPut = writeComputeResultWrapper.getNewPut();
     switch (msgType) {
       case PUT:
         leaderProducedRecordContext =
@@ -3390,10 +3487,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         break;
 
       case UPDATE:
-        if (writeComputeResultWrapper.isSkipProduce()) {
-          return;
-        }
-
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, newPut);
         BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
@@ -3610,15 +3703,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processVersionSwapMessage(
+  protected void processControlMessageForViews(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       PartitionConsumptionState partitionConsumptionState) {
 
     // Iterate through list of views for the store and process the control message.
     for (VeniceViewWriter viewWriter: viewWriters.values()) {
-      // TODO: at some point, we should do this on more or all control messages potentially as we add more view types
-      viewWriter.processControlMessage(controlMessage, partition, partitionConsumptionState, this.versionNumber);
+      viewWriter.processControlMessage(
+          kafkaKey,
+          kafkaMessageEnvelope,
+          controlMessage,
+          partition,
+          partitionConsumptionState,
+          this.versionNumber);
     }
   }
 
@@ -3877,6 +3977,33 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getReplicaId(),
           leaderStartOffset);
     }
+  }
+
+  protected CompletableFuture[] processViewWriters(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      MergeConflictResultWrapper mergeConflictResultWrapper,
+      WriteComputeResultWrapper writeComputeResultWrapper) {
+    CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
+    int index = 0;
+    // The first future is for the previous write to VT
+    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+    for (VeniceViewWriter writer: viewWriters.values()) {
+      viewWriterFutures[index++] = writer.processRecord(
+          writeComputeResultWrapper.getNewPut().putValue,
+          keyBytes,
+          versionNumber,
+          writeComputeResultWrapper.getNewPut().schemaId);
+    }
+    return viewWriterFutures;
+  }
+
+  private boolean shouldViewWritersProcessBatchRecords(PartitionConsumptionState partitionConsumptionState) {
+    if (hasVersionCompleted) {
+      return false;
+    }
+    return Objects.equals(partitionConsumptionState.getLeaderFollowerState(), LEADER)
+        || Objects.equals(partitionConsumptionState.getLeaderFollowerState(), IN_TRANSITION_FROM_STANDBY_TO_LEADER);
   }
 
   /**

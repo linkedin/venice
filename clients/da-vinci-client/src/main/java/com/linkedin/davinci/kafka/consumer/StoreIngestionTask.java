@@ -3073,10 +3073,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   *  This isn't really used for ingestion outside of A/A, so we NoOp here and rely on the actual implementation in
-   *  {@link ActiveActiveStoreIngestionTask}
+   *  This isn't used for ingestion outside L/F, so we NoOp here and rely on the actual implementation in
+   *  {@link LeaderFollowerStoreIngestionTask}
    */
-  protected void processVersionSwapMessage(
+  protected void processControlMessageForViews(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       PartitionConsumptionState partitionConsumptionState) {
@@ -3098,6 +3100,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * offset is stale and is not updated until the very end
    */
   private boolean processControlMessage(
+      KafkaKey kafkaKey,
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
@@ -3131,6 +3134,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
+      case VERSION_SWAP:
         /**
          * Nothing to do here as all the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
          */
@@ -3152,13 +3156,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         checkReadyToServeAfterProcess =
             processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
-      case VERSION_SWAP:
-        processVersionSwapMessage(controlMessage, partition, partitionConsumptionState);
-        break;
       default:
         throw new UnsupportedMessageTypeException(
             "Unrecognized Control message type " + controlMessage.controlMessageType);
     }
+    processControlMessageForViews(kafkaKey, kafkaMessageEnvelope, controlMessage, partition, partitionConsumptionState);
     return checkReadyToServeAfterProcess;
   }
 
@@ -3276,6 +3278,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ? (ControlMessage) kafkaValue.payloadUnion
             : (ControlMessage) leaderProducedRecordContext.getValueUnion());
         checkReadyToServeAfterProcess = processControlMessage(
+            kafkaKey,
             kafkaValue,
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
