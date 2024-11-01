@@ -4831,7 +4831,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return compactionReadyStores;
   }
 
-  // TODO: make this private
   // package exclusive for testing
   void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
     for (StoreInfo storeInfo: storeInfoList) {
