@@ -94,8 +94,6 @@ public class VeniceClusterConfig {
   private final Map<String, SecurityProtocol> kafkaBootstrapUrlToSecurityProtocol;
   private final Optional<SSLConfig> sslConfig;
 
-  private static final String SEPARATE_TOPIC_SUFFIX = "_sep";
-
   public VeniceClusterConfig(VeniceProperties clusterProps, Map<String, Map<String, String>> kafkaClusterMap)
       throws ConfigurationException {
     this.clusterName = clusterProps.getString(CLUSTER_NAME);

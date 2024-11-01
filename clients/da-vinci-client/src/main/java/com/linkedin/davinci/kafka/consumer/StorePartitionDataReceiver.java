@@ -137,7 +137,7 @@ public class StorePartitionDataReceiver
   }
 
   // for testing purpose only
-  public int getKafkaClusterId() {
+  int getKafkaClusterId() {
     return this.kafkaClusterId;
   }
 }
