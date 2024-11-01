@@ -127,8 +127,10 @@ public abstract class ConsumerIntegrationTest {
     topicName = Utils.getRealTimeTopicName(
         cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), store));
     controllerClient.emptyPush(store, "test_push", 1);
+    TestUtils.assertCommand(controllerClient.emptyPush(this.store, "test_push", 1), "empty push failed");
+
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-      StoreResponse freshStoreResponse = controllerClient.getStore(store);
+      StoreResponse freshStoreResponse = controllerClient.getStore(this.store);
       Assert.assertFalse(freshStoreResponse.isError());
       Assert.assertEquals(
           freshStoreResponse.getStore().getCurrentVersion(),
