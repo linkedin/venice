@@ -209,7 +209,7 @@ public class TestSeparateRealtimeTopicIngestion {
         // total key count.
         Assert.assertTrue(offsetVector.get(3) >= 100);
       });
-      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName));
+      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName));
       PubSubTopic separateRealtimeTopic =
           PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName));
       PubSubTopic versionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));

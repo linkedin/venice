@@ -1710,14 +1710,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getRealTimeTopic(String, String)
-   */
-  @Override
-  public String getRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, storeName);
-  }
-
-  /**
    * @see VeniceHelixAdmin#getRealTimeTopic(String, Store)
    */
   @Override
@@ -1753,7 +1745,7 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);
     }
 
-    String incrementalPushTopic = Version.composeRealTimeTopic(storeName);
+    String incrementalPushTopic = Utils.composeRealTimeTopic(storeName);
     if (status.isError() || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
       throw new VeniceException(
           "Cannot start incremental push since previous batch push has failed. Please run another bash job."

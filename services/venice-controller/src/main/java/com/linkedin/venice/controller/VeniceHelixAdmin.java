@@ -863,7 +863,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()) {
       participantMessageStoreRTTMap.put(
           clusterName,
-          Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
+          Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
     }
     waitUntilClusterResourceIsVisibleInEV(clusterName);
   }
@@ -1087,7 +1087,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isMigrating()) {
           // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
           // have different partition count
-          PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+          PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
           truncateKafkaTopic(rtTopic.getName());
           if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
             throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
@@ -1294,8 +1294,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
     if (pushJobDetailsRTTopic == null) {
       // Verify the RT topic exists and give some time in case it's getting created.
-      PubSubTopic expectedRTTopic =
-          pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(pushJobDetailsStoreName));
+      PubSubTopic expectedRTTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(pushJobDetailsStoreName));
       for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt++) {
         if (attempt > 0)
           Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
@@ -2752,7 +2751,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
                   || store.isIncrementalPushEnabled())) {
                 // Create rt topic in parent colo if the store is aggregate mode hybrid store
-                PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+                PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
                 if (!getTopicManager().containsTopic(realTimeTopic)) {
                   getTopicManager().createTopic(
                       realTimeTopic,
@@ -3131,21 +3130,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Get the real time topic name for a given store. If the topic is not created in Kafka, it creates the
    * real time topic and returns the topic name.
    * @param clusterName name of the Venice cluster.
-   * @param storeName name of the store.
-   * @return name of the store's real time topic name.
-   */
-  @Override
-  public String getRealTimeTopic(String clusterName, String storeName) {
-    checkControllerLeadershipFor(clusterName);
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-    ensureRealTimeTopicIsReady(clusterName, realTimeTopic);
-    return realTimeTopic.getName();
-  }
-
-  /**
-   * Get the real time topic name for a given store. If the topic is not created in Kafka, it creates the
-   * real time topic and returns the topic name.
-   * @param clusterName name of the Venice cluster.
    * @param store store.
    * @return name of the store's real time topic name.
    */
@@ -3271,7 +3255,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + version.getNumber() + " Store:" + storeName);
       }
 
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
       if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic) || isTopicTruncated(rtTopic.getName())) {
         resources.getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
         throw new VeniceException(
@@ -3529,7 +3513,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
         }
       }
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
       if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
         safeDeleteRTTopic(clusterName, storeName);
       }
@@ -3549,7 +3533,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void safeDeleteRTTopic(String clusterName, String storeName) {
     boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, storeName);
     if (rtDeletionPermitted) {
-      String rtTopicToDelete = Version.composeRealTimeTopic(storeName);
+      String rtTopicToDelete = Utils.composeRealTimeTopic(storeName);
       deleteRTTopicFromAllFabrics(rtTopicToDelete, clusterName);
       // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
       // delete it.
@@ -3565,7 +3549,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // to see if any version is still using RT before deleting the RT.
     // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
-    String rtTopicName = Version.composeRealTimeTopic(storeName);
+    String rtTopicName = Utils.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse = controllerClientEntry.getValue().getStore(storeName);
@@ -4279,7 +4263,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
           topicManager = getTopicManager();
         }
-        PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store.getName()));
+        PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
         if (topicManager.containsTopic(realTimeTopic)
             && topicManager.getPartitionCount(realTimeTopic) == newPartitionCount) {
           LOGGER.info("Allow updating store " + store.getName() + " partition count to " + newPartitionCount);
@@ -4759,7 +4743,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (originalStore.isHybrid()) {
       // If this is a hybrid store, always try to disable compaction if RT topic exists.
       try {
-        PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+        PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(originalStore));
         getTopicManager().updateTopicCompactionPolicy(rtTopic, false);
       } catch (PubSubTopicDoesNotExistException e) {
         LOGGER.error("Could not find realtime topic for hybrid store {}", storeName);
@@ -4940,7 +4924,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                           && !store.isSystemStore()));
             }
             store.setHybridStoreConfig(finalHybridConfig);
-            PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+            PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
             if (getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic)) {
               // RT already exists, ensure the retention is correct
               getTopicManager()
@@ -5143,7 +5127,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           e);
       // rollback to original store
       storeMetadataUpdate(clusterName, storeName, store -> originalStore);
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(originalStore));
       if (originalStore.isHybrid() && newHybridStoreConfig.isPresent()
           && getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         // Ensure the topic retention is rolled back too
