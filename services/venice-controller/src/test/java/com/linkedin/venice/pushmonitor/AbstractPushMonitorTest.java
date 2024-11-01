@@ -46,12 +46,22 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.meta.ViewParameters;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
@@ -61,10 +71,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
@@ -84,6 +96,10 @@ public abstract class AbstractPushMonitorTest {
   protected VeniceControllerClusterConfig mockControllerConfig;
 
   protected MetricsRepository mockMetricRepo;
+
+  protected VeniceWriterFactory mockVeniceWriterFactory;
+
+  protected VeniceWriter mockVeniceWriter;
 
   private final static String clusterName = Utils.getUniqueString("test_cluster");
   private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
@@ -114,12 +130,15 @@ public abstract class AbstractPushMonitorTest {
     mockPushHealthStats = mock(AggPushHealthStats.class);
     clusterLockManager = new ClusterLockManager(clusterName);
     mockControllerConfig = mock(VeniceControllerClusterConfig.class);
+    mockVeniceWriterFactory = mock(VeniceWriterFactory.class);
+    mockVeniceWriter = mock(VeniceWriter.class);
     when(mockMetricRepo.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
     when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
     when(mockControllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
     when(mockControllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     when(mockControllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
+    when(mockVeniceWriterFactory.createVeniceWriter(any())).thenReturn(mockVeniceWriter);
     monitor = getPushMonitor();
   }
 
@@ -1081,15 +1100,80 @@ public abstract class AbstractPushMonitorTest {
         "Details should change as a side effect of calling getPushStatusAndDetails.");
   }
 
-  protected Store prepareMockStore(String topic, VersionStatus status) {
+  @Test
+  public void testEOPReceivedProcedures() {
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    Map<String, String> viewParams = new HashMap<>();
+    String viewName = "testView";
+    int viewPartitionCount = 10;
+    viewParams.put(ViewParameters.MATERIALIZED_VIEW_NAME.name(), viewName);
+    viewParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(viewPartitionCount));
+    viewParams
+        .put(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(), DefaultVenicePartitioner.class.getCanonicalName());
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParams);
+    viewConfigMap.put(viewName, viewConfig);
+    String topic = getTopic();
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
+    Store store = prepareMockStore(topic, VersionStatus.STARTED, viewConfigMap);
+    VeniceView veniceView =
+        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
+    assertTrue(veniceView instanceof MaterializedView);
+    MaterializedView materializedView = (MaterializedView) veniceView;
+    String viewTopicName =
+        materializedView.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
+    assertNotNull(viewTopicName);
+
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    // Prepare the new partition status
+    List<ReplicaStatus> replicaStatuses = new ArrayList<>();
+    for (int i = 0; i < replicationFactor; i++) {
+      ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
+      replicaStatuses.add(replicaStatus);
+    }
+    // All replicas are in STARTED status
+    ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+    doReturn(new PartitionAssignment(topic, 1)).when(mockRoutingDataRepo).getPartitionAssignments(topic);
+    // Check hybrid push status
+    monitor.onPartitionStatusChange(topic, partitionStatus);
+    // Not ready to send EOP to view topics
+    verify(mockVeniceWriterFactory, never()).createVeniceWriter(any());
+    verify(mockVeniceWriter, never()).broadcastEndOfPush(any());
+
+    // One replica received end of push
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+    monitor.onPartitionStatusChange(topic, partitionStatus);
+    ArgumentCaptor<VeniceWriterOptions> vwOptionsCaptor = ArgumentCaptor.forClass(VeniceWriterOptions.class);
+    verify(mockVeniceWriterFactory, times(1)).createVeniceWriter(vwOptionsCaptor.capture());
+    assertEquals(vwOptionsCaptor.getValue().getPartitionCount(), Integer.valueOf(viewPartitionCount));
+    assertEquals(vwOptionsCaptor.getValue().getTopicName(), viewTopicName);
+    verify(mockVeniceWriter, times(1)).broadcastEndOfPush(any());
+    assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED);
+
+    // Another replica received end of push. We shouldn't write multiple EOP to view topic
+    replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+    monitor.onPartitionStatusChange(topic, partitionStatus);
+    verify(mockVeniceWriter, times(1)).broadcastEndOfPush(any());
+  }
+
+  protected Store prepareMockStore(String topic, VersionStatus status, Map<String, ViewConfig> viewConfigMap) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    store.setViewConfigs(viewConfigMap);
     Version version = new VersionImpl(storeName, versionNumber);
     version.setStatus(status);
     store.addVersion(version);
     doReturn(store).when(mockStoreRepo).getStore(storeName);
     return store;
+  }
+
+  protected Store prepareMockStore(String topic, VersionStatus status) {
+    return prepareMockStore(topic, status, Collections.emptyMap());
   }
 
   protected Store prepareMockStore(String topic) {
@@ -1150,5 +1234,9 @@ public abstract class AbstractPushMonitorTest {
 
   protected String getAggregateRealTimeSourceKafkaUrl() {
     return aggregateRealTimeSourceKafkaUrl;
+  }
+
+  protected VeniceWriterFactory getMockVeniceWriterFactory() {
+    return mockVeniceWriterFactory;
   }
 }

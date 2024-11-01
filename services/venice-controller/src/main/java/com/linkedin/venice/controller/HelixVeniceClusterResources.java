@@ -165,7 +165,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         helixAdminClient,
         config,
         admin.getPushStatusStoreReader(),
-        admin.getDisabledPartitionStats(clusterName));
+        admin.getDisabledPartitionStats(clusterName),
+        admin.getVeniceWriterFactory());
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,

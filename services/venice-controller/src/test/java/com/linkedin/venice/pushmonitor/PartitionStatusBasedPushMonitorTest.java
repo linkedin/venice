@@ -66,7 +66,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         helixAdminClient,
         getMockControllerConfig(),
         null,
-        mock(DisabledPartitionStats.class));
+        mock(DisabledPartitionStats.class),
+        getMockVeniceWriterFactory());
   }
 
   @Override
@@ -85,7 +86,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         mock(HelixAdminClient.class),
         getMockControllerConfig(),
         null,
-        mock(DisabledPartitionStats.class));
+        mock(DisabledPartitionStats.class),
+        getMockVeniceWriterFactory());
   }
 
   @Test

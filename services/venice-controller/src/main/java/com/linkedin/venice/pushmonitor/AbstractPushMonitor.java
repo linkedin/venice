@@ -28,6 +28,7 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.UncompletedReplica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
@@ -35,6 +36,12 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -88,6 +96,7 @@ public abstract class AbstractPushMonitor
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
   private final DisabledPartitionStats disabledPartitionStats;
+  private final VeniceWriterFactory veniceWriterFactory;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -103,7 +112,8 @@ public abstract class AbstractPushMonitor
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      VeniceWriterFactory veniceWriterFactory) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -134,6 +144,7 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
         controllerConfig.useDaVinciSpecificExecutionStatusForError());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+    this.veniceWriterFactory = veniceWriterFactory;
     pushStatusCollector.start();
   }
 
@@ -172,7 +183,7 @@ public abstract class AbstractPushMonitor
               if (statusWithDetails.getStatus().isTerminal()) {
                 handleTerminalOfflinePushUpdate(offlinePushStatus, statusWithDetails);
               } else {
-                checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
+                checkWhetherToStartEOPProcedures(offlinePushStatus);
               }
             } else {
               // In any case, we found the offline push status is STARTED, but the related version could not be found.
@@ -794,7 +805,7 @@ public abstract class AbstractPushMonitor
   }
 
   protected void onPartitionStatusChange(OfflinePushStatus offlinePushStatus) {
-    checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
+    checkWhetherToStartEOPProcedures(offlinePushStatus);
   }
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
@@ -864,7 +875,7 @@ public abstract class AbstractPushMonitor
             handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
           } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
             // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
-            checkWhetherToStartBufferReplayForHybrid(pushStatus);
+            checkWhetherToStartEOPProcedures(pushStatus);
           }
         }
       } else {
@@ -906,7 +917,7 @@ public abstract class AbstractPushMonitor
     }
   }
 
-  protected void checkWhetherToStartBufferReplayForHybrid(OfflinePushStatus offlinePushStatus) {
+  protected void checkWhetherToStartEOPProcedures(OfflinePushStatus offlinePushStatus) {
     // As the outer method already locked on this instance, so this method is thread-safe.
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     Store store = getReadWriteStoreRepository().getStore(storeName);
@@ -923,35 +934,74 @@ public abstract class AbstractPushMonitor
       }
     }
 
-    if (store.isHybrid()) {
-      Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
-      boolean isDataRecovery = version != null && version.getDataRecoveryVersionConfig() != null;
-      if (offlinePushStatus.isReadyToStartBufferReplay(isDataRecovery)) {
-        LOGGER.info("{} is ready to start buffer replay.", offlinePushStatus.getKafkaTopic());
-        RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
-        try {
-          String newStatusDetails;
+    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
+    if (version == null) {
+      throw new IllegalStateException("Could not find Version object for: " + offlinePushStatus.getKafkaTopic());
+    }
+    Map<String, ViewConfig> viewConfigMap = version.getViewConfigs();
+    if (!store.isHybrid() && (viewConfigMap == null || viewConfigMap.isEmpty())) {
+      // The only procedures that may start after EOP is received in every partition are:
+      // 1. start buffer replay for hybrid store
+      // 2. send EOP for materialized view (there could be more view procedures in the future)
+      return;
+    }
+    try {
+      boolean isDataRecovery = version.getDataRecoveryVersionConfig() != null;
+      boolean isEOPReceivedInAllPartitions = offlinePushStatus.isEOPReceivedInEveryPartition(isDataRecovery);
+      StringBuilder newStatusDetails = new StringBuilder();
+      // Check whether to start buffer replay
+      if (store.isHybrid()) {
+        if (isEOPReceivedInAllPartitions) {
+          LOGGER.info("{} is ready to start buffer replay.", offlinePushStatus.getKafkaTopic());
+          RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
           realTimeTopicSwitcher.switchToRealTimeTopic(
               Version.composeRealTimeTopic(storeName),
               offlinePushStatus.getKafkaTopic(),
               store,
               aggregateRealTimeSourceKafkaUrl,
               activeActiveRealTimeSourceKafkaURLs);
-          newStatusDetails = "kicked off buffer replay";
-          updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
-          LOGGER.info("Successfully {} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus);
-        } catch (Exception e) {
-          // TODO: Figure out a better error handling...
-          String newStatusDetails = "Failed to kick off the buffer replay";
-          handleTerminalOfflinePushUpdate(offlinePushStatus, new ExecutionStatusWithDetails(ERROR, newStatusDetails));
-          LOGGER.error("{} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus, e);
+          newStatusDetails.append("kicked off buffer replay");
+        } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
+          LOGGER.info(
+              "{} is not ready to start buffer replay. Current state: {}",
+              offlinePushStatus.getKafkaTopic(),
+              offlinePushStatus.getCurrentStatus().toString());
         }
-      } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-        LOGGER.info(
-            "{} is not ready to start buffer replay. Current state: {}",
-            offlinePushStatus.getKafkaTopic(),
-            offlinePushStatus.getCurrentStatus().toString());
       }
+
+      if (isEOPReceivedInAllPartitions) {
+        // Check whether to send EOP for materialized view topic(s)
+        for (ViewConfig rawView: viewConfigMap.values()) {
+          VeniceView veniceView =
+              ViewUtils.getVeniceView(rawView.getViewClassName(), new Properties(), store, rawView.getViewParameters());
+          if (veniceView instanceof MaterializedView) {
+            MaterializedView materializedView = (MaterializedView) veniceView;
+            for (String materializedViewTopicName: materializedView
+                .getTopicNamesAndConfigsForVersion(version.getNumber())
+                .keySet()) {
+              VeniceWriterOptions.Builder vwOptionsBuilder =
+                  new VeniceWriterOptions.Builder(materializedViewTopicName).setUseKafkaKeySerializer(true)
+                      .setPartitionCount(materializedView.getViewPartitionCount());
+              try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(vwOptionsBuilder.build())) {
+                veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+              }
+              if (newStatusDetails.length() > 0) {
+                newStatusDetails.append(", ");
+              }
+              newStatusDetails.append("broadcast EOP to materialized view topic: ").append(materializedViewTopicName);
+            }
+          }
+        }
+        updatePushStatus(
+            offlinePushStatus,
+            ExecutionStatus.END_OF_PUSH_RECEIVED,
+            Optional.of(newStatusDetails.toString()));
+        LOGGER.info("Successfully {} for offlinePushStatus: {}", newStatusDetails.toString(), offlinePushStatus);
+      }
+    } catch (Exception e) {
+      String newStatusDetails = "Failed to start EOP procedures";
+      handleTerminalOfflinePushUpdate(offlinePushStatus, new ExecutionStatusWithDetails(ERROR, newStatusDetails));
+      LOGGER.error("{} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus, e);
     }
   }
 

@@ -65,13 +65,10 @@ public abstract class VeniceView {
 
   /**
    * Validate that the configs set up for this view for this store are valid.  If not, throw an exception. Implementors
-   * should override this function to add their own validation logic, and need only call this base implementation optionally.
+   * should override this function to add their own validation logic.
    */
   public void validateConfigs() {
-    // All views which publish data only work with A/A. Views which don't publish data should override this validation
-    if (!store.isActiveActiveReplicationEnabled()) {
-      throw new VeniceException("Views are not supported with non Active/Active stores!");
-    }
+    // validation based on view implementation
   }
 
   public void close() {

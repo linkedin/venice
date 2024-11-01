@@ -8,8 +8,10 @@ import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -82,7 +84,19 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
+  public CompletableFuture<PubSubProduceResult> processRecord(
+      ByteBuffer newValue,
+      byte[] key,
+      int version,
+      int newValueSchemaId) {
+    // No op
+    return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
   public void processControlMessage(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       PartitionConsumptionState partitionConsumptionState,
@@ -176,7 +190,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     }
 
     configBuilder.setChunkingEnabled(storeVersionConfig.isChunkingEnabled());
-    return configBuilder.build();
+    return setProducerOptimizations(configBuilder).build();
   }
 
   synchronized private void initializeVeniceWriter(int version) {

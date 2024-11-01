@@ -33,10 +33,12 @@ public class ChangeCaptureView extends VeniceView {
 
   @Override
   public void validateConfigs() {
-    super.validateConfigs();
-    // change capture requires chunking to be enabled. This is because it's logistically difficult to insist
+    // change capture requires A/A and chunking to be enabled. This is because it's logistically difficult to insist
     // that all rows be under 50% the chunking threshhold (since we have to publish the before and after image of the
     // record to the change capture topic). So we make a blanket assertion.
+    if (!store.isActiveActiveReplicationEnabled()) {
+      throw new VeniceException("Views are not supported with non Active/Active stores!");
+    }
     if (!store.isChunkingEnabled()) {
       throw new VeniceException("Change capture view are not supported with stores that don't have chunking enabled!");
     }
