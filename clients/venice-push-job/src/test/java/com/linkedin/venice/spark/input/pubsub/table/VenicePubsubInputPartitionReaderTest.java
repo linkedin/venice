@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,7 +84,11 @@ public class VenicePubsubInputPartitionReaderTest {
     inputPartition =
         new VenicePubsubInputPartition("prod-lva2", topicName, targetPartitionNumber, startingOffset, endingOffset);
 
-    reader = new VenicePubsubInputPartitionReader(jobConfig, inputPartition, consumer, pubSubTopicRepository);
+    reader = new VenicePubsubInputPartitionReader(
+        new VeniceProperties(jobConfig),
+        inputPartition,
+        consumer,
+        pubSubTopicRepository);
   }
 
   @Test

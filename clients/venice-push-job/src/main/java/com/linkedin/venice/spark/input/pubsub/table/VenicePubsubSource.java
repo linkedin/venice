@@ -25,9 +25,9 @@ public class VenicePubsubSource implements TableProvider {
   }
 
   @Override
-  public Table getTable(StructType schema, Transform[] partitioning, Map<String, String> sparkConfigs) {
+  public Table getTable(StructType schema, Transform[] partitioning, Map<String, String> configs) {
     Properties properties = new Properties();
-    properties.putAll(sparkConfigs);
+    properties.putAll(configs);
     // the properties here is the entry point for all the configurations
     // we receive from the outer layer.
     // schem and partitioning are useless and should be discarded?

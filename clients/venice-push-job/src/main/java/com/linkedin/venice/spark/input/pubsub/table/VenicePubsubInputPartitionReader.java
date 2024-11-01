@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -67,14 +66,14 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   // the buffer that holds the relevant messages for the current partition
   private List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessagesBuffer = new ArrayList<>();
 
-  public VenicePubsubInputPartitionReader(Properties jobConfig, VenicePubsubInputPartition inputPartition) {
+  public VenicePubsubInputPartitionReader(VeniceProperties jobConfig, VenicePubsubInputPartition inputPartition) {
     this(
         jobConfig,
         inputPartition,
-        new PubSubClientsFactory(new VeniceProperties(jobConfig)).getConsumerAdapterFactory() // need to review the
+        new PubSubClientsFactory(jobConfig).getConsumerAdapterFactory() // need to review the
             // properties bag ...
             .create(
-                new VeniceProperties(jobConfig),
+                jobConfig,
                 false,
                 PubSubMessageDeserializer.getInstance(),
                 // PubSubPassThroughDeserializer.getInstance(),
@@ -84,7 +83,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
 
   // testing constructor
   public VenicePubsubInputPartitionReader(
-      Properties jobConfig,
+      VeniceProperties jobConfig,
       VenicePubsubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
       PubSubTopicRepository pubSubTopicRepository) {

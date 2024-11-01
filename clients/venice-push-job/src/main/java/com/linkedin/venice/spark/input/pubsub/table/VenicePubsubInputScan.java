@@ -1,5 +1,7 @@
 package com.linkedin.venice.spark.input.pubsub.table;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -15,7 +17,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.spark.sql.connector.read.Batch;
 import org.apache.spark.sql.connector.read.InputPartition;
 import org.apache.spark.sql.connector.read.PartitionReaderFactory;
@@ -24,27 +25,26 @@ import org.apache.spark.sql.types.StructType;
 
 
 public class VenicePubsubInputScan implements Scan, Batch {
-  private final Properties jobConfig;
+  private final VeniceProperties jobConfig;
 
-  public VenicePubsubInputScan(Properties jobConfig) {
+  public VenicePubsubInputScan(VeniceProperties jobConfig) {
     this.jobConfig = jobConfig;
   }
 
   @Override
   public InputPartition[] planInputPartitions() {
     try {
-      String topicName = "test_topic_v_1";
-      String regionName = "ei-ltx1";
+      String topicName = jobConfig.getString(KAFKA_INPUT_TOPIC);
+      String regionName = jobConfig.getString(KAFKA_INPUT_FABRIC);
       int splitCount = 1000;
-      VeniceProperties veniceProperties = new VeniceProperties(jobConfig);
       PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
       PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
-      PubSubClientsFactory clientsFactory = new PubSubClientsFactory(veniceProperties);
+      PubSubClientsFactory clientsFactory = new PubSubClientsFactory(jobConfig);
       // PubSubAdminAdapter pubsubAdminClient =
       // clientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository);
       PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
       PubSubConsumerAdapter pubSubConsumer = clientsFactory.getConsumerAdapterFactory()
-          .create(veniceProperties, false, pubSubMessageDeserializer, "Spark_KIF_planner");
+          .create(jobConfig, false, pubSubMessageDeserializer, "Spark_KIF_planner");
 
       // surround by retries from retryUtils or something
       List<PubSubTopicPartitionInfo> listOfPartitions = pubSubConsumer.partitionsFor(pubSubTopic);

@@ -31,7 +31,8 @@ public class VenicePubsubInputTable implements SupportsRead {
     Properties properties = jobConfig.getPropertiesCopy();
     properties.putAll(options.asCaseSensitiveMap());
 
-    return new VenicePubsubInputScanBuilder(properties); // should we flip this to VeniceProperties?
+    return new VenicePubsubInputScanBuilder(new VeniceProperties(properties)); // should we flip this to
+                                                                               // VeniceProperties?
   }
 
   @Override

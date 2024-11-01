@@ -1,6 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub.table;
 
-import java.util.Properties;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.read.InputPartition;
 import org.apache.spark.sql.connector.read.PartitionReader;
@@ -10,9 +10,9 @@ import org.apache.spark.sql.connector.read.PartitionReaderFactory;
 public class VenicePubsubInputPartitionReaderFactory implements PartitionReaderFactory {
   private static final long serialVersionUID = 1L;
 
-  private final Properties jobConfig;
+  private final VeniceProperties jobConfig;
 
-  public VenicePubsubInputPartitionReaderFactory(Properties jobConfig) {
+  public VenicePubsubInputPartitionReaderFactory(VeniceProperties jobConfig) {
     this.jobConfig = jobConfig;
   }
 
