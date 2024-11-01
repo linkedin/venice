@@ -189,7 +189,6 @@ public class VeniceServerTest {
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
       StorageService storageService = server.getVeniceServer().getStorageService();
       StorageEngineRepository repository = storageService.getStorageEngineRepository();
-      String instanceName = server.getHost() + "_" + server.getPort();
       Assert
           .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
@@ -203,6 +202,9 @@ public class VeniceServerTest {
           repository.getAllLocalStorageEngines().size(),
           1,
           "We have created one storage engine for store: " + storeName);
+      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 1);
+
+      server.getVeniceServer().shutdown();
 
       // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be
       // deleted
