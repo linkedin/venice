@@ -9,7 +9,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -69,8 +68,8 @@ public class ParticipantStoreClientsManager implements Closeable {
     return writeClients.computeIfAbsent(clusterName, k -> {
       int attempts = 0;
       boolean verified = false;
-      PubSubTopic topic = pubSubTopicRepository.getTopic(
-          Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
+      PubSubTopic topic = pubSubTopicRepository
+          .getTopic(Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
       while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
         if (topicManagerRepository.getLocalTopicManager().containsTopicAndAllPartitionsAreOnline(topic)) {
           verified = true;
