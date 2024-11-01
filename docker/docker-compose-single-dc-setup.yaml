@@ -81,7 +81,7 @@ services:
     build:
       args:
         spark_version: 3.1.2
-    image: venice-client-jupyter
+    image: venicedb/venice-client-jupyter:latest-dev
     container_name: venice-client-jupyter
     hostname: venice-client-jupyter
     ports:
