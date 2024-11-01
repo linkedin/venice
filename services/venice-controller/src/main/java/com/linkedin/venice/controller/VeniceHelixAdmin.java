@@ -3511,6 +3511,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
+        store = resources.getStoreMetadataRepository().getStore(storeName);
         safeDeleteRTTopic(clusterName, store);
       }
     }

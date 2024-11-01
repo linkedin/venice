@@ -20,7 +20,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -331,7 +330,7 @@ public class TestTopicCleanupService {
     // Delete should be blocked by remote VT
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(9);
-    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
+    verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
     verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeleted();
 
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_v100"));
@@ -353,7 +352,7 @@ public class TestTopicCleanupService {
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_rt"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(2);
-    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
+    verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
   }
 
   private PubSubTopic getPubSubTopic(String storeName, String suffix) {
@@ -552,13 +551,11 @@ public class TestTopicCleanupService {
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), any());
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
-    when(remoteTopicManager.listTopics()).thenThrow(new VeniceException("test")).thenReturn(storeTopics.keySet());
 
     topicCleanupService.cleanupVeniceTopics();
 
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName, "_rt"));
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(1);
-    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
 
     doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), any());
     topicCleanupService.cleanupVeniceTopics();

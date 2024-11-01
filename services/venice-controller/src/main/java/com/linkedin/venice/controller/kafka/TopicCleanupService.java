@@ -81,6 +81,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
+
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private PubSubAdminAdapter sourceOfTruthPubSubAdminAdapter;
   private long recentDanglingTopicCleanupTime = -1L;
@@ -123,7 +124,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       this.sourceOfTruthPubSubAdminAdapter = null;
     }
 
-    if (!admin.isParent()) {
+    if (!admin.isParent() && !childRegions.isEmpty()) {
       String localPubSubBootstrapServer = getTopicManager().getPubSubClusterAddress();
       String localDatacenter = childRegions.stream()
           .filter(
@@ -238,8 +239,8 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   void cleanupVeniceTopics() {
-    // TODO - instead of adding all topics into the same queue we must simply use separate queues for RT and nonRT
-    // topics; this will save a lot of time wasted in sorting
+    // TODO - instead of adding all topics into a priority queue we should simply use two separate normal queues
+    // for RT and nonRT topics; this will save a lot of time wasted in sorting
     PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>(topicPriorityComparator);
     populateDeprecatedTopicQueue(allTopics);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
@@ -265,10 +266,10 @@ public class TopicCleanupService extends AbstractVeniceService {
             LOGGER.warn(
                 "Topic deletion for topic: {} is blocked due to unable to fetch version topic info",
                 topic.getName());
+            topicCleanupServiceStats.recordTopicDeletionError();
           } else {
             LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
           }
-          topicCleanupServiceStats.recordTopicDeletionError();
         } else {
           getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
           topicCleanupServiceStats.recordTopicDeleted();
@@ -285,6 +286,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         topicCleanupServiceStats.recordTopicDeletionError();
         // No op, will try again in the next cleanup cycle.
       }
+
       if (!topic.isRealTime()) {
         // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
         // delete
@@ -403,7 +405,14 @@ public class TopicCleanupService extends AbstractVeniceService {
         /** Consider only truncated topics */
         .filter(t -> admin.isTopicTruncatedBasedOnRetention(t.getName(), topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
-        .filter(t -> Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete)
+        .filter(t -> {
+          try {
+            return Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete;
+          } catch (Exception e) {
+            LOGGER.error("Could not parse version from kafka topic " + t.getName());
+            return false;
+          }
+        })
         /**
          * Filter out resources, which haven't been fully removed in child fabrics yet. This is only performed in the
          * child fabric because parent fabric don't have storage node helix resources.
