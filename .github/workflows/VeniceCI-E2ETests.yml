@@ -57,6 +57,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -116,6 +117,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -175,6 +177,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -234,6 +237,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -293,6 +297,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -352,6 +357,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -411,6 +417,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -470,6 +477,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -529,6 +537,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -588,6 +597,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -647,6 +657,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -706,6 +717,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -765,6 +777,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -824,6 +837,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -883,6 +897,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -942,6 +957,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1001,6 +1017,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1060,6 +1077,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1119,6 +1137,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1178,6 +1197,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1237,6 +1257,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1296,6 +1317,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1355,6 +1377,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1414,6 +1437,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1473,6 +1497,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1532,6 +1557,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1591,6 +1617,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1650,6 +1677,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1709,6 +1737,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1768,6 +1797,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
@@ -1827,6 +1857,7 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
+         token: ${{ secrets.GITHUB_TOKEN }}
          name: ${{ github.job }} Test Reports       # Name where it report the test results
          path: '**/TEST-*.xml'
          fail-on-error: 'false'
