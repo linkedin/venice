@@ -53,6 +53,10 @@ import org.openjdk.jol.vm.VM;
  * thread pool to speed up polling from local Kafka brokers.
  */
 public class StoreBufferService extends AbstractStoreBufferService {
+  static {
+    // Initialize the virtual machine to avoid the slowdown at runtime.
+    VM.current();
+  }
   private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;

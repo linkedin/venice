@@ -462,7 +462,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
     storeBufferService =
-        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo, true);
+        new StoreBufferService(3, 1000000, 100000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo, true);
     storeBufferService.start();
   }
 
