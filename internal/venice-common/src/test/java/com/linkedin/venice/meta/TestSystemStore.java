@@ -157,7 +157,8 @@ public class TestSystemStore {
     assertEquals(systemStore.getLatestVersionPromoteToCurrentTimestamp(), 100);
 
     // Test version related operations
-    systemStore.addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1"));
+    systemStore
+        .addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1", systemStore.getRealTimeTopicName()));
     assertTrue(systemStore.containsVersion(1));
     Version version = systemStore.getVersion(1);
     assertNotNull(version, "Version 1 must be present");

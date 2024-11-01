@@ -7,7 +7,6 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -24,6 +23,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -415,7 +415,7 @@ public class MetaStoreWriter implements Closeable {
 
   VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
     return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
       }
@@ -460,7 +460,7 @@ public class MetaStoreWriter implements Closeable {
      * to write a Control Message to the RT topic, and it could hang if the topic doesn't exist.
      * This check is a best-effort since the race condition is still there between topic check and closing VeniceWriter.
      */
-    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
       LOGGER.info(
           "RT topic: {} for meta system store: {} doesn't exist, will only close the internal producer without sending END_OF_SEGMENT control messages",

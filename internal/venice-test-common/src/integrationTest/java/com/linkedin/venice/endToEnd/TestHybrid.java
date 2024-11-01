@@ -70,6 +70,7 @@ import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.VeniceProducer;
@@ -802,15 +803,17 @@ public class TestHybrid {
         Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
       });
 
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+
       /**
        * Verify that all messages from {@link tmpTopic2} are in store and no message from {@link tmpTopic1} is in store.
        */
       try (
           AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
-              .getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-              .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build());) {
+          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
+              TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
+                  .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
         // Build a producer to produce 2 TS messages into RT
         realTimeTopicWriter.broadcastTopicSwitch(
             Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
@@ -1160,6 +1163,7 @@ public class TestHybrid {
 
       try (
           ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
+        StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1192,7 +1196,7 @@ public class TestHybrid {
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           // Send <key1, value1, seq: 1>
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(
               stringSerializer.serialize(key1),
@@ -1347,6 +1351,7 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1376,7 +1381,7 @@ public class TestHybrid {
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
@@ -1421,6 +1426,7 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1449,7 +1455,7 @@ public class TestHybrid {
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);

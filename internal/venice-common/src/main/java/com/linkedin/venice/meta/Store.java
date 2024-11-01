@@ -329,4 +329,8 @@ public interface Store {
   int getNearlineProducerCountPerWriter();
 
   void setNearlineProducerCountPerWriter(int producerCnt);
+
+  String getRealTimeTopicName();
+
+  void setRealTimeTopicName(String realTimeTopicName);
 }

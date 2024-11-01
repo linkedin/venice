@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -76,6 +77,7 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
+    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), Mockito.<Store>any());
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
     AdminSparkServer server =
@@ -137,6 +139,7 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
+    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), Mockito.<Store>any());
     AdminSparkServer server =
         ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC));
     int port = server.getPort();
@@ -213,7 +216,8 @@ public class TestAdminSparkWithMocks {
     doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
-    doReturn(Version.composeRealTimeTopic(storeName)).when(admin).getRealTimeTopic(anyString(), anyString());
+    doReturn(Utils.getRealTimeTopicName(mockStore)).when(admin).getRealTimeTopic(anyString(), anyString());
+    doReturn(Utils.getRealTimeTopicName(mockStore)).when(admin).getRealTimeTopic(anyString(), Mockito.<Store>any());
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
     doReturn(emergencySourceRegionKafka).when(admin)
         .getNativeReplicationKafkaBootstrapServerAddress(emergencySourceRegion);
@@ -224,7 +228,7 @@ public class TestAdminSparkWithMocks {
       optionalemergencySourceRegion = Optional.of(emergencySourceRegion);
     }
 
-    Version version = new VersionImpl(storeName, 1, pushJobId1);
+    Version version = new VersionImpl(storeName, 1, pushJobId1, mockStore.getRealTimeTopicName());
 
     // build request
     List<NameValuePair> params = new ArrayList<>();
@@ -331,6 +335,7 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
+    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), Mockito.<Store>any());
     doReturn(samzaPolicy).when(admin).isParent();
     doReturn(ParentControllerRegionState.ACTIVE).when(admin).getParentControllerRegionState();
     doReturn(aaEnabled).when(admin).isActiveActiveReplicationEnabledInAllRegion(anyString(), anyString(), eq(true));

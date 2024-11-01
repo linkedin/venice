@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.ArgumentCaptor;
@@ -75,7 +76,7 @@ public class TestDataRecoveryManager {
   public void testInitiateDataRecovery() {
     Store store = mock(Store.class);
     doReturn(store).when(veniceAdmin).getStore(clusterName, storeName);
-    Version sourceFabricVersion = new VersionImpl(storeName, version, "pushJob1");
+    Version sourceFabricVersion = new VersionImpl(storeName, version, "pushJob1", Utils.getRealTimeTopicName(store));
     doReturn(true).when(veniceAdmin).addSpecificVersion(any(), any(), any());
     dataRecoveryManager.initiateDataRecovery(clusterName, storeName, 2, sourceFabric, true, sourceFabricVersion);
     ArgumentCaptor<Version> captor = ArgumentCaptor.forClass(Version.class);

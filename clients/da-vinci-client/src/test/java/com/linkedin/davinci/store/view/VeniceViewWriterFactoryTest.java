@@ -47,7 +47,7 @@ public class VeniceViewWriterFactoryTest {
     viewConfigMap.put("view2", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
 
     Store mockStore = Mockito.mock(Store.class);
-    Version version = new VersionImpl(TEST_STORE, 1, "fooid");
+    Version version = new VersionImpl(TEST_STORE, 1, "fooid", mockStore.getRealTimeTopicName());
     version.setViewConfigs(viewConfigMap);
     Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);

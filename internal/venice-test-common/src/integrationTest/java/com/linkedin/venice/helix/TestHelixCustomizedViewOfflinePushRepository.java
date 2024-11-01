@@ -137,7 +137,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         new ClusterLockManager(clusterName));
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.setPartitionCount(3);
-    Version version = new VersionImpl(storeName, 1, "pushId");
+    Version version = new VersionImpl(storeName, 1, "pushId", store.getRealTimeTopicName());
     version.setPartitionCount(3);
     store.addVersion(version);
     writeStoreRepository.addStore(store);

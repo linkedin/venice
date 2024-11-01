@@ -134,7 +134,7 @@ public class PushTimeoutTest {
      * {@link StoreIngestionTask#reportIfCatchUpVersionTopicOffset(PartitionConsumptionState)}
      */
     doReturn(true).when(mockOffsetRecord).isEndOfPushReceived();
-    doReturn(Version.composeRealTimeTopic(storeName)).when(mockOffsetRecord).getLeaderTopic();
+    doReturn(Utils.getRealTimeTopicName(mockStore)).when(mockOffsetRecord).getLeaderTopic();
     /**
      * Return 0 as the max offset for VT and 1 as the overall consume progress, so reportIfCatchUpVersionTopicOffset()
      * will determine that base topic is caught up.

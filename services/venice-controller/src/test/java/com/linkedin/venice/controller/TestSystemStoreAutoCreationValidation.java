@@ -64,7 +64,7 @@ public class TestSystemStoreAutoCreationValidation {
     // Add STARTED system store version and verify that method will throw exception.
     veniceStore.setStoreMetaSystemStoreEnabled(true);
     String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(testStoreName);
-    Version version = new VersionImpl(systemStoreName, 1, "dummy_id");
+    Version version = new VersionImpl(systemStoreName, 1, "dummy_id", systemStoreName + Version.REAL_TIME_TOPIC_SUFFIX);
     version.setStatus(VersionStatus.STARTED);
     SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
     systemStoreAttributes.setCurrentVersion(0);

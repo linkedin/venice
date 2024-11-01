@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -66,6 +67,7 @@ import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.util.Strings;
 
 
 /**
@@ -527,6 +529,30 @@ public class Utils {
     } catch (IOException e) {
       throw new VeniceException(e);
     }
+  }
+
+  /** This method should only be used for system stores.
+   * For other stores, use {@link Utils#getRealTimeTopicName(Store)}, {@link Utils#getRealTimeTopicName(StoreInfo)} or
+   * {@link Utils#getRealTimeTopicName(Version)}
+   */
+  public static String composeRealTimeTopic(String storeName) {
+    return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
+  }
+
+  public static String getRealTimeTopicName(Store store) {
+    return getRealTimeTopicNameIfEmpty(store.getRealTimeTopicName(), store.getName());
+  }
+
+  public static String getRealTimeTopicName(StoreInfo storeInfo) {
+    return getRealTimeTopicNameIfEmpty(storeInfo.getRealTimeTopicName(), storeInfo.getName());
+  }
+
+  public static String getRealTimeTopicName(Version version) {
+    return getRealTimeTopicNameIfEmpty(version.getRealTimeTopicName(), version.getStoreName());
+  }
+
+  private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
+    return Strings.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
   }
 
   private static class TimeUnitInfo {

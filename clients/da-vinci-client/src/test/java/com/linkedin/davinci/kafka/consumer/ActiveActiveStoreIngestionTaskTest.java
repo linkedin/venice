@@ -229,8 +229,6 @@ public class ActiveActiveStoreIngestionTaskTest {
         100L,
         DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
-    mockVersion.setHybridStoreConfig(hybridStoreConfig);
 
     StorageService storageService = mock(StorageService.class);
     Store store = new ZKStore(
@@ -243,6 +241,8 @@ public class ActiveActiveStoreIngestionTaskTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setHybridStoreConfig(hybridStoreConfig);
+    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID, store.getRealTimeTopicName());
+    mockVersion.setHybridStoreConfig(hybridStoreConfig);
     store.setVersions(Collections.singletonList(mockVersion));
 
     Properties kafkaConsumerProperties = new Properties();

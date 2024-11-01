@@ -30,7 +30,12 @@ public class TestStoreJsonSerializer {
   @Test
   public void testSerializeAndDeserializeStore() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    store.addVersion(
+        new VersionImpl(
+            store.getName(),
+            store.getLargestUsedVersionNumber() + 1,
+            "pushJobId",
+            store.getRealTimeTopicName()));
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
         1000,
         1000,
@@ -100,7 +105,12 @@ public class TestStoreJsonSerializer {
   @Test
   public void testDeserializeStoreWithUnknownField() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    store.addVersion(
+        new VersionImpl(
+            store.getName(),
+            store.getLargestUsedVersionNumber() + 1,
+            "pushJobId",
+            store.getRealTimeTopicName()));
     store.setReadQuotaInCU(100);
     StoreJSONSerializer serializer = new StoreJSONSerializer();
     byte[] data = serializer.serialize(store, "");
@@ -114,7 +124,12 @@ public class TestStoreJsonSerializer {
   @Test
   public void testDeserializeDisabledStore() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    store.addVersion(
+        new VersionImpl(
+            store.getName(),
+            store.getLargestUsedVersionNumber() + 1,
+            "pushJobId",
+            store.getRealTimeTopicName()));
     store.setEnableReads(false);
     store.setEnableWrites(false);
     store.setReadQuotaInCU(100);
@@ -128,14 +143,14 @@ public class TestStoreJsonSerializer {
   @Test
   public void testSerializationWithSystemStores() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.addVersion(new VersionImpl(store.getName(), 1, "test_push_id"));
+    store.addVersion(new VersionImpl(store.getName(), 1, "test_push_id", store.getRealTimeTopicName()));
 
     SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
     systemStoreAttributes.setCurrentVersion(1);
     systemStoreAttributes.setLargestUsedVersionNumber(1);
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.META_STORE;
     String systemStoreName = systemStoreType.getSystemStoreName(store.getName());
-    Version systemStoreVersion = new VersionImpl(systemStoreName, 1, "test_push_id");
+    Version systemStoreVersion = new VersionImpl(systemStoreName, 1, "test_push_id", "");
     systemStoreAttributes.setVersions(Arrays.asList(systemStoreVersion));
     Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
     systemStores.put(systemStoreType.getPrefix(), systemStoreAttributes);

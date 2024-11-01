@@ -62,7 +62,8 @@ public class TestHelixReadWriteStorageEngineRepository {
   public void testAddAndReadStore() {
     repo.refresh();
     Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    s1.addVersion(
+        new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId", s1.getRealTimeTopicName()));
     repo.addStore(s1);
     Store s2 = repo.getStore("s1");
     Assert.assertEquals(s2, s1, "Store was not added successfully");
@@ -79,10 +80,12 @@ public class TestHelixReadWriteStorageEngineRepository {
   @Test
   public void testUpdateAndReadStore() {
     Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    s1.addVersion(
+        new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId", s1.getRealTimeTopicName()));
     repo.addStore(s1);
     Store s2 = repo.getStore(s1.getName());
-    s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId2"));
+    s2.addVersion(
+        new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId2", s2.getRealTimeTopicName()));
     repo.updateStore(s2);
     Store s3 = repo.getStore(s2.getName());
     Assert.assertEquals(s3, s2, "Store was not updated successfully.");
@@ -92,11 +95,12 @@ public class TestHelixReadWriteStorageEngineRepository {
   public void testLoadFromZK() {
     repo.refresh();
     Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    s1.addVersion(
+        new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId", s1.getRealTimeTopicName()));
     s1.setReadQuotaInCU(100);
     repo.addStore(s1);
     Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
-    s2.addVersion(new VersionImpl(s2.getName(), 3));
+    s2.addVersion(new VersionImpl(s2.getName(), 3, s2.getRealTimeTopicName()));
     s2.setReadQuotaInCU(200);
     repo.addStore(s2);
 

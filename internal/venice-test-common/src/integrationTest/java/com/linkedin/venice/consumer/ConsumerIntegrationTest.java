@@ -11,7 +11,7 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
@@ -96,7 +96,7 @@ public abstract class ConsumerIntegrationTest {
   }
 
   VeniceClusterWrapper cluster;
-  String store;
+  String storeName;
   int version;
   AvroGenericStoreClient client;
   private ControllerClient controllerClient;
@@ -116,27 +116,29 @@ public abstract class ConsumerIntegrationTest {
 
   @BeforeMethod
   public void testSetUp() {
-    store = Utils.getUniqueString("consumer_integ_test");
+    storeName = Utils.getUniqueString("consumer_integ_test");
     version = 1;
-    topicName = Version.composeRealTimeTopic(store);
-    cluster.getNewStore(store);
+    cluster.getNewStore(storeName);
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
     controllerClient.updateStore(
-        store,
+        storeName,
         new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag));
-    controllerClient.emptyPush(store, "test_push", 1);
+    Store store = cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
+    topicName = Utils.getRealTimeTopicName(store);
+    TestUtils.assertCommand(controllerClient.emptyPush(storeName, "test_push", 1), "empty push failed");
+
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-      StoreResponse freshStoreResponse = controllerClient.getStore(store);
+      StoreResponse freshStoreResponse = controllerClient.getStore(storeName);
       Assert.assertFalse(freshStoreResponse.isError());
       Assert.assertEquals(
           freshStoreResponse.getStore().getCurrentVersion(),
-          version,
+          1,
           "The empty push has not activated the store.");
     });
     client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(store).setVeniceURL(cluster.getRandomRouterURL()));
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
   }
 
   @AfterMethod

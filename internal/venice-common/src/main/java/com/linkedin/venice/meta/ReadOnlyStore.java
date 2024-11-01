@@ -600,6 +600,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getRealTimeTopicName() {
+      return this.delegate.getRealTimeTopicName();
+    }
+
+    @Override
+    public void setRealTimeTopicName(String realTimeTopicName) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
@@ -1419,6 +1429,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public String getRealTimeTopicName() {
+    return delegate.getRealTimeTopicName();
+  }
+
+  @Override
+  public void setRealTimeTopicName(String realTimeTopicName) {
     throw new UnsupportedOperationException();
   }
 

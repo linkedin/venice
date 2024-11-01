@@ -86,7 +86,6 @@ public class CreateVersion extends AbstractRoute {
             && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)))) {
           response.status(HttpStatus.SC_FORBIDDEN);
           String userId = getPrincipalId(request);
-          String storeName = request.queryParams(NAME);
 
           /**
            * When partners have ACL issues for their push, we should provide an accurate and informative messages that
@@ -268,7 +267,7 @@ public class CreateVersion extends AbstractRoute {
              * Otherwise topic existence check fails internally.
              */
             if (pushType.isIncremental() && isWriteComputeEnabled) {
-              admin.getRealTimeTopic(clusterName, storeName);
+              admin.getRealTimeTopic(clusterName, store);
             }
 
             final Optional<X509Certificate> certInRequest =
@@ -310,7 +309,7 @@ public class CreateVersion extends AbstractRoute {
                 admin.getSeparateRealTimeTopic(clusterName, storeName);
                 responseTopic = Version.composeSeparateRealTimeTopic(storeName);
               } else {
-                responseTopic = Version.composeRealTimeTopic(storeName);
+                responseTopic = Utils.getRealTimeTopicName(store);
               }
               // disable amplificationFactor logic on real-time topic
               responseObject.setAmplificationFactor(1);
@@ -395,7 +394,7 @@ public class CreateVersion extends AbstractRoute {
               }
             }
 
-            String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
+            String realTimeTopic = admin.getRealTimeTopic(clusterName, store);
             responseObject.setKafkaTopic(realTimeTopic);
             // disable amplificationFactor logic on real-time topic
             responseObject.setAmplificationFactor(1);

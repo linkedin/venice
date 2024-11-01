@@ -228,6 +228,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   @JsonIgnore
   void setRmdVersionId(int replicationMetadataVersionId);
 
+  String getRealTimeTopicName();
+
+  void setRealTimeTopicName(String realTimeTopicName);
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>
@@ -287,10 +291,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static String composeKafkaTopic(String storeName, int versionNumber) {
     return storeName + VERSION_SEPARATOR + versionNumber;
-  }
-
-  static String composeRealTimeTopic(String storeName) {
-    return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
   static String composeSeparateRealTimeTopic(String storeName) {

@@ -68,6 +68,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -976,13 +977,13 @@ public class TestMetaDataHandler {
     HelixReadOnlyStoreRepository mockStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     Store testStore = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     String pushId = "test-push-job-id";
-    testStore.addVersion(new VersionImpl(storeName, 1, pushId));
+    testStore.addVersion(new VersionImpl(storeName, 1, pushId, testStore.getRealTimeTopicName()));
     testStore.setCurrentVersion(1);
     testStore.setEtlStoreConfig(new ETLStoreConfigImpl());
     SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
     systemStoreAttributes.setCurrentVersion(2);
     List<Version> versions = new ArrayList<>();
-    versions.add(new VersionImpl(metaSystemStoreName, 2, pushId));
+    versions.add(new VersionImpl(metaSystemStoreName, 2, pushId, ""));
     systemStoreAttributes.setVersions(versions);
     testStore.putSystemStore(VeniceSystemStoreType.META_STORE, systemStoreAttributes);
     Store zkSharedStore = TestUtils.createTestStore(
@@ -1291,7 +1292,7 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
     Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
     Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
     Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
@@ -1344,7 +1345,7 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
     Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
     Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
     Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
@@ -1400,7 +1401,7 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
     Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
     Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
     Assert.assertEquals(versionCreationResponse.getPartitions(), 10);

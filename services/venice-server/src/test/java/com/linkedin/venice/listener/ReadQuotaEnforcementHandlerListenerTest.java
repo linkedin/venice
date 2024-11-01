@@ -203,7 +203,11 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     for (int versionNumber: versions) {
-      Version version = new VersionImpl(storeName, versionNumber, Version.composeKafkaTopic(storeName, versionNumber));
+      Version version = new VersionImpl(
+          storeName,
+          versionNumber,
+          Version.composeKafkaTopic(storeName, versionNumber),
+          store.getRealTimeTopicName());
       store.addVersion(version);
     }
     store.setReadQuotaInCU(rcuQuota);

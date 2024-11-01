@@ -31,7 +31,7 @@ public class VersionImpl implements Version {
    * Currently used in tests only.
    */
   @Deprecated
-  public VersionImpl(String storeName, int number) {
+  public VersionImpl(String storeName, int number, String realTimeTopicName) {
     this(
         storeName,
         number,
@@ -39,15 +39,32 @@ public class VersionImpl implements Version {
         Version.numberBasedDummyPushId(number),
         0,
         new PartitionerConfigImpl(),
-        null);
+        null,
+        realTimeTopicName);
   }
 
-  public VersionImpl(String storeName, int number, String pushJobId) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, 1, new PartitionerConfigImpl(), null);
+  public VersionImpl(String storeName, int number, String pushJobId, String realTimeTopicName) {
+    this(
+        storeName,
+        number,
+        System.currentTimeMillis(),
+        pushJobId,
+        1,
+        new PartitionerConfigImpl(),
+        null,
+        realTimeTopicName);
   }
 
-  public VersionImpl(String storeName, int number, String pushJobId, int partitionCount) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, partitionCount, new PartitionerConfigImpl(), null);
+  public VersionImpl(String storeName, int number, String pushJobId, int partitionCount, String realTimeTopicName) {
+    this(
+        storeName,
+        number,
+        System.currentTimeMillis(),
+        pushJobId,
+        partitionCount,
+        new PartitionerConfigImpl(),
+        null,
+        realTimeTopicName);
   }
 
   public VersionImpl(
@@ -57,7 +74,8 @@ public class VersionImpl implements Version {
       @JsonProperty("pushJobId") String pushJobId,
       @JsonProperty("partitionCount") int partitionCount,
       @JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig,
-      @JsonProperty("dataRecoveryConfig") DataRecoveryVersionConfig dataRecoveryVersionConfig) {
+      @JsonProperty("dataRecoveryConfig") DataRecoveryVersionConfig dataRecoveryVersionConfig,
+      @JsonProperty("realTimeTopicName") String realTimeTopicName) {
     this.storeVersion = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreVersion());
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
@@ -74,6 +92,7 @@ public class VersionImpl implements Version {
 
     this.storeVersion.leaderFollowerModelEnabled = true;
     this.kafkaTopicName = Version.composeKafkaTopic(storeName, number);
+    this.storeVersion.realTimeTopicName = realTimeTopicName;
   }
 
   VersionImpl(StoreVersion storeVersion) {
@@ -391,6 +410,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public String getRealTimeTopicName() {
+    return this.storeVersion.realTimeTopicName.toString();
+  }
+
+  @Override
+  public void setRealTimeTopicName(String realTimeTopicName) {
+    this.storeVersion.realTimeTopicName = realTimeTopicName;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -449,7 +478,8 @@ public class VersionImpl implements Version {
         getPushJobId(),
         getPartitionCount(),
         getPartitionerConfig(),
-        getDataRecoveryVersionConfig());
+        getDataRecoveryVersionConfig(),
+        getRealTimeTopicName());
     clonedVersion.setStatus(getStatus());
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());

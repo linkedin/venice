@@ -325,6 +325,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testDeleteOldVersions() {
     String storeName = Utils.getUniqueString("test");
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    String realTimeTopicName = veniceAdmin.getStore(clusterName, storeName).getRealTimeTopicName();
     veniceAdmin
         .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
@@ -354,7 +355,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber());
 
-    Version deletedVersion = new VersionImpl(storeName, version.getNumber() - 2);
+    Version deletedVersion = new VersionImpl(storeName, version.getNumber() - 2, realTimeTopicName);
     // Ensure job and topic are deleted
     TestUtils.waitForNonDeterministicCompletion(
         30,
@@ -648,6 +649,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertThrows(VeniceNoStoreException.class, () -> veniceAdmin.getRealTimeTopic(clusterName, storeName));
 
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    Store store = veniceAdmin.getStore(clusterName, storeName);
     veniceAdmin.updateStore(
         clusterName,
         storeName,
@@ -667,7 +669,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitions, 1);
 
     String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
-    Assert.assertEquals(rtTopic, Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(rtTopic, Utils.getRealTimeTopicName(store));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -859,7 +861,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testKillOfflinePush() throws Exception {
     PubSubTopic participantStoreRTTopic = pubSubTopicRepository
-        .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
+        .getTopic(Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
     String newNodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), 9786);
     // Ensure original participant store would hang on bootstrap state.
     delayParticipantJobCompletion(true);
@@ -1004,7 +1006,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testDeleteAllVersionsInStoreWithoutJobAndResource() {
     String storeName = "testDeleteVersionInWithoutJobAndResource";
     Store store = TestUtils.createTestStore(storeName, storeOwner, System.currentTimeMillis());
-    Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
+    Version version = new VersionImpl(
+        store.getName(),
+        store.getLargestUsedVersionNumber() + 1,
+        "pushJobId",
+        store.getRealTimeTopicName());
     store.addVersion(version);
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
@@ -1425,7 +1431,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
       // Create ten topics and keep track of the active versions in the Store instance
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
-        Version version = new VersionImpl(storeName, versionNumber, Utils.getUniqueString(storeName));
+        Version version =
+            new VersionImpl(storeName, versionNumber, Utils.getUniqueString(storeName), store.getRealTimeTopicName());
         PubSubTopic versionTopic = pubSubTopicRepository.getTopic(version.kafkaTopicName());
         topicManager.createTopic(versionTopic, 1, 1, true);
         if (activeVersions.contains(versionNumber)) {
@@ -1671,6 +1678,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testGetIncrementalPushVersion() {
     String incrementalAndHybridEnabledStoreName = Utils.getUniqueString("testHybridStore");
     veniceAdmin.createStore(clusterName, incrementalAndHybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.getStore(clusterName, incrementalAndHybridEnabledStoreName);
     veniceAdmin.updateStore(
         clusterName,
         incrementalAndHybridEnabledStoreName,

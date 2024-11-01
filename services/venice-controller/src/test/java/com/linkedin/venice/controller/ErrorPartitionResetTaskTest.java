@@ -213,7 +213,7 @@ public class ErrorPartitionResetTaskTest {
 
   private Store getStoreWithCurrentVersion() {
     Store store = TestUtils.getRandomStore();
-    store.addVersion(new VersionImpl(store.getName(), 1, "", PARTITION_COUNT));
+    store.addVersion(new VersionImpl(store.getName(), 1, "", PARTITION_COUNT, store.getRealTimeTopicName()));
     store.setCurrentVersion(1);
     return store;
   }

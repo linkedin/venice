@@ -158,7 +158,7 @@ public class ChangeCaptureViewWriterTest {
     // Set up mocks
     Store mockStore = Mockito.mock(Store.class);
 
-    Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
+    Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID, mockStore.getRealTimeTopicName());
     Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
     Mockito.when(mockStore.getName()).thenReturn(STORE_NAME);
 

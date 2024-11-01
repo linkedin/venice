@@ -208,7 +208,7 @@ public class VeniceSystemProducerTest {
     StoreResponse mockStoreResponse = new StoreResponse();
     StoreInfo mockStoreInfo = new StoreInfo();
     List<Version> versions = new ArrayList<>();
-    versions.add(new VersionImpl("test_store", 0, "test_store_v1"));
+    versions.add(new VersionImpl("test_store", 0, "test_store_v1", mockStoreInfo.getRealTimeTopicName()));
     mockStoreInfo.setVersions(versions);
     mockStoreResponse.setStore(mockStoreInfo);
     when(mockControllerClient.getStore(anyString())).thenReturn(mockStoreResponse);

@@ -54,6 +54,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import io.tehuti.metrics.MetricsRepository;
@@ -288,8 +289,9 @@ public abstract class KafkaStoreIngestionServiceTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
-    toBeDeletedStore.addVersion(new VersionImpl(deletedStoreName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id", mockStore.getRealTimeTopicName()));
+    toBeDeletedStore
+        .addVersion(new VersionImpl(deletedStoreName, 1, "test-job-id", Utils.getRealTimeTopicName(toBeDeletedStore)));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
     doReturn(toBeDeletedStore).when(mockMetadataRepo).getStore(deletedStoreName);
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
@@ -309,7 +311,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(),
         0,
         "Expecting an empty set since all ingesting topics have version status of ONLINE");
-    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id", Utils.getRealTimeTopicName(mockStore)));
     doReturn(new Pair<>(mockStore, mockStore.getVersion(2))).when(mockMetadataRepo)
         .waitVersion(eq(storeName), eq(2), any());
     kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topic2, veniceProperties), 0);
@@ -372,7 +374,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
 
-    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id", mockStore.getRealTimeTopicName()));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     doReturn(new Pair<>(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)
@@ -433,7 +435,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
 
-    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id", mockStore.getRealTimeTopicName()));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     doReturn(new Pair<>(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)

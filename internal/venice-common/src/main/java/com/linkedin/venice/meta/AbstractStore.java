@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -256,7 +257,7 @@ public abstract class AbstractStore implements Store {
   private Version increaseVersion(String pushJobId, boolean createNewVersion) {
     int versionNumber = getLargestUsedVersionNumber() + 1;
     checkDisableStoreWrite("increase", versionNumber);
-    Version version = new VersionImpl(getName(), versionNumber, pushJobId);
+    Version version = new VersionImpl(getName(), versionNumber, pushJobId, Utils.getRealTimeTopicName(this));
     if (createNewVersion) {
       addVersion(version);
       return version.cloneVersion();

@@ -245,7 +245,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (version == null) {
         // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
         // It's valid to have null version when trying to remove lag monitor for the deleted resource.
-        version = new VersionImpl(storeName, storeVersion, "");
+        version = new VersionImpl(storeName, storeVersion, "", Utils.getRealTimeTopicName(store));
       }
       lagMonFunction.accept(version, getPartition());
     } catch (Exception e) {

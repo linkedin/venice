@@ -187,7 +187,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
 
     metadataRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(storeName, 1, "foo");
+    Version mockVersion = new VersionImpl(storeName, 1, "foo", store.getRealTimeTopicName());
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(metadataRepository.getStore(anyString())).thenReturn(store);

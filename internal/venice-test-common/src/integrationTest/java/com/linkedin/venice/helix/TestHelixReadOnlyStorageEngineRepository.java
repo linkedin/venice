@@ -72,7 +72,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
   public void testGetStore() throws InterruptedException {
     // Add and get notificaiton
     Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s1.addVersion(new VersionImpl("s1", 1, "pushJobId"));
+    s1.addVersion(new VersionImpl("s1", 1, "pushJobId", s1.getRealTimeTopicName()));
     s1.setReadQuotaInCU(100);
     writeRepo.addStore(s1);
     Thread.sleep(1000L);
@@ -88,7 +88,12 @@ public class TestHelixReadOnlyStorageEngineRepository {
 
     // Update and get notification
     Store s2 = writeRepo.getStore(s1.getName());
-    s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId2"));
+    s2.addVersion(
+        new VersionImpl(
+            s2.getName(),
+            s2.getLargestUsedVersionNumber() + 1,
+            "pushJobId2",
+            Utils.getRealTimeTopicName(s2)));
     writeRepo.updateStore(s2);
     Thread.sleep(1000L);
     Assert.assertEquals(
@@ -108,7 +113,8 @@ public class TestHelixReadOnlyStorageEngineRepository {
     Store[] stores = new Store[count];
     for (int i = 0; i < count; i++) {
       Store s = TestUtils.createTestStore("s" + i, "owner", System.currentTimeMillis());
-      s.addVersion(new VersionImpl(s.getName(), s.getLargestUsedVersionNumber() + 1, "pushJobId"));
+      s.addVersion(
+          new VersionImpl(s.getName(), s.getLargestUsedVersionNumber() + 1, "pushJobId", s.getRealTimeTopicName()));
       s.setReadQuotaInCU(i + 1);
       writeRepo.addStore(s);
       stores[i] = s;

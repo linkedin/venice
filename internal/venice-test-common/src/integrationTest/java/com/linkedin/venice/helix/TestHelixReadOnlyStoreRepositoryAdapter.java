@@ -88,7 +88,8 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
-    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    s1.addVersion(
+        new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId", s1.getRealTimeTopicName()));
     s1.setReadQuotaInCU(100);
     s1.setReadQuotaInCU(100);
     s1.setBatchGetLimit(100);
@@ -98,7 +99,12 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     regularStoreNameWithMetaSystemStoreEnabled = Utils.getUniqueString("test_store_with_meta_system_store_enabled");
     Store s2 =
         TestUtils.createTestStore(regularStoreNameWithMetaSystemStoreEnabled, "owner", System.currentTimeMillis());
-    s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId"));
+    s2.addVersion(
+        new VersionImpl(
+            s2.getName(),
+            s2.getLargestUsedVersionNumber() + 1,
+            "pushJobId",
+            Utils.getRealTimeTopicName(s2)));
     s2.setReadQuotaInCU(100);
     s2.setBatchGetLimit(100);
     s2.setReadComputationEnabled(true);

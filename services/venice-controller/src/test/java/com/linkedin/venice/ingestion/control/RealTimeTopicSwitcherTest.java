@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -79,7 +80,7 @@ public class RealTimeTopicSwitcherTest {
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id", mockStore.getRealTimeTopicName());
     doReturn(version).when(mockStore).getVersionOrThrow(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
@@ -107,7 +108,7 @@ public class RealTimeTopicSwitcherTest {
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id", mockStore.getRealTimeTopicName());
     version.setNativeReplicationEnabled(true);
     doReturn(version).when(mockStore).getVersionOrThrow(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
@@ -136,15 +137,16 @@ public class RealTimeTopicSwitcherTest {
     Map<String, ViewConfig> viewConfigs = new HashMap<>();
     viewConfigs.put("testView", new ViewConfigImpl("testClass", Collections.emptyMap()));
 
-    Version version1 = new VersionImpl(storeName, 1, "push1");
-    Version version2 = new VersionImpl(storeName, 2, "push2");
-    version2.setViewConfigs(viewConfigs);
-    Version version3 = new VersionImpl(storeName, 3, "push3");
-    version3.setViewConfigs(viewConfigs);
-
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
     Store mockStore = mock(Store.class);
     when(mockStore.getName()).thenReturn(storeName);
+    String realTimeTopicName = Utils.getRealTimeTopicName(mockStore);
+    Version version1 = new VersionImpl(storeName, 1, "push1", realTimeTopicName);
+    Version version2 = new VersionImpl(storeName, 2, "push2", realTimeTopicName);
+    version2.setViewConfigs(viewConfigs);
+    Version version3 = new VersionImpl(storeName, 3, "push3", realTimeTopicName);
+    version3.setViewConfigs(viewConfigs);
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version1));
+
     when(mockStore.getVersion(1)).thenReturn(version1);
     when(mockStore.getVersion(2)).thenReturn(version2);
     when(mockStore.getVersion(3)).thenReturn(version3);
@@ -199,7 +201,7 @@ public class RealTimeTopicSwitcherTest {
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id", mockStore.getRealTimeTopicName());
     doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();

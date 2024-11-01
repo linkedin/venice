@@ -84,8 +84,8 @@ public class ServerReadMetadataRepositoryTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
-    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2"));
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id", mockStore.getRealTimeTopicName()));
+    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2", mockStore.getRealTimeTopicName()));
     mockStore.setCurrentVersion(2);
     mockStore.setStorageNodeReadQuotaEnabled(false);
     String topicName = Version.composeKafkaTopic(storeName, 2);

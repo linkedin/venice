@@ -173,7 +173,7 @@ public class TestVeniceVersionFinder {
     int fifthVersion = 5;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
+    store.addVersion(new VersionImpl(storeName, firstVersion, store.getRealTimeTopicName()));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
 
@@ -209,20 +209,20 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
     // When the current version changes, without any online replicas the versionFinder returns the old version number
-    store.addVersion(new VersionImpl(storeName, secondVersion));
+    store.addVersion(new VersionImpl(storeName, secondVersion, store.getRealTimeTopicName()));
     store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(secondVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
     // When we retire an old version, we update to the new version anyways
-    store.addVersion(new VersionImpl(storeName, thirdVersion));
+    store.addVersion(new VersionImpl(storeName, thirdVersion, store.getRealTimeTopicName()));
     store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(thirdVersion);
     store.updateVersionStatus(1, VersionStatus.NOT_CREATED);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), thirdVersion);
 
     // Next new version with no online instances still serves old ONLINE version
-    store.addVersion(new VersionImpl(storeName, fourthVersion));
+    store.addVersion(new VersionImpl(storeName, fourthVersion, store.getRealTimeTopicName()));
     store.updateVersionStatus(fourthVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(fourthVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), thirdVersion);
@@ -232,7 +232,7 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), fourthVersion);
 
     // PartitionStatusOnlineInstanceFinder can also work
-    store.addVersion(new VersionImpl(storeName, fifthVersion));
+    store.addVersion(new VersionImpl(storeName, fifthVersion, store.getRealTimeTopicName()));
     store.updateVersionStatus(fifthVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(fifthVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), fifthVersion);
@@ -248,7 +248,7 @@ public class TestVeniceVersionFinder {
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
     store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
+    store.addVersion(new VersionImpl(storeName, firstVersion, store.getRealTimeTopicName()));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
     doReturn(store).when(storeRepository).getStore(storeName);
@@ -299,7 +299,7 @@ public class TestVeniceVersionFinder {
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
     store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
+    store.addVersion(new VersionImpl(storeName, firstVersion, store.getRealTimeTopicName()));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
 
@@ -343,7 +343,7 @@ public class TestVeniceVersionFinder {
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
+    store.addVersion(new VersionImpl(storeName, firstVersion, store.getRealTimeTopicName()));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
 
@@ -382,7 +382,7 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
     store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    store.addVersion(new VersionImpl(storeName, secondVersion));
+    store.addVersion(new VersionImpl(storeName, secondVersion, store.getRealTimeTopicName()));
     store.setCurrentVersion(secondVersion);
     store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
 
@@ -403,7 +403,7 @@ public class TestVeniceVersionFinder {
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
+    store.addVersion(new VersionImpl(storeName, firstVersion, store.getRealTimeTopicName()));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
 
@@ -441,7 +441,7 @@ public class TestVeniceVersionFinder {
       Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
       store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-      store.addVersion(new VersionImpl(storeName, secondVersion));
+      store.addVersion(new VersionImpl(storeName, secondVersion, store.getRealTimeTopicName()));
       store.setCurrentVersion(secondVersion);
       store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
 

@@ -22,7 +22,7 @@ public class HelixCustomizedViewOfflinePushRepositoryTest {
     SafeHelixManager manager = mock(SafeHelixManager.class);
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
-    VersionImpl version = new VersionImpl("abc", 1, "jobID");
+    VersionImpl version = new VersionImpl("abc", 1, "jobID", store.getRealTimeTopicName());
     version.setPartitionCount(1);
     when(store.getVersion(anyInt())).thenReturn(version);
     when(store.getName()).thenReturn("abc");

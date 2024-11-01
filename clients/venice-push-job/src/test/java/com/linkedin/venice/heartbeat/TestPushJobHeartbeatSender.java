@@ -9,10 +9,10 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
@@ -34,6 +34,7 @@ public class TestPushJobHeartbeatSender {
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    doReturn(Utils.composeRealTimeTopic(heartbeatStoreName)).when(storeInfo).getRealTimeTopicName();
     doReturn(1).when(storeInfo).getPartitionCount();
     doReturn(partitionerConfig).when(storeInfo).getPartitionerConfig();
     doReturn(storeInfo).when(storeResponse).getStore();
@@ -60,6 +61,6 @@ public class TestPushJobHeartbeatSender {
         (DefaultPushJobHeartbeatSender) pushJobHeartbeatSender;
     Assert.assertEquals(
         defaultPushJobHeartbeatSender.getVeniceWriter().getTopicName(),
-        Version.composeRealTimeTopic(heartbeatStoreName));
+        Utils.composeRealTimeTopic(heartbeatStoreName));
   }
 }

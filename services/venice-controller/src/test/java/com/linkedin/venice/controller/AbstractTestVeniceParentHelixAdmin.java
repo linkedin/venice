@@ -114,6 +114,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     store = mock(Store.class);
     doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
     doReturn(false).when(store).isMigrating();
+    doReturn("test_real_time_topic_rt").when(store).getRealTimeTopicName();
     doReturn(store).when(internalAdmin).checkPreConditionForAclOp(any(), any());
 
     HelixReadWriteStoreRepository storeRepository = mock(HelixReadWriteStoreRepository.class);

@@ -147,9 +147,9 @@ public class HeartbeatMonitoringServiceTest {
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(1L, 1L, 1L, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_SOP);
     // Version configs
-    Version backupVersion = new VersionImpl(TEST_STORE, 1, "1"); // Non-hybrid version
-    Version currentVersion = new VersionImpl(TEST_STORE, 2, "2"); // hybrid version, active/active
-    Version futureVersion = new VersionImpl(TEST_STORE, 3, "3"); // hybrid version, non AA
+    Version backupVersion = new VersionImpl(TEST_STORE, 1, "1", ""); // Non-hybrid version
+    Version currentVersion = new VersionImpl(TEST_STORE, 2, "2", ""); // hybrid version, active/active
+    Version futureVersion = new VersionImpl(TEST_STORE, 3, "3", ""); // hybrid version, non AA
     currentVersion.setHybridStoreConfig(hybridStoreConfig);
     futureVersion.setHybridStoreConfig(hybridStoreConfig);
 

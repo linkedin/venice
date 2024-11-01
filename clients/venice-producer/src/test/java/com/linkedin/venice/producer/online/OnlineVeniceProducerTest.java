@@ -874,7 +874,7 @@ public class OnlineVeniceProducerTest {
 
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    Version version = new VersionImpl(storeName, 1, "test-job-id");
+    Version version = new VersionImpl(storeName, 1, "test-job-id", storeName + Version.REAL_TIME_TOPIC_SUFFIX);
     version.setPartitionCount(partitionCount);
 
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
@@ -909,7 +909,7 @@ public class OnlineVeniceProducerTest {
         versionCreationResponse.setPartitionerClass(partitionerConfig.getPartitionerClass());
         versionCreationResponse.setPartitionerParams(partitionerConfig.getPartitionerParams());
         versionCreationResponse.setKafkaBootstrapServers("localhost:9092");
-        versionCreationResponse.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+        versionCreationResponse.setKafkaTopic(Utils.getRealTimeTopicName(store));
         versionCreationResponse.setEnableSSL(false);
 
         return getTransportClientFuture(MAPPER.writeValueAsBytes(versionCreationResponse), delayInResponseMs);

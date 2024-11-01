@@ -64,22 +64,21 @@ public class AggVersionedIngestionStatsTest {
     storeList.add(mockStore);
 
     doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-
     doReturn(storeList).when(mockMetaRepository).getAllStores();
 
     // No metrics initially.
     verifyNoMetrics(metricsRepo, totalKey);
     verifyNoMetrics(metricsRepo, currentKey);
     verifyNoMetrics(metricsRepo, futureKey);
-    Version backupVer = new VersionImpl(storeName, 1);
+    Version backupVer = new VersionImpl(storeName, 1, mockStore.getRealTimeTopicName());
     backupVer.setStatus(VersionStatus.ONLINE);
     mockStore.addVersion(backupVer);
 
-    Version currentVer = new VersionImpl(storeName, 2);
+    Version currentVer = new VersionImpl(storeName, 2, mockStore.getRealTimeTopicName());
     currentVer.setStatus(VersionStatus.ONLINE);
     mockStore.addVersion(currentVer);
 
-    Version futureVer = new VersionImpl(storeName, 3);
+    Version futureVer = new VersionImpl(storeName, 3, mockStore.getRealTimeTopicName());
     futureVer.setStatus(VersionStatus.PUSHED);
     mockStore.addVersion(futureVer);
     mockStore.setCurrentVersion(currentVer.getNumber());
@@ -139,7 +138,6 @@ public class AggVersionedIngestionStatsTest {
     storeList.add(mockStore);
 
     doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-
     doReturn(storeList).when(mockMetaRepository).getAllStores();
 
     stats.loadAllStats();
@@ -148,7 +146,7 @@ public class AggVersionedIngestionStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 0d);
 
     // v1 starts pushing
-    Version version = new VersionImpl(storeName, 1);
+    Version version = new VersionImpl(storeName, 1, mockStore.getRealTimeTopicName(), mockStore.getRealTimeTopicName());
     mockStore.addVersion(version);
     stats.handleStoreChanged(mockStore);
 
@@ -178,7 +176,7 @@ public class AggVersionedIngestionStatsTest {
     // v1 becomes the current version and v2 starts pushing
     version.setStatus(VersionStatus.ONLINE);
     mockStore.setCurrentVersionWithoutCheck(1);
-    Version version2 = new VersionImpl(storeName, 2);
+    Version version2 = new VersionImpl(storeName, 2, mockStore.getRealTimeTopicName());
     mockStore.addVersion(version2);
 
     stats.handleStoreChanged(mockStore);
@@ -254,7 +252,7 @@ public class AggVersionedIngestionStatsTest {
     stats.handleStoreChanged(mockStore);
 
     // v3 finishes pushing and the status becomes to be online
-    Version version3 = new VersionImpl(storeName, 3);
+    Version version3 = new VersionImpl(storeName, 3, mockStore.getRealTimeTopicName());
     version3.setStatus(VersionStatus.ONLINE);
     mockStore.addVersion(version3);
     mockStore.deleteVersion(1);
