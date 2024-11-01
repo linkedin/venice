@@ -2425,18 +2425,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       // If we are here the message must be produced to local kafka or silently consumed.
       LeaderProducedRecordContext leaderProducedRecordContext;
-      int originalPubsubClusterId = serverConfig.getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId);
-      String resolvedKafkaUrl = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaUrl) : kafkaUrl;
-      validateRecordBeforeProducingToLocalKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          resolvedKafkaUrl,
-          originalPubsubClusterId);
+      // No need to resolve cluster id and kafka url because sep topics are real time topic and it's not VT
+      validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
         recordRegionHybridConsumptionStats(
             // convert the cluster id back to the original cluster id for monitoring purpose
-            serverConfig.getEquivalentKafkaClusterIdForSepTopic(originalPubsubClusterId),
+            serverConfig.getEquivalentKafkaClusterIdForSepTopic(
+                serverConfig.getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId)),
             consumerRecord.getPayloadSize(),
             consumerRecord.getOffset(),
             beforeProcessingBatchRecordsTimestampMs);
