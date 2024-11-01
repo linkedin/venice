@@ -16,8 +16,16 @@ public class AggregatedHealthStatusRequest {
       @JsonProperty("cluster_id") String cluster_id,
       @JsonProperty("instances") List<String> instances,
       @JsonProperty("to_be_stopped_instances") List<String> to_be_stopped_instances) {
+    if (cluster_id == null) {
+      throw new IllegalArgumentException("'cluster_id' is required");
+    }
     this.cluster_id = cluster_id;
+
+    if (instances == null) {
+      throw new IllegalArgumentException("'instances' is required");
+    }
     this.instances = instances;
+
     if (to_be_stopped_instances == null) {
       this.to_be_stopped_instances = Collections.emptyList();
     } else {
