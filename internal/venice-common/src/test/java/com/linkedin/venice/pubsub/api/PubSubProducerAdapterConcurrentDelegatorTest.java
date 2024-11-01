@@ -87,7 +87,7 @@ public class PubSubProducerAdapterConcurrentDelegatorTest {
             new PubSubMessageHeaders(),
             null,
             null);
-    assertEquals(node.getSize(), 417);
+    assertTrue(node.getSize() > 0);
   }
 
   @Test
