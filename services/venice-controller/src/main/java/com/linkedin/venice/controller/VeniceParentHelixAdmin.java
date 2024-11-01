@@ -3847,7 +3847,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName, Store store) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store) {
     return false;
   }
 

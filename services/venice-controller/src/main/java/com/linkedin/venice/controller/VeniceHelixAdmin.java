@@ -3511,7 +3511,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
-        safeDeleteRTTopic(clusterName, storeName);
+        safeDeleteRTTopic(clusterName, store);
       }
     }
   }
@@ -3526,20 +3526,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void safeDeleteRTTopic(String clusterName, String storeName) {
-    Store store = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().getStore(storeName);
-    if (isRTTopicDeletionPermittedByAllControllers(clusterName, storeName, store)) {
-      deleteRTTopic(clusterName, storeName);
+  private void safeDeleteRTTopic(String clusterName, Store store) {
+    if (isRTTopicDeletionPermittedByAllControllers(clusterName, store)) {
+      deleteRTTopic(clusterName, store.getName());
     }
   }
 
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName, Store store) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store) {
     // Perform RT cleanup checks for batch only store that used to be hybrid. Check the local versions first
     // to see if any version is still using RT and then also check other fabrics before deleting the RT. Since
     // we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
+    String storeName = store.getName();
     String rtTopicName = Version.composeRealTimeTopic(storeName);
-    if (store != null && Version.containsHybridVersion(store.getVersions())) {
+    if (Version.containsHybridVersion(store.getVersions())) {
       LOGGER.warn(
           "Topic {} cannot be deleted yet because the store {} has at least one hybrid version",
           rtTopicName,
@@ -3581,7 +3581,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void deleteRTTopicFromAllFabrics(String topic, Map<String, ControllerClient> controllerClientMap) {
     truncateKafkaTopic(topic);
     for (ControllerClient controllerClient: controllerClientMap.values()) {
-      controllerClient.deleteKafkaTopic(topic);
+      ControllerResponse deleteResponse = controllerClient.deleteKafkaTopic(topic);
+      if (deleteResponse.isError()) {
+        LOGGER.error("Deleting real time topic " + topic + " encountered error " + deleteResponse.getError());
+      }
     }
   }
 

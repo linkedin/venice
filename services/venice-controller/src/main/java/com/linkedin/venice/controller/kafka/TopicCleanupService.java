@@ -80,7 +80,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final TopicCleanupServiceStats topicCleanupServiceStats;
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
-
+  private long refreshQueueCycle = Time.MS_PER_MINUTE;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private PubSubAdminAdapter sourceOfTruthPubSubAdminAdapter;
   private long recentDanglingTopicCleanupTime = -1L;
@@ -249,10 +249,18 @@ public class TopicCleanupService extends AbstractVeniceService {
       PubSubTopic topic = allTopics.poll();
       String storeName = topic.getStoreName();
       try {
-        if (topic.isRealTime() && (this.isRTTopicDeletionBlocked || !admin.isRTTopicDeletionPermittedByAllControllers(
-            admin.discoverCluster(storeName).getFirst(),
-            storeName,
-            null))) {
+        String clusterDiscovered;
+        try {
+          clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        } catch (VeniceNoStoreException e) {
+          LOGGER.warn("Store {} is not found", storeName);
+          getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+          topicCleanupServiceStats.recordTopicDeleted();
+          continue;
+        }
+        Store store = admin.getStore(clusterDiscovered, storeName);
+        if (topic.isRealTime() && (this.isRTTopicDeletionBlocked
+            || !admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, store))) {
           if (this.isRTTopicDeletionBlocked) {
             LOGGER.warn(
                 "Topic deletion for topic: {} is blocked due to unable to fetch version topic info",
@@ -261,7 +269,9 @@ public class TopicCleanupService extends AbstractVeniceService {
             LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
           }
           topicCleanupServiceStats.recordTopicDeletionError();
-          continue;
+        } else {
+          getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+          topicCleanupServiceStats.recordTopicDeleted();
         }
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
@@ -269,17 +279,15 @@ public class TopicCleanupService extends AbstractVeniceService {
             storeName,
             topic.getName(),
             e.toString());
+
       } catch (VeniceException e) {
         LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
         topicCleanupServiceStats.recordTopicDeletionError();
         // No op, will try again in the next cleanup cycle.
       }
-      topicCleanupServiceStats.recordTopicDeleted();
-      getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
       if (!topic.isRealTime()) {
         // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
         // delete
-        long refreshQueueCycle = Time.MS_PER_MINUTE;
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
           allTopics.clear();
           populateDeprecatedTopicQueue(allTopics);
