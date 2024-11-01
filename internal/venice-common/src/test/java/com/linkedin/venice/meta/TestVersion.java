@@ -39,7 +39,7 @@ public class TestVersion {
   public void serializes() throws IOException {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 17;
-    Version version = new VersionImpl(storeName, versionNumber);
+    Version version = new VersionImpl(storeName, versionNumber, storeName + Version.REAL_TIME_TOPIC_SUFFIX);
     String serialized = OBJECT_MAPPER.writeValueAsString(version);
     Assert.assertTrue(serialized.contains(storeName));
   }

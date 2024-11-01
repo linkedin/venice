@@ -1521,7 +1521,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
-    Version incrementalPushVersion = new VersionImpl(storeName, 1);
+    parentAdmin.getStore(storeName, clusterName);
+    Version incrementalPushVersion = new VersionImpl(storeName, 1, storeName + Version.REAL_TIME_TOPIC_SUFFIX);
     assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);
@@ -1538,12 +1539,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     } catch (VeniceException e) {
     }
 
-    doReturn(false).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
+    doReturn(false).when(internalAdmin).isTopicTruncated(anyString());
     assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);
 
-    doReturn(true).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
+    doReturn(true).when(internalAdmin).isTopicTruncated(anyString());
     assertThrows(
         VeniceException.class,
         () -> parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED));

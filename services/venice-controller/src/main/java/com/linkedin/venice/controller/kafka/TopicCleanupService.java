@@ -280,13 +280,19 @@ public class TopicCleanupService extends AbstractVeniceService {
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
-      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-      if (topicRetentions.containsKey(realTimeTopic)) {
-        if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
-          topics.offer(realTimeTopic);
-          minNumOfUnusedVersionTopicsOverride = 0;
+      List<PubSubTopic> realTimeTopics = topicRetentions.keySet()
+          .stream()
+          .filter(topic -> Version.isRealTimeTopic(topic.getName()))
+          .collect(Collectors.toList());
+
+      for (PubSubTopic realTimeTopic: realTimeTopics) {
+        if (topicRetentions.containsKey(realTimeTopic)) {
+          if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
+            topics.offer(realTimeTopic);
+            minNumOfUnusedVersionTopicsOverride = 0;
+          }
+          topicRetentions.remove(realTimeTopic);
         }
-        topicRetentions.remove(realTimeTopic);
       }
       List<PubSubTopic> oldTopicsToDelete =
           extractVersionTopicsToCleanup(admin, topicRetentions, minNumOfUnusedVersionTopicsOverride, delayFactor);

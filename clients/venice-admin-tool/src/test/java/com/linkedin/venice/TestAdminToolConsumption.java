@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -32,6 +33,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +52,7 @@ public class TestAdminToolConsumption {
   @Test
   void testAdminToolAdminMessageConsumption() {
     int assignedPartition = 0;
-    String topic = Version.composeRealTimeTopic(STORE_NAME);
+    String topic = Utils.composeRealTimeTopic(STORE_NAME);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     int adminMessageNum = 10;
@@ -112,16 +114,18 @@ public class TestAdminToolConsumption {
 
   @Test
   public void testAdminToolConsumption() {
-    String topic = Version.composeRealTimeTopic(STORE_NAME);
     ControllerClient controllerClient = mock(ControllerClient.class);
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
     when(schemaResponse.getSchemaStr()).thenReturn(SCHEMA_STRING);
     when(controllerClient.getKeySchema(STORE_NAME)).thenReturn(schemaResponse);
     StoreResponse storeResponse = mock(StoreResponse.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
+    StoreInfo storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
     when(storeInfo.getPartitionCount()).thenReturn(2);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
+    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
+        .thenReturn(STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX);
+    String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;
     long startOffset = 0;

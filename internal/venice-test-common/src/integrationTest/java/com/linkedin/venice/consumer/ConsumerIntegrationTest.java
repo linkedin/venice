@@ -11,7 +11,6 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
@@ -118,7 +117,6 @@ public abstract class ConsumerIntegrationTest {
   public void testSetUp() {
     store = Utils.getUniqueString("consumer_integ_test");
     version = 1;
-    topicName = Version.composeRealTimeTopic(store);
     cluster.getNewStore(store);
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
@@ -126,6 +124,8 @@ public abstract class ConsumerIntegrationTest {
         store,
         new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag));
+    topicName = Utils.getRealTimeTopicName(
+        cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), store));
     controllerClient.emptyPush(store, "test_push", 1);
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       StoreResponse freshStoreResponse = controllerClient.getStore(store);
