@@ -923,7 +923,7 @@ public class ControllerClient implements Closeable {
       List<String> toBeStoppedInstances) throws JsonProcessingException {
 
     AggregatedHealthStatusRequest request =
-        new AggregatedHealthStatusRequest(instances, toBeStoppedInstances, clusterName);
+        new AggregatedHealthStatusRequest(clusterName, instances, toBeStoppedInstances);
     String requestString = OBJECT_MAPPER.writeValueAsString(request);
     return request(
         ControllerRoute.AGGREGATED_HEALTH_STATUS,
