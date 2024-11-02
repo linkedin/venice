@@ -680,6 +680,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return zkSharedStore.isNearlineProducerCompressionEnabled();
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    throwUnsupportedOperationException("setNearlineProducerCompressionEnabled");
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return zkSharedStore.getNearlineProducerCountPerWriter();
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throwUnsupportedOperationException("setNearlineProducerCountPerWriter");
+  }
+
+  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }

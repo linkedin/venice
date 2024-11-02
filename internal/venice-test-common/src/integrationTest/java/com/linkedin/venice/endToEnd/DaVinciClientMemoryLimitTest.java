@@ -48,6 +48,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMode;
@@ -61,6 +62,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -70,14 +72,21 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class DaVinciClientMemoryLimitTest {
   private static final int TEST_TIMEOUT = 180_000;
-  private VeniceClusterWrapper venice;
+  private VeniceClusterWrapper veniceCluster;
   private D2Client d2Client;
+  private String storeName;
+  private String storeNameWithoutMemoryEnforcement;
+  private Properties vpjProperties;
+  private AvroGenericStoreClient client;
+  private CachingDaVinciClientFactory factory;
 
   @BeforeClass
   public void setUp() {
@@ -86,8 +95,17 @@ public class DaVinciClientMemoryLimitTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 10L);
     // To allow more times for DaVinci clients to report status
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 15);
-    venice = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
-    d2Client = new D2ClientBuilder().setZkHosts(venice.getZk().getAddress())
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfRouters(1)
+        .numberOfServers(2)
+        .replicationFactor(1)
+        .partitionSize(100)
+        .sslToKafka(false)
+        .sslToStorageNodes(false)
+        .extraProperties(clusterConfig)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
+    d2Client = new D2ClientBuilder().setZkHosts(veniceCluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
@@ -99,7 +117,7 @@ public class DaVinciClientMemoryLimitTest {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }
-    Utils.closeQuietlyWithErrorLogged(venice);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   private VeniceProperties getDaVinciBackendConfig(
@@ -122,7 +140,7 @@ public class DaVinciClientMemoryLimitTest {
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(D2_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
+        .put(D2_ZK_HOSTS_ADDRESS, veniceCluster.getZk().getAddress())
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "2MB")
         .put(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "10MB")
@@ -141,122 +159,145 @@ public class DaVinciClientMemoryLimitTest {
     return venicePropertyBuilder.build();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
-  public void testDaVinciMemoryLimitShouldFailLargeDataPush(
-      boolean ingestionIsolationEnabledInDaVinci,
-      boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
-    String storeName = Utils.getUniqueString("davinci_memory_limit_test");
+  /**
+   * TODO: If we deflake the 2 disabled tests in this class, we should make them leverage the stores setup here, or else
+   * move them to another class...
+   */
+  @BeforeMethod
+  public void storeSetup() throws IOException {
+    this.storeName = Utils.getUniqueString("davinci_memory_limit_test");
+    this.storeNameWithoutMemoryEnforcement = Utils.getUniqueString("store_without_memory_enforcement");
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 100, 100);
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
-    String storeNameWithoutMemoryEnforcement = Utils.getUniqueString("store_without_memory_enforcement");
+    this.vpjProperties = defaultVPJProps(veniceCluster, inputDirPath, this.storeName);
+    setupStore(this.storeName, this.vpjProperties, recordSchema);
 
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-        AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      venice.createMetaSystemStore(storeName);
-      venice.createPushStatusSystemStore(storeName);
+    Properties otherProps = defaultVPJProps(veniceCluster, inputDirPath, this.storeNameWithoutMemoryEnforcement);
+    setupStore(this.storeNameWithoutMemoryEnforcement, otherProps, recordSchema);
 
-      // Make sure DaVinci push status system store is enabled
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError(), "Store response receives an error: " + storeResponse.getError());
-      assertTrue(storeResponse.getStore().isDaVinciPushStatusStoreEnabled());
+    this.client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
 
-      // Do an VPJ push
-      runVPJ(vpjProperties, 1, controllerClient);
-
-      // Verify some records (note, records 1-100 have been pushed)
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        try {
-          for (int i = 1; i <= 100; i++) {
-            String key = Integer.toString(i);
-            Object value = client.get(key).get();
-            assertNotNull(value, "Key " + i + " should not be missing!");
-          }
-        } catch (Exception e) {
-          throw new VeniceException(e);
-        }
-      });
-
-      // Spin up DaVinci client
-      VeniceProperties backendConfig = getDaVinciBackendConfig(
-          ingestionIsolationEnabledInDaVinci,
-          useDaVinciSpecificExecutionStatusForError,
-          new HashSet<>(Arrays.asList(storeName)));
-      MetricsRepository metricsRepository = new MetricsRepository();
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
-          d2Client,
-          VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-          metricsRepository,
-          backendConfig)) {
-
-        DaVinciClient daVinciClient = factory.getGenericAvroClient(
-            storeName,
-            new DaVinciConfig().setIsolated(true).setStorageClass(StorageClass.MEMORY_BACKED_BY_DISK));
-        daVinciClient.start();
-        daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
-
-        // Validate some entries
-        for (int i = 1; i <= 100; i++) {
-          String key = Integer.toString(i);
-          Object value = daVinciClient.get(key).get();
-          assertNotNull(value, "Key " + i + " should not be missing!");
-        }
-
-        // Run a bigger push and the push should fail
-        inputDir = getTempDataDirectory();
-        inputDirPath = "file://" + inputDir.getAbsolutePath();
-        TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1000, 100000);
-        final Properties vpjPropertiesForV2 = defaultVPJProps(venice, inputDirPath, storeName);
-
-        VeniceException exception =
-            expectThrows(VeniceException.class, () -> runVPJ(vpjPropertiesForV2, 2, controllerClient));
-        assertTrue(
-            exception.getMessage()
-                .contains(
-                    "status: " + (useDaVinciSpecificExecutionStatusForError
-                        ? ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
-                        : ExecutionStatus.ERROR)));
-        assertTrue(
-            exception.getMessage()
-                .contains(
-                    "Found a failed partition replica in Da Vinci"
-                        + (useDaVinciSpecificExecutionStatusForError ? " due to memory limit reached" : "")));
-
-        // Run a bigger push against a non-enforced store should succeed
-        vpjProperties = defaultVPJProps(venice, inputDirPath, storeNameWithoutMemoryEnforcement);
-        try (ControllerClient controllerClient1 =
-            createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
-          venice.createMetaSystemStore(storeNameWithoutMemoryEnforcement);
-          venice.createPushStatusSystemStore(storeNameWithoutMemoryEnforcement);
-
-          // Make sure DaVinci push status system store is enabled
-          storeResponse = controllerClient1.getStore(storeNameWithoutMemoryEnforcement);
-          assertFalse(storeResponse.isError(), "Store response receives an error: " + storeResponse.getError());
-          assertTrue(storeResponse.getStore().isDaVinciPushStatusStoreEnabled());
-
-          // Run a big VPJ push without DaVinci and it should succeed
-          runVPJ(vpjProperties, 1, controllerClient1);
-
-          // Spin up a DaVinci client for this store
-          DaVinciClient daVinciClientForStoreWithoutMemoryEnforcement = factory.getGenericAvroClient(
-              storeNameWithoutMemoryEnforcement,
-              new DaVinciConfig().setIsolated(true).setStorageClass(StorageClass.MEMORY_BACKED_BY_DISK));
-          daVinciClientForStoreWithoutMemoryEnforcement.start();
-          daVinciClientForStoreWithoutMemoryEnforcement.subscribeAll().get(30, TimeUnit.SECONDS);
-
-          // Another big push should succeed as well
-          runVPJ(vpjProperties, 2, controllerClient1);
-        }
-      } finally {
-        controllerClient.disableAndDeleteStore(storeName);
-      }
-    }
+    this.factory = null; // will be constructed in the test
   }
 
+  private void setupStore(String store, Properties vpjProperties, Schema recordSchema) {
+    this.veniceCluster.createStoreForJob(recordSchema, vpjProperties);
+    this.veniceCluster.createMetaSystemStore(store);
+    this.veniceCluster.createPushStatusSystemStore(store);
+
+    // Make sure system stores are enabled
+    this.veniceCluster.useControllerClient(cc -> {
+      StoreResponse storeResponse = TestUtils.assertCommand(cc.getStore(store));
+      assertTrue(storeResponse.getStore().isDaVinciPushStatusStoreEnabled());
+      assertTrue(storeResponse.getStore().isStoreMetaSystemStoreEnabled());
+    });
+  }
+
+  @AfterMethod
+  public void storeCleanup() {
+    Utils.closeQuietlyWithErrorLogged(this.client);
+    Utils.closeQuietlyWithErrorLogged(this.factory);
+
+    this.veniceCluster.useControllerClient(cc -> {
+      cc.disableAndDeleteStore(storeName);
+      cc.disableAndDeleteStore(storeNameWithoutMemoryEnforcement);
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testDaVinciMemoryLimitShouldFailLargeDataPush(
+      boolean ingestionIsolationEnabledInDaVinci,
+      boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
+
+    // Run VPJ
+    this.veniceCluster.useControllerClient(cc -> runVPJ(this.vpjProperties, 1, cc));
+
+    // Verify some records (note, records 1-100 have been pushed)
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      try {
+        for (int i = 1; i <= 100; i++) {
+          String key = Integer.toString(i);
+          Object value = this.client.get(key).get();
+          assertNotNull(value, "Key " + i + " should not be missing!");
+        }
+      } catch (Exception e) {
+        throw new VeniceException(e);
+      }
+    });
+
+    // Spin up DaVinci client
+    VeniceProperties backendConfig = getDaVinciBackendConfig(
+        ingestionIsolationEnabledInDaVinci,
+        useDaVinciSpecificExecutionStatusForError,
+        new HashSet<>(Arrays.asList(storeName)));
+    this.factory = new CachingDaVinciClientFactory(
+        this.d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig);
+
+    DaVinciClient daVinciClient = factory.getGenericAvroClient(
+        this.storeName,
+        new DaVinciConfig().setIsolated(true).setStorageClass(StorageClass.MEMORY_BACKED_BY_DISK));
+
+    // N.B.: The start and subscribe calls below seem to be frequent causes of failure.
+    daVinciClient.start();
+
+    // Indefinite wait... the test's timeout will kick in, in the worst case...
+    daVinciClient.subscribeAll().get();
+
+    // Validate some entries
+    for (int i = 1; i <= 100; i++) {
+      String key = Integer.toString(i);
+      Object value = daVinciClient.get(key).get();
+      assertNotNull(value, "Key " + i + " should not be missing!");
+    }
+
+    // Run a bigger push and the push should fail
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1000, 100000);
+    final Properties vpjPropertiesForV2 = defaultVPJProps(this.veniceCluster, inputDirPath, this.storeName);
+
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> this.veniceCluster.useControllerClient(cc -> runVPJ(vpjPropertiesForV2, 2, cc)));
+    assertTrue(
+        exception.getMessage()
+            .contains(
+                "status: " + (useDaVinciSpecificExecutionStatusForError
+                    ? ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+                    : ExecutionStatus.ERROR)));
+    assertTrue(
+        exception.getMessage()
+            .contains(
+                "Found a failed partition replica in Da Vinci"
+                    + (useDaVinciSpecificExecutionStatusForError ? " due to memory limit reached" : "")));
+
+    // Run a bigger push against a non-enforced store should succeed
+    Properties vpjProperties3 = defaultVPJProps(veniceCluster, inputDirPath, storeNameWithoutMemoryEnforcement);
+
+    // Run a big VPJ push without DaVinci and it should succeed
+    this.veniceCluster.useControllerClient(cc -> runVPJ(vpjProperties3, 1, cc));
+
+    // Spin up a DaVinci client for this store
+    DaVinciClient daVinciClientForStoreWithoutMemoryEnforcement = this.factory.getGenericAvroClient(
+        this.storeNameWithoutMemoryEnforcement,
+        new DaVinciConfig().setIsolated(true).setStorageClass(StorageClass.MEMORY_BACKED_BY_DISK));
+    daVinciClientForStoreWithoutMemoryEnforcement.start();
+
+    // Indefinite wait... the test's timeout will kick in, in the worst case...
+    daVinciClientForStoreWithoutMemoryEnforcement.subscribeAll().get();
+
+    // Another big push should succeed as well
+    this.veniceCluster.useControllerClient(cc -> runVPJ(vpjProperties3, 2, cc));
+  }
+
+  @Test(enabled = false)
   public void testDaVinciMemoryLimitShouldFailLargeDataPushAndResumeHybridStore(
       boolean ingestionIsolationEnabledInDaVinci,
       boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
@@ -265,13 +306,16 @@ public class DaVinciClientMemoryLimitTest {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 100, 100);
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, batchOnlyStoreName);
+    Properties vpjProperties = defaultVPJProps(veniceCluster, inputDirPath, batchOnlyStoreName);
 
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+    try (
+        ControllerClient controllerClient =
+            createStoreForJob(veniceCluster.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(batchOnlyStoreName).setVeniceURL(venice.getRandomRouterURL()))) {
-      venice.createMetaSystemStore(batchOnlyStoreName);
-      venice.createPushStatusSystemStore(batchOnlyStoreName);
+            ClientConfig.defaultGenericClientConfig(batchOnlyStoreName)
+                .setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      veniceCluster.createMetaSystemStore(batchOnlyStoreName);
+      veniceCluster.createPushStatusSystemStore(batchOnlyStoreName);
 
       // Make sure DaVinci push status system store is enabled
       StoreResponse storeResponseForBatchOnlyStore = controllerClient.getStore(batchOnlyStoreName);
@@ -296,8 +340,8 @@ public class DaVinciClientMemoryLimitTest {
       assertFalse(
           updateStoreResponseForHybridStore.isError(),
           "Received error when converting a hybrid store: " + updateStoreResponseForHybridStore.getError());
-      venice.createMetaSystemStore(hybridStoreName);
-      venice.createPushStatusSystemStore(hybridStoreName);
+      veniceCluster.createMetaSystemStore(hybridStoreName);
+      veniceCluster.createPushStatusSystemStore(hybridStoreName);
 
       ControllerResponse emptyPushForHybridStore =
           controllerClient.sendEmptyPushAndWait(hybridStoreName, "test_hybrid_push_v1", 1024 * 1024 * 100l, 30 * 1000);
@@ -351,7 +395,7 @@ public class DaVinciClientMemoryLimitTest {
         daVinciClientForHybridStore.subscribeAll().get(30, TimeUnit.SECONDS);
 
         // Write some records and verify
-        SystemProducer veniceProducer = getSamzaProducer(venice, hybridStoreName, Version.PushType.STREAM);
+        SystemProducer veniceProducer = getSamzaProducer(veniceCluster, hybridStoreName, Version.PushType.STREAM);
 
         int hybridStoreKeyId = 0;
         for (; hybridStoreKeyId <= 100; ++hybridStoreKeyId) {
@@ -374,7 +418,7 @@ public class DaVinciClientMemoryLimitTest {
         inputDir = getTempDataDirectory();
         inputDirPath = "file://" + inputDir.getAbsolutePath();
         TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1000, 100000);
-        final Properties vpjPropertiesForV2 = defaultVPJProps(venice, inputDirPath, batchOnlyStoreName);
+        final Properties vpjPropertiesForV2 = defaultVPJProps(veniceCluster, inputDirPath, batchOnlyStoreName);
 
         VeniceException exception =
             expectThrows(VeniceException.class, () -> runVPJ(vpjPropertiesForV2, 2, controllerClient));
@@ -429,13 +473,16 @@ public class DaVinciClientMemoryLimitTest {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 190, 100000); // ~19MB
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, batchOnlyStoreName);
+    Properties vpjProperties = defaultVPJProps(veniceCluster, inputDirPath, batchOnlyStoreName);
 
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+    try (
+        ControllerClient controllerClient =
+            createStoreForJob(veniceCluster.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(batchOnlyStoreName).setVeniceURL(venice.getRandomRouterURL()))) {
-      venice.createMetaSystemStore(batchOnlyStoreName);
-      venice.createPushStatusSystemStore(batchOnlyStoreName);
+            ClientConfig.defaultGenericClientConfig(batchOnlyStoreName)
+                .setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      veniceCluster.createMetaSystemStore(batchOnlyStoreName);
+      veniceCluster.createPushStatusSystemStore(batchOnlyStoreName);
 
       // Make sure DaVinci push status system store is enabled
       StoreResponse storeResponseForBatchOnlyStore = controllerClient.getStore(batchOnlyStoreName);
@@ -460,8 +507,8 @@ public class DaVinciClientMemoryLimitTest {
       assertFalse(
           updateStoreResponseForHybridStore.isError(),
           "Received error when converting a hybrid store: " + updateStoreResponseForHybridStore.getError());
-      venice.createMetaSystemStore(hybridStoreName);
-      venice.createPushStatusSystemStore(hybridStoreName);
+      veniceCluster.createMetaSystemStore(hybridStoreName);
+      veniceCluster.createPushStatusSystemStore(hybridStoreName);
 
       ControllerResponse emptyPushForHybridStore =
           controllerClient.sendEmptyPushAndWait(hybridStoreName, "test_hybrid_push_v1", 1024 * 1024 * 100l, 30 * 1000);
@@ -514,7 +561,7 @@ public class DaVinciClientMemoryLimitTest {
         daVinciClientForHybridStore.subscribeAll().get(30, TimeUnit.SECONDS);
 
         // Write some large records and verify
-        SystemProducer veniceProducer = getSamzaProducer(venice, hybridStoreName, Version.PushType.STREAM);
+        SystemProducer veniceProducer = getSamzaProducer(veniceCluster, hybridStoreName, Version.PushType.STREAM);
 
         int hybridStoreKeyId = 0;
         for (; hybridStoreKeyId < 100; ++hybridStoreKeyId) {

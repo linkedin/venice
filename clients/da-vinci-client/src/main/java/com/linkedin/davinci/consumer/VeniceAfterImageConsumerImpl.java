@@ -1,5 +1,7 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -21,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,7 +37,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
   final private Lazy<VeniceChangelogConsumerImpl<K, V>> internalSeekConsumer;
-  private Thread versionSwapDetectionThread;
+  private final ScheduledExecutorService versionSwapExecutorService = Executors.newSingleThreadScheduledExecutor();
+  AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
 
   public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
     this(
@@ -53,22 +57,29 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       PubSubConsumerAdapter consumer,
       Lazy<VeniceChangelogConsumerImpl<K, V>> seekConsumer) {
     super(changelogClientConfig, consumer);
-    versionSwapDetectionThread = new VersionSwapDetectionThread();
     internalSeekConsumer = seekConsumer;
     versionSwapDetectionIntervalTimeInMs = changelogClientConfig.getVersionSwapDetectionIntervalTimeInMs();
   }
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
-    if (!versionSwapDetectionThread.isAlive()) {
-      versionSwapDetectionThread.start();
-    }
     return internalPoll(timeoutInMs, "");
   }
 
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     return internalSeekToTimestamps(timestamps, "");
+  }
+
+  @Override
+  public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    if (!versionSwapThreadScheduled.get()) {
+      // schedule the version swap thread
+      versionSwapExecutorService
+          .schedule(new VersionSwapDetectionThread(), versionSwapDetectionIntervalTimeInMs, TimeUnit.MILLISECONDS);
+      versionSwapThreadScheduled.set(true);
+    }
+    return super.subscribe(partitions);
   }
 
   @Override
@@ -101,37 +112,39 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           }
 
           // poll until we get EOP for all partitions
-          while (true) {
-            polledResults = consumerAdapter.poll(5000L);
-            // Loop through all polled messages
-            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
-                .entrySet()) {
-              PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
-              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
-                if (message.getKey().isControlMessage()) {
-                  ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
-                  ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-                  if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
-                    // note down the partition and offset and mark that we've got the thing
-                    endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
-                    VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
-                        pubSubTopicPartition.getPubSubTopic().getName(),
-                        new ApacheKafkaOffsetPosition(message.getOffset()),
-                        pubSubTopicPartition.getPartitionNumber());
-                    checkpoints.add(coordinate);
-                    Set<Integer> unsubSet = new HashSet<>();
-                    unsubSet.add(pubSubTopicPartition.getPartitionNumber());
-                    internalSeekConsumer.get().unsubscribe(unsubSet);
-                    // No need to look at the rest of the messages for this partition that we might have polled
-                    break;
+          synchronized (consumerAdapter) {
+            while (true) {
+              polledResults = consumerAdapter.poll(5000L);
+              // Loop through all polled messages
+              for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
+                  .entrySet()) {
+                PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+                List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
+                for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+                  if (message.getKey().isControlMessage()) {
+                    ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+                    ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+                    if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
+                      // note down the partition and offset and mark that we've got the thing
+                      endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
+                      VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
+                          pubSubTopicPartition.getPubSubTopic().getName(),
+                          new ApacheKafkaOffsetPosition(message.getOffset()),
+                          pubSubTopicPartition.getPartitionNumber());
+                      checkpoints.add(coordinate);
+                      Set<Integer> unsubSet = new HashSet<>();
+                      unsubSet.add(pubSubTopicPartition.getPartitionNumber());
+                      internalSeekConsumer.get().unsubscribe(unsubSet);
+                      // No need to look at the rest of the messages for this partition that we might have polled
+                      break;
+                    }
                   }
                 }
               }
-            }
-            if (endOfPushConsumedPerPartitionMap.values().stream().allMatch(e -> e)) {
-              // We polled all EOP messages, stop polling!
-              break;
+              if (endOfPushConsumedPerPartitionMap.values().stream().allMatch(e -> e)) {
+                // We polled all EOP messages, stop polling!
+                break;
+              }
             }
           }
           this.seekToCheckpoint(checkpoints).get();
@@ -150,65 +163,50 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
-    if (!versionSwapDetectionThread.isAlive()) {
-      versionSwapDetectionThread.start();
-    }
     return super.internalSeek(partitions, targetTopic, seekAction);
   }
 
-  private class VersionSwapDetectionThread extends Thread {
-    VersionSwapDetectionThread() {
-      super("Version-Swap-Detection-Thread");
-    }
-
+  private class VersionSwapDetectionThread implements Runnable {
     @Override
     public void run() {
-      while (!Thread.interrupted()) {
-        try {
-          TimeUnit.MILLISECONDS.sleep(versionSwapDetectionIntervalTimeInMs);
-        } catch (InterruptedException e) {
-          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
-          break;
-        }
-
+      Set<Integer> partitions = new HashSet<>();
+      try {
         // Check the current version of the server
-        storeRepository.refresh();
         int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
 
         // Check the current ingested version
-        Set<PubSubTopicPartition> subscriptions = pubSubConsumer.getAssignment();
-        if (subscriptions.isEmpty()) {
-          continue;
-        }
-        int maxVersion = -1;
-        for (PubSubTopicPartition topicPartition: subscriptions) {
-          int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
-          if (version >= maxVersion) {
-            maxVersion = version;
+        Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
+        synchronized (subscriptions) {
+          if (subscriptions.isEmpty()) {
+            return;
           }
-        }
+          int maxVersion = -1;
+          for (PubSubTopicPartition topicPartition: subscriptions) {
+            int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+            if (version >= maxVersion) {
+              maxVersion = version;
+            }
+          }
 
-        // Seek to end of push
-        if (currentVersion != maxVersion) {
-          // get current subscriptions and seek to endOfPush
-          Set<Integer> partitions = new HashSet<>();
-          for (PubSubTopicPartition partitionSubscription: subscriptions) {
-            partitions.add(partitionSubscription.getPartitionNumber());
+          // Seek to end of push
+          if (currentVersion != maxVersion) {
+            // get current subscriptions and seek to endOfPush
+            for (PubSubTopicPartition partitionSubscription: subscriptions) {
+              partitions.add(partitionSubscription.getPartitionNumber());
+            }
           }
-          try {
-            LOGGER.info(
-                "New Version detected!  Seeking consumer to version: " + currentVersion
-                    + " in VersionSwaDetectionThread: " + this.getId());
-            seekToEndOfPush(partitions).get();
-          } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error(
-                "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions
-                    + " on VersionSwapDetectionThread: " + this.getId() + "will retry...",
-                e);
-          }
+
+          LOGGER.info(
+              "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: "
+                  + changelogClientConfig.getConsumerName());
+          seekToEndOfPush(partitions).get();
         }
+      } catch (Exception e) {
+        LOGGER.error(
+            "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " on consumer: "
+                + changelogClientConfig.getConsumerName() + "will retry...",
+            e);
       }
-      LOGGER.info("VersionSwapDetectionThread thread #" + this.getId() + "interrupted!  Shutting down...");
     }
   }
 }

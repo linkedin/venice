@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.AGGREGATED_HEALTH_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
@@ -408,6 +409,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.sendHeartbeatToSystemStore(admin)));
+    httpService.post(
+        AGGREGATED_HEALTH_STATUS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.getAggregatedHealthStatus(admin)));
     httpService.get(
         GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getHeartbeatFromSystemStore(admin)));

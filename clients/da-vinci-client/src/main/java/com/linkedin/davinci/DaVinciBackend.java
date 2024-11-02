@@ -9,7 +9,7 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -79,6 +79,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -118,7 +119,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -267,7 +268,7 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          getRecordTransformer,
+          recordTransformerFunction,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
@@ -289,12 +290,20 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
+        if (recordTransformerFunction != null) {
+          throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
+        }
+
         blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
             configLoader.getVeniceServerConfig().getRocksDBPath(),
             clientConfig,
-            storageMetadataService);
+            storageMetadataService,
+            readOnlyStoreRepository,
+            storageService.getStorageEngineRepository(),
+            backendConfig.getMaxConcurrentSnapshotUser(),
+            backendConfig.getSnapshotRetentionTimeInMin());
       } else {
         blobTransferManager = null;
       }
@@ -446,7 +455,8 @@ public class DaVinciBackend implements Closeable {
             storageMetadataService,
             ingestionService,
             storageService,
-            blobTransferManager)
+            blobTransferManager,
+            this::getVeniceCurrentVersionNumber)
         : new DefaultIngestionBackend(
             storageMetadataService,
             ingestionService,
@@ -460,7 +470,8 @@ public class DaVinciBackend implements Closeable {
       List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
       String versionTopic = version.kafkaTopicName();
       LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageService.getStorageEngine(versionTopic));
+      AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
+      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
       StoreBackend storeBackend = getStoreOrThrow(storeName);
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
@@ -656,6 +667,11 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
+  int getVeniceCurrentVersionNumber(String storeName) {
+    Version currentVersion = getVeniceCurrentVersion(storeName);
+    return currentVersion == null ? -1 : currentVersion.getNumber();
+  }
+
   private Version getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
     Version latestNonFaultyVersion = null;
     for (Version version: store.getVersions()) {
@@ -817,5 +833,31 @@ public class DaVinciBackend implements Closeable {
       status = ExecutionStatus.ERROR;
     }
     return status;
+  }
+
+  public boolean hasCurrentVersionBootstrapping() {
+    return ingestionBackend.hasCurrentVersionBootstrapping();
+  }
+
+  static class BootstrappingAwareCompletableFuture {
+    private ScheduledExecutorService scheduledExecutor =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("DaVinci_Bootstrapping_Check_Executor"));
+    public final CompletableFuture<Void> bootstrappingFuture = new CompletableFuture<>();
+
+    public BootstrappingAwareCompletableFuture(DaVinciBackend backend) {
+      scheduledExecutor.scheduleAtFixedRate(() -> {
+        if (bootstrappingFuture.isDone()) {
+          return;
+        }
+        if (!backend.hasCurrentVersionBootstrapping()) {
+          bootstrappingFuture.complete(null);
+        }
+      }, 0, 3, TimeUnit.SECONDS);
+      bootstrappingFuture.whenComplete((ignored1, ignored2) -> scheduledExecutor.shutdown());
+    }
+
+    public CompletableFuture<Void> getBootstrappingFuture() {
+      return bootstrappingFuture;
+    }
   }
 }

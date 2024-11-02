@@ -53,7 +53,7 @@ public class OfflinePushStatus {
   private List<StatusSnapshot> statusHistory;
   private String incrementalPushVersion = "";
   // Key is Partition Id (0 to n-1); value is the corresponding partition status.
-  private Map<Integer, PartitionStatus> partitionIdToStatus;
+  private final Map<Integer, PartitionStatus> partitionIdToStatus;
 
   private Map<String, String> pushProperties;
 

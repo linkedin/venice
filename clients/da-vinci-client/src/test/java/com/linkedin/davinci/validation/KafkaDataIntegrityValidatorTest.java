@@ -81,7 +81,7 @@ public class KafkaDataIntegrityValidatorTest {
         time.getMilliseconds(),
         p0offsetRecord,
         checkSumType);
-    validator.validateMessage(p0g0record0, false, Lazy.FALSE);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, p0g0record0, false, Lazy.FALSE);
 
     time.sleep(10);
 
@@ -93,20 +93,20 @@ public class KafkaDataIntegrityValidatorTest {
         seqNumberForPartition0Guid1++,
         time.getMilliseconds(),
         p0offsetRecord);
-    validator.validateMessage(p0g0record1, false, Lazy.FALSE);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, p0g0record1, false, Lazy.FALSE);
 
     assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Nothing should be cleared yet
-    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    validator.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, 0, p0offsetRecord);
     assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Even if we wait some more, the state should still be retained, since the wall-clock time does not matter, only
     // the last consumed time does.
     time.sleep(2 * maxAgeInMs);
-    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    validator.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, 0, p0offsetRecord);
     assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
@@ -123,12 +123,12 @@ public class KafkaDataIntegrityValidatorTest {
         time.getMilliseconds(),
         p0offsetRecord,
         checkSumType);
-    validator.validateMessage(p0g1record0, false, Lazy.FALSE);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, p0g1record0, false, Lazy.FALSE);
     assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // After calling clear, now we should see the update to the internal state...
-    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    validator.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, 0, p0offsetRecord);
     assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
@@ -140,7 +140,7 @@ public class KafkaDataIntegrityValidatorTest {
         time.getMilliseconds(),
         p1offsetRecord,
         checkSumType);
-    validator.validateMessage(p1g0record0, false, Lazy.FALSE);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, p1g0record0, false, Lazy.FALSE);
     assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
@@ -155,13 +155,13 @@ public class KafkaDataIntegrityValidatorTest {
         p0offsetRecord);
     assertThrows(
         ImproperlyStartedSegmentException.class,
-        () -> validator.validateMessage(p0g0record2, false, Lazy.FALSE));
+        () -> validator.validateMessage(PartitionTracker.VERSION_TOPIC, p0g0record2, false, Lazy.FALSE));
     assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // This is a stable state, so no changes are expected...
-    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
-    validator.updateOffsetRecordForPartition(1, p1offsetRecord);
+    validator.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, 0, p0offsetRecord);
+    validator.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, 1, p1offsetRecord);
     assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
   }

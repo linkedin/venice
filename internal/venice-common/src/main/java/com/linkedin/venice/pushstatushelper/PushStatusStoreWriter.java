@@ -67,6 +67,15 @@ public class PushStatusStoreWriter implements AutoCloseable {
     writeHeartbeat(storeName, System.currentTimeMillis());
   }
 
+  /**
+   * This function will write `-1` to indicate the node is bootstrapping and Controller
+   * should ignore all the reports from this instance.
+   * @param storeName
+   */
+  public void writeHeartbeatForBootstrappingInstance(String storeName) {
+    writeHeartbeat(storeName, -1);
+  }
+
   public void writeHeartbeat(String storeName, long heartbeat) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);

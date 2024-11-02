@@ -1403,6 +1403,26 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return delegate.isNearlineProducerCompressionEnabled();
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return delegate.getNearlineProducerCountPerWriter();
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }

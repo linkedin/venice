@@ -6,6 +6,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -220,9 +221,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         VeniceProperties persistedStorageEngineConfig = Utils.parseProperties(storeEngineConfig);
         LOGGER.info("Found storage engine configs: {}", persistedStorageEngineConfig.toString(true));
         boolean usePlainTableFormat = persistedStorageEngineConfig.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
-        String transformerValueSchema = persistedStorageEngineConfig.containsKey(RECORD_TRANSFORMER_VALUE_SCHEMA)
-            ? persistedStorageEngineConfig.getString(RECORD_TRANSFORMER_VALUE_SCHEMA)
-            : "null";
+        String transformerValueSchema = persistedStorageEngineConfig.getString(RECORD_TRANSFORMER_VALUE_SCHEMA, "null");
         if (usePlainTableFormat != rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           String existingTableFormat = usePlainTableFormat ? "PlainTable" : "BlockBasedTable";
           String newTableFormat =
@@ -291,5 +290,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   // Only used for testing purposes
   public void setRocksDBServerConfig(RocksDBServerConfig rocksDBServerConfig) {
     this.rocksDBServerConfig = rocksDBServerConfig;
+  }
+
+  @Override
+  public AbstractStorageIterator getIterator(int partitionId) {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.getIterator();
   }
 }

@@ -33,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
@@ -47,8 +48,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENAB
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
@@ -62,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -206,6 +211,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -358,9 +364,14 @@ public class VeniceControllerClusterConfig {
 
   private final boolean concurrentInitRoutinesEnabled;
 
-  private final boolean controllerInAzureFabric;
+  private final boolean controllerClusterHelixCloudEnabled;
+  private final boolean storageClusterHelixCloudEnabled;
+  private final CloudProvider helixCloudProvider;
+  private final String helixCloudId;
+  private final List<String> helixCloudInfoSources;
+  private final String helixCloudInfoProcessorName;
 
-  private final boolean usePushStatusStoreForIncrementalPush;
+  private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
   private final long metaStoreWriterCloseTimeoutInMS;
 
@@ -658,7 +669,7 @@ public class VeniceControllerClusterConfig {
     if (props.getString(CONTROLLER_INSTANCE_TAG_LIST, "").isEmpty()) {
       this.controllerInstanceTagList = Collections.emptyList();
     } else {
-      this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST, Collections.emptyList());
+      this.controllerInstanceTagList = props.getList(CONTROLLER_INSTANCE_TAG_LIST);
     }
 
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
@@ -888,13 +899,38 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
-    this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
+    this.usePushStatusStoreForIncrementalPushStatusReads =
+        props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.metaStoreWriterCloseTimeoutInMS = props.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
     this.metaStoreWriterCloseConcurrency = props.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
-    this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
+    this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
+    this.storageClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
+
+    if (controllerClusterHelixCloudEnabled || storageClusterHelixCloudEnabled) {
+      String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER).toUpperCase();
+      try {
+        this.helixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
+      } catch (IllegalArgumentException e) {
+        throw new VeniceException(
+            "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
+                + Arrays.toString(CloudProvider.values()));
+      }
+    } else {
+      this.helixCloudProvider = null;
+    }
+
+    this.helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
+    this.helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
+
+    if (props.getString(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, "").isEmpty()) {
+      this.helixCloudInfoSources = Collections.emptyList();
+    } else {
+      this.helixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES);
+    }
+
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
     this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
@@ -1533,12 +1569,32 @@ public class VeniceControllerClusterConfig {
     return concurrentInitRoutinesEnabled;
   }
 
-  public boolean isControllerInAzureFabric() {
-    return controllerInAzureFabric;
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return controllerClusterHelixCloudEnabled;
+  }
+
+  public boolean isStorageClusterHelixCloudEnabled() {
+    return storageClusterHelixCloudEnabled;
+  }
+
+  public CloudProvider getHelixCloudProvider() {
+    return helixCloudProvider;
+  }
+
+  public String getHelixCloudId() {
+    return helixCloudId;
+  }
+
+  public List<String> getHelixCloudInfoSources() {
+    return helixCloudInfoSources;
+  }
+
+  public String getHelixCloudInfoProcessorName() {
+    return helixCloudInfoProcessorName;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {
-    return usePushStatusStoreForIncrementalPush;
+    return usePushStatusStoreForIncrementalPushStatusReads;
   }
 
   public long getMetaStoreWriterCloseTimeoutInMS() {

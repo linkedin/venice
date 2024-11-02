@@ -169,12 +169,35 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         false);
   }
 
+  public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
+    return getClient(
+        storeName,
+        config,
+        valueClass,
+        new GenericDaVinciClientConstructor<>(),
+        getClientClass(config, false),
+        false);
+  }
+
   @Override
   public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
     return getClient(
         storeName,
         config,
         null,
+        new GenericDaVinciClientConstructor<>(),
+        getClientClass(config, false),
+        true);
+  }
+
+  public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(
+      String storeName,
+      DaVinciConfig config,
+      Class<V> valueClass) {
+    return getClient(
+        storeName,
+        config,
+        valueClass,
         new GenericDaVinciClientConstructor<>(),
         getClientClass(config, false),
         true);
