@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
@@ -28,7 +29,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -77,7 +77,7 @@ public class PartitionConsumptionState {
 
     LeaderFollowerState() {
       this.state = LeaderFollowerStateType.STANDBY;
-      this.rwLock = new ReentrantReadWriteLock();
+      this.rwLock = new VeniceReentrantReadWriteLock();
     }
 
     void setState(LeaderFollowerStateType state) {
