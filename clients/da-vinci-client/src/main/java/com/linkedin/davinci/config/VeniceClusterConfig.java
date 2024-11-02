@@ -29,6 +29,7 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -149,6 +150,21 @@ public class VeniceClusterConfig {
     Map<String, String> tmpKafkaUrlResolution = new HashMap<>();
 
     boolean foundBaseKafkaUrlInMappingIfItIsPopulated = kafkaClusterMap.isEmpty();
+    /**
+     * The cluster ID, alias and kafka URL mappings are defined in the service config file
+     * so in order to support multiple cluster id mappings we pass them as separated entries
+     * for example, we can build a new cluster id with its alias and url
+     * <entry key="2">
+     *   <map>
+     *    <entry key="name" value="region1_sep"/>
+     *    <entry key="url" value="${venice.kafka.ssl.bootstrap.servers.region1}_sep"/>
+     *   </map>
+     * </entry>
+     *
+     * For the separate incremental push topic feature, we duplicate entries with "_sep" suffix and different cluster id
+     * to support two RT topics (regular rt and incremental rt) with different cluster id.
+     */
+
     for (Map.Entry<String, Map<String, String>> kafkaCluster: kafkaClusterMap.entrySet()) {
       int clusterId = Integer.parseInt(kafkaCluster.getKey());
       Map<String, String> mappings = kafkaCluster.getValue();
@@ -207,11 +223,11 @@ public class VeniceClusterConfig {
     /**
      * If the {@link kafkaClusterIdToUrlMap} and {@link kafkaClusterUrlToIdMap} are equal in size, then it means
      * that {@link KAFKA_CLUSTER_MAP_KEY_OTHER_URLS} was never specified in the {@link kafkaClusterMap}, in which
-     * case, the resolver needs not lookup anything, and it will always return the same as its input.
+     * case, the resolver needs not lookup anything, and it will always return the same input with potentially filtering
      */
     this.kafkaClusterUrlResolver = this.kafkaClusterIdToUrlMap.size() == this.kafkaClusterUrlToIdMap.size()
-        ? String::toString
-        : url -> kafkaUrlResolution.getOrDefault(url, url);
+        ? Utils::resolveKafkaUrlForSepTopic
+        : url -> Utils.resolveKafkaUrlForSepTopic(kafkaUrlResolution.getOrDefault(url, url));
     this.kafkaBootstrapServers = this.kafkaClusterUrlResolver.apply(baseKafkaBootstrapServers);
     if (this.kafkaBootstrapServers == null || this.kafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
@@ -363,5 +379,21 @@ public class VeniceClusterConfig {
 
   public Map<String, Map<String, String>> getKafkaClusterMap() {
     return kafkaClusterMap;
+  }
+
+  /**
+   *  For the separate incremental push topic feature, we need to resolve the cluster id to the original one for monitoring
+   *  purposes as the incremental push topic essentially uses the same pubsub clusters as the regular push topic, though
+   *  it appears to have a different cluster id
+   * @param clusterId
+   * @return
+   */
+  public int getEquivalentKafkaClusterIdForSepTopic(int clusterId) {
+    String alias = kafkaClusterIdToAliasMap.get(clusterId);
+    if (alias == null || !alias.endsWith(Utils.SEPARATE_TOPIC_SUFFIX)) {
+      return clusterId;
+    }
+    String originalAlias = alias.substring(0, alias.length() - Utils.SEPARATE_TOPIC_SUFFIX.length());
+    return kafkaClusterAliasToIdMap.getInt(originalAlias);
   }
 }

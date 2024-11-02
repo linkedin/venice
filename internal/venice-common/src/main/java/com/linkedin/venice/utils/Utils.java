@@ -77,7 +77,7 @@ public class Utils {
   public static final String WILDCARD_MATCH_ANY = "*";
   public static final String NEW_LINE_CHAR = System.lineSeparator();
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
-
+  public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
 
   /**
@@ -922,5 +922,18 @@ public class Utils {
    */
   public static String escapeFilePathComponent(final String component) {
     return component.replaceAll("[^a-zA-Z0-9-_/\\.]", "_");
+  }
+
+  /**
+   * Check whether the given kafka url has "_sep" or not.
+   * If it has, return the kafka url without "_sep". Otherwise, return the original kafka url.
+   * @param kafkaUrl
+   * @return
+   */
+  public static String resolveKafkaUrlForSepTopic(String kafkaUrl) {
+    if (kafkaUrl != null && kafkaUrl.endsWith(SEPARATE_TOPIC_SUFFIX)) {
+      return kafkaUrl.substring(0, kafkaUrl.length() - SEPARATE_TOPIC_SUFFIX.length());
+    }
+    return kafkaUrl;
   }
 }
