@@ -1147,7 +1147,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return kafkaConsumerProperties;
   }
 
-  @Override
   public ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
     return storageMetadataService.getStoreVersionCompressionDictionary(topicName);
   }
@@ -1156,7 +1155,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicNameToIngestionTaskMap.get(topicName);
   }
 
-  @Override
   public AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions) {
     AdminResponse response = new AdminResponse();
     StoreIngestionTask ingestionTask = getStoreIngestionTask(topicName);

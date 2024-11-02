@@ -7,6 +7,7 @@ import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -143,6 +144,10 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);
+        case HOST_HEARTBEAT_LAG:
+          statsHandler.setMetadataRequest(true);
+          HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          ctx.fireChannelRead(heartbeatRequest);
         default:
           throw new VeniceException("Unrecognized query action");
       }

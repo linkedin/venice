@@ -63,6 +63,7 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
+import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
@@ -551,6 +552,11 @@ public enum Command {
       "cluster-health-status",
       "Returns the set of instances which can be safely remove and instances which cannot be removed.",
       new Arg[] { URL, CLUSTER, INSTANCES, TO_BE_STOPPED_NODES }
+  ),
+  DUMP_HOST_HEARTBEAT(
+      "dump-host-heartbeat",
+      "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
+      new Arg[] { SERVER_URL }, new Arg[] { KAFKA_TOPIC_NAME, PARTITION, LAG_FILTER_ENABLED }
   );
 
   private final String commandName;
@@ -624,7 +630,7 @@ public enum Command {
       List<String> candidateCommands = Arrays.stream(Command.values())
           .filter(
               command -> Arrays.stream(command.getRequiredArgs()).allMatch(arg -> cmdLine.hasOption(arg.toString())))
-          .map(commmand -> "--" + commmand.toString())
+          .map(command -> "--" + command)
           .collect(Collectors.toList());
       if (!candidateCommands.isEmpty()) {
         throw new VeniceException(

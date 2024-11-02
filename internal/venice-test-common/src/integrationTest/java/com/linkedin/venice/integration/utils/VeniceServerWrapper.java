@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -224,6 +225,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, TestUtils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+          .put(LOCAL_REGION_NAME, regionName)
           .put(ENABLE_SERVER_ALLOW_LIST, enableServerAllowlist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
           .put(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100)

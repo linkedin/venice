@@ -576,6 +576,9 @@ public class AdminTool {
         case AGGREGATED_HEALTH_STATUS:
           getAggregatedHealthStatus(cmd);
           break;
+        case DUMP_HOST_HEARTBEAT:
+          dumpHostHeartbeat(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -3069,6 +3072,43 @@ public class AdminTool {
           getRequiredArgument(cmd, Arg.VERSION),
           getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
           getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  static void dumpHostHeartbeatLag(
+      TransportClient transportClient,
+      String topicFilter,
+      String partitionFilter,
+      String lagFilter) throws Exception {
+    String topicName = topicFilter == null ? "" : topicFilter;
+    String partition = partitionFilter == null ? "-1" : partitionFilter;
+    String filterLag = lagFilter == null ? "false" : lagFilter;
+    StringBuilder sb = new StringBuilder(QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase()).append("/")
+        .append(topicName)
+        .append("/")
+        .append(partition)
+        .append("/")
+        .append(filterLag);
+    String requestUrl = sb.toString();
+    byte[] responseBody;
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    responseBody = transportClientResponse.getBody();
+    TopicPartitionIngestionContextResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
+    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
+  }
+
+  private static void dumpHostHeartbeat(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer("dummy", getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpHostHeartbeatLag(
+          transportClient,
+          getOptionalArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          getOptionalArgument(cmd, Arg.PARTITION),
+          getOptionalArgument(cmd, Arg.LAG_FILTER_ENABLED));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
