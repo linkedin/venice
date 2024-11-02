@@ -79,7 +79,7 @@ public class TestDumpIngestionContext {
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testDumpIngestionContext() {
+  public void testDumpHostHeartbeatLag() {
     final String storeName = Utils.getUniqueString("dumpInfo");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema keySchema = AvroCompatibilityHelper.parse(loadFileAsString("UserKey.avsc"));

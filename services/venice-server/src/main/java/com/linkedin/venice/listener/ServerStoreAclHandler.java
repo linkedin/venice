@@ -51,7 +51,8 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
           QueryAction.ADMIN,
           QueryAction.HEALTH,
           QueryAction.CURRENT_VERSION,
-          QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT));
+          QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT,
+          QueryAction.HOST_HEARTBEAT_LAG));
 
   public ServerStoreAclHandler(
       IdentityParser identityParser,

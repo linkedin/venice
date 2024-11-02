@@ -144,10 +144,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);
+          break;
         case HOST_HEARTBEAT_LAG:
           statsHandler.setMetadataRequest(true);
           HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          statsHandler.setStoreName(Version.parseStoreFromVersionTopic(heartbeatRequest.getTopic()));
           ctx.fireChannelRead(heartbeatRequest);
+          break;
         default:
           throw new VeniceException("Unrecognized query action");
       }
