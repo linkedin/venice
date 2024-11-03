@@ -10,6 +10,12 @@ import org.testng.annotations.Test;
 public class VenicePubsubInputPartitionTest {
   VenicePubsubInputPartition targetObject;
 
+  @BeforeTest
+  public void setUp() {
+    targetObject =
+        new VenicePubsubInputPartition("prod-lva2", "BigStrangePubSubTopic_V1_rt_r", 42, 49_152, 100_000_000);
+  }
+
   @Test
   public void testSerializablity() {
 
@@ -30,9 +36,4 @@ public class VenicePubsubInputPartitionTest {
 
   }
 
-  @BeforeTest
-  public void setUp() {
-    targetObject =
-        new VenicePubsubInputPartition("prod-lva2", "BigStrangePubSubTopic_V1_rt_r", 42, 49_152, 100_000_000);
-  }
 }
