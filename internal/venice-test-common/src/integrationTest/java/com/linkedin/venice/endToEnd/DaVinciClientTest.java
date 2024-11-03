@@ -177,7 +177,8 @@ public class DaVinciClientTest {
   @BeforeMethod
   @AfterClass
   public void deleteClassHash() {
-    File file = new File(String.format("./classHash-%d.txt", 1));
+    int storeVersion = 1;
+    File file = new File(String.format("./classHash-%d.txt", storeVersion));
     if (file.exists()) {
       assertTrue(file.delete());
     }
