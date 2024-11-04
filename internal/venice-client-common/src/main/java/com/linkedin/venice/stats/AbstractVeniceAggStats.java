@@ -46,6 +46,10 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     return storeStats.computeIfAbsent(storeName, k -> statsFactory.get(metricsRepository, storeName, totalStats));
   }
 
+  public T getNullableStoreStats(String storeName) {
+    return storeStats.get(storeName);
+  }
+
   public T getTotalStats() {
     return totalStats;
   }

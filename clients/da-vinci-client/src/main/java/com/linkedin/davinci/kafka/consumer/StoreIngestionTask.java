@@ -38,6 +38,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -125,6 +126,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -1262,7 +1264,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Process records batch by batch.
      */
     for (List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> batch: batches) {
-      List<ReentrantLock> locks = ingestionBatchProcessor.lockKeys(batch);
+      NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap = ingestionBatchProcessor.lockKeys(batch);
       try {
         long beforeProcessingPerRecordTimestampNs = System.nanoTime();
         List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> processedResults =
@@ -1288,7 +1290,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               elapsedTimeForPuttingIntoQueue);
         }
       } finally {
-        ingestionBatchProcessor.unlockKeys(batch, locks);
+        ingestionBatchProcessor.unlockKeys(keyLockMap);
       }
     }
 
