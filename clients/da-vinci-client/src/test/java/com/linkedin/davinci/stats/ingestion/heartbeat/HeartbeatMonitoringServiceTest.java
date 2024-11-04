@@ -53,8 +53,6 @@ public class HeartbeatMonitoringServiceTest {
         .getHeartbeatInfoFromMap(anyMap(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
     Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> leaderMap =
         new VeniceConcurrentHashMap<>();
-    Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> followerMap =
-        new VeniceConcurrentHashMap<>();
     String store = "testStore";
     int version = 1;
     int partition = 1;

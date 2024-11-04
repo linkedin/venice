@@ -32,7 +32,7 @@ public class HeartbeatRequest {
       try {
         String topic = requestParts[2];
         int partition = Integer.parseInt(requestParts[3]);
-        boolean filterLagReplica = Boolean.getBoolean(requestParts[4]);
+        boolean filterLagReplica = Boolean.parseBoolean(requestParts[4]);
         return new HeartbeatRequest(topic, partition, filterLagReplica);
       } catch (Exception e) {
         throw new VeniceException("Unable to parse request for a HeartbeatRequest action: " + uri);

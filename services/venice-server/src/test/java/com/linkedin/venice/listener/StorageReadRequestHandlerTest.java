@@ -57,6 +57,7 @@ import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -596,6 +597,37 @@ public class StorageReadRequestHandlerTest {
     String topicPartitionIngestionContextStr =
         new String(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext());
     assertTrue(topicPartitionIngestionContextStr.contains(topic));
+    assertEquals(
+        topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(),
+        expectedTopicPartitionContext);
+  }
+
+  @Test
+  public void testHeartbeatLagRequestsPassInStorageExecutionHandler() throws Exception {
+    String topic = "test_store_v1";
+    int expectedPartitionId = 12345;
+    boolean filterLag = true;
+    // [0]""/[1]"action"/[2]"optional topic filter"/[3]"optional partition filter"/[4]"optional lag filter"
+    String uri = "/" + QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase() + "/" + topic + "/" + expectedPartitionId
+        + "/" + filterLag;
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    HeartbeatRequest request =
+        HeartbeatRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
+    System.out.println(request.getTopic() + " " + request.getPartition() + " " + request.isFilterLagReplica());
+    // Mock the TopicPartitionIngestionContextResponse from heartbeat service
+    TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
+        new TopicPartitionIngestionContextResponse();
+    String jsonStr = "{}";
+    byte[] expectedTopicPartitionContext = jsonStr.getBytes();
+    expectedTopicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(expectedTopicPartitionContext);
+    doReturn(expectedTopicPartitionIngestionContextResponse).when(ingestionMetadataRetriever)
+        .getHeartbeatLag(eq(topic), eq(expectedPartitionId), eq(filterLag));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
+        (TopicPartitionIngestionContextResponse) argumentCaptor.getValue();
     assertEquals(
         topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(),
         expectedTopicPartitionContext);

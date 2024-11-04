@@ -20,5 +20,4 @@ public interface IngestionMetadataRetriever {
       String topicFilter,
       int partitionFilter,
       boolean filterLagReplica);
-
 }
