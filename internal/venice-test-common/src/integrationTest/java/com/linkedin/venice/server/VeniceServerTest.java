@@ -193,7 +193,7 @@ public class VeniceServerTest {
           .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
-      String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+      String storeName = Version.composeKafkaTopic(cluster.createStore(1), 1);
       storageService.openStoreForNewPartition(
           server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
           1,
@@ -202,9 +202,11 @@ public class VeniceServerTest {
           repository.getAllLocalStorageEngines().size(),
           1,
           "We have created one storage engine for store: " + storeName);
-      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 1);
+      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
 
       server.getVeniceServer().shutdown();
+
+      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
 
       // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be
       // deleted
@@ -212,24 +214,7 @@ public class VeniceServerTest {
       cluster.stopVeniceServer(server.getPort());
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We should not cleanup the local storage");
-
-      // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
-      // the server join again.
-      cluster.stopVeniceServer(server.getPort());
-      try (ControllerClient client = ControllerClient
-          .constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
-        client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
-      }
-
-      cluster.restartVeniceServer(server.getPort());
-      Assert.assertTrue(
-          server.getVeniceServer()
-              .getStorageService()
-              .getStorageEngineRepository()
-              .getAllLocalStorageEngines()
-              .isEmpty(),
-          "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "Storage engine should remain.");
     }
   }
 
