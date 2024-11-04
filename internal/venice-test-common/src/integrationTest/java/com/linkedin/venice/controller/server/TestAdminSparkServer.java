@@ -73,6 +73,7 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.nio.client.HttpAsyncClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -218,10 +219,30 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     httpClient.start();
     int serverPort = venice.getChildRegions().get(0).getClusters().get(clusterName).getVeniceServers().get(0).getPort();
     String server = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort);
+
+    // API call with all fields
     Map<String, Object> payloads = new HashMap<>();
     payloads.put("cluster_id", clusterName);
-    payloads.put("instances", Arrays.asList(server));
+    payloads.put("instances", Collections.singletonList(server));
     payloads.put("to_be_stopped_instances", Collections.emptyList());
+
+    InstanceRemovableStatuses statuses = makeAggregatedHealthStatusCall(httpClient, payloads);
+    Assert.assertTrue(statuses.getNonStoppableInstancesWithReasons().containsKey(server));
+
+    // API call without optional to_be_stopped_instances
+    Map<String, Object> payloads2 = new HashMap<>();
+    payloads2.put("cluster_id", clusterName);
+    payloads2.put("instances", Collections.singletonList(server));
+
+    InstanceRemovableStatuses statuses2 = makeAggregatedHealthStatusCall(httpClient, payloads2);
+    Assert.assertTrue(statuses2.getNonStoppableInstancesWithReasons().containsKey(server));
+
+    httpClient.close();
+  }
+
+  private InstanceRemovableStatuses makeAggregatedHealthStatusCall(
+      HttpAsyncClient httpClient,
+      Map<String, Object> payloads) throws IOException, ExecutionException, InterruptedException {
     StringEntity entity = new StringEntity(OBJECT_MAPPER.writeValueAsString(payloads), ContentType.APPLICATION_JSON);
 
     final HttpPost post = new HttpPost(
@@ -232,9 +253,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), 200);
     String responseString = IOUtils.toString(httpResponse.getEntity().getContent());
-    InstanceRemovableStatuses statuses = OBJECT_MAPPER.readValue(responseString, InstanceRemovableStatuses.class);
-    Assert.assertTrue(statuses.getNonStoppableInstancesWithReasons().containsKey(server));
-    httpClient.close();
+    return OBJECT_MAPPER.readValue(responseString, InstanceRemovableStatuses.class);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
