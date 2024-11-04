@@ -31,6 +31,8 @@ public class VeniceWriterOptions {
   private final String brokerAddress;
   private final boolean producerCompressionEnabled;
   private final int producerCount;
+  private final int producerThreadCount;
+  private final int producerQueueSize;
 
   public String getBrokerAddress() {
     return brokerAddress;
@@ -84,6 +86,14 @@ public class VeniceWriterOptions {
     return producerCount;
   }
 
+  public int getProducerThreadCount() {
+    return producerThreadCount;
+  }
+
+  public int getProducerQueueSize() {
+    return producerQueueSize;
+  }
+
   private VeniceWriterOptions(Builder builder) {
     topicName = builder.topicName;
     keySerializer = builder.keySerializer;
@@ -98,6 +108,8 @@ public class VeniceWriterOptions {
     brokerAddress = builder.brokerAddress;
     producerCompressionEnabled = builder.producerCompressionEnabled;
     producerCount = builder.producerCount;
+    producerThreadCount = builder.producerThreadCount;
+    producerQueueSize = builder.producerQueueSize;
   }
 
   @Override
@@ -128,6 +140,12 @@ public class VeniceWriterOptions {
         .append(", ")
         .append("producerCount:")
         .append(producerCount)
+        .append(", ")
+        .append("producerThreadCount:")
+        .append(producerThreadCount)
+        .append(", ")
+        .append("producerQueueSize:")
+        .append(producerQueueSize)
         .append("}")
         .toString();
   }
@@ -146,6 +164,8 @@ public class VeniceWriterOptions {
     private String brokerAddress = null; // default null
     private boolean producerCompressionEnabled = true;
     private int producerCount = 1;
+    private int producerThreadCount = 1;
+    private int producerQueueSize = 5 * 1024 * 1024; // 5MB by default
 
     private void addDefaults() {
       if (keySerializer == null) {
@@ -238,6 +258,16 @@ public class VeniceWriterOptions {
 
     public Builder setProducerCount(int producerCount) {
       this.producerCount = producerCount;
+      return this;
+    }
+
+    public Builder setProducerThreadCount(int producerThreadCount) {
+      this.producerThreadCount = producerThreadCount;
+      return this;
+    }
+
+    public Builder setProducerQueueSize(int producerQueueSize) {
+      this.producerQueueSize = producerQueueSize;
       return this;
     }
   }
