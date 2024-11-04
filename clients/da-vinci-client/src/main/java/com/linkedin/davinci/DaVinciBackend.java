@@ -290,9 +290,6 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
-        if (recordTransformerFunction != null) {
-          throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
-        }
 
         blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),

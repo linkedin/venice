@@ -186,6 +186,12 @@
         "avro.java.string": "String"
       },
       "default": {}
+    },
+    {
+      "name": "transformerClassHash",
+      "doc": "An integer hash code of the DaVinci record transformer for compatibility checks during BLOB transfer",
+      "type": ["null", "int"],
+      "default": null
     }
   ]
 }

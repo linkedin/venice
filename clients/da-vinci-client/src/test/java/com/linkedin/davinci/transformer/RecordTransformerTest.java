@@ -1,8 +1,8 @@
 package com.linkedin.davinci.transformer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,8 +18,10 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeMethod;
@@ -61,13 +63,22 @@ public class RecordTransformerTest {
     recordTransformer.processDelete(lazyKey);
 
     assertFalse(recordTransformer.getStoreRecordsInDaVinci());
-
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
     int classHash = recordTransformer.getClassHash();
+    int partitionNumber = 1;
+    OffsetRecord nullOffsetRecord = mock(OffsetRecord.class);
+    when(nullOffsetRecord.getTransformerClassHash()).thenReturn(null);
+
+    OffsetRecord matchingOffsetRecord = mock(OffsetRecord.class);
+    when(matchingOffsetRecord.getTransformerClassHash()).thenReturn(classHash);
 
     DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
-    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
-    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+    when(storageEngine.getPartitionOffset(partitionNumber)).thenReturn(Optional.of(nullOffsetRecord));
+    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(storageEngine, partitionNumber, classHash));
+    verify(storageEngine, times(1)).putPartitionOffset(eq(partitionNumber), any(OffsetRecord.class));
+    when(storageEngine.getPartitionOffset(partitionNumber)).thenReturn(Optional.of(matchingOffsetRecord));
+    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(storageEngine, partitionNumber, classHash));
   }
 
   @Test
@@ -86,15 +97,6 @@ public class RecordTransformerTest {
     int partitionNumber = 1;
     recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionNumber);
-
-    // Reset the mock to clear previous interactions
-    reset(storageEngine);
-
-    // Execute the onRecovery method again to test the case where the classHash file exists
-    when(storageEngine.getIterator(partitionNumber)).thenReturn(iterator);
-    recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
-    verify(storageEngine, never()).clearPartitionOffset(partitionNumber);
-    verify(storageEngine, times(1)).getIterator(partitionNumber);
   }
 
   @Test

@@ -306,13 +306,22 @@ public class OffsetRecord {
     return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
+  public Integer getTransformerClassHash() {
+    return partitionState.getTransformerClassHash();
+  }
+
+  public void setTransformerClassHash(Integer classHash) {
+    this.partitionState.transformerClassHash = classHash;
+  }
+
   @Override
   public String toString() {
     return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", upstreamOffset="
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", transformerClassHash="
+        + getTransformerClassHash() + '}';
   }
 
   /**
