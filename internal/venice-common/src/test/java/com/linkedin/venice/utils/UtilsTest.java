@@ -220,4 +220,13 @@ public class UtilsTest {
     Assert.assertEquals(list.get(1), "b");
     Assert.assertEquals(list.get(2), "c");
   }
+
+  @Test
+  public void testResolveKafkaUrlForSepTopic() {
+    String originalKafkaUrl = "localhost:12345";
+    String originalKafkaUrlForSep = "localhost:12345_sep";
+    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
+    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
+    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+  }
 }

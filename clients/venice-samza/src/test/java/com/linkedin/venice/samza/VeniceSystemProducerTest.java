@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -268,5 +269,36 @@ public class VeniceSystemProducerTest {
   public Version.PushType[] batchOrStreamReprocessing() {
     return new Version.PushType[] { Version.PushType.BATCH, Version.PushType.STREAM_REPROCESSING,
         Version.PushType.STREAM, Version.PushType.INCREMENTAL };
+  }
+
+  @Test
+  public void testExtractConcurrentProducerConfig() {
+    Properties properties = new Properties();
+    properties.put(VeniceWriter.PRODUCER_THREAD_COUNT, "2");
+    properties.put(VeniceWriter.PRODUCER_QUEUE_SIZE, "102400000");
+
+    VeniceWriterOptions.Builder builder = new VeniceWriterOptions.Builder("test_rt");
+    VeniceSystemProducer.extractConcurrentProducerConfig(properties, builder);
+    VeniceWriterOptions options = builder.build();
+    assertEquals(options.getProducerThreadCount(), 2);
+    assertEquals(options.getProducerQueueSize(), 102400000);
+    assertEquals(properties.getProperty(KAFKA_BUFFER_MEMORY), "8388608");
+
+    /**
+     * if {@link KAFKA_BUFFER_MEMORY} is specified, {@link VeniceSystemProducer} shouldn't override.
+     */
+
+    properties = new Properties();
+    properties.put(VeniceWriter.PRODUCER_THREAD_COUNT, "2");
+    properties.put(VeniceWriter.PRODUCER_QUEUE_SIZE, "102400000");
+    properties.put(KAFKA_BUFFER_MEMORY, "10240");
+
+    builder = new VeniceWriterOptions.Builder("test_rt");
+    VeniceSystemProducer.extractConcurrentProducerConfig(properties, builder);
+    options = builder.build();
+    assertEquals(options.getProducerThreadCount(), 2);
+    assertEquals(options.getProducerQueueSize(), 102400000);
+    assertEquals(properties.getProperty(KAFKA_BUFFER_MEMORY), "10240");
+
   }
 }

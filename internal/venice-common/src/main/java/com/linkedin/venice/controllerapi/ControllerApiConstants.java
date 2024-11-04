@@ -244,6 +244,4 @@ public class ControllerApiConstants {
 
   public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
   public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
-
-  public static final String AGGR_HEALTH_STATUS_URI = "/aggregatedHealthStatus";
 }

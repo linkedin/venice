@@ -1,4 +1,4 @@
-package com.linkedin.davinci.kafka.consumer;
+package com.linkedin.venice.utils.collections;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.utils.TestUtils;
@@ -110,9 +110,11 @@ public class MemoryBoundBlockingQueueTest {
       }
       // This will trigger a notification, which will allow more puts
       queue.take();
-      Thread.sleep(50);
-      Assert.assertTrue(t.isAlive());
-      Assert.assertEquals(queue.size(), objectCntAtMost);
+
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(t.isAlive());
+        Assert.assertEquals(queue.size(), objectCntAtMost);
+      });
     } finally {
       TestUtils.shutdownThread(t);
     }

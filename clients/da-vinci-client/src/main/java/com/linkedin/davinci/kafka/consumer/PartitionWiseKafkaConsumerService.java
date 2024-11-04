@@ -32,7 +32,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
    * have same real-time topics, we should avoid same real-time topic partition from different version topics sharing
    * the same consumer from consumer pool.
    */
-  private final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
+  protected final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
       new VeniceConcurrentHashMap<>();
 
   private final Logger LOGGER;
@@ -58,6 +58,48 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled) {
+    this(
+        poolType,
+        consumerFactory,
+        consumerProperties,
+        readCycleDelayMs,
+        numOfConsumersPerKafkaCluster,
+        ingestionThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        kafkaClusterAlias,
+        sharedConsumerNonExistingTopicCleanupDelayMS,
+        topicExistenceChecker,
+        liveConfigBasedKafkaThrottlingEnabled,
+        pubSubDeserializer,
+        time,
+        stats,
+        isKafkaConsumerOffsetCollectionEnabled,
+        metadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled,
+        PartitionWiseKafkaConsumerService.class.toString());
+  }
+
+  PartitionWiseKafkaConsumerService(
+      final ConsumerPoolType poolType,
+      final PubSubConsumerAdapterFactory consumerFactory,
+      final Properties consumerProperties,
+      final long readCycleDelayMs,
+      final int numOfConsumersPerKafkaCluster,
+      final IngestionThrottler ingestionThrottler,
+      final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
+      final MetricsRepository metricsRepository,
+      final String kafkaClusterAlias,
+      final long sharedConsumerNonExistingTopicCleanupDelayMS,
+      final TopicExistenceChecker topicExistenceChecker,
+      final boolean liveConfigBasedKafkaThrottlingEnabled,
+      final PubSubMessageDeserializer pubSubDeserializer,
+      final Time time,
+      final AggKafkaConsumerServiceStats stats,
+      final boolean isKafkaConsumerOffsetCollectionEnabled,
+      final ReadOnlyStoreRepository metadataRepository,
+      final boolean isUnregisterMetricForDeletedStoreEnabled,
+      final String loggerNamePrefix) {
     super(
         poolType,
         consumerFactory,
@@ -77,7 +119,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled);
-    this.LOGGER = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrlForLogger + "]");
+    this.LOGGER = LogManager.getLogger(loggerNamePrefix + " [" + kafkaUrlForLogger + "]");
   }
 
   @Override
@@ -137,20 +179,31 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     return consumer;
   }
 
-  private boolean alreadySubscribedRealtimeTopicPartition(
+  protected boolean alreadySubscribedRealtimeTopicPartition(
       SharedKafkaConsumer consumer,
       PubSubTopicPartition topicPartition) {
-    Set<PubSubConsumerAdapter> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
+    Set<PubSubConsumerAdapter> consumers = getRtTopicPartitionToConsumerMap().get(topicPartition);
     return consumers != null && consumers.contains(consumer);
   }
 
   @Override
-  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition) {
+  void handleUnsubscription(
+      SharedKafkaConsumer consumer,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       Set<PubSubConsumerAdapter> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(pubSubTopicPartition);
       if (rtTopicConsumers != null) {
         rtTopicConsumers.remove(consumer);
       }
     }
+  }
+
+  Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> getRtTopicPartitionToConsumerMap() {
+    return rtTopicPartitionToConsumerMap;
+  }
+
+  Logger getLOGGER() {
+    return LOGGER;
   }
 }

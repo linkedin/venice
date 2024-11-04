@@ -2,27 +2,35 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Collections;
 import java.util.List;
 
 
 public class AggregatedHealthStatusRequest {
-  List<String> instances;
-  List<String> to_be_stopped_instances;
-  String cluster_id;
+  private final String cluster_id;
+  private final List<String> instances;
+  private final List<String> to_be_stopped_instances;
 
   @JsonCreator
   public AggregatedHealthStatusRequest(
+      @JsonProperty("cluster_id") String cluster_id,
       @JsonProperty("instances") List<String> instances,
-      @JsonProperty("to_be_stopped_instances") List<String> to_be_stopped_instances,
-      @JsonProperty("cluster_id") String cluster_id) {
-    this.instances = instances;
-    this.to_be_stopped_instances = to_be_stopped_instances;
+      @JsonProperty("to_be_stopped_instances") List<String> to_be_stopped_instances) {
+    if (cluster_id == null) {
+      throw new IllegalArgumentException("'cluster_id' is required");
+    }
     this.cluster_id = cluster_id;
-  }
 
-  @JsonProperty("cluster_id")
-  public void setClusterId(String cluster_id) {
-    this.cluster_id = cluster_id;
+    if (instances == null) {
+      throw new IllegalArgumentException("'instances' is required");
+    }
+    this.instances = instances;
+
+    if (to_be_stopped_instances == null) {
+      this.to_be_stopped_instances = Collections.emptyList();
+    } else {
+      this.to_be_stopped_instances = to_be_stopped_instances;
+    }
   }
 
   @JsonProperty("cluster_id")
@@ -35,18 +43,8 @@ public class AggregatedHealthStatusRequest {
     return instances;
   }
 
-  @JsonProperty("instances")
-  public void setInstances(List<String> instances) {
-    this.instances = instances;
-  }
-
   @JsonProperty("to_be_stopped_instances")
   public List<String> getToBeStoppedInstances() {
     return to_be_stopped_instances;
-  }
-
-  @JsonProperty("to_be_stopped_instances")
-  public void setToBeStoppedInstances(List<String> to_be_stopped_instances) {
-    this.to_be_stopped_instances = to_be_stopped_instances;
   }
 }
