@@ -2876,9 +2876,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // Set createTime for Version mocks
     long currentTime = System.currentTimeMillis();
     long millisecondsPerHour = 60 * 60 * 1000;
-    when(version1.getCreatedTime()).thenReturn(currentTime - (25 * millisecondsPerHour)); // more than 24 hours ago
-    when(version2.getCreatedTime()).thenReturn(currentTime - (50 * millisecondsPerHour)); // more than 24 hours ago
-    when(version3.getCreatedTime()).thenReturn(currentTime - (23 * millisecondsPerHour)); // less than 24 hours ago
+    when(version1.getCreatedTime()).thenReturn(currentTime - (25 * millisecondsPerHour)); // 25 hours ago
+    when(version2.getCreatedTime()).thenReturn(currentTime - (50 * millisecondsPerHour)); // 50 hours ago
+    when(version3.getCreatedTime()).thenReturn(currentTime - (23 * millisecondsPerHour)); // 23 hours ago
 
     // Add StoreInfo instances to the list
     storeInfoList.add(store1);
