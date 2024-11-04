@@ -1,12 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 import java.util.Properties;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 
 
 /**
@@ -43,7 +43,7 @@ public class KafkaTestUtils {
 
   public static Properties getLocalKafkaClientSSLConfig() {
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name());
+    properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, PubSubSecurityProtocol.SSL.name());
     properties.putAll(getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
     return properties;
   }
