@@ -5,7 +5,6 @@ import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -94,8 +93,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
       Store store = getStoreRepo().getStoreOrThrow(storeName);
-      boolean isRegularStoreCurrentVersion =
-          store.getCurrentVersion() == version && !VeniceSystemStoreUtils.isSystemStore(storeName);
+      boolean isRegularStoreCurrentVersion = store.getCurrentVersion() == version;
 
       /**
        * For regular store current version, firstly create a latch, then start ingestion and wait for ingestion
