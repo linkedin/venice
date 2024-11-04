@@ -862,7 +862,10 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            recordTransformerFunction));
+            recordTransformerFunction,
+            null,
+            anyInt()));
+
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {
@@ -2728,7 +2731,7 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            null));
+            null, null, 123));
 
     Schema schema1 = Schema.parse(
         "{" + "\"fields\": ["
@@ -2936,7 +2939,9 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
@@ -3087,7 +3092,9 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
     TopicSwitch topicSwitchWithSourceRealTimeTopic = new TopicSwitch();
@@ -3306,7 +3313,9 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
 
     if (hybridConfig.equals(HYBRID) && nodeType.equals(LEADER) && isAaWCParallelProcessingEnabled()) {
       assertTrue(storeIngestionTaskUnderTest instanceof ActiveActiveStoreIngestionTask);
@@ -3454,7 +3463,9 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
 
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
@@ -3609,7 +3620,9 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            null);
+            null,
+            null,
+            anyInt());
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     PartitionConsumptionState partitionConsumptionState =
@@ -3707,7 +3720,9 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
@@ -3781,7 +3796,9 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null);
+            null,
+            null,
+            anyInt());
 
     TopicSwitch topicSwitch = new TopicSwitch();
     topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");
@@ -3897,7 +3914,9 @@ public abstract class StoreIngestionTaskTest {
             -1,
             false,
             Optional.empty(),
-            null));
+            null,
+            null,
+            anyInt()));
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
@@ -4431,7 +4450,9 @@ public abstract class StoreIngestionTaskTest {
         1,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
     PartitionConsumptionState partitionConsumptionState =
@@ -4548,7 +4569,9 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null);
+            null,
+            null,
+            anyInt());
 
     ingestionTask.setPartitionConsumptionState(0, pcs);
     ingestionTask.maybeSendIngestionHeartbeat();
@@ -4637,7 +4660,9 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null);
+            null,
+            null,
+            anyInt());
 
     ingestionTask.setPartitionConsumptionState(0, pcs0);
     ingestionTask.setPartitionConsumptionState(1, pcs1);

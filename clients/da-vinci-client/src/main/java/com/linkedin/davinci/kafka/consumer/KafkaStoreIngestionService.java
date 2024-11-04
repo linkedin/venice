@@ -190,6 +190,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
 
+  private VeniceServerConfig serverConfig;
+
   public KafkaStoreIngestionService(
       StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
@@ -225,8 +227,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
-
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    this.serverConfig = veniceConfigLoader.getVeniceServerConfig();
     Properties veniceWriterProperties =
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
 
@@ -434,9 +435,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
      * remaining disk space state to provide a more accurate alert.
      */
-    DiskUsage diskUsage = new DiskUsage(
-        veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
-        veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
+    DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
 
@@ -530,7 +529,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction);
+        recordTransformerFunction,
+        serverConfig.getZookeeperAddress(),
+        serverConfig.getListenerPort());
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -768,7 +769,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   public boolean isLiveUpdateSuppressionEnabled() {
-    return veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+    return serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
   }
 
   @Override
@@ -1131,7 +1132,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
       Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);

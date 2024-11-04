@@ -53,7 +53,9 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      String zkAddress,
+      int portNum) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           storageService,
@@ -66,7 +68,9 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          recordTransformerFunction);
+          recordTransformerFunction,
+          zkAddress,
+          portNum);
     }
     return new LeaderFollowerStoreIngestionTask(
         storageService,
@@ -79,7 +83,9 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction);
+        recordTransformerFunction,
+        zkAddress,
+        portNum);
   }
 
   /**

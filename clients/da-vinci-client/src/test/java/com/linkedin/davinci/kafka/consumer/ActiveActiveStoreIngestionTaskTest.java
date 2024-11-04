@@ -260,7 +260,9 @@ public class ActiveActiveStoreIngestionTaskTest {
         1,
         false,
         Optional.empty(),
-        null);
+        null,
+        null,
+        anyInt());
 
     PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
     when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);

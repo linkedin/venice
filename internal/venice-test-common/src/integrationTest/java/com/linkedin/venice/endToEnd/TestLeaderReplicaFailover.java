@@ -97,7 +97,131 @@ public class TestLeaderReplicaFailover {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testLeaderReplicaFailover() throws Exception {
+  public void testLeaderReplicaFailoverFutureVersion() throws Exception {
+    ControllerClient parentControllerClient =
+        new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
+    props.setProperty(
+        DEFAULT_OFFLINE_PUSH_STRATEGY,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    createStoreForJob(
+        clusterName,
+        keySchemaStr,
+        valueSchemaStr,
+        props,
+        new UpdateStoreQueryParams().setPartitionCount(3)).close();
+    // Create a new version
+    VersionCreationResponse versionCreationResponse = TestUtils.assertCommand(
+        parentControllerClient.requestTopicForWrites(
+            storeName,
+            10 * 1024,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
+
+    String topic = versionCreationResponse.getKafkaTopic();
+    PubSubBrokerWrapper pubSubBrokerWrapper = clusterWrapper.getPubSubBrokerWrapper();
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
+    HelixBaseRoutingRepository routingDataRepo = clusterWrapper.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
+        .getRoutingDataRepository();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+      assertNotNull(leader);
+    });
+    Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+
+    LeaderErrorNotifier leaderErrorNotifier = null;
+    for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
+      assertNotNull(serverWrapper);
+      // Add error notifier which will report leader to be in ERROR instead of COMPLETE
+      if (serverWrapper.getPort() == leader.getPort()) {
+        HelixParticipationService participationService = serverWrapper.getVeniceServer().getHelixParticipationService();
+        leaderErrorNotifier = new LeaderErrorNotifier(
+            participationService.getVeniceOfflinePushMonitorAccessor(),
+            null,
+            participationService.getStatusStoreWriter(),
+            participationService.getHelixReadOnlyStoreRepository(),
+            participationService.getInstance().getNodeId());
+        participationService.replaceAndAddTestIngestionNotifier(leaderErrorNotifier);
+      }
+    }
+    assertNotNull(leaderErrorNotifier);
+
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
+      veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
+      Map<byte[], byte[]> sortedInputRecords = generateData(1000, true, 0, serializer);
+      for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
+        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
+      }
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+    }
+
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      int currentVersion = clusterWrapper.getLeaderVeniceController()
+          .getVeniceAdmin()
+          .getCurrentVersion(clusterWrapper.getClusterName(), storeName);
+      return currentVersion == 1;
+    });
+
+    // Verify the leader is disabled.
+    HelixAdmin admin = null;
+    try {
+      admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
+      final HelixAdmin finalAdmin = admin;
+      final LeaderErrorNotifier finalLeaderErrorNotifier = leaderErrorNotifier;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertTrue(finalLeaderErrorNotifier.hasReportedError());
+        InstanceConfig instanceConfig = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
+        Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
+      });
+
+      // Stop the server
+      clusterWrapper.stopVeniceServer(leader.getPort());
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Assert.assertTrue(
+            clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 6);
+      });
+
+      // Restart server, the disabled replica should be re-enabled.
+      clusterWrapper.restartVeniceServer(leader.getPort());
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Assert.assertTrue(
+            clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 9);
+        InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
+        Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
+      });
+    } finally {
+      if (admin != null) {
+        admin.close();
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testLeaderReplicaFailoverCurrentVersion() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
     TestUtils.assertCommand(

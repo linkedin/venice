@@ -104,6 +104,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RetryUtils;
@@ -155,6 +156,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -349,6 +351,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected final CountDownLatch gracefulShutdownLatch = new CountDownLatch(1);
+  protected final ZKHelixAdmin zkHelixAdmin;
+  protected final String hostName;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -362,7 +366,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      Queue<VeniceNotifier> notifiers) {
+      Queue<VeniceNotifier> notifiers,
+      String zkAddress,
+      int port) {
     this.storeConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -529,6 +535,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
+    this.zkHelixAdmin = new ZKHelixAdmin(zkAddress);
+    this.hostName = Utils.getHostName() + "_" + port;
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -4169,6 +4177,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pcsList.add(partitionConsumptionStateMap.get(userPartition));
     }
     ingestionNotificationDispatcher.reportError(pcsList, message, e);
+    // Set the replica state to ERROR so that the controller can attempt to reset the partition.
+    zkHelixAdmin.setPartitionsToError(
+        serverConfig.getClusterName(),
+        hostName,
+        storeName,
+        Collections.singletonList(HelixUtils.getPartitionName(storeName, userPartition)));
   }
 
   public boolean isActiveActiveReplicationEnabled() {

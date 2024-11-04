@@ -114,7 +114,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      String zkAddress,
+      int port) {
     super(
         storageService,
         builder,
@@ -126,7 +128,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction);
+        recordTransformerFunction,
+        zkAddress,
+        port);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 

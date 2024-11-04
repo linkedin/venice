@@ -215,7 +215,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      String zkAddress,
+      int port) {
     super(
         storageService,
         builder,
@@ -228,7 +230,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerFunction,
-        builder.getLeaderFollowerNotifiers());
+        builder.getLeaderFollowerNotifiers(),
+        zkAddress,
+        port);
     this.version = version;
     this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
