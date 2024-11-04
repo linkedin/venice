@@ -148,7 +148,6 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
         case HOST_HEARTBEAT_LAG:
           statsHandler.setMetadataRequest(true);
           HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
-          statsHandler.setStoreName(Version.parseStoreFromVersionTopic(heartbeatRequest.getTopic()));
           ctx.fireChannelRead(heartbeatRequest);
           break;
         default:

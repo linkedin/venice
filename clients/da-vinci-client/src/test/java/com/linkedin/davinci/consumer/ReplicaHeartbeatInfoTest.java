@@ -24,8 +24,14 @@ public class ReplicaHeartbeatInfoTest {
     long heartbeat = System.currentTimeMillis() - lag;
     LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.LEADER;
     String replicaId = Utils.getReplicaId(topicName, partition);
-    ReplicaHeartbeatInfo replicaHeartbeatInfo =
-        new ReplicaHeartbeatInfo(replicaId, region, leaderFollowerStateType.name(), true, heartbeat, lag);
+    ReplicaHeartbeatInfo replicaHeartbeatInfo = new ReplicaHeartbeatInfo("a", "b", "c", true, 0L, 0L);
+
+    replicaHeartbeatInfo.setReplicaId(replicaId);
+    replicaHeartbeatInfo.setRegion(region);
+    replicaHeartbeatInfo.setLeaderState(leaderFollowerStateType.name());
+    replicaHeartbeatInfo.setHeartbeat(heartbeat);
+    replicaHeartbeatInfo.setLag(lag);
+
     Assert.assertEquals(replicaHeartbeatInfo.getHeartbeat(), heartbeat);
     Assert.assertEquals(replicaHeartbeatInfo.getReplicaId(), replicaId);
     Assert.assertEquals(replicaHeartbeatInfo.getRegion(), region);
