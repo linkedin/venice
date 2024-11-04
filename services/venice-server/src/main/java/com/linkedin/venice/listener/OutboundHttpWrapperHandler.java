@@ -52,6 +52,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     int responseRcu = 1;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean isStreamingResponse = false;
+
+    FullHttpResponse response = null;
     try {
       if (msg instanceof AbstractReadResponse) {
         AbstractReadResponse obj = (AbstractReadResponse) msg;
@@ -135,8 +137,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           responseStatus = INTERNAL_SERVER_ERROR;
         }
       } else if (msg instanceof DefaultFullHttpResponse) {
-        ctx.writeAndFlush(msg);
-        return;
+        responseStatus = ((DefaultFullHttpResponse) msg).getStatus();
+        response = (DefaultFullHttpResponse) msg;
+        body = response.content();
       } else if (msg instanceof TopicPartitionIngestionContextResponse) {
         TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
             (TopicPartitionIngestionContextResponse) msg;
@@ -168,7 +171,12 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       statsHandler.setResponseStatus(responseStatus);
     }
 
-    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
+    if (response != null) {
+      ctx.writeAndFlush(response);
+      return;
+    }
+
+    response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
     response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
