@@ -48,6 +48,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -108,6 +111,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -168,6 +174,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -228,6 +237,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -288,6 +300,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -348,6 +363,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -408,6 +426,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -468,6 +489,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -528,6 +552,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -588,6 +615,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -648,6 +678,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -708,6 +741,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -768,6 +804,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -828,6 +867,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -888,6 +930,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -948,6 +993,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1008,6 +1056,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1068,6 +1119,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1128,6 +1182,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1188,6 +1245,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1248,6 +1308,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1308,6 +1371,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1368,6 +1434,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1428,6 +1497,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1488,6 +1560,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1548,6 +1623,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1608,6 +1686,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1668,6 +1749,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1728,6 +1812,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1788,6 +1875,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
@@ -1848,6 +1938,9 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
