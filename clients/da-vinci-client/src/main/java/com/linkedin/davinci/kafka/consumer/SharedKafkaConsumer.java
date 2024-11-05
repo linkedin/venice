@@ -371,7 +371,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   // Test only
-  public void setNextPollTimeOutSeconds(long seconds) {
-    this.nextPollTimeOutSeconds = seconds;
+  public void setWaitAfterUnsubscribeTimeoutMs(long seconds) {
+    this.waitAfterUnsubscribeTimeoutMs = seconds;
   }
 }

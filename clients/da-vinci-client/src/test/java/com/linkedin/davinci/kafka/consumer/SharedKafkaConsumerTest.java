@@ -50,7 +50,8 @@ public class SharedKafkaConsumerTest {
     PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v3");
 
     final long timeoutMs = KafkaConsumerService.SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, timeoutMs, () -> {}, (c, vt, tp) -> {});
+    SharedKafkaConsumer sharedConsumer =
+        new SharedKafkaConsumer(consumer, stats, timeoutMs, () -> {}, (c, vt, tp) -> {});
 
     Set<PubSubTopicPartition> assignmentReturnedConsumer = new HashSet<>();
     PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
