@@ -8,6 +8,8 @@ import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,6 +20,7 @@ import java.util.Map;
  * 2. This utility class assumes we are using the HotSpot JVM.
  */
 public class HeapSizeEstimator {
+  private static final Logger LOGGER = LogManager.getLogger(HeapSizeEstimator.class);
   private static final Map<Class, Integer> PRIMITIVE_SIZES;
   private static final int ALIGNMENT_SIZE;
   private static final int OBJECT_HEADER_SIZE;
@@ -101,6 +104,7 @@ public class HeapSizeEstimator {
 
     size += overheadOfFields(c);
 
+    // TODO: Fix imprecision due to internal loss in parent class layouts
     Class parentClass = c.getSuperclass();
     while (parentClass != null) {
       size += overheadOfFields(parentClass);
@@ -152,8 +156,11 @@ public class HeapSizeEstimator {
      * now... In any case, if that property is not found, then we'll default to 64 bits, which is a conservative
      * assumption (i.e., it would cause us to over-estimate the size on heap)...
      */
-    String arch = System.getProperty("sun.arch.data.model");
-    return (arch == null) || arch.contains("32");
+    String propertyName = "sun.arch.data.model";
+    String arch = System.getProperty(propertyName);
+    LOGGER.info("System property {} has value: {}", propertyName, arch);
+
+    return (arch == null) || !arch.contains("32");
   }
 
   /** Package-private on purpose, for tests... */
@@ -175,6 +182,7 @@ public class HeapSizeEstimator {
   private static boolean getBooleanVmOption(String optionName) {
     String optionValue =
         ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class).getVMOption(optionName).getValue();
+    LOGGER.info("VM option {} has value: {}", optionName, optionValue);
     return Boolean.parseBoolean(optionValue);
   }
 }
