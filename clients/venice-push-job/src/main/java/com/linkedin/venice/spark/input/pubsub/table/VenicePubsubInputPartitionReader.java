@@ -60,6 +60,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   private long recordsServed = 0;
   private long recordsSkipped = 0;
   private long lastKnownProgressPercent = 0;
+  private long recordsDeliveredByGet = 0;
 
   private Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerBuffer =
       new HashMap<>();
@@ -69,8 +70,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
     this(
         jobConfig,
         inputPartition,
-        new PubSubClientsFactory(jobConfig).getConsumerAdapterFactory() // need to review the
-            // properties bag ...
+        new PubSubClientsFactory(jobConfig).getConsumerAdapterFactory()
             .create(
                 jobConfig,
                 false,
@@ -125,6 +125,7 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   // if it returns a row, it's going to be key and value and offset in the row in that order
   @Override
   public InternalRow get() {
+    recordsDeliveredByGet++;
     // should return the same row if called multiple times
     return currentRow;
   }
@@ -149,11 +150,8 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   @Override
   public void close() {
     pubSubConsumer.close();
-    LOGGER.info(
-        "Consuming ended for Topic: {} , consumed {} records, skipped {} records",
-        targetPubSubTopicName,
-        recordsServed,
-        recordsSkipped);
+    LOGGER.info("Consuming ended for Topic: {} , consumed {} records,", targetPubSubTopicName, recordsServed);
+    LOGGER.info(" skipped {} records, gets invoked : {} .", recordsSkipped, recordsDeliveredByGet);
   }
 
   // borrowing Gaojie's code for dealing with empty polls.
@@ -188,7 +186,6 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
       throw new RuntimeException("Empty poll after " + retry + " retries");
     }
     messageBuffer.addAll(partitionMessagesBuffer);
-
   }
 
   private InternalRow processPubSubMessageToRow(
