@@ -39,7 +39,7 @@
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
-        if: ${{ (&& github.repository_owner != 'linkedin') && (success() || failure()) }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
