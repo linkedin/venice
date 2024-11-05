@@ -42,8 +42,8 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
   private final static Logger LOGGER = LogManager.getLogger(ServerStoreAclHandler.class);
 
   /**
-   *  Skip ACL for requests to /metadata, /admin, /current_version, /health and /topic_partition_ingestion_context
-   *  as there's no sensitive information in the response.
+   *  Skip ACL for requests to /metadata, /admin, /current_version, /health, /topic_partition_ingestion_context and
+   *  /host_heartbeat_lag as there's no sensitive information in the response.
    */
   private static final Set<QueryAction> QUERIES_TO_SKIP_ACL = new HashSet<>(
       Arrays.asList(

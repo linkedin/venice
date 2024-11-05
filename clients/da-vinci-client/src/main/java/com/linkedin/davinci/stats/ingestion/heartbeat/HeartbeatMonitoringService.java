@@ -40,7 +40,7 @@ import org.apache.logging.log4j.Logger;
 public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final int DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final int DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS = 60;
-  public static final int DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD = 600;
+  public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
 
@@ -196,7 +196,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             if (!topicFilter.isEmpty() && partitionFilter >= 0 && partitionFilter != partition.getKey()) {
               continue;
             }
-            if (filterLagReplica && lag < DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD * 1000) {
+            if (filterLagReplica && lag < DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS) {
               continue;
             }
             String replicaId =
@@ -342,7 +342,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           for (Map.Entry<String, Pair<Long, Boolean>> region: partition.getValue().entrySet()) {
             long heartbeatTs = region.getValue().getLeft();
             long lag = currentTimestamp - heartbeatTs;
-            if (lag > DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD && region.getValue().getRight()) {
+            if (lag > DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS && region.getValue().getRight()) {
               String replicaId = Utils
                   .getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
               LOGGER.warn(

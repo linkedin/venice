@@ -15,7 +15,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -3095,9 +3095,9 @@ public class AdminTool {
     byte[] responseBody;
     TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
     responseBody = transportClientResponse.getBody();
-    TopicPartitionIngestionContextResponse currentVersionResponse =
-        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
-    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
+    ReplicaIngestionResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, ReplicaIngestionResponse.class);
+    System.out.println(new String(currentVersionResponse.getReplicaIngestionInfoByteArray()));
   }
 
   private static void dumpHostHeartbeat(CommandLine cmd) throws Exception {
@@ -3206,9 +3206,9 @@ public class AdminTool {
     byte[] responseBody;
     TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
     responseBody = transportClientResponse.getBody();
-    TopicPartitionIngestionContextResponse currentVersionResponse =
-        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
-    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
+    ReplicaIngestionResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, ReplicaIngestionResponse.class);
+    System.out.println(new String(currentVersionResponse.getReplicaIngestionInfoByteArray()));
   }
 
   static void getAndPrintRequestBasedMetadata(

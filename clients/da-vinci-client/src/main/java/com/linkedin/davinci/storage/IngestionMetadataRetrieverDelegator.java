@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.utils.ComplementSet;
@@ -41,7 +41,7 @@ public class IngestionMetadataRetrieverDelegator implements IngestionMetadataRet
   }
 
   @Override
-  public TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
+  public ReplicaIngestionResponse getTopicPartitionIngestionContext(
       String versionTopic,
       String topicName,
       int partitionNum) {
@@ -49,15 +49,12 @@ public class IngestionMetadataRetrieverDelegator implements IngestionMetadataRet
   }
 
   @Override
-  public TopicPartitionIngestionContextResponse getHeartbeatLag(
-      String topicFilter,
-      int partitionFilter,
-      boolean filterLagReplica) {
-    TopicPartitionIngestionContextResponse response = new TopicPartitionIngestionContextResponse();
+  public ReplicaIngestionResponse getHeartbeatLag(String topicFilter, int partitionFilter, boolean filterLagReplica) {
+    ReplicaIngestionResponse response = new ReplicaIngestionResponse();
     try {
       byte[] topicPartitionInfo = replicaInfoJsonSerializer
           .serialize(heartbeatMonitoringService.getHeartbeatInfo(topicFilter, partitionFilter, filterLagReplica), "");
-      response.setTopicPartitionIngestionContext(topicPartitionInfo);
+      response.setReplicaIngestionInfoByteArray(topicPartitionInfo);
     } catch (Exception e) {
       response.setError(true);
       response.setMessage(e.getMessage());

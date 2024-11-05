@@ -1,7 +1,7 @@
 package com.linkedin.davinci.storage;
 
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.venice.utils.ComplementSet;
 import java.nio.ByteBuffer;
 
@@ -11,13 +11,7 @@ public interface IngestionMetadataRetriever {
 
   AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions);
 
-  TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
-      String versionTopic,
-      String topicName,
-      int partitionNum);
+  ReplicaIngestionResponse getTopicPartitionIngestionContext(String versionTopic, String topicName, int partitionNum);
 
-  TopicPartitionIngestionContextResponse getHeartbeatLag(
-      String topicFilter,
-      int partitionFilter,
-      boolean filterLagReplica);
+  ReplicaIngestionResponse getHeartbeatLag(String topicFilter, int partitionFilter, boolean filterLagReplica);
 }
