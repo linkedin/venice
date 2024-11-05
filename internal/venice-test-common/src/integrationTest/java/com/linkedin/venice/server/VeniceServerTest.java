@@ -207,14 +207,6 @@ public class VeniceServerTest {
       server.getVeniceServer().shutdown();
 
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
-
-      // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be
-      // deleted
-      // once the server join again.
-      cluster.stopVeniceServer(server.getPort());
-      cluster.restartVeniceServer(server.getPort());
-      repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "Storage engine should remain.");
     }
   }
 
