@@ -27,7 +27,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -193,7 +192,7 @@ public class ApacheKafkaAdminAdapterTest {
     DeleteTopicsResult deleteTopicsResultMock = mock(DeleteTopicsResult.class);
     KafkaFuture<Void> topicDeletionFutureMock = mock(KafkaFuture.class);
 
-    when(internalKafkaAdminClientMock.deleteTopics(any(Collection.class))).thenReturn(deleteTopicsResultMock);
+    when(internalKafkaAdminClientMock.deleteTopics(any())).thenReturn(deleteTopicsResultMock);
     when(deleteTopicsResultMock.all()).thenReturn(topicDeletionFutureMock);
     when(topicDeletionFutureMock.get(eq(1000L), eq(TimeUnit.MILLISECONDS))).thenReturn(null);
 
@@ -209,7 +208,7 @@ public class ApacheKafkaAdminAdapterTest {
     DeleteTopicsResult deleteTopicsResultMock = mock(DeleteTopicsResult.class);
     KafkaFuture<Void> topicDeletionFutureMock = mock(KafkaFuture.class);
 
-    when(internalKafkaAdminClientMock.deleteTopics(any(Collection.class))).thenReturn(deleteTopicsResultMock);
+    when(internalKafkaAdminClientMock.deleteTopics(any())).thenReturn(deleteTopicsResultMock);
     when(deleteTopicsResultMock.all()).thenReturn(topicDeletionFutureMock);
 
     when(topicDeletionFutureMock.get(eq(1000L), eq(TimeUnit.MILLISECONDS)))

@@ -60,9 +60,7 @@ public abstract class VeniceEnumValueTest<T extends VeniceEnumValue> {
 
     Function<Integer, T> valueOfFunction = value -> {
       try {
-        @SuppressWarnings("unchecked")
-        T valueOfReturn = (T) valueOfMethod.invoke(null, value);
-        return valueOfReturn;
+        return (T) valueOfMethod.invoke(null, value);
       } catch (Exception e) {
         if (e.getClass() == InvocationTargetException.class && e.getCause() instanceof VeniceException) {
           // Those are expected for invalid values, so we bubble them up.
@@ -97,8 +95,7 @@ public abstract class VeniceEnumValueTest<T extends VeniceEnumValue> {
     // Check that no other enum values exist besides those that are expected
     Method valuesFunction = getPublicStaticFunction(this.enumClass, VALUES_METHOD_NAME, new Class[0]);
     try {
-      @SuppressWarnings("unchecked")
-      T[] types = (T[]) valuesFunction.invoke(null, new Object[0]);
+      T[] types = (T[]) valuesFunction.invoke(null, new Class[0]);
       for (T type: types) {
         assertTrue(
             expectedMapping.containsKey(type.getValue()),
@@ -109,7 +106,7 @@ public abstract class VeniceEnumValueTest<T extends VeniceEnumValue> {
     }
   }
 
-  private static Method getPublicStaticFunction(Class<?> klass, String functionName, Class... params) {
+  private static Method getPublicStaticFunction(Class klass, String functionName, Class... params) {
     try {
       Method function = klass.getDeclaredMethod(functionName, params);
       assertTrue(
