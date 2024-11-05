@@ -78,7 +78,6 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final AtomicBoolean stopped = new AtomicBoolean(false);
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicCleanupServiceStats topicCleanupServiceStats;
-  private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
 
@@ -106,7 +105,6 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.multiClusterConfigs = multiClusterConfigs;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.topicCleanupServiceStats = topicCleanupServiceStats;
-    Set<String> childRegions = multiClusterConfigs.getCommonConfig().getChildDatacenters();
 
     this.danglingTopicCleanupIntervalMs =
         Time.MS_PER_SECOND * multiClusterConfigs.getDanglingTopicCleanupIntervalSeconds();
@@ -122,22 +120,6 @@ public class TopicCleanupService extends AbstractVeniceService {
       this.sourceOfTruthPubSubAdminAdapter = constructSourceOfTruthPubSubAdminAdapter(sourceOfTruthAdminAdapterFactory);
     } else {
       this.sourceOfTruthPubSubAdminAdapter = null;
-    }
-
-    if (!admin.isParent() && !childRegions.isEmpty()) {
-      String localPubSubBootstrapServer = getTopicManager().getPubSubClusterAddress();
-      String localDatacenter = childRegions.stream()
-          .filter(
-              childFabric -> localPubSubBootstrapServer
-                  .equals(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric)))
-          .findFirst()
-          .orElse(null);
-      if (localDatacenter == null) {
-        this.isRTTopicDeletionBlocked = true;
-        LOGGER.error(
-            "Blocking RT topic deletion. Cannot find local datacenter in child datacenter list: {}",
-            childRegions);
-      }
     }
   }
 
@@ -239,8 +221,6 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   void cleanupVeniceTopics() {
-    // TODO - instead of adding all topics into a priority queue we should simply use two separate normal queues
-    // for RT and nonRT topics; this will save a lot of time wasted in sorting
     PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>(topicPriorityComparator);
     populateDeprecatedTopicQueue(allTopics);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
@@ -249,45 +229,34 @@ public class TopicCleanupService extends AbstractVeniceService {
     while (!allTopics.isEmpty()) {
       PubSubTopic topic = allTopics.poll();
       String storeName = topic.getStoreName();
+      String clusterDiscovered;
+      Store store;
       try {
-        String clusterDiscovered;
-        try {
-          clusterDiscovered = admin.discoverCluster(storeName).getFirst();
-        } catch (VeniceNoStoreException e) {
-          LOGGER.warn("Store {} is not found", storeName);
-          getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
-          topicCleanupServiceStats.recordTopicDeleted();
-          continue;
-        }
-        Store store = admin.getStore(clusterDiscovered, storeName);
-        if (topic.isRealTime() && (this.isRTTopicDeletionBlocked
-            || !admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, store))) {
-          if (this.isRTTopicDeletionBlocked) {
-            LOGGER.warn(
-                "Topic deletion for topic: {} is blocked due to unable to fetch version topic info",
-                topic.getName());
-            topicCleanupServiceStats.recordTopicDeletionError();
-          } else {
-            LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
-          }
-        } else {
-          getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
-          topicCleanupServiceStats.recordTopicDeleted();
-        }
+        clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        store = admin.getStore(clusterDiscovered, storeName);
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
             "Store {} not found. Exception when trying to delete topic: {} - {}",
             storeName,
             topic.getName(),
             e.toString());
+        deleteTopic(topic);
+        continue;
+      }
 
-      } catch (VeniceException e) {
-        LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
-        topicCleanupServiceStats.recordTopicDeletionError();
-        // No op, will try again in the next cleanup cycle.
+      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, store)) {
+        // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
+        deleteTopic(topic);
+      } else {
+        LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
       }
 
       if (!topic.isRealTime()) {
+        // TODO - this code block is just making code complicate. If we simply have two queues, one for RT and other for
+        // VT topics, and each delete cycle first poll RT topics and poll VT topics only when RT topic queue is empty,
+        // we can simply delete the following code block. Using two queues will also make code faster, because we will
+        // not have to sort the queue every time a topic is added to it
+
         // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
         // delete
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
@@ -299,6 +268,17 @@ public class TopicCleanupService extends AbstractVeniceService {
           refreshTime = System.currentTimeMillis();
         }
       }
+    }
+  }
+
+  private void deleteTopic(PubSubTopic topic) {
+    try {
+      getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+      topicCleanupServiceStats.recordTopicDeleted();
+    } catch (VeniceException e) {
+      LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
+      topicCleanupServiceStats.recordTopicDeletionError();
+      // No op, will try again in the next cleanup cycle.
     }
   }
 

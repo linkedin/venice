@@ -1,31 +1,17 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
-import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-import static com.linkedin.venice.meta.Version.PushType;
-import static com.linkedin.venice.meta.VersionStatus.ERROR;
-import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
-import static com.linkedin.venice.meta.VersionStatus.ONLINE;
-import static com.linkedin.venice.meta.VersionStatus.PUSHED;
-import static com.linkedin.venice.meta.VersionStatus.STARTED;
-import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
-import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
-import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
-import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
-import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
-import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
-import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
-import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.*;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
+import static com.linkedin.venice.meta.Store.*;
+import static com.linkedin.venice.meta.Version.*;
+import static com.linkedin.venice.meta.VersionStatus.*;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.*;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static com.linkedin.venice.utils.AvroSchemaUtils.*;
+import static com.linkedin.venice.utils.RegionUtils.*;
+import static com.linkedin.venice.views.ViewUtils.*;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
@@ -3561,6 +3547,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return false;
       }
       if (Version.containsHybridVersion(storeResponse.getStore().getVersions())) {
+        LOGGER.warn(
+            "Topic {} cannot be deleted yet because the store {} has at least one hybrid version",
+            rtTopicName,
+            storeName);
         return false;
       }
     }

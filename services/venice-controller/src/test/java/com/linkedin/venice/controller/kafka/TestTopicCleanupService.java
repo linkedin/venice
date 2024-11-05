@@ -507,37 +507,6 @@ public class TestTopicCleanupService {
   }
 
   @Test
-  public void testCleanVeniceTopicsBlockRTTopicDeletionWhenMisconfigured() {
-    // RT topic deletion should be blocked when controller is misconfigured
-    // Mis-configured where local data center is not in the child data centers list
-    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn(Collections.singleton("remote")).when(controllerConfig).getChildDatacenters();
-    doReturn(Pair.create("cluster0", null)).when(admin).discoverCluster(any());
-    TopicCleanupService blockedTopicCleanupService = new TopicCleanupService(
-        admin,
-        veniceControllerMultiClusterConfig,
-        pubSubTopicRepository,
-        topicCleanupServiceStats,
-        pubSubClientsFactory);
-    String storeName = Utils.getUniqueString("testStore");
-    Map<PubSubTopic, Long> storeTopics = new HashMap<>();
-    storeTopics.put(getPubSubTopic(storeName, "_rt"), 1000L);
-    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
-    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
-    doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
-    doReturn(storeTopics).when(remoteTopicManager).getAllTopicRetentions();
-    doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
-    blockedTopicCleanupService.cleanupVeniceTopics();
-    verify(topicManager, atLeastOnce()).getPubSubClusterAddress();
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName, "_rt"));
-    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(1);
-    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
-  }
-
-  @Test
   public void testCleanVeniceTopicRTTopicDeletionWithErrorFetchingVT() {
     // RT topic deletion should be blocked when version topic cannot be fetched due to error
     String storeName = Utils.getUniqueString("testStore");
