@@ -20,9 +20,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -83,9 +83,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -146,9 +146,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -209,9 +209,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -272,9 +272,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -335,9 +335,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -398,9 +398,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -461,9 +461,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -524,9 +524,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -587,9 +587,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -650,9 +650,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -713,9 +713,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -776,9 +776,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -839,9 +839,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -902,9 +902,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -965,9 +965,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1028,9 +1028,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1091,9 +1091,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1154,9 +1154,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1217,9 +1217,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1280,9 +1280,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1343,9 +1343,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1406,9 +1406,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1469,9 +1469,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1532,9 +1532,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1595,9 +1595,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1658,9 +1658,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1721,9 +1721,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1784,9 +1784,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1847,9 +1847,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1910,9 +1910,9 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-     contents: write
-     pull-requests: write
-     repository-projects: write
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
