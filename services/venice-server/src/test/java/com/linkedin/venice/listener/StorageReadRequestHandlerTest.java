@@ -584,7 +584,7 @@ public class StorageReadRequestHandlerTest {
         + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
         + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
     byte[] expectedTopicPartitionContext = jsonStr.getBytes();
-    expectedReplicaIngestionResponse.setReplicaIngestionInfoByteArray(expectedTopicPartitionContext);
+    expectedReplicaIngestionResponse.setPayload(expectedTopicPartitionContext);
     doReturn(expectedReplicaIngestionResponse).when(ingestionMetadataRetriever)
         .getTopicPartitionIngestionContext(eq(topic), eq(topic), eq(expectedPartitionId));
 
@@ -592,9 +592,9 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     ReplicaIngestionResponse replicaIngestionResponse = (ReplicaIngestionResponse) argumentCaptor.getValue();
-    String topicPartitionIngestionContextStr = new String(replicaIngestionResponse.getReplicaIngestionInfoByteArray());
+    String topicPartitionIngestionContextStr = new String(replicaIngestionResponse.getPayload());
     assertTrue(topicPartitionIngestionContextStr.contains(topic));
-    assertEquals(replicaIngestionResponse.getReplicaIngestionInfoByteArray(), expectedTopicPartitionContext);
+    assertEquals(replicaIngestionResponse.getPayload(), expectedTopicPartitionContext);
   }
 
   @Test
@@ -613,7 +613,7 @@ public class StorageReadRequestHandlerTest {
     ReplicaIngestionResponse expectedReplicaIngestionResponse = new ReplicaIngestionResponse();
     String jsonStr = "{}";
     byte[] expectedTopicPartitionContext = jsonStr.getBytes();
-    expectedReplicaIngestionResponse.setReplicaIngestionInfoByteArray(expectedTopicPartitionContext);
+    expectedReplicaIngestionResponse.setPayload(expectedTopicPartitionContext);
     doReturn(expectedReplicaIngestionResponse).when(ingestionMetadataRetriever)
         .getHeartbeatLag(eq(topic), eq(expectedPartitionId), eq(filterLag));
 
@@ -621,7 +621,7 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     ReplicaIngestionResponse replicaIngestionResponse = (ReplicaIngestionResponse) argumentCaptor.getValue();
-    assertEquals(replicaIngestionResponse.getReplicaIngestionInfoByteArray(), expectedTopicPartitionContext);
+    assertEquals(replicaIngestionResponse.getPayload(), expectedTopicPartitionContext);
   }
 
   @Test

@@ -1461,7 +1461,7 @@ public class PartialUpdateTest {
                 pubSubTopicPartition.getPartitionNumber());
         try {
           Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContexts =
-              VENICE_JSON_SERIALIZER.deserialize(replicaIngestionResponse.getReplicaIngestionInfoByteArray(), "");
+              VENICE_JSON_SERIALIZER.deserialize(replicaIngestionResponse.getPayload(), "");
           if (!topicPartitionIngestionContexts.isEmpty()) {
             int regionCount = 0;
             for (Map.Entry<String, Map<String, TopicPartitionIngestionInfo>> entry: topicPartitionIngestionContexts

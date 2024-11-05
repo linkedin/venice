@@ -54,7 +54,7 @@ public class IngestionMetadataRetrieverDelegator implements IngestionMetadataRet
     try {
       byte[] topicPartitionInfo = replicaInfoJsonSerializer
           .serialize(heartbeatMonitoringService.getHeartbeatInfo(topicFilter, partitionFilter, filterLagReplica), "");
-      response.setReplicaIngestionInfoByteArray(topicPartitionInfo);
+      response.setPayload(topicPartitionInfo);
     } catch (Exception e) {
       response.setError(true);
       response.setMessage(e.getMessage());

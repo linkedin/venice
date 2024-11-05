@@ -201,7 +201,7 @@ public class OutboundHttpWrapperHandlerTest {
         + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
         + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
         + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
-    msg.setReplicaIngestionInfoByteArray(jsonStr.getBytes());
+    msg.setPayload(jsonStr.getBytes());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     ByteBuf body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(msg));

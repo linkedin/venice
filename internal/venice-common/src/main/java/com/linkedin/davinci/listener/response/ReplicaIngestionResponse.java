@@ -2,14 +2,14 @@ package com.linkedin.davinci.listener.response;
 
 public class ReplicaIngestionResponse {
   private boolean isError;
-  private byte[] replicaIngestionInfoByteArray;
+  private byte[] payload;
   private String message;
 
   public ReplicaIngestionResponse() {
   }
 
-  public void setReplicaIngestionInfoByteArray(byte[] replicaIngestionInfoByteArray) {
-    this.replicaIngestionInfoByteArray = replicaIngestionInfoByteArray;
+  public void setPayload(byte[] payload) {
+    this.payload = payload;
   }
 
   public void setError(boolean error) {
@@ -28,7 +28,7 @@ public class ReplicaIngestionResponse {
     return this.message;
   }
 
-  public byte[] getReplicaIngestionInfoByteArray() {
-    return replicaIngestionInfoByteArray;
+  public byte[] getPayload() {
+    return payload;
   }
 }

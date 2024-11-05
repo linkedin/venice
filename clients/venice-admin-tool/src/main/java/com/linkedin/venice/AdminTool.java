@@ -3097,7 +3097,7 @@ public class AdminTool {
     responseBody = transportClientResponse.getBody();
     ReplicaIngestionResponse currentVersionResponse =
         OBJECT_MAPPER.readValue(responseBody, ReplicaIngestionResponse.class);
-    System.out.println(new String(currentVersionResponse.getReplicaIngestionInfoByteArray()));
+    System.out.println(new String(currentVersionResponse.getPayload()));
   }
 
   private static void dumpHostHeartbeat(CommandLine cmd) throws Exception {
@@ -3208,7 +3208,7 @@ public class AdminTool {
     responseBody = transportClientResponse.getBody();
     ReplicaIngestionResponse currentVersionResponse =
         OBJECT_MAPPER.readValue(responseBody, ReplicaIngestionResponse.class);
-    System.out.println(new String(currentVersionResponse.getReplicaIngestionInfoByteArray()));
+    System.out.println(new String(currentVersionResponse.getPayload()));
   }
 
   static void getAndPrintRequestBasedMetadata(
