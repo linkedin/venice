@@ -100,7 +100,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * Also, we don't want to use the default thread pool: CompletableFuture#useCommonPool since it is being shared,
    * and the deserialization could be blocked by the logic not belonging to Venice Client.
    **/
-  private static Executor DESERIALIZATION_EXECUTOR;
+  static Executor DESERIALIZATION_EXECUTOR;
 
   private volatile boolean whetherStoreInitTriggeredByRequestFail = false;
 
