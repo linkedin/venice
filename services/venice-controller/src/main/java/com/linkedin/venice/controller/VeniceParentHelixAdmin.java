@@ -4841,7 +4841,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   // This function abstracts the criteria for a store to be ready for compaction
-  private boolean isCompactionReady(StoreInfo storeInfo) {
+  boolean isCompactionReady(StoreInfo storeInfo) {
     return isHybridStore(storeInfo) && isLastCompactionTimeOlderThanThresholdHours(24, storeInfo);
     // TODO: code style: store compactionThresholdHours as final var/enum
   }
