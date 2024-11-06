@@ -10,8 +10,8 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
@@ -140,13 +140,12 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         responseStatus = ((DefaultFullHttpResponse) msg).getStatus();
         response = (DefaultFullHttpResponse) msg;
         body = response.content();
-      } else if (msg instanceof TopicPartitionIngestionContextResponse) {
-        TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
-            (TopicPartitionIngestionContextResponse) msg;
-        if (!topicPartitionIngestionContextResponse.isError()) {
-          body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(topicPartitionIngestionContextResponse));
+      } else if (msg instanceof ReplicaIngestionResponse) {
+        ReplicaIngestionResponse replicaIngestionResponse = (ReplicaIngestionResponse) msg;
+        if (!replicaIngestionResponse.isError()) {
+          body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(replicaIngestionResponse));
         } else {
-          String errorMessage = topicPartitionIngestionContextResponse.getMessage();
+          String errorMessage = replicaIngestionResponse.getMessage();
           if (errorMessage == null) {
             errorMessage = "Unknown error";
           }

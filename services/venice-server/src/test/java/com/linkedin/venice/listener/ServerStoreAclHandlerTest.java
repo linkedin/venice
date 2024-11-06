@@ -58,12 +58,13 @@ public class ServerStoreAclHandlerTest {
   // Store name can be in a version topic format
   private static final String TEST_STORE_NAME = "testStore_v1";
   private static final String TEST_STORE_VERSION = Version.composeKafkaTopic(TEST_STORE_NAME, 1);
+  private static final int TEST_STORE_PARTITION = 1;
 
   /**
    * Mock access controller to verify basic request parsing and handling for {@link ServerStoreAclHandler}
    */
   private static class MockAccessController implements DynamicAccessController {
-    private QueryAction queryAction;
+    private final QueryAction queryAction;
 
     public MockAccessController(QueryAction queryAction) {
       this.queryAction = queryAction;
@@ -249,6 +250,7 @@ public class ServerStoreAclHandlerTest {
         case HEALTH:
         case METADATA:
         case TOPIC_PARTITION_INGESTION_CONTEXT:
+        case HOST_HEARTBEAT_LAG:
           verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
           break;
         case STORAGE:
@@ -282,6 +284,9 @@ public class ServerStoreAclHandlerTest {
       case TOPIC_PARTITION_INGESTION_CONTEXT:
         return "/" + QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase() + "/" + TEST_STORE_VERSION
             + "/" + TEST_STORE_VERSION + "/1";
+      case HOST_HEARTBEAT_LAG:
+        return "/" + QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase() + "/" + TEST_STORE_VERSION + "/"
+            + TEST_STORE_PARTITION + "/false";
       default:
         throw new IllegalArgumentException("Invalid query action: " + queryAction);
     }
