@@ -4,7 +4,9 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertThrows;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -15,6 +17,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -29,6 +33,19 @@ public class RetriableStoreClientTest {
 
     String storeName = Utils.getUniqueString("store");
     doReturn(storeName).when(mockStoreClient).getStoreName();
+  }
+
+  @Test
+  public void testThrowExceptionOnSameExecutors() {
+    ClientConfig cc = ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName());
+    ExecutorService testExecutor = Executors.newFixedThreadPool(1);
+    cc.setRetryExecutor(testExecutor);
+    cc.setDeserializationExecutor(testExecutor);
+    try {
+      assertThrows(VeniceClientException.class, () -> new RetriableStoreClient<>(mockStoreClient, cc));
+    } finally {
+      testExecutor.shutdownNow();
+    }
   }
 
   @Test
