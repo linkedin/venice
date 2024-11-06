@@ -24,6 +24,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -42,6 +43,8 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.model.CloudConfig;
+import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
 import org.testng.annotations.BeforeClass;
@@ -268,8 +271,8 @@ public class TestHAASController {
       client.createVeniceControllerCluster();
       client.addClusterToGrandCluster("venice-controllers");
       for (int i = 0; i < 10; i++) {
-        String clusterName = "cluster-" + String.valueOf(i);
-        client.createVeniceStorageCluster(clusterName, new HashMap<>());
+        String clusterName = "cluster-" + i;
+        client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName));
         client.addClusterToGrandCluster(clusterName);
         client.addVeniceStorageClusterToControllerCluster(clusterName);
       }
@@ -330,17 +333,15 @@ public class TestHAASController {
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
-      CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
 
       List<String> cloudInfoSources = new ArrayList<>();
       cloudInfoSources.add("TestSource");
 
       when(commonConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
       when(commonConfig.isStorageClusterHelixCloudEnabled()).thenReturn(true);
-      when(commonConfig.getHelixCloudProvider()).thenReturn(cloudProvider);
-      when(commonConfig.getHelixCloudId()).thenReturn("NA");
-      when(commonConfig.getHelixCloudInfoSources()).thenReturn(cloudInfoSources);
-      when(commonConfig.getHelixCloudInfoProcessorName()).thenReturn("TestProcessor");
+      CloudConfig cloudConfig =
+          HelixUtils.getCloudConfig(CloudProvider.CUSTOMIZED, "NA", cloudInfoSources, "TestProcessor");
+      when(commonConfig.getHelixCloudConfig()).thenReturn(cloudConfig);
 
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
