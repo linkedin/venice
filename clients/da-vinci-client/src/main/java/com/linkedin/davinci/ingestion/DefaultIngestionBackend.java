@@ -55,9 +55,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     Pair<Store, Version> storeAndVersion =
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+    Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
+    syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
+
     Runnable runnable = () -> {
-      Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
-      syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
       AbstractStorageEngine storageEngine =
           storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
       topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
@@ -79,6 +80,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
+      storageService.openStore(storeConfig, svsSupplier);
       CompletionStage<Void> bootstrapFuture =
           bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
 
