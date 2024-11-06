@@ -341,7 +341,7 @@ task generateGHCIMain() {
   append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCIMain\n\n")
 
   append(targetFilePath, "name: E2ETests\n\n")
-  append(targetFilePath, "on:\n" + "  push:\n" + "    branches:\n" + "      - master\n\n")
+  append(targetFilePath, "on:\n" + "  push:\n" + "    branches:\n" + "      - main\n\n")
   append(targetFilePath, "jobs:\n")
 
   def jobs = []

@@ -13,7 +13,7 @@ name: E2ETests
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   IntegrationTests_1000:
