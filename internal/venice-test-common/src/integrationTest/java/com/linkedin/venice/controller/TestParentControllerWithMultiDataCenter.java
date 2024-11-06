@@ -1,9 +1,11 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.AssertJUnit.fail;
@@ -105,6 +107,11 @@ public class TestParentControllerWithMultiDataCenter {
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
 
     List<TopicManager> topicManagers = new ArrayList<>(2);
     topicManagers
@@ -121,7 +128,7 @@ public class TestParentControllerWithMultiDataCenter {
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
     updateStoreParams.setIncrementalPushEnabled(true)
         .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
-        .setNumVersionsToPreserve(1)
+        .setNumVersionsToPreserve(2)
         .setHybridRewindSeconds(1000)
         .setHybridOffsetLagThreshold(1000);
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
@@ -135,6 +142,9 @@ public class TestParentControllerWithMultiDataCenter {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
       Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
     }
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+    }
 
     // create new version by doing an empty push
     response = parentControllerClient
@@ -144,6 +154,9 @@ public class TestParentControllerWithMultiDataCenter {
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
       Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
     }
 
     // change store from hybrid to batch-only
@@ -154,16 +167,18 @@ public class TestParentControllerWithMultiDataCenter {
     // create new version by doing an empty push
     response = parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
     // at this point, the current version should be batch-only, but the older version should be hybrid, so rt topic
     // should not get deleted
-    Store store = multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName, 1000L)
-        .getVeniceAdmin()
-        .getStore(clusterName, storeName);
-    List<Version> versions = store.getVersions();
     versionPubsubTopic = getVersionPubsubTopic(storeName, response);
 
-    Assert.assertNull(versions.get(store.getCurrentVersion()).getHybridStoreConfig());
-    Assert.assertNotNull(versions.get(store.getCurrentVersion() - 1).getHybridStoreConfig());
+    for (ControllerClient controllerClient: childControllerClients) {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      int currentVersion = storeInfo.getCurrentVersion();
+      Assert.assertEquals(currentVersion, 3);
+      Assert.assertNull(storeInfo.getVersion(currentVersion).get().getHybridStoreConfig());
+      Assert.assertNotNull(storeInfo.getVersion(currentVersion - 1).get().getHybridStoreConfig());
+    }
 
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
@@ -174,6 +189,9 @@ public class TestParentControllerWithMultiDataCenter {
     response = parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
     versionPubsubTopic = getVersionPubsubTopic(storeName, response);
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4);
+    }
 
     // now both the versions should be batch-only, so rt topic should get deleted by TopicCleanupService
     for (TopicManager topicManager: topicManagers) {
