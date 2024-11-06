@@ -556,7 +556,7 @@ public enum Command {
   DUMP_HOST_HEARTBEAT(
       "dump-host-heartbeat",
       "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
-      new Arg[] { SERVER_URL }, new Arg[] { KAFKA_TOPIC_NAME, PARTITION, LAG_FILTER_ENABLED }
+      new Arg[] { SERVER_URL, KAFKA_TOPIC_NAME }, new Arg[] { PARTITION, LAG_FILTER_ENABLED }
   );
 
   private final String commandName;

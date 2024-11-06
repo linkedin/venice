@@ -3106,7 +3106,7 @@ public class AdminTool {
       transportClient = getTransportClientForServer("dummy", getRequiredArgument(cmd, Arg.SERVER_URL));
       dumpHostHeartbeatLag(
           transportClient,
-          getOptionalArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
           getOptionalArgument(cmd, Arg.PARTITION),
           getOptionalArgument(cmd, Arg.LAG_FILTER_ENABLED));
     } finally {

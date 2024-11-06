@@ -111,8 +111,9 @@ public class TestDumpIngestionContext {
       VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       VeniceServerWrapper serverWrapper = veniceCluster.getVeniceServers().get(0);
 
-      Map<String, ReplicaHeartbeatInfo> heartbeatInfoMap =
-          serverWrapper.getVeniceServer().getHeartbeatMonitoringService().getHeartbeatInfo("", -1, false);
+      Map<String, ReplicaHeartbeatInfo> heartbeatInfoMap = serverWrapper.getVeniceServer()
+          .getHeartbeatMonitoringService()
+          .getHeartbeatInfo(Version.composeKafkaTopic(storeName, 1), -1, false);
       LOGGER.info("Heartbeat Info:\n" + heartbeatInfoMap);
       int totalReplicaCount = heartbeatInfoMap.size();
 
@@ -134,20 +135,24 @@ public class TestDumpIngestionContext {
               .stream()
               .allMatch(x -> x.startsWith(Version.composeKafkaTopic(storeName, 1) + "-2")));
 
-      heartbeatInfoMap = serverWrapper.getVeniceServer().getHeartbeatMonitoringService().getHeartbeatInfo("", 2, false);
-      LOGGER.info("Heartbeat Info with only partition filtering should be invalid:\n" + heartbeatInfoMap);
-      Assert.assertEquals(heartbeatInfoMap.size(), totalReplicaCount);
+      heartbeatInfoMap = serverWrapper.getVeniceServer()
+          .getHeartbeatMonitoringService()
+          .getHeartbeatInfo(Version.composeKafkaTopic(storeName, 1), 2, false);
+      Assert.assertNotEquals(heartbeatInfoMap.size(), totalReplicaCount);
 
-      heartbeatInfoMap = serverWrapper.getVeniceServer().getHeartbeatMonitoringService().getHeartbeatInfo("", -1, true);
+      heartbeatInfoMap = serverWrapper.getVeniceServer()
+          .getHeartbeatMonitoringService()
+          .getHeartbeatInfo(Version.composeKafkaTopic(storeName, 1), -1, true);
       LOGGER.info("Heartbeat Info with lag filtering:\n" + heartbeatInfoMap);
       Assert.assertTrue(heartbeatInfoMap.isEmpty());
 
       // Print out for display only.
       String serverUrl = "http://" + serverWrapper.getHost() + ":" + serverWrapper.getPort();
 
-      String[] args2 = { "--dump-host-heartbeat", "--server-url", serverUrl };
+      String[] args = { "--dump-host-heartbeat", "--server-url", serverUrl, "--kafka-topic-name",
+          Version.composeKafkaTopic(storeName, 1) };
       try {
-        AdminTool.main(args2);
+        AdminTool.main(args);
       } catch (Exception e) {
         throw new VeniceException(e);
       }

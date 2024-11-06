@@ -49,11 +49,15 @@ public class IngestionMetadataRetrieverDelegator implements IngestionMetadataRet
   }
 
   @Override
-  public ReplicaIngestionResponse getHeartbeatLag(String topicFilter, int partitionFilter, boolean filterLagReplica) {
+  public ReplicaIngestionResponse getHeartbeatLag(
+      String versionTopicName,
+      int partitionFilter,
+      boolean filterLagReplica) {
     ReplicaIngestionResponse response = new ReplicaIngestionResponse();
     try {
-      byte[] topicPartitionInfo = replicaInfoJsonSerializer
-          .serialize(heartbeatMonitoringService.getHeartbeatInfo(topicFilter, partitionFilter, filterLagReplica), "");
+      byte[] topicPartitionInfo = replicaInfoJsonSerializer.serialize(
+          heartbeatMonitoringService.getHeartbeatInfo(versionTopicName, partitionFilter, filterLagReplica),
+          "");
       response.setPayload(topicPartitionInfo);
     } catch (Exception e) {
       response.setError(true);

@@ -148,7 +148,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   public Map<String, ReplicaHeartbeatInfo> getHeartbeatInfo(
-      String topicFilter,
+      String versionTopicName,
       int partitionFilter,
       boolean filterLagReplica) {
     Map<String, ReplicaHeartbeatInfo> aggregateResult = new VeniceConcurrentHashMap<>();
@@ -158,7 +158,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             leaderHeartbeatTimeStamps,
             LeaderFollowerStateType.LEADER.name(),
             currentTimestamp,
-            topicFilter,
+            versionTopicName,
             partitionFilter,
             filterLagReplica));
     aggregateResult.putAll(
@@ -166,7 +166,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             followerHeartbeatTimeStamps,
             LeaderFollowerStateType.STANDBY.name(),
             currentTimestamp,
-            topicFilter,
+            versionTopicName,
             partitionFilter,
             filterLagReplica));
     return aggregateResult;
@@ -176,7 +176,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> heartbeatTimestampMap,
       String leaderState,
       long currentTimestamp,
-      String topicFilter,
+      String versionTopicName,
       int partitionFilter,
       boolean filterLagReplica) {
     Map<String, ReplicaHeartbeatInfo> result = new VeniceConcurrentHashMap<>();
@@ -189,11 +189,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             String topicName = Version.composeKafkaTopic(storeName.getKey(), version.getKey());
             long heartbeatTs = region.getValue().getLeft();
             long lag = currentTimestamp - heartbeatTs;
-            if ((!"".equals(topicFilter) && !topicFilter.equals(topicName))) {
+            if (!versionTopicName.equals(topicName)) {
               continue;
             }
-            // Partition filter will only be valid if topicFilter is in place.
-            if (!topicFilter.isEmpty() && partitionFilter >= 0 && partitionFilter != partition.getKey()) {
+            if (partitionFilter >= 0 && partitionFilter != partition.getKey()) {
               continue;
             }
             if (filterLagReplica && lag < DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS) {

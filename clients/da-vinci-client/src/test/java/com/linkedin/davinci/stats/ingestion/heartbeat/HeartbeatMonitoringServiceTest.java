@@ -68,7 +68,7 @@ public class HeartbeatMonitoringServiceTest {
                 leaderMap,
                 LeaderFollowerStateType.LEADER.name(),
                 System.currentTimeMillis(),
-                "",
+                Version.composeKafkaTopic(store, version),
                 -1,
                 false)
             .size(),
@@ -79,7 +79,7 @@ public class HeartbeatMonitoringServiceTest {
                 leaderMap,
                 LeaderFollowerStateType.LEADER.name(),
                 System.currentTimeMillis(),
-                "",
+                Version.composeKafkaTopic(store, version),
                 -1,
                 true)
             .size(),
@@ -134,7 +134,7 @@ public class HeartbeatMonitoringServiceTest {
                 leaderMap,
                 LeaderFollowerStateType.LEADER.name(),
                 System.currentTimeMillis(),
-                "",
+                Version.composeKafkaTopic(store, version),
                 1,
                 false)
             .size(),

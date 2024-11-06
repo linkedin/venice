@@ -13,5 +13,5 @@ public interface IngestionMetadataRetriever {
 
   ReplicaIngestionResponse getTopicPartitionIngestionContext(String versionTopic, String topicName, int partitionNum);
 
-  ReplicaIngestionResponse getHeartbeatLag(String topicFilter, int partitionFilter, boolean filterLagReplica);
+  ReplicaIngestionResponse getHeartbeatLag(String versionTopicName, int partitionFilter, boolean filterLagReplica);
 }
