@@ -11,6 +11,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.apache.commons.httpclient.HttpStatus;
 
@@ -108,7 +109,7 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
             }
           }
           try {
-            T retryVal = supplier.get().get();
+            T retryVal = supplier.get().get(10, TimeUnit.SECONDS);
             retryFuture.complete(retryVal);
             retryThrowable = null;
             break;
