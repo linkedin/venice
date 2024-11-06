@@ -940,7 +940,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * @param clusterName
    * @return the list of stores ready for compaction
    */
-  ArrayList<StoreInfo> getStoresForCompaction(String clusterName);
+  List<StoreInfo> getStoresForCompaction(String clusterName);
 
   /**
    * @return the largest used version number for the given store from store graveyard.
