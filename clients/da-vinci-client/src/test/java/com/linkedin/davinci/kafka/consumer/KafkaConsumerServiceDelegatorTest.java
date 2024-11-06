@@ -523,7 +523,7 @@ public class KafkaConsumerServiceDelegatorTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        TimeUnit.SECONDS.toMillis(10),
+        KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
         mock(TopicExistenceChecker.class),
         false,
         pubSubDeserializer,
@@ -616,7 +616,7 @@ public class KafkaConsumerServiceDelegatorTest {
               .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, consumedDataReceiver);
           // Avoid wait time here to increase the chance for race condition.
           consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition)
-              .setWaitAfterUnsubscribeTimeoutMs(0);
+              .setWaitAfterUnsubscribeTimeoutMs(0L);
           int versionNum =
               Version.parseVersionFromKafkaTopicName(partitionReplicaIngestionContext.getVersionTopic().getName());
           if (versionNum % 3 == 0) {

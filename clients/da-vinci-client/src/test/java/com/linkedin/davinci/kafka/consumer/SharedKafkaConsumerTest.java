@@ -83,7 +83,7 @@ public class SharedKafkaConsumerTest {
     sharedKafkaConsumer = new SharedKafkaConsumer(
         consumerAdapter,
         stats,
-        KafkaConsumerService.SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
+        KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
         assignmentChangeListener,
         unsubscriptionListener,
         new SystemTime());
@@ -95,13 +95,11 @@ public class SharedKafkaConsumerTest {
   public void testWaitAfterUnsubscribe() {
     setUpSharedConsumer();
     Supplier<Set<PubSubTopicPartition>> supplier = () -> topicPartitions;
-
-    long poolTimesBeforeUnsubscribe = sharedKafkaConsumer.getPollTimes();
-    sharedKafkaConsumer.setWaitAfterUnsubscribeTimeoutMs((int) TimeUnit.SECONDS.toMillis(1));
-    sharedKafkaConsumer.unSubscribeAction(supplier, KafkaConsumerService.SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+    long pollTimesBeforeUnsubscribe = sharedKafkaConsumer.getPollTimes();
+    sharedKafkaConsumer.unSubscribeAction(supplier, TimeUnit.SECONDS.toMillis(1));
 
     // This is to test that if the poll time is not incremented when the consumer is unsubscribed the correct log can
     // be found in the logs.
-    Assert.assertEquals(poolTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
+    Assert.assertEquals(pollTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
   }
 }

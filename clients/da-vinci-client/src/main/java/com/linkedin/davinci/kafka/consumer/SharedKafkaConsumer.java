@@ -243,7 +243,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   // Only for testing.
-  void setWaitAfterUnsubscribeTimeoutMs(int waitAfterUnsubscribeTimeoutMs) {
+  void setWaitAfterUnsubscribeTimeoutMs(long waitAfterUnsubscribeTimeoutMs) {
     this.waitAfterUnsubscribeTimeoutMs = waitAfterUnsubscribeTimeoutMs;
   }
 
@@ -368,10 +368,5 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
-  }
-
-  // Test only
-  public void setWaitAfterUnsubscribeTimeoutMs(long seconds) {
-    this.waitAfterUnsubscribeTimeoutMs = seconds;
   }
 }
