@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
@@ -392,15 +393,15 @@ public class HelixUtils {
     CloudConfig.Builder cloudConfigBuilder =
         new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(cloudProvider);
 
-    if (!cloudId.isEmpty()) {
+    if (!StringUtils.isEmpty(cloudId)) {
       cloudConfigBuilder.setCloudID(cloudId);
     }
 
-    if (!cloudInfoSources.isEmpty()) {
+    if (cloudInfoSources != null && !cloudInfoSources.isEmpty()) {
       cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
     }
 
-    if (!cloudInfoProcessorName.isEmpty()) {
+    if (!StringUtils.isEmpty(cloudInfoProcessorName)) {
       cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
     }
 
