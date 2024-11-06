@@ -1,12 +1,15 @@
 package com.linkedin.venice.memory;
 
 import com.linkedin.venice.common.Measurable;
+import com.linkedin.venice.utils.Utils;
 import com.sun.management.HotSpotDiagnosticMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,10 +25,14 @@ import org.apache.logging.log4j.Logger;
 public class HeapSizeEstimator {
   private static final Logger LOGGER = LogManager.getLogger(HeapSizeEstimator.class);
   private static final Map<Class, Integer> PRIMITIVE_SIZES;
+  private static final boolean IS_64_BITS;
+  private static final boolean COMPRESSED_OOPS;
+  private static final boolean COMPRESSED_CLASS_POINTERS;
   private static final int ALIGNMENT_SIZE;
   private static final int OBJECT_HEADER_SIZE;
   private static final int ARRAY_HEADER_SIZE;
   private static final int POINTER_SIZE;
+  private static final int JAVA_MAJOR_VERSION;
 
   static {
     Map<Class, Integer> modifiablePrimitiveSizesMap = new HashMap<>();
@@ -40,15 +47,20 @@ public class HeapSizeEstimator {
     modifiablePrimitiveSizesMap.put(long.class, Long.BYTES);
     modifiablePrimitiveSizesMap.put(double.class, Double.BYTES);
 
-    boolean is64bitsJVM = is64bitsJVM();
-    int markWordSize = is64bitsJVM ? 8 : 4;
-    boolean isCompressedOopsEnabled = isUseCompressedOopsEnabled();
-    boolean isCompressedKlassPointersEnabled = isCompressedKlassPointersEnabled();
-    int classPointerSize = isCompressedKlassPointersEnabled ? 4 : 8;
-
+    /**
+     * This prop name looks sketchy, but I've seen it mentioned in a couple of posts online, so I'm trusting it for
+     * now... In any case, if that property is not found, then we'll default to 64 bits, which is a conservative
+     * assumption (i.e., it would cause us to over-estimate the size on heap)...
+     */
+    String propertyName = "sun.arch.data.model";
+    String arch = System.getProperty(propertyName);
+    LOGGER.info("System property {} has value: {}", propertyName, arch);
+    IS_64_BITS = (arch == null) || !arch.contains("32");
+    COMPRESSED_OOPS = getBooleanVmOption("UseCompressedOops");
+    COMPRESSED_CLASS_POINTERS = getBooleanVmOption("UseCompressedClassPointers");
     PRIMITIVE_SIZES = Collections.unmodifiableMap(modifiablePrimitiveSizesMap);
-    ALIGNMENT_SIZE = is64bitsJVM ? 8 : 4;
-    OBJECT_HEADER_SIZE = markWordSize + classPointerSize;
+    ALIGNMENT_SIZE = IS_64_BITS ? 8 : 4; // Also serves as the object header's "mark word" size
+    OBJECT_HEADER_SIZE = ALIGNMENT_SIZE + (COMPRESSED_CLASS_POINTERS ? 4 : 8);
     /**
      * The "array base" is always word-aligned, which under some circumstances (in 32 bits JVMs, or in 64 bits JVMs
      * where {@link isCompressedOopsEnabled} is false, either due to large heap or to explicit disabling) causes
@@ -57,7 +69,8 @@ public class HeapSizeEstimator {
      * See: https://shipilev.net/jvm/objects-inside-out/#_observation_array_base_is_aligned
      */
     ARRAY_HEADER_SIZE = roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Integer.BYTES);
-    POINTER_SIZE = isCompressedOopsEnabled ? 4 : 8;
+    POINTER_SIZE = COMPRESSED_OOPS ? 4 : 8;
+    JAVA_MAJOR_VERSION = Utils.getJavaMajorVersion();
   }
 
   /**
@@ -102,24 +115,69 @@ public class HeapSizeEstimator {
 
     int size = c.isArray() ? ARRAY_HEADER_SIZE : OBJECT_HEADER_SIZE;
 
-    size += overheadOfFields(c);
+    if (JAVA_MAJOR_VERSION < 15) {
+      /**
+       * In older Java versions, the field layout would always order the fields from the parent class to subclass.
+       * Within a class, the fields could be re-ordered to optimize packing the fields within the "alignment shadow",
+       * but not across classes of the hierarchy.
+       *
+       * See: https://shipilev.net/jvm/objects-inside-out/#_superclass_gaps
+       */
+      List<Class> classHierarchyFromSubclassToParent = new ArrayList<>();
+      classHierarchyFromSubclassToParent.add(c);
+      Class parentClass = c.getSuperclass();
+      while (parentClass != null) {
+        classHierarchyFromSubclassToParent.add(parentClass);
+        parentClass = parentClass.getSuperclass();
+      }
 
-    // TODO: Fix imprecision due to internal loss in parent class layouts
-    Class parentClass = c.getSuperclass();
-    while (parentClass != null) {
-      size += overheadOfFields(parentClass);
-      parentClass = parentClass.getSuperclass();
+      // Iterate from the end to the beginning, so we go from parent to sub
+      for (int i = classHierarchyFromSubclassToParent.size() - 1; i >= 0; i--) {
+        int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i));
+        if (classFieldsOverhead == 0) {
+          continue;
+        }
+        size += classFieldsOverhead;
+
+        if (i > 0) {
+          /**
+           * We align for each class, except the last one, since we'll take care of it below. BUT, importantly, at this
+           * stage we align by pointer size, NOT by alignment size.
+           */
+          size = roundUpToNearestPointerSize(size);
+        }
+      }
+    } else {
+      /**
+       * Starting from Java 15, the field layout is allowed to re-order fields even across classes of the hierarchy.
+       */
+      size += overheadOfFields(c);
+
+      Class parentClass = c.getSuperclass();
+      while (parentClass != null) {
+        size += overheadOfFields(parentClass);
+        parentClass = parentClass.getSuperclass();
+      }
     }
 
-    int finalSize = roundUpToNearestAlignment(size);
+    // We align once at the end no matter the Java version
+    size = roundUpToNearestAlignment(size);
 
-    return finalSize;
+    return size;
   }
 
   /** Deal with alignment by rounding up to the nearest alignment boundary. */
   private static int roundUpToNearestAlignment(int size) {
-    int partialAlignmentWindowUsage = size % ALIGNMENT_SIZE;
-    int waste = partialAlignmentWindowUsage == 0 ? 0 : ALIGNMENT_SIZE - partialAlignmentWindowUsage;
+    return roundUpToNearest(size, ALIGNMENT_SIZE);
+  }
+
+  private static int roundUpToNearestPointerSize(int size) {
+    return roundUpToNearest(size, POINTER_SIZE);
+  }
+
+  private static int roundUpToNearest(int size, int intervalSize) {
+    int partialAlignmentWindowUsage = size % intervalSize;
+    int waste = partialAlignmentWindowUsage == 0 ? 0 : intervalSize - partialAlignmentWindowUsage;
     int finalSize = size + waste;
     return finalSize;
   }
@@ -151,32 +209,17 @@ public class HeapSizeEstimator {
 
   /** Package-private on purpose, for tests... */
   static boolean is64bitsJVM() {
-    /**
-     * This prop name looks sketchy, but I've seen it mentioned in a couple of posts online, so I'm trusting it for
-     * now... In any case, if that property is not found, then we'll default to 64 bits, which is a conservative
-     * assumption (i.e., it would cause us to over-estimate the size on heap)...
-     */
-    String propertyName = "sun.arch.data.model";
-    String arch = System.getProperty(propertyName);
-    LOGGER.info("System property {} has value: {}", propertyName, arch);
-
-    return (arch == null) || !arch.contains("32");
+    return IS_64_BITS;
   }
 
   /** Package-private on purpose, for tests... */
   static boolean isUseCompressedOopsEnabled() {
-    // Simpler method, but doesn't compile, for some reason...
-    // return sun.jvm.hotspot.runtime.VM.getVM().isCompressedOopsEnabled();
-
-    return getBooleanVmOption("UseCompressedOops");
+    return COMPRESSED_OOPS;
   }
 
   /** Package-private on purpose, for tests... */
   static boolean isCompressedKlassPointersEnabled() {
-    // Simpler method, but doesn't compile, for some reason...
-    // return sun.jvm.hotspot.runtime.VM.getVM().isCompressedKlassPointersEnabled();
-
-    return getBooleanVmOption("UseCompressedClassPointers");
+    return COMPRESSED_CLASS_POINTERS;
   }
 
   private static boolean getBooleanVmOption(String optionName) {
