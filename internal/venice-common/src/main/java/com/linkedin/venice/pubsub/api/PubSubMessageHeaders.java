@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.common.Measurable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,7 +11,7 @@ import java.util.Map;
  * Set of key-value pairs to tagged with messages produced to a topic.
  * In case of headers with the same key, only the most recently added headers value will be kept.
  */
-public class PubSubMessageHeaders {
+public class PubSubMessageHeaders implements Measurable {
   /**
    * N.B.: Kafka allows duplicate keys in the headers but some pubsub systems may not
    * allow it. Hence, we will enforce uniqueness of keys in headers from the beginning.
@@ -43,5 +44,17 @@ public class PubSubMessageHeaders {
    */
   public List<PubSubMessageHeader> toList() {
     return new ArrayList<>(headers.values());
+  }
+
+  /**
+   * TODO: the following estimation doesn't consider the overhead of the internal structure.
+   */
+  @Override
+  public int getSize() {
+    int size = 0;
+    for (Map.Entry<String, PubSubMessageHeader> entry: headers.entrySet()) {
+      size += entry.getKey().length() + entry.getValue().getSize();
+    }
+    return size;
   }
 }

@@ -13,14 +13,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
-import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
@@ -43,16 +41,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
 
   private final HelixAdmin helixAdmin;
+  private final VeniceControllerClusterConfig commonConfig;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
   private final String controllerClusterName;
   private final int controllerClusterReplicaCount;
-  private final CloudConfig.Builder cloudConfigBuilder;
 
   public ZkHelixAdminClient(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
+    this.commonConfig = multiClusterConfigs.getCommonConfig();
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
     controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
@@ -64,7 +63,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
     helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
-    cloudConfigBuilder = new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(CloudProvider.AZURE);
   }
 
   /**
@@ -84,27 +82,26 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceControllerCluster(boolean)
+   * @see HelixAdminClient#createVeniceControllerCluster()
    */
   @Override
-  public void createVeniceControllerCluster(boolean isControllerInAzureFabric) {
+  public void createVeniceControllerCluster() {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceControllerClusterCreated()) {
         if (!helixAdmin.addCluster(controllerClusterName, false)) {
           throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
         }
-        Map<String, String> helixClusterProperties = new HashMap<>();
-        helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+        ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
+        clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
         // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
         // choose proper instance to hold the replica.
-        helixClusterProperties
-            .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
+        clusterConfig.setTopologyAwareEnabled(false);
 
-        updateClusterConfigs(controllerClusterName, helixClusterProperties);
+        updateClusterConfigs(controllerClusterName, clusterConfig);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        if (isControllerInAzureFabric) {
-          helixAdmin.addCloudConfig(controllerClusterName, cloudConfigBuilder.build());
+        if (commonConfig.isControllerClusterHelixCloudEnabled()) {
+          helixAdmin.addCloudConfig(controllerClusterName, commonConfig.getHelixCloudConfig());
         }
       }
       return true;
@@ -117,22 +114,21 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceStorageCluster(String, Map, boolean)
+   * @see HelixAdminClient#createVeniceStorageCluster(String, ClusterConfig)
    */
   @Override
-  public void createVeniceStorageCluster(
-      String clusterName,
-      Map<String, String> helixClusterProperties,
-      boolean isControllerInAzureFabric) {
+  public void createVeniceStorageCluster(String clusterName, ClusterConfig helixClusterConfig) {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceStorageClusterCreated(clusterName)) {
         if (!helixAdmin.addCluster(clusterName, false)) {
           throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
         }
-        updateClusterConfigs(clusterName, helixClusterProperties);
+        updateClusterConfigs(clusterName, helixClusterConfig);
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
-        if (isControllerInAzureFabric) {
-          helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
+
+        VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+        if (clusterConfig.isStorageClusterHelixCloudEnabled()) {
+          helixAdmin.addCloudConfig(clusterName, clusterConfig.getHelixCloudConfig());
         }
       }
       return true;
@@ -166,7 +162,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           AutoRebalanceStrategy.class.getName());
       VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
-      idealState.setMinActiveReplicas(controllerClusterReplicaCount);
+      idealState.setMinActiveReplicas(Math.max(controllerClusterReplicaCount - 1, 1));
       idealState.setRebalancerClassName(WagedRebalancer.class.getName());
 
       String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
@@ -209,12 +205,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#updateClusterConfigs(String, Map)
+   * @see HelixAdminClient#updateClusterConfigs(String, ClusterConfig)
    */
   @Override
-  public void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties) {
+  public void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig) {
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
+    Map<String, String> helixClusterProperties = new HashMap<>(clusterConfig.getRecord().getSimpleFields());
     helixAdmin.setConfig(configScope, helixClusterProperties);
   }
 
@@ -261,7 +258,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       // We don't set the delayed time per resource, we will use the cluster level helix config to decide
       // the delayed rebalance time
       idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-      idealState.setMinActiveReplicas(replicationFactor - 1);
+      idealState.setMinActiveReplicas(Math.max(replicationFactor - 1, 1));
       idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
       helixAdmin.setResourceIdealState(clusterName, kafkaTopic, idealState);
       LOGGER.info("Enabled delayed re-balance for resource: {}", kafkaTopic);
@@ -319,13 +316,5 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void close() {
     helixAdmin.close();
-  }
-
-  /**
-   * @see HelixAdminClient#addInstanceTag(String, String, String)()
-   */
-  @Override
-  public void addInstanceTag(String clusterName, String instanceName, String tag) {
-    helixAdmin.addInstanceTag(clusterName, instanceName, tag);
   }
 }

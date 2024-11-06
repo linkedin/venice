@@ -343,11 +343,12 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       return responseCompression;
     } else {
       String errorMsg = String.format(
-          "Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
+          "Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d, All headers: %s",
           storeName,
           version,
           compressionStrategy.getValue(),
-          responseCompression.getValue());
+          responseCompression.getValue(),
+          response.headers().toString());
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
           Optional.of(storeName),
           Optional.of(RequestType.MULTI_GET),

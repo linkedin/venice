@@ -19,7 +19,7 @@ public class PubSubMessageProcessedResultWrapper<K, V, OFFSET> {
     return processedResult;
   }
 
-  public void setProcessedResult(PubSubMessageProcessedResult transformedResult) {
-    this.processedResult = transformedResult;
+  public void setProcessedResult(PubSubMessageProcessedResult processedResult) {
+    this.processedResult = processedResult;
   }
 }

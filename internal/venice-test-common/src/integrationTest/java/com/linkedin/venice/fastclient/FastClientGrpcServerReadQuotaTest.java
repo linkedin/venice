@@ -59,7 +59,7 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
-    String readQuotaRequestedString = "." + storeName + "--quota_request.Rate";
+    String readQuotaRequestedString = "." + storeName + "--current_quota_request.Gauge";
     String readQuotaRejectedString = "." + storeName + "--quota_rejected_request.Rate";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
     String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";

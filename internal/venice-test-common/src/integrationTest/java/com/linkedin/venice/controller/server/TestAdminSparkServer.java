@@ -3,10 +3,12 @@ package com.linkedin.venice.controller.server;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.InstanceRemovableStatuses;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -52,6 +54,8 @@ import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,8 +69,11 @@ import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.nio.client.HttpAsyncClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -74,6 +81,8 @@ import org.testng.annotations.Test;
 
 
 public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   /**
    * Seems that Helix has limit on the number of resource each node is able to handle.
    * If the test case needs more than one storage node like testing failover etc, please put it into {@link TestAdminSparkServerWithMultiServers}
@@ -201,6 +210,50 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       // clear the store since the cluster is shared by other test cases
       deleteStore(storeToCreate);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAggregatedHealthStatusCall() throws IOException, ExecutionException, InterruptedException {
+    String clusterName = venice.getClusterNames()[0];
+    CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.empty());
+    httpClient.start();
+    int serverPort = venice.getChildRegions().get(0).getClusters().get(clusterName).getVeniceServers().get(0).getPort();
+    String server = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort);
+
+    // API call with all fields
+    Map<String, Object> payloads = new HashMap<>();
+    payloads.put("cluster_id", clusterName);
+    payloads.put("instances", Collections.singletonList(server));
+    payloads.put("to_be_stopped_instances", Collections.emptyList());
+
+    InstanceRemovableStatuses statuses = makeAggregatedHealthStatusCall(httpClient, payloads);
+    Assert.assertTrue(statuses.getNonStoppableInstancesWithReasons().containsKey(server));
+
+    // API call without optional to_be_stopped_instances
+    Map<String, Object> payloads2 = new HashMap<>();
+    payloads2.put("cluster_id", clusterName);
+    payloads2.put("instances", Collections.singletonList(server));
+
+    InstanceRemovableStatuses statuses2 = makeAggregatedHealthStatusCall(httpClient, payloads2);
+    Assert.assertTrue(statuses2.getNonStoppableInstancesWithReasons().containsKey(server));
+
+    httpClient.close();
+  }
+
+  private InstanceRemovableStatuses makeAggregatedHealthStatusCall(
+      HttpAsyncClient httpClient,
+      Map<String, Object> payloads) throws IOException, ExecutionException, InterruptedException {
+    StringEntity entity = new StringEntity(OBJECT_MAPPER.writeValueAsString(payloads), ContentType.APPLICATION_JSON);
+
+    final HttpPost post = new HttpPost(
+        venice.getChildRegions().get(0).getControllerConnectString()
+            + ControllerRoute.AGGREGATED_HEALTH_STATUS.getPath());
+    post.setEntity(entity);
+    HttpResponse httpResponse = httpClient.execute(post, null).get();
+
+    Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), 200);
+    String responseString = IOUtils.toString(httpResponse.getEntity().getContent());
+    return OBJECT_MAPPER.readValue(responseString, InstanceRemovableStatuses.class);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -21,53 +21,134 @@ public class PushMonitorUtilsTest {
   @Test
   public void testCompleteStatusCanBeReportedWithOfflineInstancesBelowFailFastThreshold() {
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
+    PushMonitorUtils.setDVCDeadInstanceTime("store_v1", System.currentTimeMillis());
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
     /**
       * Instance a is offline and its push status is not completed.
       * Instance b,c,d are online and their push status is completed.
       * In this case, the overall DaVinci push status can be COMPLETED as long as 1 is below the fail fast threshold.
       */
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("a"));
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("b"));
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("c"));
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("d"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("a"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("b"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("c"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("d"));
+    // Bootstrapping nodes should be ignored
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("e"));
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("f"));
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("g"));
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader).getInstanceStatus(eq("store"), eq("h"));
 
     Map<CharSequence, Integer> map = new HashMap<>();
+    /**
+     * 2 is STARTED state, 10 is COMPLETED state.
+     * Reference: {@link ExecutionStatus}
+     */
     map.put("a", 2);
     map.put("b", 10);
     map.put("c", 10);
     map.put("d", 10);
+    map.put("e", 2);
+    map.put("f", 2);
+    map.put("g", 2);
+    map.put("h", 2);
 
     // Test partition level key first
-    doReturn(null).when(reader).getVersionStatus("store", 1);
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.empty());
     doReturn(map).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
 
     // 1 offline instances is below the fail fast threshold, the overall DaVinci status can be COMPLETED.
-    validatePushStatus(reader, "store_v1", 2, 0.25, ExecutionStatus.COMPLETED);
+    validatePushStatus(reader, "store_v1", Optional.empty(), 2, 0.25, ExecutionStatus.COMPLETED);
 
     // Test version level key
-    doReturn(map).when(reader).getVersionStatus("store", 1);
+    doReturn(map).when(reader).getVersionStatus("store", 1, Optional.empty());
     doReturn(Collections.emptyMap()).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
     // 1 offline instances is below the fail fast threshold, the overall DaVinci status can be COMPLETED.
-    validatePushStatus(reader, "store_v1", 2, 0.25, ExecutionStatus.COMPLETED);
+    validatePushStatus(reader, "store_v1", Optional.empty(), 2, 0.25, ExecutionStatus.COMPLETED);
+
+    // Test migration case: node "b" and "c" were reporting partition status at STARTED state, but later it completed
+    // and reported
+    // version level key status as COMPLETED.
+    Map<CharSequence, Integer> retiredStatusMap = new HashMap<>();
+    retiredStatusMap.put("b", 2);
+    retiredStatusMap.put("c", 2);
+    doReturn(retiredStatusMap).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
+    validatePushStatus(reader, "store_v1", Optional.empty(), 2, 0.25, ExecutionStatus.COMPLETED);
+
+    // Test partition level key for incremental push
+    String incrementalPushVersion = "incrementalPushVersion";
+    Map<CharSequence, Integer> incrementalPushStatusMap = new HashMap<>();
+    /**
+     * 7 is START_OF_INCREMENTAL_PUSH_RECEIVED state, 8 is END_OF_INCREMENTAL_PUSH_RECEIVED state.
+     * Reference: {@link ExecutionStatus}
+     */
+    incrementalPushStatusMap.put("a", 7);
+    incrementalPushStatusMap.put("b", 8);
+    incrementalPushStatusMap.put("c", 8);
+    incrementalPushStatusMap.put("d", 8);
+    incrementalPushStatusMap.put("e", 7);
+    incrementalPushStatusMap.put("f", 7);
+    incrementalPushStatusMap.put("g", 7);
+    incrementalPushStatusMap.put("h", 7);
+
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.of(incrementalPushVersion));
+    doReturn(incrementalPushStatusMap).when(reader)
+        .getPartitionStatus("store", 1, 0, Optional.of(incrementalPushVersion));
+    // 1 offline instances is below the fail fast threshold, the overall DaVinci status can be
+    // END_OF_INCREMENTAL_PUSH_RECEIVED.
+    validatePushStatus(
+        reader,
+        "store_v1",
+        Optional.of(incrementalPushVersion),
+        2,
+        0.25,
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+
+    // Test version level key for incremental push
+    doReturn(incrementalPushStatusMap).when(reader).getVersionStatus("store", 1, Optional.of(incrementalPushVersion));
+    doReturn(Collections.emptyMap()).when(reader)
+        .getPartitionStatus("store", 1, 0, Optional.of(incrementalPushVersion));
+    // 1 offline instances is below the fail fast threshold, the overall DaVinci status can be
+    // END_OF_INCREMENTAL_PUSH_RECEIVED.
+    validatePushStatus(
+        reader,
+        "store_v1",
+        Optional.of(incrementalPushVersion),
+        2,
+        0.25,
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+
+    // Test migration case: node "b" and "c" were reporting partition status at START_OF_INCREMENTAL_PUSH_RECEIVED
+    // state, but later it completed and reported version level key status as END_OF_INCREMENTAL_PUSH_RECEIVED.
+    Map<CharSequence, Integer> retiredIncrementalPushStatusMap = new HashMap<>();
+    retiredIncrementalPushStatusMap.put("b", 7);
+    retiredIncrementalPushStatusMap.put("c", 8);
+    doReturn(retiredIncrementalPushStatusMap).when(reader)
+        .getPartitionStatus("store", 1, 0, Optional.of(incrementalPushVersion));
+    validatePushStatus(
+        reader,
+        "store_v1",
+        Optional.of(incrementalPushVersion),
+        2,
+        0.25,
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testDaVinciPushStatusScan(boolean useDaVinciSpecificExecutionStatusForError) {
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("b"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("c"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("d"));
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(eq("store"), eq("a"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("b"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("c"));
+    doReturn(PushStatusStoreReader.InstanceStatus.DEAD).when(reader).getInstanceStatus(eq("store"), eq("d"));
 
     Map<CharSequence, Integer> map = new HashMap<>();
     map.put("a", 3);
     map.put("b", 3);
     map.put("c", 3);
     map.put("d", 10);
-    doReturn(null).when(reader).getVersionStatus("store", 1);
-    doReturn(null).when(reader).getVersionStatus("store", 2);
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.empty());
+    doReturn(null).when(reader).getVersionStatus("store", 2, Optional.empty());
     doReturn(map).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
     doReturn(map).when(reader).getPartitionStatus("store", 2, 0, Optional.empty());
 
@@ -164,6 +245,7 @@ public class PushMonitorUtilsTest {
   private void validatePushStatus(
       PushStatusStoreReader reader,
       String topicName,
+      Optional<String> incrementalPushVersion,
       int maxOfflineInstanceCount,
       double maxOfflineInstanceRatio,
       ExecutionStatus expectedStatus) {
@@ -171,7 +253,7 @@ public class PushMonitorUtilsTest {
         reader,
         topicName,
         1,
-        Optional.empty(),
+        incrementalPushVersion,
         maxOfflineInstanceCount,
         maxOfflineInstanceRatio,
         true);

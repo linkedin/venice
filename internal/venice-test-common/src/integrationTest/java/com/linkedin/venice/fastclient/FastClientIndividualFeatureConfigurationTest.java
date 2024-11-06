@@ -93,9 +93,9 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
-    String readQuotaRequestedQPSString = "." + storeName + "--quota_request.Rate";
+    String readQuotaRequestedQPSString = "." + storeName + "--current_quota_request.Gauge";
     String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_request.Rate";
-    String readQuotaRequestedKPSString = "." + storeName + "--quota_request_key_count.Rate";
+    String readQuotaRequestedKPSString = "." + storeName + "--current_quota_request_key_count.Gauge";
     String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_key_count.Rate";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
     String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";

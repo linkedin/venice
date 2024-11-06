@@ -1,5 +1,7 @@
 FROM  mcr.microsoft.com/openjdk/jdk:11-ubuntu
 
+LABEL org.opencontainers.image.description="Venice Client: Includes tools for store administration (e.g., create, delete), data pushing (VPJ), and a CLI for querying store data."
+
 ENV VENICE_DIR=/opt/venice
 
 RUN apt-get update

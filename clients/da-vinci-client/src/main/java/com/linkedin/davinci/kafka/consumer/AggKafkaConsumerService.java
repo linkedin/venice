@@ -264,6 +264,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   AbstractKafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
     AbstractKafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.get(kafkaURL);
     if (consumerService == null && kafkaClusterUrlResolver != null) {
+      // The resolver is needed to resolve a special format of kafka URL to the original kafka URL
       consumerService = kafkaServerToConsumerServiceMap.get(kafkaClusterUrlResolver.apply(kafkaURL));
     }
     return consumerService;
@@ -391,8 +392,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         new StorePartitionDataReceiver(
             storeIngestionTask,
             pubSubTopicPartition,
-            kafkaURL,
-            kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1));
+            kafkaURL, // do not resolve and let it pass downstream for offset tracking purpose
+            kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1)); // same pubsub url but different id for sep topic
 
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
     consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver);

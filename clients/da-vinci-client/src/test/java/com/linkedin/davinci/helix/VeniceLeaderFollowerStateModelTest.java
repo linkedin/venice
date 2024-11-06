@@ -62,6 +62,23 @@ public class VeniceLeaderFollowerStateModelTest extends
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
 
+    when(mockSystemStore.getCurrentVersion()).thenReturn(2);
+    testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
+    verify(mockNotifier, never()).waitConsumptionCompleted(
+        mockSystemStoreMessage.getResourceName(),
+        testPartition,
+        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
+        mockStoreIngestionService);
+
+    // When serving current version system store, it should have latch in place.
+    when(mockSystemStore.getCurrentVersion()).thenReturn(1);
+    testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
+    verify(mockNotifier, times(1)).waitConsumptionCompleted(
+        mockSystemStoreMessage.getResourceName(),
+        testPartition,
+        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
+        mockStoreIngestionService);
+
     when(mockStore.getCurrentVersion()).thenReturn(1);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier).startConsumption(mockMessage.getResourceName(), testPartition);

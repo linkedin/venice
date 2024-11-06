@@ -139,6 +139,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
 
+  public static final String PRODUCER_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "producer.thread.count";
+  public static final String PRODUCER_QUEUE_SIZE = VENICE_WRITER_CONFIG_PREFIX + "producer.queue.size";
+
   // Config value defaults
 
   /**
@@ -390,7 +393,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
       heartBeatMessage = generateHeartbeatMessage(checkSumType);
     } catch (Exception e) {
-      logger.error("VeniceWriter cannot be constructed with the props: {}", props);
+      logger.error("VeniceWriter cannot be constructed with the props: {}", props, e);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
   }
@@ -2103,5 +2106,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public String getDestination() {
     return topicName + "@" + producerAdapter.getBrokerAddress();
+  }
+
+  public PubSubProducerAdapter getProducerAdapter() {
+    return this.producerAdapter;
   }
 }

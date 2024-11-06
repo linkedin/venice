@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.model.ClusterConfig;
 
 
 /**
@@ -23,20 +24,15 @@ public interface HelixAdminClient {
 
   /**
    * Create and configure the Venice controller cluster.
-   * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceControllerCluster(boolean isControllerInAzureFabric);
+  void createVeniceControllerCluster();
 
   /**
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
-   * @param helixClusterProperties to be applied to the new cluster.
-   * @param isControllerInAzureFabric whether the controller is in Azure fabric.
+   * @param clusterConfig {@link ClusterConfig} for the new cluster.
    */
-  void createVeniceStorageCluster(
-      String clusterName,
-      Map<String, String> helixClusterProperties,
-      boolean isControllerInAzureFabric);
+  void createVeniceStorageCluster(String clusterName, ClusterConfig clusterConfig);
 
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
@@ -67,9 +63,9 @@ public interface HelixAdminClient {
   /**
    * Update some Helix cluster properties for the given cluster.
    * @param clusterName of the cluster to be updated.
-   * @param helixClusterProperties to be applied to the given cluster.
+   * @param clusterConfig {@link ClusterConfig} for the new cluster.
    */
-  void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties);
+  void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig);
 
   /**
    * Disable or enable a list of partitions on an instance.
@@ -128,9 +124,4 @@ public interface HelixAdminClient {
    * Release resources.
    */
   void close();
-
-  /**
-   * Adds a tag to an instance
-   */
-  void addInstanceTag(String clusterName, String instanceName, String tag);
 }

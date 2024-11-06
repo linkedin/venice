@@ -320,9 +320,35 @@ public class ConfigKeys {
   public static final String ALLOW_CLUSTER_WIPE = "allow.cluster.wipe";
 
   /**
-   * Whether the controller is in Azure fabric. Default is false.
+   * Whether the controller cluster is in a cloud environment. Default is false.
    */
-  public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
+  public static final String CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED = "controller.cluster.helix.cloud.enabled";
+
+  /**
+   * Whether the controller storage cluster is in a cloud environment. Default is false.
+   */
+  public static final String CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED =
+      "controller.storage.cluster.helix.cloud.enabled";
+
+  /**
+   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider} Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
+
+  /**
+   * Specific id in cloud environment that belongs to this cluster. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_ID = "controller.helix.cloud.id";
+
+  /**
+   * Sources for retrieving the cloud information. Default is empty list.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";
+
+  /**
+   * Name of the function that processes the fetching and parsing of cloud information. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 
   /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
@@ -426,6 +452,10 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
+  /**
+   * Whether to join a Helix cluster in an UNKNOWN state
+   */
+  public static final String SERVER_HELIX_JOIN_AS_UNKNOWN = "server.helix.join.as.unknown";
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
@@ -751,6 +781,11 @@ public class ConfigKeys {
 
   public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
       "server.batch.report.end.of.incremental.push.status.enabled";
+
+  /**
+   * This config dictates where the server should write the end of incremental push status.
+   */
+  public static final String SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE = "server.incremental.push.status.write.mode";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
@@ -1726,6 +1761,10 @@ public class ConfigKeys {
       "davinci.push.status.scan.max.offline.instance.ratio";
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
+      "blob.transfer.snapshot.retention.time.in.min";
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
@@ -2265,4 +2304,15 @@ public class ConfigKeys {
 
   public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
       "server.aa.wc.workload.parallel.processing.thread.pool.size";
+  public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
+
+  /**
+   * Whether to enable producer throughput optimization for realtime workload or not.
+   * Two strategies:
+   * 1. Disable compression.
+   * 2. Utilizing multiple producers per write.
+   * These two options are controlled via store-level config.
+   */
+  public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
+      "server.nearline.workload.producer.throughput.optimization.enabled";
 }

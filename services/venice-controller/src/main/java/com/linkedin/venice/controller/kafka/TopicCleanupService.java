@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +91,8 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final Map<PubSubTopic, Integer> danglingTopicOccurrenceCounter;
   private final int danglingTopicOccurrenceThresholdForCleanup;
   private final long danglingTopicCleanupIntervalMs;
+  public final static Comparator<PubSubTopic> topicPriorityComparator =
+      Comparator.comparingInt(topic -> (topic.isRealTime() ? -1 : 1));
 
   public TopicCleanupService(
       Admin admin,
@@ -232,7 +235,7 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   void cleanupVeniceTopics() {
-    PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>((s1, s2) -> s1.isRealTime() ? -1 : 0);
+    PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>(topicPriorityComparator);
     populateDeprecatedTopicQueue(allTopics);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
