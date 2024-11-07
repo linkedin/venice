@@ -1,10 +1,7 @@
 package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
@@ -158,13 +155,15 @@ public class HeapSizeEstimatorTest {
 
     if (measureVM) {
       /**
-       * The reason for having multiple attempts is that the memory allocation method is not always reliable.
+       * The reason for having multiple attempts is that the allocation measurement method is not always reliable.
        * Presumably, this is because GC could kick in during the middle of the allocation loop. If the allocated memory
        * is negative then for sure it's not right. If the GC reduces memory allocated but not enough to make the
-       * measurement go negative, then we cannot know if it's a measurement error, or a bug...
+       * measurement go negative, then we cannot know if it's a measurement error, or a bug... In any case, we will do
+       * a few attempts and assume that the measurement is good if it falls within the prescribed delta (even though
+       * technically that could be a false negative).
        */
-      int attempts = 3;
-      while (attempts-- > 0) {
+      int attemptsLeft = 3;
+      while (attemptsLeft-- > 0) {
         assertNotEquals(RUNTIME.maxMemory(), Long.MAX_VALUE);
         Object[] allocations = new Object[NUMBER_OF_ALLOCATIONS_WHEN_MEASURING];
         Class<?>[] argTypes = new Class[0];
@@ -193,8 +192,8 @@ public class HeapSizeEstimatorTest {
           String errorMessage = "Memory allocated is negative! memoryAllocatedBeforeInstantiations: "
               + memoryAllocatedBeforeInstantiations + ", memoryAllocatedAfterInstantiations: "
               + memoryAllocatedAfterInstantiations + ", memoryAllocatedByInstantiations: "
-              + memoryAllocatedByInstantiations + ". " + attempts + " attempts left.";
-          if (attempts > 0) {
+              + memoryAllocatedByInstantiations + ". " + attemptsLeft + " attempts left.";
+          if (attemptsLeft > 0) {
             LOGGER.info(errorMessage);
             continue;
           } else {
@@ -209,19 +208,41 @@ public class HeapSizeEstimatorTest {
           assertNotNull(allocations[i]);
         }
 
-        LOGGER.info(
-            formatResultRow(
-                c.getSimpleName(),
-                String.valueOf(predictedClassOverhead),
-                String.valueOf(expectedClassOverhead),
-                String.format("%.3f", memoryAllocatedPerInstance)));
+        // Since the above method for measuring allocated memory is imperfect, we need to tolerate some delta.
+        double allocatedToPredictedRatio = memoryAllocatedPerInstance / (double) predictedClassOverhead;
+        double delta = Math.abs(1 - allocatedToPredictedRatio);
 
-        assertEquals(
-            memoryAllocatedPerInstance,
-            predictedClassOverhead,
-            0.125, // 1 bit of margin of error... seems to be sufficient for this measurement method
-            "The memory allocation measurement is too far from the predictedClassOverhead for class: "
-                + c.getSimpleName() + ".");
+        // For small objects, any delta of 1 byte or less will be tolerated
+        double minimumAbsoluteDeltaInBytes = 1;
+        double minimumAbsoluteDelta = minimumAbsoluteDeltaInBytes / memoryAllocatedPerInstance;
+
+        // For larger objects, we'll tolerate up to 1% delta
+        double minimumRelativeDelta = 0.01;
+
+        // The larger of the two deltas is the one we use
+        double maxAllowedDelta = Math.max(minimumAbsoluteDelta, minimumRelativeDelta);
+
+        if (delta < maxAllowedDelta) {
+          // Success!
+          LOGGER.info(
+              formatResultRow(
+                  c.getSimpleName(),
+                  String.valueOf(predictedClassOverhead),
+                  String.valueOf(expectedClassOverhead),
+                  String.format("%.3f", memoryAllocatedPerInstance)));
+        } else {
+          String errorMessage = "The measured memoryAllocatedPerInstance (" + memoryAllocatedPerInstance
+              + ") is too far from the predictedClassOverhead (" + predictedClassOverhead + ") for class: "
+              + c.getSimpleName() + "; delta: " + String.format("%.3f", delta) + "; maxAllowedDelta: "
+              + String.format("%.3f", maxAllowedDelta) + ".";
+
+          if (attemptsLeft > 0) {
+            LOGGER.info(errorMessage);
+            continue;
+          } else {
+            fail(errorMessage);
+          }
+        }
 
         // A best-effort attempt to minimize the chance of needing to GC in the middle of the next measurement run...
         allocations = null;

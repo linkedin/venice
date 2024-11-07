@@ -56,6 +56,27 @@
     <Source name="~.*internal/alpini/.*" />
   </Match>
   <Match>
+    <!--Explicit "freeing" to encourage GC is intentional in some rare testing contexts-->
+    <Bug pattern="DLS_DEAD_LOCAL_STORE_OF_NULL"/>
+    <Or>
+      <Class name="com.linkedin.venice.memory.HeapSizeEstimatorTest"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--Explicit GC is intentional in some rare testing contexts-->
+    <Bug pattern="DM_GC"/>
+    <Or>
+      <Class name="com.linkedin.venice.memory.HeapSizeEstimatorTest"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--Explicit GC is intentional in some rare testing contexts-->
+    <Bug pattern="DM_GC"/>
+    <Or>
+      <Class name="com.linkedin.venice.memory.HeapSizeEstimatorTest"/>
+    </Or>
+  </Match>
+  <Match>
     <!--These classes pass null intentionally for testing purposes-->
     <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
     <Or>
