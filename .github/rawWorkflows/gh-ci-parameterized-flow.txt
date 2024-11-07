@@ -1,5 +1,4 @@
   $FlowName:
-    $FlowIfStatement
     strategy:
       fail-fast: false
       matrix:

@@ -14,7 +14,6 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   IntegrationTests_1000:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,7 +54,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -77,7 +76,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1010:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +116,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -140,7 +138,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1020:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -181,7 +178,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -203,7 +200,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1030:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -244,7 +240,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -266,7 +262,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1040:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -307,7 +302,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -329,7 +324,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1050:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -370,7 +364,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -392,7 +386,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1060:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -433,7 +426,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -455,7 +448,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1070:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -496,7 +488,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -518,7 +510,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1080:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -559,7 +550,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -581,7 +572,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1090:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -622,7 +612,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -644,7 +634,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1100:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -685,7 +674,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -707,7 +696,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1110:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -748,7 +736,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -770,7 +758,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1120:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -811,7 +798,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -833,7 +820,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1130:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -874,7 +860,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -896,7 +882,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1200:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -937,7 +922,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -959,7 +944,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1210:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1000,7 +984,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1022,7 +1006,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1220:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1063,7 +1046,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1085,7 +1068,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1230:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1126,7 +1108,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1148,7 +1130,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1240:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1189,7 +1170,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1211,7 +1192,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1250:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1252,7 +1232,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1274,7 +1254,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1260:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1315,7 +1294,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1337,7 +1316,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1270:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1378,7 +1356,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1400,7 +1378,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1280:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1441,7 +1418,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1463,7 +1440,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1400:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1504,7 +1480,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1526,7 +1502,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1410:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1567,7 +1542,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1589,7 +1564,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1420:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1630,7 +1604,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1652,7 +1626,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1430:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1693,7 +1666,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1715,7 +1688,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1440:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1756,7 +1728,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1778,7 +1750,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1500:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1819,7 +1790,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1841,7 +1812,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1550:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1882,7 +1852,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182
@@ -1904,7 +1874,6 @@ jobs:
           retention-days: 30
 
   IntegrationTests_9999:
-    if: ${{ github.repository_owner != 'linkedin' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1945,7 +1914,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Test Reports
-        if: ${{ success() || failure() }}
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
         uses: dorny/test-reporter@v1.9.1
         env:
          NODE_OPTIONS: --max-old-space-size=9182

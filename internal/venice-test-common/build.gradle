@@ -375,8 +375,7 @@ task generateAllGHCI() {
 def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null, String conditional=null, boolean isMain) {
   String postProcessing = paramFileContent
       .replace("\$FlowName", flowName)
-      .replace("\$FlowIfStatement", isMain ? "" : "if: \${{ github.repository_owner != 'linkedin' }}")
-      .replace("\$TestIfStatement", isMain ? "if: \${{ (github.repository_owner == 'linkedin') && (success() || failure()) }}" : "if: \${{ success() || failure() }}")
+      .replace("\$TestIfStatement", isMain ? "if: \${{ (github.repository_owner == 'linkedin') && (success() || failure()) }}" : "if: \${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}")
       .replace("\$TimeOut", Integer.toString(timeOut))
       .replace("\$GradleArguments", gradleArguments)
 
