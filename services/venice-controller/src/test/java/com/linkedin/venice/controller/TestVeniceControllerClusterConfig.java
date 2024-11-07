@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -282,5 +283,16 @@ public class TestVeniceControllerClusterConfig {
     assertEquals(cloudConfig.getCloudID(), cloudId);
     assertEquals(cloudConfig.getCloudInfoProcessorName(), processorName);
     assertEquals(cloudConfig.getCloudInfoSources(), cloudInfoSources);
+  }
+
+  @Test
+  public void testHelixRestCustomizedHealthUrl() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    String healthUrl = "http://localhost:8080/health";
+    baseProps.setProperty(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, healthUrl);
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getHelixRestCustomizedHealthUrl(), healthUrl);
   }
 }

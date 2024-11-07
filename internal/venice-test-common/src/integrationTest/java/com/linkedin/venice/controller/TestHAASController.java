@@ -272,7 +272,7 @@ public class TestHAASController {
       client.addClusterToGrandCluster("venice-controllers");
       for (int i = 0; i < 10; i++) {
         String clusterName = "cluster-" + i;
-        client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName));
+        client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName), null);
         client.addClusterToGrandCluster(clusterName);
         client.addVeniceStorageClusterToControllerCluster(clusterName);
       }

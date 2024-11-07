@@ -351,6 +351,12 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 
   /**
+   * Base URL for customized health checks triggered by Helix. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL =
+      "controller.helix.rest.customized.health.url";
+
+  /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
    */
   public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED = "controller.store.graveyard.cleanup.enabled";
