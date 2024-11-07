@@ -26,5 +26,9 @@ public enum QueryAction {
   CURRENT_VERSION,
 
   // TOPIC_PARTITION_INGESTION_CONTEXT is a GET request to /version topic/topic/partition from server admin tool
-  TOPIC_PARTITION_INGESTION_CONTEXT
+  TOPIC_PARTITION_INGESTION_CONTEXT,
+
+  // HOST_HEARTBEAT_LAG is a GET request to /(optional) version topic filter/(optional) partition filter/(optional)
+  // lagging replica filter from server admin tool.
+  HOST_HEARTBEAT_LAG
 }

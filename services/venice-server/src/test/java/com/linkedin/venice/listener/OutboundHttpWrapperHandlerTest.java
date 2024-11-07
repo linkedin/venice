@@ -14,8 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
@@ -150,19 +150,18 @@ public class OutboundHttpWrapperHandlerTest {
 
   @Test
   public void testWriteDefaultFullHttpResponse() {
-    FullHttpResponse msg = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK);
+    FullHttpResponse msg = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.NOT_FOUND);
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
-
-    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK);
 
     OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
 
     when(mockCtx.writeAndFlush(any())).then(i -> {
       FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
-      Assert.assertEquals(actualResponse.content(), response.content());
-      Assert.assertTrue(actualResponse.headers().equals(response.headers()));
-      Assert.assertTrue(actualResponse.equals(response));
+      Assert.assertEquals(actualResponse.content(), msg.content());
+      Assert.assertEquals(actualResponse.headers(), msg.headers());
+      Assert.assertEquals(actualResponse, msg);
+      verify(statsHandler).setResponseStatus(HttpResponseStatus.NOT_FOUND);
       return null;
     });
 
@@ -195,14 +194,14 @@ public class OutboundHttpWrapperHandlerTest {
 
   @Test
   public void testWriteTopicPartitionIngestionContextResponse() throws JsonProcessingException {
-    TopicPartitionIngestionContextResponse msg = new TopicPartitionIngestionContextResponse();
+    ReplicaIngestionResponse msg = new ReplicaIngestionResponse();
     String topic = "test_store_v1";
     int expectedPartitionId = 12345;
     String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
         + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
         + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
         + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
-    msg.setTopicPartitionIngestionContext(jsonStr.getBytes());
+    msg.setPayload(jsonStr.getBytes());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     ByteBuf body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(msg));

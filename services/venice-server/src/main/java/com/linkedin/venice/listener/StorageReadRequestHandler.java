@@ -7,8 +7,8 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -36,6 +36,7 @@ import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
@@ -371,8 +372,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
       context.writeAndFlush(response);
     } else if (message instanceof TopicPartitionIngestionContextRequest) {
-      TopicPartitionIngestionContextResponse response =
+      ReplicaIngestionResponse response =
           handleTopicPartitionIngestionContextRequest((TopicPartitionIngestionContextRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof HeartbeatRequest) {
+      ReplicaIngestionResponse response = handleHeartbeatRequest((HeartbeatRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -844,11 +848,18 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private TopicPartitionIngestionContextResponse handleTopicPartitionIngestionContextRequest(
+  private ReplicaIngestionResponse handleTopicPartitionIngestionContextRequest(
       TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest) {
     Integer partition = topicPartitionIngestionContextRequest.getPartition();
     String versionTopic = topicPartitionIngestionContextRequest.getVersionTopic();
     String topicName = topicPartitionIngestionContextRequest.getTopic();
     return ingestionMetadataRetriever.getTopicPartitionIngestionContext(versionTopic, topicName, partition);
+  }
+
+  private ReplicaIngestionResponse handleHeartbeatRequest(HeartbeatRequest heartbeatRequest) {
+    return ingestionMetadataRetriever.getHeartbeatLag(
+        heartbeatRequest.getTopic(),
+        heartbeatRequest.getPartition(),
+        heartbeatRequest.isFilterLagReplica());
   }
 }

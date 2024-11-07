@@ -270,6 +270,8 @@ public class TestActiveActiveIngestion {
     TestWriteUtils.runPushJob("Run push job", props);
 
     Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
+    // Enable concurrent producer
+    samzaConfig.put(VeniceWriter.PRODUCER_THREAD_COUNT, "2");
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;

@@ -5,6 +5,7 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.stats.VeniceWriterStats;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -13,6 +14,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -63,19 +65,31 @@ public class VeniceWriterFactory {
         ? venicePropertiesLazy.get()
         : venicePropertiesWithCompressionDisabledLazy.get();
 
+    Supplier<PubSubProducerAdapter> producerAdapterSupplier =
+        () -> producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress());
+
+    int producerThreadCnt = options.getProducerThreadCount();
+    if (producerThreadCnt > 1) {
+      return new VeniceWriter<>(
+          options,
+          props,
+          new PubSubProducerAdapterConcurrentDelegator(
+              options.getTopicName(),
+              producerThreadCnt,
+              options.getProducerQueueSize(),
+              producerAdapterSupplier));
+    }
+
     int producerCnt = options.getProducerCount();
     if (producerCnt > 1) {
       List<PubSubProducerAdapter> producers = new ArrayList<>(producerCnt);
       for (int i = 0; i < producerCnt; ++i) {
-        producers.add(producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress()));
+        producers.add(producerAdapterSupplier.get());
       }
       return new VeniceWriter<>(options, props, new PubSubProducerAdapterDelegator(producers));
     }
 
-    return new VeniceWriter<>(
-        options,
-        props,
-        producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress()));
+    return new VeniceWriter<>(options, props, producerAdapterSupplier.get());
   }
 
   // visible for testing

@@ -284,7 +284,8 @@ public enum Arg {
       "nearline-producer-count-per-writer", "npcpw", true,
       "How many producers will be used to write nearline workload in Server"
   ), INSTANCES("instances", "in", true, "Input list of helix ids of nodes to check if they can removed or not"),
-  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of helix ids of nodes assumed to be stopped");
+  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of helix ids of nodes assumed to be stopped"),
+  LAG_FILTER_ENABLED("lag-filter-enabled", "lfe", true, "Enable heartbeat lag filter for a heartbeat request");
 
   private final String argName;
   private final String first;

@@ -1,4 +1,4 @@
-package com.linkedin.davinci.kafka.consumer;
+package com.linkedin.venice.utils.collections;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -51,6 +51,7 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
    * We can adjust this value later if necessary.
    */
   public static final int LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE = 48;
+
   private final Queue<T> queue;
   private final long memoryCapacityInByte;
   private final long notifyDeltaInByte;
@@ -85,13 +86,13 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
     return remainingMemoryCapacityInByte.get();
   }
 
-  private int getRecordSize(T record) {
+  private long getRecordSize(T record) {
     return record.getSize() + LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE;
   }
 
   @Override
   public void put(T record) throws InterruptedException {
-    int recordSize = getRecordSize(record);
+    long recordSize = getRecordSize(record);
     if (recordSize > notifyDeltaInByte) {
       LOGGER.warn(
           "Record size of record: " + record + " is " + recordSize + ", which exceeds notifyDeltaInByte: "
@@ -119,7 +120,7 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
       while ((record = this.queue.poll()) == null) {
         notEmpty.await();
       }
-      int recordSize = getRecordSize(record);
+      long recordSize = getRecordSize(record);
       currentFreedMemoryInBytes += recordSize;
       /**
        * It won't notify the blocked {@link #put(Measurable)}  thread until the freed memory exceeds

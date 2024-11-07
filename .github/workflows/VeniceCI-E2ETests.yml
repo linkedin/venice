@@ -19,6 +19,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -44,9 +48,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -61,6 +82,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -86,9 +111,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -103,6 +145,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -128,9 +174,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -145,6 +208,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -170,9 +237,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -187,6 +271,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -212,9 +300,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -229,6 +334,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -254,9 +363,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -271,6 +397,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -296,9 +426,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -313,6 +460,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -338,9 +489,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -355,6 +523,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -380,9 +552,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -397,6 +586,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -422,9 +615,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -439,6 +649,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -464,9 +678,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -481,6 +712,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -506,9 +741,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -523,6 +775,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -548,9 +804,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -565,6 +838,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -590,9 +867,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -607,6 +901,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -632,9 +930,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -649,6 +964,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -674,9 +993,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -691,6 +1027,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -716,9 +1056,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -733,6 +1090,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -758,9 +1119,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -775,6 +1153,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -800,9 +1182,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -817,6 +1216,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -842,9 +1245,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -859,6 +1279,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -884,9 +1308,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -901,6 +1342,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -926,9 +1371,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -943,6 +1405,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -968,9 +1434,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -985,6 +1468,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1010,9 +1497,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1027,6 +1531,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1052,9 +1560,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1069,6 +1594,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1094,9 +1623,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1111,6 +1657,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1136,9 +1686,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1153,6 +1720,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1178,9 +1749,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1195,6 +1783,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1220,9 +1812,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1237,6 +1846,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1262,9 +1875,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1279,6 +1909,10 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+     id-token: write
+     contents: read
+     checks: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -1304,9 +1938,26 @@ jobs:
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Repository name: ${{ github.repository }}"
+          echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+         token: ${{ secrets.GITHUB_TOKEN }}
+         name: ${{ github.job }} Test Reports       # Name where it report the test results
+         path: '**/TEST-*.xml'
+         fail-on-error: 'false'
+         max-annotations: '10'
+         list-tests: 'all'
+         list-suites: 'all'
+         reporter: java-junit
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1322,39 +1973,11 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     needs: [IntegrationTests_1000, IntegrationTests_1010, IntegrationTests_1020, IntegrationTests_1030, IntegrationTests_1040, IntegrationTests_1050, IntegrationTests_1060, IntegrationTests_1070, IntegrationTests_1080, IntegrationTests_1090, IntegrationTests_1100, IntegrationTests_1110, IntegrationTests_1120, IntegrationTests_1130, IntegrationTests_1200, IntegrationTests_1210, IntegrationTests_1220, IntegrationTests_1230, IntegrationTests_1240, IntegrationTests_1250, IntegrationTests_1260, IntegrationTests_1270, IntegrationTests_1280, IntegrationTests_1400, IntegrationTests_1410, IntegrationTests_1420, IntegrationTests_1430, IntegrationTests_1440, IntegrationTests_1500, IntegrationTests_1550, IntegrationTests_9999]
-    timeout-minutes: 120
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Run Integration Tests
-        run: ./gradlew clean
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
+    - name: NoOp
+      shell: bash
+      run: |
+        echo "Successfully ran all E2E tests!"
+
 
