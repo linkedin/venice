@@ -82,6 +82,7 @@
     <Or>
       <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
       <Class name="com.linkedin.davinci.StoreBackendTest"/>
+      <Class name="com.linkedin.venice.memory.HeapSizeEstimatorTest"/>
     </Or>
   </Match>
   <Match>
