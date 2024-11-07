@@ -243,7 +243,7 @@ public class AvroGenericDaVinciClientTest {
   public void closeTest() {
     AvroGenericDaVinciClient client = mock(AvroGenericDaVinciClient.class);
     doCallRealMethod().when(client).close();
-    doReturn(LogManager.getLogger(AvroGenericDaVinciClient.class)).when(client).getLogger();
+    doReturn(LogManager.getLogger(AvroGenericDaVinciClient.class)).when(client).getClientLogger();
     doReturn(false).when(client).isReady();
     client.close();
     verify(client, never()).closeInner();

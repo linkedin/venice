@@ -845,10 +845,17 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     if (isReady()) {
       closeInner();
     } else {
-      getLogger().warn("Client is not ready or already closed, will ignore close request, storeName=" + getStoreName());
+      getClientLogger()
+          .warn("Client is not ready or already closed, will ignore close request, storeName=" + getStoreName());
     }
   }
 
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName();
+  }
+
+  // Visible for testing
   void closeInner() {
     try {
       logger.info("Closing client, storeName=" + getStoreName());
@@ -865,12 +872,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  Logger getLogger() {
+  Logger getClientLogger() {
     return logger;
   }
 
-  @Override
-  public String toString() {
-    return this.getClass().getSimpleName();
-  }
 }
