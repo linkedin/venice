@@ -252,13 +252,8 @@ public class TopicCleanupService extends AbstractVeniceService {
       }
 
       if (!topic.isRealTime()) {
-        // TODO - this code block is just making code complicate. If we simply have two queues, one for RT and other for
-        // VT topics, and each delete cycle first poll RT topics and poll VT topics only when RT topic queue is empty,
-        // we can simply delete the following code block. Using two queues will also make code faster, because we will
-        // not have to sort the queue every time a topic is added to it
-
         // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
-        // delete
+        // delete. Some new RT topics might have become eligible for deletion in this period.
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
           allTopics.clear();
           populateDeprecatedTopicQueue(allTopics);
