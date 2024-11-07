@@ -83,7 +83,6 @@ public class SharedKafkaConsumerTest {
     sharedKafkaConsumer = new SharedKafkaConsumer(
         consumerAdapter,
         stats,
-        KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
         assignmentChangeListener,
         unsubscriptionListener,
         new SystemTime());

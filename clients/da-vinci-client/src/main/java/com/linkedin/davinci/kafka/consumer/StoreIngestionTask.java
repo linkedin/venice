@@ -3405,7 +3405,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
-    aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, topicPartition);
+    aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, topicPartition); // TODO: TimeUnit.MINUTES.toMillis(30)
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,

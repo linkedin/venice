@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -86,28 +87,20 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   public SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
       AggKafkaConsumerServiceStats stats,
-      long waitAfterUnsubscribeTimeoutMs,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener) {
-    this(
-        delegate,
-        stats,
-        waitAfterUnsubscribeTimeoutMs,
-        assignmentChangeListener,
-        unsubscriptionListener,
-        new SystemTime());
+    this(delegate, stats, assignmentChangeListener, unsubscriptionListener, new SystemTime());
   }
 
   SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
       AggKafkaConsumerServiceStats stats,
-      long waitAfterUnsubscribeTimeoutMs,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
       Time time) {
     this.delegate = delegate;
     this.stats = stats;
-    this.waitAfterUnsubscribeTimeoutMs = waitAfterUnsubscribeTimeoutMs;
+    this.waitAfterUnsubscribeTimeoutMs = 10000;// waitAfterUnsubscribeTimeoutMs;
     this.assignmentChangeListener = assignmentChangeListener;
     this.unsubscriptionListener = unsubscriptionListener;
     this.time = time;
@@ -234,6 +227,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
           break;
         }
         wait(waitMs);
+      }
+      if (endTimeMs - time.getMilliseconds() >= TimeUnit.SECONDS.toMillis(10)) {
+        LOGGER.warn("event=waitAfterUnsubscribe action=postWait");
       }
       // no action to take actually, just return;
     } catch (InterruptedException e) {

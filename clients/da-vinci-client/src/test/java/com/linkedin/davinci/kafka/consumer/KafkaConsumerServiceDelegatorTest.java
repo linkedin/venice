@@ -523,7 +523,6 @@ public class KafkaConsumerServiceDelegatorTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
         mock(TopicExistenceChecker.class),
         false,
         pubSubDeserializer,

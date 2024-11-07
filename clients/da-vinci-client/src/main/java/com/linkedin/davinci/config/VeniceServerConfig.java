@@ -931,9 +931,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
     nearlineWorkloadProducerThroughputOptimizationEnabled =
         serverProperties.getBoolean(SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED, true);
-    pubSubConsumerWaitAfterUnsubscribeTimeoutMs = serverProperties.getLong(
-        SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS,
-        KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+    pubSubConsumerWaitAfterUnsubscribeTimeoutMs =
+        serverProperties.getLong(SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(10));
   }
 
   long extractIngestionMemoryLimit(
