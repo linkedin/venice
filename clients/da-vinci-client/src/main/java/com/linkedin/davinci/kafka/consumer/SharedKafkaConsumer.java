@@ -100,7 +100,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       Time time) {
     this.delegate = delegate;
     this.stats = stats;
-    this.waitAfterUnsubscribeTimeoutMs = 10000;// waitAfterUnsubscribeTimeoutMs;
+    this.waitAfterUnsubscribeTimeoutMs = KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
     this.assignmentChangeListener = assignmentChangeListener;
     this.unsubscriptionListener = unsubscriptionListener;
     this.time = time;
@@ -148,23 +148,17 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     updateCurrentAssignment(delegate.getAssignment());
   }
 
-  @Override
-  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
-    unSubscribe(pubSubTopicPartition, waitAfterUnsubscribeTimeoutMs);
-  }
-
   /**
    * There is an additional goal of this function which is to make sure that all the records consumed for this {topic,partition} prior to
    * calling unsubscribe here is produced to drainer service. {@link ConsumptionTask#run()} ends up calling
    * {@link SharedKafkaConsumer#poll(long)} and produceToStoreBufferService sequentially. So waiting for at least one more
    * invocation of {@link SharedKafkaConsumer#poll(long)} achieves the above objective.
    */
-  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMsArg) {
+  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
     /*
       Other values of timeoutMs are provided by the shutdown code path for a shorter timeout wait than the default
       value of the server config. However, if the server config waitAfterUnsubscribeTimeoutMs is smaller, then use it.
      */
-    final long timeoutMs = Math.min(waitAfterUnsubscribeTimeoutMs, timeoutMsArg);
     unSubscribeAction(() -> {
       this.delegate.unSubscribe(pubSubTopicPartition);
       PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
@@ -182,7 +176,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       }
       return pubSubTopicPartitionSet;
-    }, waitAfterUnsubscribeTimeoutMs);
+    }, KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
   }
 
   /**
@@ -223,7 +217,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
           LOGGER.warn(
               "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} milliseconds",
               topicPartitions,
-              waitAfterUnsubscribeTimeoutMs);
+              timeoutMs);
           break;
         }
         wait(waitMs);

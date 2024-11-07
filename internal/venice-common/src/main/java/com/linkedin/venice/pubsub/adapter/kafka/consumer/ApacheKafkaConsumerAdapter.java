@@ -178,7 +178,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
+  public void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition topicPartition = new TopicPartition(topic, partition);

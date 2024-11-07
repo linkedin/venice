@@ -153,7 +153,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERV
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
-import static com.linkedin.venice.ConfigKeys.SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
@@ -556,7 +555,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
   private final boolean isGlobalRtDivEnabled;
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
-  private final long pubSubConsumerWaitAfterUnsubscribeTimeoutMs;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -931,8 +929,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
     nearlineWorkloadProducerThroughputOptimizationEnabled =
         serverProperties.getBoolean(SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED, true);
-    pubSubConsumerWaitAfterUnsubscribeTimeoutMs =
-        serverProperties.getLong(SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(10));
   }
 
   long extractIngestionMemoryLimit(
@@ -1181,10 +1177,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getPubSubConsumerPollRetryBackoffMs() {
     return pubSubConsumerPollRetryBackoffMs;
-  }
-
-  public long getPubSubConsumerWaitAfterUnsubscribeTimeoutMs() {
-    return pubSubConsumerWaitAfterUnsubscribeTimeoutMs;
   }
 
   public long getDiskHealthCheckIntervalInMS() {

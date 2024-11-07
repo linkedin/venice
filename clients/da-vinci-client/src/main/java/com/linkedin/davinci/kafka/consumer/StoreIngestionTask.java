@@ -3405,7 +3405,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
-    aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, topicPartition); // TODO: TimeUnit.MINUTES.toMillis(30)
+    /**
+     * Use an increased timeout for waitAfterUnsubscribe() of up to 30 minutes according to the maximum value of
+     * the metric consumer_records_producing_to_write_buffer_latency
+     */
+    aggKafkaConsumerService.unsubscribeConsumerFor(
+        versionTopic,
+        topicPartition,
+        KafkaConsumerService.TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,

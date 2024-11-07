@@ -68,6 +68,13 @@ import org.apache.logging.log4j.Logger;
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
 public abstract class KafkaConsumerService extends AbstractKafkaConsumerService {
+  public static final long DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
+
+  /**
+   * Max wait for the next poll() after unsubscribing, indicating that all previous inflight messages were processed
+   */
+  public static final long TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(30);
+
   protected final String kafkaUrl;
   protected final String kafkaUrlForLogger;
   protected final ConsumerPoolType poolType;
@@ -230,7 +237,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
            * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
            */
           synchronized (sharedConsumer) {
-            sharedConsumer.unSubscribe(topicPartition);// , SHUTDOWN_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+            sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
           }
         });
@@ -243,7 +250,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    * Stop specific subscription associated with the given version topic.
    */
   @Override
-  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       /**
@@ -251,7 +258,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
       synchronized (consumer) {
-        consumer.unSubscribe(pubSubTopicPartition);
+        consumer.unSubscribe(pubSubTopicPartition, timeoutMs);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
