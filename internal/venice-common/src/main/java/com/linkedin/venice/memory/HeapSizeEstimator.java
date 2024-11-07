@@ -67,7 +67,7 @@ public class HeapSizeEstimator {
      *
      * See: https://shipilev.net/jvm/objects-inside-out/#_observation_array_base_is_aligned
      */
-    ARRAY_HEADER_SIZE = roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Integer.BYTES);
+    ARRAY_HEADER_SIZE = roundUpToNearest(OBJECT_HEADER_SIZE + Integer.BYTES, ALIGNMENT_SIZE);
     POINTER_SIZE = COMPRESSED_OOPS ? 4 : 8;
     JAVA_MAJOR_VERSION = Utils.getJavaMajorVersion();
   }
@@ -153,28 +153,20 @@ public class HeapSizeEstimator {
            * We align for each class, except the last one, since we'll take care of it below. BUT, importantly, at this
            * stage we align by pointer size, NOT by alignment size.
            */
-          size = roundUpToNearestPointerSize(size);
+          size = roundUpToNearest(size, POINTER_SIZE);
         }
       }
     }
 
     // We align once at the end no matter the Java version
-    size = roundUpToNearestAlignment(size);
+    size = roundUpToNearest(size, ALIGNMENT_SIZE);
 
     KNOWN_SIZES.putIfAbsent(c, size);
 
     return size;
   }
 
-  /** Deal with alignment by rounding up to the nearest alignment boundary. */
-  private static int roundUpToNearestAlignment(int size) {
-    return roundUpToNearest(size, ALIGNMENT_SIZE);
-  }
-
-  private static int roundUpToNearestPointerSize(int size) {
-    return roundUpToNearest(size, POINTER_SIZE);
-  }
-
+  /** Deal with alignment by rounding up to the nearest boundary. */
   private static int roundUpToNearest(int size, int intervalSize) {
     int partialAlignmentWindowUsage = size % intervalSize;
     int waste = partialAlignmentWindowUsage == 0 ? 0 : intervalSize - partialAlignmentWindowUsage;

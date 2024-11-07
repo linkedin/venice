@@ -1,7 +1,11 @@
 package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
@@ -44,92 +48,103 @@ public class HeapSizeEstimatorTest {
     OBJECT_HEADER_SIZE = markWordSize + classPointerSize;
     ARRAY_HEADER_SIZE = roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Integer.BYTES);
     POINTER_SIZE = isCompressedOopsEnabled ? 4 : 8;
+  }
 
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testClassOverhead(boolean measureVM) {
     LOGGER.info("Java major version: " + JAVA_MAJOR_VERSION);
     LOGGER.info("Alignment size: " + ALIGNMENT_SIZE);
     LOGGER.info("Object header size: " + OBJECT_HEADER_SIZE);
     LOGGER.info("Array header size: " + ARRAY_HEADER_SIZE);
     LOGGER.info("Pointer size: " + POINTER_SIZE);
-  }
 
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void test(boolean measureVM) {
     if (measureVM) {
+      LOGGER.info("");
       LOGGER.info(formatResultRow(HEADER_ROW));
     }
 
     assertThrows(NullPointerException.class, () -> getClassOverhead(null));
 
     // Most basic case... just a plain Object.
-    testFieldOverhead(measureVM, Object.class, 0);
+    testClassOverhead(measureVM, Object.class, 0);
 
     // Ensure that inheritance (in and of itself) adds no overhead.
-    testFieldOverhead(measureVM, SubclassOfObjectWithNoFields.class, 0);
+    testClassOverhead(measureVM, SubclassOfObjectWithNoFields.class, 0);
 
     // Ensure that one public primitive fields within a single class is accounted.
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveBooleanField.class, BOOLEAN_SIZE);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveByteField.class, Byte.BYTES);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveCharField.class, Character.BYTES);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveShortField.class, Short.BYTES);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveIntField.class, Integer.BYTES);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveFloatField.class, Float.BYTES);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveLongField.class, Long.BYTES);
-    testFieldOverhead(measureVM, ClassWithOnePublicPrimitiveDoubleField.class, Double.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveBooleanField.class, BOOLEAN_SIZE);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveByteField.class, Byte.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveCharField.class, Character.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveShortField.class, Short.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveIntField.class, Integer.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveFloatField.class, Float.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveLongField.class, Long.BYTES);
+    testClassOverhead(measureVM, ClassWithOnePublicPrimitiveDoubleField.class, Double.BYTES);
 
     // Ensure that two private primitive fields within a single class are accounted.
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveBooleanFields.class, BOOLEAN_SIZE * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveByteFields.class, Byte.BYTES * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveCharFields.class, Character.BYTES * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveShortFields.class, Short.BYTES * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveIntFields.class, Integer.BYTES * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveFloatFields.class, Float.BYTES * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveLongFields.class, Long.BYTES * 2);
-    testFieldOverhead(measureVM, ClassWithTwoPrimitiveDoubleFields.class, Double.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveBooleanFields.class, BOOLEAN_SIZE * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveByteFields.class, Byte.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveCharFields.class, Character.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveShortFields.class, Short.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveIntFields.class, Integer.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveFloatFields.class, Float.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveLongFields.class, Long.BYTES * 2);
+    testClassOverhead(measureVM, ClassWithTwoPrimitiveDoubleFields.class, Double.BYTES * 2);
 
     // Ensure that a mix of public and private fields across the class hierarchy are accounted.
     if (JAVA_MAJOR_VERSION < 15) {
       // TODO: Plug in correct expected field size for these JVMs...
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveBooleanFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveByteFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveCharFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveShortFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveBooleanFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveByteFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveCharFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveShortFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
 
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveBooleanFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveByteFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveCharFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveShortFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveBooleanFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveByteFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveCharFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveShortFields.class, SKIP_EXPECTED_FIELD_OVERHEAD);
     } else {
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveBooleanFields.class, BOOLEAN_SIZE * 2);
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveByteFields.class, Byte.BYTES * 2);
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveCharFields.class, Character.BYTES * 2);
-      testFieldOverhead(measureVM, SubClassWithTwoPrimitiveShortFields.class, Short.BYTES * 2);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveBooleanFields.class, BOOLEAN_SIZE * 2);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveByteFields.class, Byte.BYTES * 2);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveCharFields.class, Character.BYTES * 2);
+      testClassOverhead(measureVM, SubClassWithTwoPrimitiveShortFields.class, Short.BYTES * 2);
 
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveBooleanFields.class, BOOLEAN_SIZE * 3);
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveByteFields.class, Byte.BYTES * 3);
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveCharFields.class, Character.BYTES * 3);
-      testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveShortFields.class, Short.BYTES * 3);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveBooleanFields.class, BOOLEAN_SIZE * 3);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveByteFields.class, Byte.BYTES * 3);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveCharFields.class, Character.BYTES * 3);
+      testClassOverhead(measureVM, SubSubClassWithThreePrimitiveShortFields.class, Short.BYTES * 3);
     }
 
-    testFieldOverhead(measureVM, SubClassWithTwoPrimitiveIntFields.class, Integer.BYTES * 2);
-    testFieldOverhead(measureVM, SubClassWithTwoPrimitiveFloatFields.class, Float.BYTES * 2);
-    testFieldOverhead(measureVM, SubClassWithTwoPrimitiveLongFields.class, Long.BYTES * 2);
-    testFieldOverhead(measureVM, SubClassWithTwoPrimitiveDoubleFields.class, Double.BYTES * 2);
+    testClassOverhead(measureVM, SubClassWithTwoPrimitiveIntFields.class, Integer.BYTES * 2);
+    testClassOverhead(measureVM, SubClassWithTwoPrimitiveFloatFields.class, Float.BYTES * 2);
+    testClassOverhead(measureVM, SubClassWithTwoPrimitiveLongFields.class, Long.BYTES * 2);
+    testClassOverhead(measureVM, SubClassWithTwoPrimitiveDoubleFields.class, Double.BYTES * 2);
 
-    testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveIntFields.class, Integer.BYTES * 3);
-    testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveFloatFields.class, Float.BYTES * 3);
-    testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveLongFields.class, Long.BYTES * 3);
-    testFieldOverhead(measureVM, SubSubClassWithThreePrimitiveDoubleFields.class, Double.BYTES * 3);
+    testClassOverhead(measureVM, SubSubClassWithThreePrimitiveIntFields.class, Integer.BYTES * 3);
+    testClassOverhead(measureVM, SubSubClassWithThreePrimitiveFloatFields.class, Float.BYTES * 3);
+    testClassOverhead(measureVM, SubSubClassWithThreePrimitiveLongFields.class, Long.BYTES * 3);
+    testClassOverhead(measureVM, SubSubClassWithThreePrimitiveDoubleFields.class, Double.BYTES * 3);
 
     // Ensure that pointers are properly accounted.
     int classWithThreeObjectPointersFieldOverhead = (POINTER_SIZE + roundUpToNearestAlignment(OBJECT_HEADER_SIZE)) * 3;
-    testFieldOverhead(measureVM, ClassWithThreeObjectPointers.class, classWithThreeObjectPointersFieldOverhead);
+    testClassOverhead(measureVM, ClassWithThreeObjectPointers.class, classWithThreeObjectPointersFieldOverhead);
 
     // Ensure that arrays are properly accounted.
     int classWithArrayFieldOverhead = POINTER_SIZE + ARRAY_HEADER_SIZE;
-    testFieldOverhead(measureVM, ClassWithArray.class, classWithArrayFieldOverhead);
+    testClassOverhead(measureVM, ClassWithArray.class, classWithArrayFieldOverhead);
+
+    /**
+     * Ensure that field packing and ordering is accounted.
+     *
+     * Note that we don't actually do anything special about packing and ordering, and things still work (seemingly by
+     * chance...). It is possible that other class/field structures not currently tested might yield inaccurate class
+     * overhead predictions.
+     */
+    testClassOverhead(measureVM, FieldPacking.class, SKIP_EXPECTED_FIELD_OVERHEAD);
+    testClassOverhead(measureVM, FieldOrder.class, SKIP_EXPECTED_FIELD_OVERHEAD);
 
     // Put it all together...
-    testFieldOverhead(
+    testClassOverhead(
         measureVM,
         ComplexClass.class,
         POINTER_SIZE * 10 + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + BOOLEAN_SIZE * 2)
@@ -144,7 +159,7 @@ public class HeapSizeEstimatorTest {
             + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + classWithArrayFieldOverhead));
   }
 
-  private void testFieldOverhead(boolean measureVM, Class c, int expectedFieldOverhead) {
+  private void testClassOverhead(boolean measureVM, Class c, int expectedFieldOverhead) {
     int predictedClassOverhead = getClassOverhead(c);
     int expectedClassOverheadWithoutAlignment = OBJECT_HEADER_SIZE + expectedFieldOverhead;
     int expectedClassOverhead;
@@ -271,7 +286,7 @@ public class HeapSizeEstimatorTest {
   private String formatResultRow(String... cells) {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < cells.length; i++) {
-      sb.append("| ");
+      sb.append(" | ");
       String cell = cells[i];
       int remainder = RESULT_ROW_CELL_LENGTHS[i] - cell.length();
 
@@ -526,6 +541,28 @@ public class HeapSizeEstimatorTest {
     public Object[] array = new Object[0];
 
     public ClassWithArray() {
+    }
+  }
+
+  /** See: https://shipilev.net/jvm/objects-inside-out/#_field_packing */
+  private static class FieldPacking {
+    boolean b;
+    long l;
+    char c;
+    int i;
+
+    public FieldPacking() {
+    }
+  }
+
+  /** See: https://shipilev.net/jvm/objects-inside-out/#_observation_field_declaration_order_field_layout_order */
+  private static class FieldOrder {
+    boolean firstField;
+    long secondField;
+    char thirdField;
+    int fourthField;
+
+    public FieldOrder() {
     }
   }
 
