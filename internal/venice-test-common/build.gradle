@@ -333,6 +333,9 @@ task generateGHCIMain() {
   def paramFilePath = Paths.get(paramFile.getPath())
   def paramFileContent = new String(Files.readAllBytes(paramFilePath))
 
+  def completionFile = new File(targetDir, "gh-ci-completion-flow.txt")
+  def completionFileContent = new String(Files.readAllBytes(Paths.get(completionFile.getPath())))
+
   targetFile.delete()
   targetFile.createNewFile()
 
@@ -359,7 +362,7 @@ task generateGHCIMain() {
   jobs << otherTest
 
   // define a job that depends others to manage the status check
-  appendToGHCI(paramFileContent, targetFilePath, "E2ETestsCompletion", 120, "clean", jobs, true)
+  appendToGHCI(completionFileContent, targetFilePath, "E2ETestsCompletion", 20, "null", jobs, true)
 
   def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/VeniceCI-E2ETests-Main.yml")
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
