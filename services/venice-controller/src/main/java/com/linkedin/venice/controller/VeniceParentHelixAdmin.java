@@ -287,6 +287,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
+  public static final int COMPACTION_THRESHOLD_HOURS = 24;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -4842,15 +4843,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   // This function abstracts the criteria for a store to be ready for compaction
   boolean isCompactionReady(StoreInfo storeInfo) {
-    return isHybridStore(storeInfo) && isLastCompactionTimeOlderThanThresholdHours(24, storeInfo);
-    // TODO: code style: store compactionThresholdHours as final var/enum
+    boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
+
+    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(COMPACTION_THRESHOLD_HOURS, storeInfo);
   }
 
   // START isCompactionReady() helper methods: each method below encapsulates a log compaction readiness criterion
-  private boolean isHybridStore(StoreInfo storeInfo) {
-    return storeInfo.getHybridStoreConfig() != null;
-  }
-
   /**
    * This function checks if the last compaction time is older than the threshold.
    * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
