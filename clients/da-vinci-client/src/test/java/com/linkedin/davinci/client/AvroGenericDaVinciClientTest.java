@@ -230,5 +230,7 @@ public class AvroGenericDaVinciClientTest {
         readChunkExecutor);
     assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), readChunkExecutor);
 
+    // Close a not-ready client won't throw exception.
+    daVinciClient.close();
   }
 }
