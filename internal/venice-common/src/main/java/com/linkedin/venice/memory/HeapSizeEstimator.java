@@ -2,15 +2,15 @@ package com.linkedin.venice.memory;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.sun.management.HotSpotDiagnosticMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class HeapSizeEstimator {
   private static final Logger LOGGER = LogManager.getLogger(HeapSizeEstimator.class);
-  private static final Map<Class, Integer> PRIMITIVE_SIZES;
+  private static final Map<Class, Integer> KNOWN_SIZES;
   private static final boolean IS_64_BITS;
   private static final boolean COMPRESSED_OOPS;
   private static final boolean COMPRESSED_CLASS_POINTERS;
@@ -35,17 +35,17 @@ public class HeapSizeEstimator {
   private static final int JAVA_MAJOR_VERSION;
 
   static {
-    Map<Class, Integer> modifiablePrimitiveSizesMap = new HashMap<>();
+    KNOWN_SIZES = new VeniceConcurrentHashMap<>();
 
     /** Based on: https://shipilev.net/jvm/objects-inside-out/#_data_types_and_their_representation */
-    modifiablePrimitiveSizesMap.put(boolean.class, 1);
-    modifiablePrimitiveSizesMap.put(byte.class, Byte.BYTES);
-    modifiablePrimitiveSizesMap.put(char.class, Character.BYTES);
-    modifiablePrimitiveSizesMap.put(short.class, Short.BYTES);
-    modifiablePrimitiveSizesMap.put(int.class, Integer.BYTES);
-    modifiablePrimitiveSizesMap.put(float.class, Float.BYTES);
-    modifiablePrimitiveSizesMap.put(long.class, Long.BYTES);
-    modifiablePrimitiveSizesMap.put(double.class, Double.BYTES);
+    KNOWN_SIZES.put(boolean.class, 1);
+    KNOWN_SIZES.put(byte.class, Byte.BYTES);
+    KNOWN_SIZES.put(char.class, Character.BYTES);
+    KNOWN_SIZES.put(short.class, Short.BYTES);
+    KNOWN_SIZES.put(int.class, Integer.BYTES);
+    KNOWN_SIZES.put(float.class, Float.BYTES);
+    KNOWN_SIZES.put(long.class, Long.BYTES);
+    KNOWN_SIZES.put(double.class, Double.BYTES);
 
     /**
      * This prop name looks sketchy, but I've seen it mentioned in a couple of posts online, so I'm trusting it for
@@ -58,13 +58,12 @@ public class HeapSizeEstimator {
     IS_64_BITS = (arch == null) || !arch.contains("32");
     COMPRESSED_OOPS = getBooleanVmOption("UseCompressedOops");
     COMPRESSED_CLASS_POINTERS = getBooleanVmOption("UseCompressedClassPointers");
-    PRIMITIVE_SIZES = Collections.unmodifiableMap(modifiablePrimitiveSizesMap);
     ALIGNMENT_SIZE = IS_64_BITS ? 8 : 4; // Also serves as the object header's "mark word" size
     OBJECT_HEADER_SIZE = ALIGNMENT_SIZE + (COMPRESSED_CLASS_POINTERS ? 4 : 8);
     /**
      * The "array base" is always word-aligned, which under some circumstances (in 32 bits JVMs, or in 64 bits JVMs
-     * where {@link isCompressedOopsEnabled} is false, either due to large heap or to explicit disabling) causes
-     * "internal space loss".
+     * where {@link COMPRESSED_OOPS} is false, either due to a large heap or to explicit disabling) causes "internal
+     * space loss".
      *
      * See: https://shipilev.net/jvm/objects-inside-out/#_observation_array_base_is_aligned
      */
@@ -93,10 +92,13 @@ public class HeapSizeEstimator {
    * 3. If polymorphism comes into play, then the specific sizes of actual instances need to take into account the
    *    concrete classes they are made of.
    *
+   * @param c The {@link Class} for which to predict the "base overhead", as defined above.
+   * @return The base overhead of the class, which can be any positive number (including zero).
+   *
    * @throws {@link StackOverflowError} It should be noted that this function is recursive in nature and so any class
    *         which contains a loop in its class graph will cause a stack overflow.
    */
-  public static <T> int getClassOverhead(Class<T> c) {
+  public static int getClassOverhead(@Nonnull final Class<?> c) {
     if (c == null) {
       throw new NullPointerException("The class param must not be null.");
     }
@@ -109,36 +111,43 @@ public class HeapSizeEstimator {
       return 0;
     }
 
-    if (c.isPrimitive()) {
-      return PRIMITIVE_SIZES.get(c);
+    Integer knownSize = KNOWN_SIZES.get(c);
+
+    if (knownSize != null) {
+      return knownSize;
     }
 
     int size = c.isArray() ? ARRAY_HEADER_SIZE : OBJECT_HEADER_SIZE;
 
-    if (JAVA_MAJOR_VERSION < 15) {
-      /**
-       * In older Java versions, the field layout would always order the fields from the parent class to subclass.
-       * Within a class, the fields could be re-ordered to optimize packing the fields within the "alignment shadow",
-       * but not across classes of the hierarchy.
-       *
-       * See: https://shipilev.net/jvm/objects-inside-out/#_superclass_gaps
-       */
-      List<Class> classHierarchyFromSubclassToParent = new ArrayList<>();
-      classHierarchyFromSubclassToParent.add(c);
-      Class parentClass = c.getSuperclass();
-      while (parentClass != null) {
-        classHierarchyFromSubclassToParent.add(parentClass);
-        parentClass = parentClass.getSuperclass();
+    /**
+     * We need to measure the overhead of fields for the passed in class as well as all parents. The order in which we
+     * traverse these classes matters in older Java versions (prior to 15) and not in newer ones, but for the sake of
+     * minimizing code size, we will always iterate in the order relevant to older Java versions.
+     */
+    List<Class> classHierarchyFromSubclassToParent = new ArrayList<>();
+    classHierarchyFromSubclassToParent.add(c);
+    Class parentClass = c.getSuperclass();
+    while (parentClass != null) {
+      classHierarchyFromSubclassToParent.add(parentClass);
+      parentClass = parentClass.getSuperclass();
+    }
+
+    // Iterate from the end to the beginning, so we go from parent to sub
+    for (int i = classHierarchyFromSubclassToParent.size() - 1; i >= 0; i--) {
+      int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i));
+      if (classFieldsOverhead == 0) {
+        continue;
       }
+      size += classFieldsOverhead;
 
-      // Iterate from the end to the beginning, so we go from parent to sub
-      for (int i = classHierarchyFromSubclassToParent.size() - 1; i >= 0; i--) {
-        int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i));
-        if (classFieldsOverhead == 0) {
-          continue;
-        }
-        size += classFieldsOverhead;
-
+      if (JAVA_MAJOR_VERSION < 15) {
+        /**
+         * In older Java versions, the field layout would always order the fields from the parent class to subclass.
+         * Within a class, the fields could be re-ordered to optimize packing the fields within the "alignment shadow",
+         * but not across classes of the hierarchy.
+         *
+         * See: https://shipilev.net/jvm/objects-inside-out/#_superclass_gaps
+         */
         if (i > 0) {
           /**
            * We align for each class, except the last one, since we'll take care of it below. BUT, importantly, at this
@@ -147,21 +156,12 @@ public class HeapSizeEstimator {
           size = roundUpToNearestPointerSize(size);
         }
       }
-    } else {
-      /**
-       * Starting from Java 15, the field layout is allowed to re-order fields even across classes of the hierarchy.
-       */
-      size += overheadOfFields(c);
-
-      Class parentClass = c.getSuperclass();
-      while (parentClass != null) {
-        size += overheadOfFields(parentClass);
-        parentClass = parentClass.getSuperclass();
-      }
     }
 
     // We align once at the end no matter the Java version
     size = roundUpToNearestAlignment(size);
+
+    KNOWN_SIZES.putIfAbsent(c, size);
 
     return size;
   }

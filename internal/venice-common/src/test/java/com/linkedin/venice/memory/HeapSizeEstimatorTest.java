@@ -58,6 +58,8 @@ public class HeapSizeEstimatorTest {
       LOGGER.info(formatResultRow(HEADER_ROW));
     }
 
+    assertThrows(NullPointerException.class, () -> getClassOverhead(null));
+
     // Most basic case... just a plain Object.
     testFieldOverhead(measureVM, Object.class, 0);
 
@@ -190,9 +192,9 @@ public class HeapSizeEstimatorTest {
         long memoryAllocatedByInstantiations = memoryAllocatedAfterInstantiations - memoryAllocatedBeforeInstantiations;
         if (memoryAllocatedByInstantiations < 0) {
           String errorMessage = "Memory allocated is negative! memoryAllocatedBeforeInstantiations: "
-              + memoryAllocatedBeforeInstantiations + ", memoryAllocatedAfterInstantiations: "
-              + memoryAllocatedAfterInstantiations + ", memoryAllocatedByInstantiations: "
-              + memoryAllocatedByInstantiations + ". " + attemptsLeft + " attempts left.";
+              + memoryAllocatedBeforeInstantiations + "; memoryAllocatedAfterInstantiations: "
+              + memoryAllocatedAfterInstantiations + "; memoryAllocatedByInstantiations: "
+              + memoryAllocatedByInstantiations + "; " + attemptsLeft + " attempts left.";
           if (attemptsLeft > 0) {
             LOGGER.info(errorMessage);
             continue;
@@ -234,7 +236,7 @@ public class HeapSizeEstimatorTest {
           String errorMessage = "The measured memoryAllocatedPerInstance (" + memoryAllocatedPerInstance
               + ") is too far from the predictedClassOverhead (" + predictedClassOverhead + ") for class: "
               + c.getSimpleName() + "; delta: " + String.format("%.3f", delta) + "; maxAllowedDelta: "
-              + String.format("%.3f", maxAllowedDelta) + ".";
+              + String.format("%.3f", maxAllowedDelta) + "; " + attemptsLeft + " attempts left.";
 
           if (attemptsLeft > 0) {
             LOGGER.info(errorMessage);
