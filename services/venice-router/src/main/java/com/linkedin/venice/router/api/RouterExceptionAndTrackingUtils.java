@@ -153,7 +153,7 @@ public class RouterExceptionAndTrackingUtils {
         ROUTER_STATS.getStatsByType(requestType.isPresent() ? requestType.get() : RequestType.SINGLE_GET);
     // If we don't know the actual store name, this error will only be aggregated in server level, but not
     // in store level
-    if (responseStatus.equals(BAD_REQUEST)) {
+    if (responseStatus.equals(BAD_REQUEST) || responseStatus.equals(REQUEST_ENTITY_TOO_LARGE)) {
       stats.recordBadRequest(storeName.orElse(null));
     } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
       if (storeName.isPresent()) {
