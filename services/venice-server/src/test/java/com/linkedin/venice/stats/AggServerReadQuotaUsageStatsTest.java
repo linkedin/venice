@@ -30,7 +30,7 @@ public class AggServerReadQuotaUsageStatsTest {
     String totalReadQuotaRequestedKPSString = ".total--current_quota_request_key_count.Gauge";
     long batchSize = 100;
     long batchSize2 = 200;
-    aggServerQuotaUsageStats.setCurrentVersion(storeName, 1);
+    aggServerQuotaUsageStats.setBackupVersion(storeName, 1);
     aggServerQuotaUsageStats.setCurrentVersion(storeName, 2);
     aggServerQuotaUsageStats.setCurrentVersion(storeName2, 1);
     aggServerQuotaUsageStats.recordAllowed(storeName, 1, batchSize);
