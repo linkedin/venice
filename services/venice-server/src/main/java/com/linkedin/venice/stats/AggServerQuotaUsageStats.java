@@ -37,4 +37,8 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerReadQ
   public void setCurrentVersion(String storeName, int version) {
     getStoreStats(storeName).setCurrentVersion(version);
   }
+
+  public void setBackupVersion(String storeName, int version) {
+    getStoreStats(storeName).setBackupVersion(version);
+  }
 }
