@@ -469,8 +469,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
-    stats.setCurrentVersion(store.getName(), currentVersion);
-    stats.setBackupVersion(store.getName(), backupVersion);
+    if (currentVersion > 0) {
+      stats.setCurrentVersion(store.getName(), currentVersion);
+    }
+    if (backupVersion > 0) {
+      stats.setBackupVersion(store.getName(), backupVersion);
+    }
   }
 
   private Set<String> getStoreTopics(String storeName) {

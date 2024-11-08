@@ -40,6 +40,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
@@ -831,6 +832,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(versionList).when(store).getVersions();
     doReturn(readQuota).when(store).getReadQuotaInCU();
     doReturn(readQuotaEnabled).when(store).isStorageNodeReadQuotaEnabled();
+    doReturn(VersionStatus.ONLINE).when(store).getVersionStatus(anyInt());
     return store;
   }
 
