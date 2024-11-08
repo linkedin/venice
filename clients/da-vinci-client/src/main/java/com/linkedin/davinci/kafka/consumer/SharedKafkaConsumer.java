@@ -155,10 +155,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    * invocation of {@link SharedKafkaConsumer#poll(long)} achieves the above objective.
    */
   public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
-    /*
-      Other values of timeoutMs are provided by the shutdown code path for a shorter timeout wait than the default
-      value of the server config. However, if the server config waitAfterUnsubscribeTimeoutMs is smaller, then use it.
-     */
     unSubscribeAction(() -> {
       this.delegate.unSubscribe(pubSubTopicPartition);
       PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
@@ -176,7 +172,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       }
       return pubSubTopicPartitionSet;
-    }, KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+    }, waitAfterUnsubscribeTimeoutMs);
   }
 
   /**
@@ -204,6 +200,11 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       long currentPollTimes,
       Set<PubSubTopicPartition> topicPartitions,
       long timeoutMs) {
+    // This clause is mainly for unit test purposes, when the timeout needs to be set to 0.
+    if (timeoutMs == KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS) {
+      timeoutMs = waitAfterUnsubscribeTimeoutMs;
+    }
+
     currentPollTimes++;
     waitingForPoll.set(true);
     // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait

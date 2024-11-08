@@ -613,13 +613,13 @@ public class KafkaConsumerServiceDelegatorTest {
           }
           consumerServiceDelegator
               .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, consumedDataReceiver);
-          // consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition);
-          // .setWaitAfterUnsubscribeTimeoutMs(0L);
+          // Avoid wait time here to increase the chance for race condition.
+          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition)
+              .setWaitAfterUnsubscribeTimeoutMs(0L);
           int versionNum =
               Version.parseVersionFromKafkaTopicName(partitionReplicaIngestionContext.getVersionTopic().getName());
           if (versionNum % 3 == 0) {
-            // Avoid wait time here to increase the chance for race condition.
-            consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition, 0L);
+            consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition);
           } else if (versionNum % 3 == 1) {
             consumerServiceDelegator.unsubscribeAll(partitionReplicaIngestionContext.getVersionTopic());
           } else {
