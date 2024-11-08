@@ -40,11 +40,13 @@ import org.apache.logging.log4j.Logger;
  * TODO: move this logic inside consumption task, this class does not need to be sub-class of {@link PubSubConsumerAdapter}
  */
 class SharedKafkaConsumer implements PubSubConsumerAdapter {
-  public static final long DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
+  public static final long DEFAULT_MAX_WAIT_MS = TimeUnit.SECONDS.toMillis(10);
   /**
-   * Max wait for the next poll() after unsubscribing, indicating that all previous inflight messages were processed
+   * Increase the max wait during state transitions to ensure that it waits for the messages to finish processing. A
+   * poll() indicates that all previous inflight messages under the previous state were processed, so there can't be a
+   * state mismatch. The consumer_records_producing_to_write_buffer_latency metric suggests how long the wait should be.
    */
-  public static final long TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(30);
+  public static final long STATE_TRANSITION_MAX_WAIT_MS = TimeUnit.MINUTES.toMillis(30);
 
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
@@ -67,7 +69,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   private final AtomicBoolean waitingForPoll = new AtomicBoolean(false);
 
-  private long waitAfterUnsubscribeTimeoutMs;
+  private long maxWaitMs;
 
   private final Time time;
 
@@ -106,7 +108,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       Time time) {
     this.delegate = delegate;
     this.stats = stats;
-    this.waitAfterUnsubscribeTimeoutMs = DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
+    this.maxWaitMs = DEFAULT_MAX_WAIT_MS;
     this.assignmentChangeListener = assignmentChangeListener;
     this.unsubscriptionListener = unsubscriptionListener;
     this.time = time;
@@ -155,7 +157,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
-    unSubscribe(pubSubTopicPartition, DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+    unSubscribe(pubSubTopicPartition, DEFAULT_MAX_WAIT_MS);
   }
 
   /**
@@ -182,7 +184,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       }
       return pubSubTopicPartitionSet;
-    }, waitAfterUnsubscribeTimeoutMs);
+    }, DEFAULT_MAX_WAIT_MS);
   }
 
   /**
@@ -211,8 +213,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       Set<PubSubTopicPartition> topicPartitions,
       long timeoutMs) {
     // This clause is mainly for unit test purposes, when the timeout needs to be set to 0.
-    if (timeoutMs == DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS) {
-      timeoutMs = waitAfterUnsubscribeTimeoutMs;
+    if (timeoutMs == DEFAULT_MAX_WAIT_MS) {
+      timeoutMs = maxWaitMs;
     }
 
     currentPollTimes++;
@@ -220,7 +222,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait
     // returned
     // due to timeout. So an explicit time check is necessary.
-    final long endTimeMs = time.getMilliseconds() + timeoutMs;
+    final long startTimeMs = time.getMilliseconds();
+    final long endTimeMs = startTimeMs + timeoutMs;
     try {
       while (currentPollTimes > pollTimes) {
         final long waitMs = endTimeMs - time.getMilliseconds();
@@ -233,8 +236,12 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         }
         wait(waitMs);
       }
-      if (endTimeMs - time.getMilliseconds() >= TimeUnit.SECONDS.toMillis(10)) {
-        LOGGER.warn("event=waitAfterUnsubscribe action=postWait");
+      final long elapsedMs = time.getMilliseconds() - startTimeMs;
+      if (elapsedMs > TimeUnit.SECONDS.toMillis(15)) {
+        LOGGER.warn(
+            "Wait for poll request after unsubscribe topic partition(s) ({}) took {} milliseconds",
+            topicPartitions,
+            elapsedMs);
       }
       // no action to take actually, just return;
     } catch (InterruptedException e) {
@@ -244,8 +251,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   // Only for testing.
-  void setWaitAfterUnsubscribeTimeoutMs(long waitAfterUnsubscribeTimeoutMs) {
-    this.waitAfterUnsubscribeTimeoutMs = waitAfterUnsubscribeTimeoutMs;
+  void setMaxWaitMs(long maxWaitMs) {
+    this.maxWaitMs = maxWaitMs;
   }
 
   // Only for testing.

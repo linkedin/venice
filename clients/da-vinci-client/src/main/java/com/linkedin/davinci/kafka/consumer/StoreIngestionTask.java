@@ -3409,10 +3409,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Use an increased timeout for waitAfterUnsubscribe() of up to 30 minutes according to the maximum value of
      * the metric consumer_records_producing_to_write_buffer_latency
      */
-    aggKafkaConsumerService.unsubscribeConsumerFor(
-        versionTopic,
-        topicPartition,
-        SharedKafkaConsumer.TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+    aggKafkaConsumerService
+        .unsubscribeConsumerFor(versionTopic, topicPartition, SharedKafkaConsumer.STATE_TRANSITION_MAX_WAIT_MS);
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,

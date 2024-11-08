@@ -22,7 +22,7 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
   public abstract void unsubscribeAll(PubSubTopic versionTopic);
 
   public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    unSubscribe(versionTopic, pubSubTopicPartition, SharedKafkaConsumer.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+    unSubscribe(versionTopic, pubSubTopicPartition, SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS);
   }
 
   public abstract void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition, long timeoutMs);
