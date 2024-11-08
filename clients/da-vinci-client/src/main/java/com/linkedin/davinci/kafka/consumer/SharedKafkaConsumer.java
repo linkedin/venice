@@ -40,6 +40,12 @@ import org.apache.logging.log4j.Logger;
  * TODO: move this logic inside consumption task, this class does not need to be sub-class of {@link PubSubConsumerAdapter}
  */
 class SharedKafkaConsumer implements PubSubConsumerAdapter {
+  public static final long DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
+  /**
+   * Max wait for the next poll() after unsubscribing, indicating that all previous inflight messages were processed
+   */
+  public static final long TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(30);
+
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
   protected final PubSubConsumerAdapter delegate;
@@ -100,7 +106,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       Time time) {
     this.delegate = delegate;
     this.stats = stats;
-    this.waitAfterUnsubscribeTimeoutMs = KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
+    this.waitAfterUnsubscribeTimeoutMs = DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS;
     this.assignmentChangeListener = assignmentChangeListener;
     this.unsubscriptionListener = unsubscriptionListener;
     this.time = time;
@@ -146,6 +152,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     }
     stats.recordTotalDelegateSubscribeLatency(LatencyUtils.getElapsedTimeFromMsToMs(delegateSubscribeStartTime));
     updateCurrentAssignment(delegate.getAssignment());
+  }
+
+  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
+    unSubscribe(pubSubTopicPartition, DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
   }
 
   /**
@@ -201,7 +211,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       Set<PubSubTopicPartition> topicPartitions,
       long timeoutMs) {
     // This clause is mainly for unit test purposes, when the timeout needs to be set to 0.
-    if (timeoutMs == KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS) {
+    if (timeoutMs == DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS) {
       timeoutMs = waitAfterUnsubscribeTimeoutMs;
     }
 

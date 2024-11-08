@@ -367,7 +367,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     unsubscribeConsumerFor(
         versionTopic,
         pubSubTopicPartition,
-        KafkaConsumerService.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+        SharedKafkaConsumer.DEFAULT_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
   }
 
   public void unsubscribeConsumerFor(

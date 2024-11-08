@@ -62,7 +62,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
+  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
     delegate.unSubscribe(pubSubTopicPartition);
     offsets.remove(pubSubTopicPartition);
     pausedTopicPartitions.remove(pubSubTopicPartition);

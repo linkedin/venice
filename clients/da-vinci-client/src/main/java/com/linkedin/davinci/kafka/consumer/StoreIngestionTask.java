@@ -3412,7 +3412,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.unsubscribeConsumerFor(
         versionTopic,
         topicPartition,
-        KafkaConsumerService.TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
+        SharedKafkaConsumer.TRANSITION_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS);
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,

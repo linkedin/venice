@@ -15,7 +15,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -46,11 +45,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    *
    * @param pubSubTopicPartition The PubSub topic-partition to unsubscribe from.
    */
-  default void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
-    unSubscribe(pubSubTopicPartition, TimeUnit.SECONDS.toMillis(10)); // TODO:
-  }
-
-  void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMs);
+  void unSubscribe(PubSubTopicPartition pubSubTopicPartition);
 
   /**
    * Unsubscribes the consumer from a batch of topic-partitions.
