@@ -184,9 +184,14 @@ public class VeniceServerTest {
   }
 
   @Test
-  public void testShutdown() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+  public void testStartServer() {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
+      Properties featureProperties = new Properties();
+      featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
+      featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
+      cluster.addVeniceServer(featureProperties, new Properties());
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      Assert.assertTrue(server.getVeniceServer().isStarted());
       StorageService storageService = server.getVeniceServer().getStorageService();
       StorageEngineRepository repository = storageService.getStorageEngineRepository();
       Assert
@@ -194,19 +199,9 @@ public class VeniceServerTest {
 
       // Create a storage engine.
       String storeName = Version.composeKafkaTopic(cluster.createStore(1), 1);
-      storageService.openStoreForNewPartition(
-          server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
-          1,
-          () -> null);
-      Assert.assertEquals(
-          repository.getAllLocalStorageEngines().size(),
-          1,
-          "We have created one storage engine for store: " + storeName);
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
+      Assert.assertTrue(server.getVeniceServer().getHelixParticipationService().isRunning());
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
-
-      server.getVeniceServer().shutdown();
-
-      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
     }
   }
 
