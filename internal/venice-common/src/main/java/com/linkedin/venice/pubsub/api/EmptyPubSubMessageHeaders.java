@@ -31,4 +31,10 @@ public class EmptyPubSubMessageHeaders extends PubSubMessageHeaders {
   public List<PubSubMessageHeader> toList() {
     return Collections.emptyList();
   }
+
+  @Override
+  public int getHeapSize() {
+    // This is the point of using a singleton!
+    return 0;
+  }
 }

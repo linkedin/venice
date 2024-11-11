@@ -1,10 +1,11 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.common.Measurable;
+import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+
+import com.linkedin.venice.memory.Measurable;
+import com.linkedin.venice.utils.collections.MeasurableLinkedHashMap;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 
 /**
@@ -12,11 +13,12 @@ import java.util.Map;
  * In case of headers with the same key, only the most recently added headers value will be kept.
  */
 public class PubSubMessageHeaders implements Measurable {
+  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(PubSubMessageHeaders.class, true);
   /**
    * N.B.: Kafka allows duplicate keys in the headers but some pubsub systems may not
    * allow it. Hence, we will enforce uniqueness of keys in headers from the beginning.
    */
-  private final Map<String, PubSubMessageHeader> headers = new LinkedHashMap<>();
+  private final MeasurableLinkedHashMap<String, PubSubMessageHeader> headers = new MeasurableLinkedHashMap<>();
 
   public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
   /** Header to denote whether the leader is completed or not */
@@ -46,15 +48,8 @@ public class PubSubMessageHeaders implements Measurable {
     return new ArrayList<>(headers.values());
   }
 
-  /**
-   * TODO: the following estimation doesn't consider the overhead of the internal structure.
-   */
   @Override
-  public int getSize() {
-    int size = 0;
-    for (Map.Entry<String, PubSubMessageHeader> entry: headers.entrySet()) {
-      size += entry.getKey().length() + entry.getValue().getSize();
-    }
-    return size;
+  public int getHeapSize() {
+    return SHALLOW_CLASS_OVERHEAD + this.headers.getHeapSize();
   }
 }

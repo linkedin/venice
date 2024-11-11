@@ -261,7 +261,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
   private final boolean elapsedTimeForClosingSegmentEnabled;
   private final Object[] partitionLocks;
-  private String writerId;
+  private final String writerId;
+
+  public static class DefaultLeaderMetadata extends LeaderMetadata {
+    public DefaultLeaderMetadata(CharSequence hostName) {
+      this.hostName = hostName;
+      this.upstreamOffset = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamOffset();
+      this.upstreamKafkaClusterId = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamKafkaClusterId();
+    }
+  }
+
+  /** Used to reduce memory allocation in cases where the metadata is always going to be the same. */
+  private final DefaultLeaderMetadata defaultLeaderMetadata;
   private volatile boolean isClosed = false;
   private final Object closeLock = new Object();
 
@@ -342,13 +353,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
     if (props.containsKey(INSTANCE_ID)) {
       this.writerId = props.getString(INSTANCE_ID);
+    } else if (props.containsKey(LISTENER_PORT)) {
+      this.writerId = Utils.getHostName() + ":" + props.getInt(LISTENER_PORT);
     } else {
       this.writerId = Utils.getHostName();
-
-      if (props.containsKey(LISTENER_PORT)) {
-        this.writerId += ":" + props.getInt(LISTENER_PORT);
-      }
     }
+    this.defaultLeaderMetadata = new DefaultLeaderMetadata(this.writerId);
     this.producerGUID = GuidUtils.getGUID(props);
     this.logger = LogManager.getLogger("VeniceWriter [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
     // Create a thread pool which can have max 2 threads.
@@ -1948,10 +1958,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     producerMetadata.messageTimestamp = time.getMilliseconds();
     producerMetadata.logicalTimestamp = logicalTs;
     kafkaValue.producerMetadata = producerMetadata;
-    kafkaValue.leaderMetadataFooter = new LeaderMetadata();
-    kafkaValue.leaderMetadataFooter.hostName = writerId;
-    kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    if (leaderMetadataWrapper == DEFAULT_LEADER_METADATA_WRAPPER) {
+      kafkaValue.leaderMetadataFooter = this.defaultLeaderMetadata;
+    } else {
+      kafkaValue.leaderMetadataFooter = new LeaderMetadata();
+      kafkaValue.leaderMetadataFooter.hostName = writerId;
+      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+      kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    }
 
     return kafkaValue;
   }

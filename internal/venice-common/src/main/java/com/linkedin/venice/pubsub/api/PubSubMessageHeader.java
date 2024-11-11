@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.common.Measurable;
+import com.linkedin.venice.memory.Measurable;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -47,7 +47,7 @@ public class PubSubMessageHeader implements Measurable {
    * TODO: the following estimation doesn't consider the overhead of the internal structure.
    */
   @Override
-  public int getSize() {
+  public int getHeapSize() {
     return key.length() + value.length;
   }
 }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.memory;
 
-import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.sun.management.HotSpotDiagnosticMXBean;
@@ -16,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Utility class to help in implementing {@link Measurable#getSize()}. A couple of important points:
+ * Utility class to help in implementing {@link Measurable#getHeapSize()}. A couple of important points:
  *
  * 1. This utility class does not "measure" the heap size, but rather attempts to "predict" it, based on knowledge of
  *    the internals of the JVM. If any of the assumptions are wrong, then of course the results will be inaccurate.
@@ -30,7 +29,7 @@ public class HeapSizeEstimator {
   private static final boolean COMPRESSED_CLASS_POINTERS;
   private static final int ALIGNMENT_SIZE;
   private static final int OBJECT_HEADER_SIZE;
-  private static final int ARRAY_HEADER_SIZE;
+  static final int ARRAY_HEADER_SIZE;
   private static final int POINTER_SIZE;
   private static final int JAVA_MAJOR_VERSION;
 
@@ -73,32 +72,34 @@ public class HeapSizeEstimator {
   }
 
   /**
-   * This function is a helper to make it easier to implement {@link Measurable#getSize()}. It provides the "overhead"
+   * This function is a helper to make it easier to implement {@link Measurable#getHeapSize()}. It provides the "overhead"
    * of each instance of the given class, while making the following assumptions:
-   *
-   * 1. No pointer is null
-   * 2. Any variable sized objects (e.g., arrays and other collections) are empty
-   * 3. Polymorphism is ignored (i.e., we do not guess the size of any potential implementation of an abstraction)
-   *
+   * <p>
+   * 1. No pointer is null 2. Any variable sized objects (e.g., arrays and other collections) are empty 3. Polymorphism
+   * is ignored (i.e., we do not guess the size of any potential implementation of an abstraction)
+   * <p>
    * The intended usage of this function is to call it once per runtime per class of interest and to store the result in
    * a static field. If the instances of this class (and any other class contained within it) contain no fields which
    * are variable-sized object, no nullable objects, and no polymorphism, then the result of this function is
    * effectively the heap size of each instance. If any of these conditions are not true, then a function should be
    * implemented which uses this class overhead as a base and then makes adjustments, e.g.:
-   *
+   * <p>
    * 1. For any null pointer, we can subtract from the base a value equal to the output of this function for the type of
-   *    the field which is null.
-   * 2. For any variable-sized object, then the actual size has to be taken into account.
-   * 3. If polymorphism comes into play, then the specific sizes of actual instances need to take into account the
-   *    concrete classes they are made of.
+   * the field which is null. 2. For any variable-sized object, then the actual size has to be taken into account. 3. If
+   * polymorphism comes into play, then the specific sizes of actual instances need to take into account the concrete
+   * classes they are made of.
    *
-   * @param c The {@link Class} for which to predict the "base overhead", as defined above.
+   * @param c       The {@link Class} for which to predict the "base overhead", as defined above.
+   * @param shallow If true, references to other objects contribute only the size of their pointer. This yields the
+   *                correct size if a field's value is null, or if it points to a shared instance such that its
+   *                amortized weight in memory is negligible.
+   *                If false, we recursively evaluate the size of referenced classes.
    * @return The base overhead of the class, which can be any positive number (including zero).
    *
    * @throws {@link StackOverflowError} It should be noted that this function is recursive in nature and so any class
-   *         which contains a loop in its class graph will cause a stack overflow.
+   *                which contains a loop in its class graph will cause a stack overflow.
    */
-  public static int getClassOverhead(@Nonnull final Class<?> c) {
+  public static int getClassOverhead(@Nonnull final Class<?> c, boolean shallow) {
     if (c == null) {
       throw new NullPointerException("The class param must not be null.");
     }
@@ -134,7 +135,7 @@ public class HeapSizeEstimator {
 
     // Iterate from the end to the beginning, so we go from parent to sub
     for (int i = classHierarchyFromSubclassToParent.size() - 1; i >= 0; i--) {
-      int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i));
+      int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i), shallow);
       if (classFieldsOverhead == 0) {
         continue;
       }
@@ -159,11 +160,15 @@ public class HeapSizeEstimator {
     }
 
     // We align once at the end no matter the Java version
-    size = roundUpToNearest(size, ALIGNMENT_SIZE);
+    size = roundUpToNearestAlignment(size);
 
     KNOWN_SIZES.putIfAbsent(c, size);
 
     return size;
+  }
+
+  static int roundUpToNearestAlignment(int size) {
+    return roundUpToNearest(size, ALIGNMENT_SIZE);
   }
 
   /** Deal with alignment by rounding up to the nearest boundary. */
@@ -174,7 +179,7 @@ public class HeapSizeEstimator {
     return finalSize;
   }
 
-  private static int overheadOfFields(Class c) {
+  private static int overheadOfFields(Class c, boolean shallow) {
     int size = 0;
 
     /**
@@ -186,14 +191,18 @@ public class HeapSizeEstimator {
         continue;
       }
       Class fieldClass = f.getType();
-      if (!fieldClass.isPrimitive()) {
+      if (fieldClass.isPrimitive()) {
+        size += KNOWN_SIZES.get(fieldClass);
+      } else {
         /**
          * Only primitives are stored in-line within the object, while all non-primitives are stored elsewhere on the
          * heap, with a pointer within the object to reference them.
          */
         size += POINTER_SIZE;
+        if (!shallow) {
+          size += getClassOverhead(fieldClass, true);
+        }
       }
-      size += getClassOverhead(fieldClass);
     }
 
     return size;
