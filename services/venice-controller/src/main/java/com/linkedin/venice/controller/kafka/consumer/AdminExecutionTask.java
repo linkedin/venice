@@ -636,6 +636,12 @@ public class AdminExecutionTask implements Callable<Void> {
         message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
+    // Log the message
+    LOGGER.info(
+        "Processing add version message for store: {} in cluster: {} with version number: {}.",
+        storeName,
+        clusterName,
+        versionNumber);
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
