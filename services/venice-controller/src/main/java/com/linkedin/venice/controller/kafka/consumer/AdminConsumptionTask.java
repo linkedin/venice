@@ -248,6 +248,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private final String regionName;
 
+  /**
+   * List of tasks to be executed by the worker threads.
+   */
+  private List<Callable<Void>> tasks;
+
   public AdminConsumptionTask(
       String clusterName,
       PubSubConsumerAdapter consumer,
@@ -492,7 +497,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void executeMessagesAndCollectResults() throws InterruptedException {
     lastSucceededExecutionIdMap =
         new ConcurrentHashMap<>(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName));
-    List<Callable<Void>> tasks = new ArrayList<>();
+    this.tasks = new ArrayList<>();
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
     boolean skipOffsetCommandHasBeenProcessed = false;
@@ -517,7 +522,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             storeToScheduledTask);
         // Check if there is previously created scheduled task still occupying one thread from the pool.
         if (storeToScheduledTask.putIfAbsent(entry.getKey(), newTask) == null) {
-          tasks.add(newTask);
+          // Log the store name and the offset of the task being added into the task list
+          LOGGER.info(
+              "Adding admin message from store {} with offset {} to the task list",
+              entry.getKey(),
+              entry.getValue().peek().getOffset());
+          this.tasks.add(newTask);
           stores.add(entry.getKey());
         }
       }
@@ -527,13 +537,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
 
     if (isRunning.get()) {
-      if (!tasks.isEmpty()) {
+      if (!this.tasks.isEmpty()) {
         int pendingAdminMessagesCount = 0;
         int storesWithPendingAdminMessagesCount = 0;
         long adminExecutionTasksInvokeTime = System.currentTimeMillis();
         // Wait for the worker threads to finish processing the internal admin topics.
         List<Future<Void>> results =
-            executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
+            executorService.invokeAll(this.tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
         stats.recordAdminConsumptionCycleDurationMs(System.currentTimeMillis() - adminExecutionTasksInvokeTime);
         Map<String, Long> newLastSucceededExecutionIdMap =
             executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
@@ -575,6 +585,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
               problematicStores.put(storeName, errorInfo);
             }
+          } catch (Throwable e) {
+            long errorMsgOffset = -1;
+            try {
+              errorMsgOffset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
+            } catch (Exception ex) {
+              LOGGER.error("Could not get the offset of the problematic admin message for store {}", storeName, ex);
+            }
+            LOGGER.error(
+                "Unexpected exception thrown while processing admin message for store {} at offset {}",
+                storeName,
+                errorMsgOffset,
+                e);
+            // Throw it above to have the consistent behavior as before
+            throw e;
           }
         }
         if (problematicStores.isEmpty() && internalQueuesEmptied) {
@@ -748,12 +772,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long incomingExecutionId = message.executionId;
     if (checkOffsetToSkipDIV(record.getOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
+      LOGGER.info(
+          "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
+          lastDelegatedExecutionId);
       updateProducerInfo(record.getValue().producerMetadata);
       return;
     }
     if (incomingExecutionId == lastDelegatedExecutionId + 1) {
       // Expected behavior
       lastDelegatedExecutionId++;
+      LOGGER.info("Updated lastDelegatedExecutionId to {}", lastDelegatedExecutionId);
       updateProducerInfo(record.getValue().producerMetadata);
     } else if (incomingExecutionId <= lastDelegatedExecutionId) {
       updateProducerInfo(record.getValue().producerMetadata);
@@ -859,6 +887,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     lastPersistedOffset = lastOffset;
     lastPersistedExecutionId = lastDelegatedExecutionId;
+    LOGGER.info("Updated lastPersistedOffset to {}", lastPersistedOffset);
     stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
   }
 
