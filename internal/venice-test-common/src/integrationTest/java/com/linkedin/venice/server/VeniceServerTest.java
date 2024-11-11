@@ -184,7 +184,7 @@ public class VeniceServerTest {
   }
 
   @Test
-  public void testStartServer() {
+  public void testStartServerAndShutdownWithPartitionAssignmentVerification() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
       Properties featureProperties = new Properties();
       featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
@@ -202,6 +202,15 @@ public class VeniceServerTest {
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
       Assert.assertTrue(server.getVeniceServer().getHelixParticipationService().isRunning());
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
+
+      server.getVeniceServer().shutdown();
+      cluster.getControllerClient().deleteStore(storeName);
+
+      cluster.stopVeniceServer(server.getPort());
+      cluster.restartVeniceServer(server.getPort());
+      repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
+      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
     }
   }
 
