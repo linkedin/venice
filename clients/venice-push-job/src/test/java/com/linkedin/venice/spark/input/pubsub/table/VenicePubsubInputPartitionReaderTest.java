@@ -115,15 +115,6 @@ public class VenicePubsubInputPartitionReaderTest {
       assertEquals(key, (KAFKA_MESSAGE_KEY_PREFIX + offset).getBytes());
       assertEquals(value, (KAFKA_MESSAGE_VALUE_PREFIX + offset).getBytes());
     }
-    // assertEquals(row.get(0, KafkaKey), "dummyData1");
-    // assertTrue(row.getInt(1) >= 0);
-    // assertTrue(row.getInt(1) < 1000);
-    // assertTrue(row.getBoolean(2));
   }
 
-  @Test
-  public void testClose() {
-    reader.close();
-    // Add assertions if there are any resources to verify after close
-  }
 }
