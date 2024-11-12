@@ -1556,7 +1556,7 @@ public class TestMetaDataHandler {
         storeRepository,
         pushStatusStoreReader);
 
-    if (isBlobTransferEnabled && !isHybrid) {
+    if (isBlobTransferEnabled) {
       Assert.assertEquals(response.status(), HttpResponseStatus.OK);
       Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
     } else {
