@@ -204,13 +204,14 @@ public class VeniceServerTest {
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
 
       server.getVeniceServer().shutdown();
-      cluster.getControllerClient().deleteStore(storeName);
 
       cluster.stopVeniceServer(server.getPort());
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
+
+      cluster.getControllerClient().deleteStore(storeName);
     }
   }
 
