@@ -10,6 +10,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -221,7 +222,7 @@ public class BlobSnapshotManagerTest {
       Assert.assertEquals(e.getMessage(), errorMessage);
     }
 
-    latch.await(TIMEOUT / 2, TimeUnit.MILLISECONDS);
+    assertTrue(latch.await(TIMEOUT / 2, TimeUnit.MILLISECONDS));
 
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 0);
   }
