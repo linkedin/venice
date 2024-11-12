@@ -498,8 +498,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     boolean skipOffsetCommandHasBeenProcessed = false;
     for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
-        long adminMessageOffset = entry.getValue().peek().getOffset();
-        if (checkOffsetToSkip(adminMessageOffset, false)) {
+        AdminOperationWrapper nextOp = entry.getValue().peek();
+        if (nextOp == null) {
+          continue;
+        }
+        long adminMessageOffset = nextOp.getOffset();
+        if (checkOffsetToSkip(nextOp.getOffset(), false)) {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
