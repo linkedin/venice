@@ -570,16 +570,22 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
               if (lastSucceededId == newLastSucceededId && perStorePendingMessagesCount > 0) {
                 // only mark the store problematic if no progress is made and there are still message(s) in the queue.
-                errorInfo.exception = new VeniceException(
-                    "Could not finish processing admin message for store " + storeName + " in time");
-                errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
-                problematicStores.put(storeName, errorInfo);
-                LOGGER.warn(errorInfo.exception.getMessage());
+                AdminOperationWrapper nextOperation = storeAdminOperationsMapWithOffset.get(storeName).peek();
+                if (nextOperation != null) {
+                  errorInfo.exception = new VeniceException(
+                      "Could not finish processing admin message for store " + storeName + " in time");
+                  errorInfo.offset = nextOperation.getOffset();
+                  problematicStores.put(storeName, errorInfo);
+                  LOGGER.warn(errorInfo.exception.getMessage());
+                }
               }
             } else {
-              errorInfo.exception = e;
-              errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
-              problematicStores.put(storeName, errorInfo);
+              AdminOperationWrapper nextOperation = storeAdminOperationsMapWithOffset.get(storeName).peek();
+              if (nextOperation != null) {
+                errorInfo.exception = e;
+                errorInfo.offset = nextOperation.getOffset();
+                problematicStores.put(storeName, errorInfo);
+              }
             }
           } catch (Throwable e) {
             long errorMsgOffset = -1;
