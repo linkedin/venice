@@ -1,10 +1,8 @@
 package com.linkedin.venice.memory;
 
-import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static org.testng.Assert.assertThrows;
 
-import com.linkedin.venice.message.KafkaKey;
 import org.testng.annotations.Test;
 
 
@@ -15,7 +13,7 @@ public class ClassSizeEstimatorTest extends HeapSizeEstimatorTest {
 
   @Test
   public void testParamValidation() {
-    assertThrows(NullPointerException.class, () -> getClassOverhead(null, false));
+    assertThrows(NullPointerException.class, () -> getClassOverhead(null));
   }
 
   @Test(dataProvider = "testMethodologies")
@@ -85,12 +83,19 @@ public class ClassSizeEstimatorTest extends HeapSizeEstimatorTest {
     tf.test(SubSubClassWithThreePrimitiveDoubleFields.class, Double.BYTES * 3);
 
     // Ensure that pointers are properly accounted.
-    int classWithThreeObjectPointersFieldOverhead = (POINTER_SIZE + roundUpToNearestAlignment(OBJECT_HEADER_SIZE)) * 3;
-    tf.test(ClassWithThreeObjectPointers.class, classWithThreeObjectPointersFieldOverhead);
+    tf.test(ClassWithThreeObjectPointers.class, POINTER_SIZE * 3);
 
     // Ensure that arrays are properly accounted.
-    int classWithArrayFieldOverhead = POINTER_SIZE + ARRAY_HEADER_SIZE;
-    tf.test(ClassWithArray.class, classWithArrayFieldOverhead);
+    tf.test(ClassWithArray.class, POINTER_SIZE);
+    tf.test(Object[].class, () -> new Object[0]);
+    tf.test(boolean[].class, () -> new boolean[0]);
+    tf.test(byte[].class, () -> new byte[0]);
+    tf.test(char[].class, () -> new char[0]);
+    tf.test(short[].class, () -> new short[0]);
+    tf.test(int[].class, () -> new int[0]);
+    tf.test(float[].class, () -> new float[0]);
+    tf.test(long[].class, () -> new long[0]);
+    tf.test(double[].class, () -> new double[0]);
 
     /**
      * Ensure that field packing and ordering is accounted.
@@ -103,21 +108,7 @@ public class ClassSizeEstimatorTest extends HeapSizeEstimatorTest {
     tf.test(FieldOrder.class);
 
     // Put it all together...
-    tf.test(
-        ComplexClass.class,
-        POINTER_SIZE * 10 + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + BOOLEAN_SIZE * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Byte.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Character.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Short.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Integer.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Float.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Long.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + Double.BYTES * 2)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + classWithThreeObjectPointersFieldOverhead)
-            + roundUpToNearestAlignment(OBJECT_HEADER_SIZE + classWithArrayFieldOverhead));
-
-    // Test the Venice main code classes we care about measuring.
-    tf.test(KafkaKey.class, () -> new KafkaKey(PUT, new byte[0]));
+    tf.test(ComplexClass.class, POINTER_SIZE * 10);
 
     printResultSeparatorLine();
   }
@@ -352,16 +343,14 @@ public class ClassSizeEstimatorTest extends HeapSizeEstimatorTest {
   }
 
   private static class ClassWithThreeObjectPointers {
-    Object field1 = new Object();
-    Object field2 = new Object();
-    Object field3 = new Object();
+    Object field1, field2, field3;
 
     public ClassWithThreeObjectPointers() {
     }
   }
 
   private static class ClassWithArray {
-    public Object[] array = new Object[0];
+    public Object[] array;
 
     public ClassWithArray() {
     }
@@ -390,16 +379,16 @@ public class ClassSizeEstimatorTest extends HeapSizeEstimatorTest {
   }
 
   private static class ComplexClass {
-    ClassWithTwoPrimitiveBooleanFields field1 = new ClassWithTwoPrimitiveBooleanFields();
-    ClassWithTwoPrimitiveByteFields field2 = new ClassWithTwoPrimitiveByteFields();
-    ClassWithTwoPrimitiveCharFields field3 = new ClassWithTwoPrimitiveCharFields();
-    ClassWithTwoPrimitiveShortFields field4 = new ClassWithTwoPrimitiveShortFields();
-    ClassWithTwoPrimitiveIntFields field5 = new ClassWithTwoPrimitiveIntFields();
-    ClassWithTwoPrimitiveFloatFields field6 = new ClassWithTwoPrimitiveFloatFields();
-    ClassWithTwoPrimitiveLongFields field7 = new ClassWithTwoPrimitiveLongFields();
-    ClassWithTwoPrimitiveDoubleFields field8 = new ClassWithTwoPrimitiveDoubleFields();
-    ClassWithThreeObjectPointers field9 = new ClassWithThreeObjectPointers();
-    ClassWithArray field10 = new ClassWithArray();
+    ClassWithTwoPrimitiveBooleanFields field1;
+    ClassWithTwoPrimitiveByteFields field2;
+    ClassWithTwoPrimitiveCharFields field3;
+    ClassWithTwoPrimitiveShortFields field4;
+    ClassWithTwoPrimitiveIntFields field5;
+    ClassWithTwoPrimitiveFloatFields field6;
+    ClassWithTwoPrimitiveLongFields field7;
+    ClassWithTwoPrimitiveDoubleFields field8;
+    ClassWithThreeObjectPointers field9;
+    ClassWithArray field10;
 
     public ComplexClass() {
     }

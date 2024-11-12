@@ -54,7 +54,7 @@ public enum ControlMessageType implements VeniceEnumValue {
   ControlMessageType(int value, Supplier<Object> constructor) {
     this.value = value;
     this.constructor = constructor;
-    this.shallowClassOverhead = ClassSizeEstimator.getClassOverhead(constructor.get().getClass(), true);
+    this.shallowClassOverhead = ClassSizeEstimator.getClassOverhead(constructor.get().getClass());
   }
 
   @Override

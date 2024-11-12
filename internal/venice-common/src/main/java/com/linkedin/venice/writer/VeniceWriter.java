@@ -1445,7 +1445,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (addLeaderCompleteState) {
       // copy protocolSchemaHeaders locally and add extra header for leaderCompleteState
       returnPubSubMessageHeaders = new PubSubMessageHeaders();
-      for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+      for (PubSubMessageHeader header: pubSubMessageHeaders) {
         returnPubSubMessageHeaders.add(header);
       }
       returnPubSubMessageHeaders.add(getLeaderCompleteStateHeader(leaderCompleteState));

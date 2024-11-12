@@ -124,7 +124,7 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
   public static class ProducerQueueNode implements Measurable {
     /** We assume that the {@link #produceFuture} is empty, and the {@link #topic} is a shared instance. */
     private static final int PRODUCER_QUEUE_NODE_PARTIAL_OVERHEAD =
-        getClassOverhead(ProducerQueueNode.class, true) + getClassOverhead(CompletableFuture.class, true);
+        getClassOverhead(ProducerQueueNode.class) + getClassOverhead(CompletableFuture.class);
 
     private final String topic;
     private final int partition;

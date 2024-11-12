@@ -1,14 +1,12 @@
 package com.linkedin.venice.memory;
 
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.sun.management.HotSpotDiagnosticMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,7 +21,12 @@ import org.apache.logging.log4j.Logger;
  */
 public class ClassSizeEstimator {
   private static final Logger LOGGER = LogManager.getLogger(ClassSizeEstimator.class);
-  private static final Map<Class, Integer> KNOWN_SIZES;
+  private static final ClassValue<Integer> KNOWN_SHALLOW_SIZES = new ClassValue<Integer>() {
+    @Override
+    protected Integer computeValue(Class<?> type) {
+      return computeClassOverhead(type);
+    }
+  };
   private static final boolean IS_64_BITS;
   private static final boolean COMPRESSED_OOPS;
   private static final boolean COMPRESSED_CLASS_POINTERS;
@@ -34,18 +37,6 @@ public class ClassSizeEstimator {
   private static final int JAVA_MAJOR_VERSION;
 
   static {
-    KNOWN_SIZES = new VeniceConcurrentHashMap<>();
-
-    /** Based on: https://shipilev.net/jvm/objects-inside-out/#_data_types_and_their_representation */
-    KNOWN_SIZES.put(boolean.class, 1);
-    KNOWN_SIZES.put(byte.class, Byte.BYTES);
-    KNOWN_SIZES.put(char.class, Character.BYTES);
-    KNOWN_SIZES.put(short.class, Short.BYTES);
-    KNOWN_SIZES.put(int.class, Integer.BYTES);
-    KNOWN_SIZES.put(float.class, Float.BYTES);
-    KNOWN_SIZES.put(long.class, Long.BYTES);
-    KNOWN_SIZES.put(double.class, Double.BYTES);
-
     /**
      * This prop name looks sketchy, but I've seen it mentioned in a couple of posts online, so I'm trusting it for
      * now... In any case, if that property is not found, then we'll default to 64 bits, which is a conservative
@@ -76,36 +67,29 @@ public class ClassSizeEstimator {
   }
 
   /**
-   * This function is a helper to make it easier to implement {@link Measurable#getHeapSize()}. It provides the base
-   * "overhead" of each instance of the given class, while making the following assumptions:
-   * <p>
-   * 1. If {@param shallow} is true, then all pointers are null, else they are all not null (and recursively evaluated).
-   * 2. Any variable sized objects (e.g., arrays and other collections) are empty.
-   * 3. Polymorphism is ignored (i.e., we do not guess the size of any potential implementation of an abstraction).
-   * <p>
-   * The intended usage of this function is to call it once per runtime per class of interest and to store the result in
-   * a static field. If the instances of this class (and any other class contained within it) contain no fields which
-   * are variable-sized object, no nullable objects, and no polymorphism, then the result of this function is
-   * effectively the heap size of each instance. If any of these conditions are not true, then a function should be
-   * implemented which uses this class overhead as a base and then makes adjustments, e.g.:
-   * <p>
-   * 1. For any null pointer, we can subtract from the base a value equal to the output of this function for the type of
-   * the field which is null.
-   * 2. For any variable-sized object, then the actual size has to be taken into account.
-   * 3. If polymorphism comes into play, then the specific sizes of actual instances need to take into account the
-   * concrete classes they are made of. For example, see {@link InstanceSizeEstimator#getObjectSize(Object)}.
+   * This function provides the "shallow size" of each instance of the given class, meaning that all pointers are
+   * considered to be null.
    *
-   * @param c       The {@link Class} for which to predict the "base overhead", as defined above.
-   * @param shallow If true, references to other objects contribute only the size of their pointer. This yields the
-   *                correct size if a field's value is null, or if it points to a shared instance such that its
-   *                amortized weight in memory is negligible.
-   *                If false, we recursively evaluate the size of referenced classes.
+   * Intended usage: This function is a helper to make it easier to implement {@link Measurable#getHeapSize()}. It
+   * should not be called on the hot path. Rather, it should be called at most once per JVM runtime per class of
+   * interest and the result should be stored in a static field. If an instance of a measured class contains only
+   * primitive fields or all its non-primitive fields are null, then the result of this function is effectively the heap
+   * size of that instance. If these conditions are not true, then a function should be implemented which uses this
+   * class overhead as a base and then adds the size of any referenced Objects. For example, see
+   * {@link InstanceSizeEstimator#getObjectSize(Object)}.
+   *
+   * @param c The {@link Class} for which to predict the "shallow overhead", as defined above.
    * @return The base overhead of the class, which can be any positive number (including zero).
-   *
-   * @throws {@link StackOverflowError} It should be noted that when {@param shallow} is false, this function becomes
-   *         recursive, and so any class which contains a loop in its class graph will cause a stack overflow.
    */
-  public static int getClassOverhead(@Nonnull final Class<?> c, boolean shallow) {
+  public static int getClassOverhead(@Nonnull final Class<?> c) {
+    Integer knownSize = KNOWN_SHALLOW_SIZES.get(c);
+    if (knownSize != null) {
+      return knownSize;
+    }
+    return computeClassOverhead(c);
+  }
+
+  private static int computeClassOverhead(@Nonnull final Class<?> c) {
     if (c == null) {
       throw new NullPointerException("The class param must not be null.");
     }
@@ -118,10 +102,8 @@ public class ClassSizeEstimator {
       return 0;
     }
 
-    Integer knownSize = KNOWN_SIZES.get(c);
-
-    if (knownSize != null) {
-      return knownSize;
+    if (c.isPrimitive()) {
+      return getPrimitiveSize(c);
     }
 
     int size = c.isArray() ? ARRAY_HEADER_SIZE : OBJECT_HEADER_SIZE;
@@ -141,7 +123,7 @@ public class ClassSizeEstimator {
 
     // Iterate from the end to the beginning, so we go from parent to sub
     for (int i = classHierarchyFromSubclassToParent.size() - 1; i >= 0; i--) {
-      int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i), shallow);
+      int classFieldsOverhead = overheadOfFields(classHierarchyFromSubclassToParent.get(i));
       if (classFieldsOverhead == 0) {
         continue;
       }
@@ -168,9 +150,37 @@ public class ClassSizeEstimator {
     // We align once at the end no matter the Java version
     size = roundUpToNearestAlignment(size);
 
-    KNOWN_SIZES.putIfAbsent(c, size);
-
     return size;
+  }
+
+  /** Based on: https://shipilev.net/jvm/objects-inside-out/#_data_types_and_their_representation */
+  private static int getPrimitiveSize(Class<?> c) {
+    if (c.isPrimitive()) {
+      if (c.equals(boolean.class)) {
+        return 1;
+      } else if (c.equals(byte.class)) {
+        return Byte.BYTES;
+      } else if (c.equals(char.class)) {
+        return Character.BYTES;
+      } else if (c.equals(short.class)) {
+        return Short.BYTES;
+      } else if (c.equals(int.class)) {
+        return Integer.BYTES;
+      } else if (c.equals(float.class)) {
+        return Float.BYTES;
+      } else if (c.equals(long.class)) {
+        return Long.BYTES;
+      } else if (c.equals(double.class)) {
+        return Double.BYTES;
+      }
+
+      // Defensive code
+      throw new IllegalStateException(
+          "Class " + c.getSimpleName()
+              + " is said to be a primitive but does not conform to any known primitive type!");
+    } else {
+      throw new IllegalArgumentException("Class " + c.getSimpleName() + " is not a primitive!");
+    }
   }
 
   static int roundUpToNearestAlignment(int size) {
@@ -185,7 +195,7 @@ public class ClassSizeEstimator {
     return finalSize;
   }
 
-  private static int overheadOfFields(Class c, boolean shallow) {
+  private static int overheadOfFields(Class c) {
     int size = 0;
 
     /**
@@ -198,16 +208,13 @@ public class ClassSizeEstimator {
       }
       Class fieldClass = f.getType();
       if (fieldClass.isPrimitive()) {
-        size += KNOWN_SIZES.get(fieldClass);
+        size += KNOWN_SHALLOW_SIZES.get(fieldClass);
       } else {
         /**
          * Only primitives are stored in-line within the object, while all non-primitives are stored elsewhere on the
          * heap, with a pointer within the object to reference them.
          */
         size += POINTER_SIZE;
-        if (!shallow) {
-          size += getClassOverhead(fieldClass, true);
-        }
       }
     }
 

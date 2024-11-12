@@ -10,7 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 
 class SendMessageErrorLoggerCallback implements PubSubProducerCallback, Measurable {
-  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(SendMessageErrorLoggerCallback.class, true);
+  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(SendMessageErrorLoggerCallback.class);
   private final KafkaMessageEnvelope value;
   private final Logger logger;
 

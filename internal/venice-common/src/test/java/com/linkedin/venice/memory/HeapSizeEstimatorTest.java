@@ -98,7 +98,7 @@ public abstract class HeapSizeEstimatorTest {
   }
 
   protected void theoreticalExpectation(Class c, int expectedFieldOverhead, Supplier<Object> constructor) {
-    int predictedClassOverhead = getClassOverhead(c, false);
+    int predictedClassOverhead = getClassOverhead(c);
     int expectedClassOverheadWithoutAlignment = OBJECT_HEADER_SIZE + expectedFieldOverhead;
     if (expectedFieldOverhead != SKIP_EXPECTED_FIELD_OVERHEAD) {
       int expectedClassOverhead = roundUpToNearestAlignment(expectedClassOverheadWithoutAlignment);
@@ -113,7 +113,7 @@ public abstract class HeapSizeEstimatorTest {
   }
 
   private void empiricalClassMeasurement(Class c, int expectedFieldOverhead, Supplier<Object> constructor) {
-    empiricalMeasurement(c, getClassOverhead(c, false), constructor);
+    empiricalMeasurement(c, getClassOverhead(c), constructor);
   }
 
   protected void empiricalMeasurement(Class c, int predictedUsage, Supplier<?> constructor) {

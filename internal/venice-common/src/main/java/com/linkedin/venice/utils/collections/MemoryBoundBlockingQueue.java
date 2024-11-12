@@ -50,8 +50,7 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
   /**
    * Considering the node implementation: {@link java.util.LinkedList.Node}, the overhead is three references.
    */
-  public static final int LINKED_LIST_NODE_SHALLOW_OVERHEAD =
-      getClassOverhead(LinkedListQueueNodeSimulation.class, true);
+  public static final int LINKED_LIST_NODE_SHALLOW_OVERHEAD = getClassOverhead(LinkedListQueueNodeSimulation.class);
 
   private final Queue<T> queue;
   private final long memoryCapacityInByte;

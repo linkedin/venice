@@ -17,7 +17,7 @@ import org.apache.avro.specific.FixedSize;
  * {@link com.linkedin.venice.serialization.KafkaKeySerializer}.
  */
 public class KafkaKey implements Measurable {
-  private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(KafkaKey.class, true);
+  private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(KafkaKey.class);
   /**
    * For control messages, the Key part of the {@link KafkaKey} includes the producer GUID, segment and sequence number.
    *

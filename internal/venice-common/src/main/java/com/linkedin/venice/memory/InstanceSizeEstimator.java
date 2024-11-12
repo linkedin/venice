@@ -57,17 +57,17 @@ public class InstanceSizeEstimator {
     }
   };
   private static final int GUID_FULL_CLASS_OVERHEAD =
-      getClassOverhead(GUID.class, true) + getByteArraySizeByLength(GUID.getClassSchema().getFixedSize());
+      getClassOverhead(GUID.class) + getByteArraySizeByLength(GUID.getClassSchema().getFixedSize());
   private static final int PRODUCER_METADATA_FULL_CLASS_OVERHEAD =
-      getClassOverhead(ProducerMetadata.class, true) + GUID_FULL_CLASS_OVERHEAD;
+      getClassOverhead(ProducerMetadata.class) + GUID_FULL_CLASS_OVERHEAD;
   private static final int KME_PARTIAL_CLASS_OVERHEAD =
-      getClassOverhead(KafkaMessageEnvelope.class, true) + PRODUCER_METADATA_FULL_CLASS_OVERHEAD;
-  private static final int PUT_SHALLOW_CLASS_OVERHEAD = getClassOverhead(Put.class, true);
-  private static final int UPDATE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(Update.class, true);
-  private static final int DELETE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(Delete.class, true);
-  private static final int CONTROL_MESSAGE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(ControlMessage.class, true);
-  private static final int LEADER_METADATA_SHALLOW_CLASS_OVERHEAD = getClassOverhead(LeaderMetadata.class, true);
-  private static final int BYTE_BUFFER_SHALLOW_CLASS_OVERHEAD = getClassOverhead(ByteBuffer.class, true);
+      getClassOverhead(KafkaMessageEnvelope.class) + PRODUCER_METADATA_FULL_CLASS_OVERHEAD;
+  private static final int PUT_SHALLOW_CLASS_OVERHEAD = getClassOverhead(Put.class);
+  private static final int UPDATE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(Update.class);
+  private static final int DELETE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(Delete.class);
+  private static final int CONTROL_MESSAGE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(ControlMessage.class);
+  private static final int LEADER_METADATA_SHALLOW_CLASS_OVERHEAD = getClassOverhead(LeaderMetadata.class);
+  private static final int BYTE_BUFFER_SHALLOW_CLASS_OVERHEAD = getClassOverhead(ByteBuffer.class);
 
   private InstanceSizeEstimator() {
     // Static utility

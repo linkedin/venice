@@ -15,8 +15,8 @@ import java.util.concurrent.CompletableFuture;
  * accepting a {@code Callback} parameter to get a {@code CompletableFuture} after the function returns.
  */
 public class CompletableFutureCallback implements PubSubProducerCallback, Measurable {
-  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(CompletableFutureCallback.class, true);
-  private static final int COMPLETABLE_FUTURE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(CompletableFuture.class, true);
+  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(CompletableFutureCallback.class);
+  private static final int COMPLETABLE_FUTURE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(CompletableFuture.class);
 
   private final CompletableFuture<Void> completableFuture;
   private PubSubProducerCallback callback = null;

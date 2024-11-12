@@ -9,8 +9,7 @@ import java.util.Objects;
 
 
 public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
-  private static final int SHALLOW_CLASS_OVERHEAD =
-      ClassSizeEstimator.getClassOverhead(ImmutablePubSubMessage.class, true);
+  private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(ImmutablePubSubMessage.class);
   private final K key;
   private final V value;
   private final PubSubTopicPartition topicPartition;

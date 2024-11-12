@@ -13,14 +13,14 @@ import java.util.LinkedHashMap;
  * {@link com.linkedin.venice.pubsub.api.PubSubMessageHeaders} for the usage it was originally intended for...
  */
 public class MeasurableLinkedHashMap<K, V extends Measurable> extends LinkedHashMap<K, V> implements Measurable {
-  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(MeasurableLinkedHashMap.class, true);
-  private static final int ENTRY_CLASS_OVERHEAD = getClassOverhead(PseudoLinkedHashMapEntry.class, true);
+  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(MeasurableLinkedHashMap.class);
+  private static final int ENTRY_CLASS_OVERHEAD = getClassOverhead(PseudoLinkedHashMapEntry.class);
   /**
    * The reason to have {@link PseudoLinkedValues} is that if we call {@link #getHeapSize()} then we will iterate over
    * the values and this causes a cached view of the map to be held, thus creating one more object...
    */
   private static final int LINKED_VALUES_SHALLOW_CLASS_OVERHEAD =
-      getClassOverhead(new MeasurableLinkedHashMap().getPseudoLinkedValues().getClass(), true);
+      getClassOverhead(new MeasurableLinkedHashMap().getPseudoLinkedValues().getClass());
 
   /**
    * The default initial capacity - MUST be a power of two.

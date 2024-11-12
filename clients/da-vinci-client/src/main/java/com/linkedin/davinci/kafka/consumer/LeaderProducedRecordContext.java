@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 
 public class LeaderProducedRecordContext implements Measurable {
   private static final int PARTIAL_CLASS_OVERHEAD =
-      getClassOverhead(LeaderProducedRecordContext.class, true) + getClassOverhead(CompletableFuture.class, true);
+      getClassOverhead(LeaderProducedRecordContext.class) + getClassOverhead(CompletableFuture.class);
   private static final int NO_UPSTREAM = -1;
   /**
    * Kafka cluster ID where the source kafka consumer record was consumed from.

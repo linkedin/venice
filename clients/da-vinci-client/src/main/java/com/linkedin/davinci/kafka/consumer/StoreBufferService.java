@@ -391,7 +391,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
   public static class QueueNode implements Measurable {
-    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class, true);
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
@@ -478,7 +478,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * "empty" one.
      */
     private static final int PARTIAL_CLASS_OVERHEAD =
-        getClassOverhead(FollowerQueueNode.class, true) + getClassOverhead(CompletableFuture.class, true);
+        getClassOverhead(FollowerQueueNode.class) + getClassOverhead(CompletableFuture.class);
 
     private final CompletableFuture<Void> queuedRecordPersistedFuture;
 
@@ -514,7 +514,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class LeaderQueueNode extends QueueNode {
-    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class, true);
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
 
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
@@ -555,7 +555,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * "empty" one.
      */
     private static final int PARTIAL_CLASS_OVERHEAD =
-        getClassOverhead(CommandQueueNode.class, true) + getClassOverhead(LockAssistedCompletableFuture.class, true);
+        getClassOverhead(CommandQueueNode.class) + getClassOverhead(LockAssistedCompletableFuture.class);
 
     enum CommandType {
       // only supports SYNC_OFFSET command today.
@@ -752,8 +752,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class FakePubSubMessage implements PubSubMessage {
-    private static final int SHALLOW_CLASS_OVERHEAD =
-        ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class, true);
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class);
     private final PubSubTopicPartition topicPartition;
 
     FakePubSubMessage(PubSubTopicPartition topicPartition) {
