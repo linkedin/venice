@@ -1,6 +1,6 @@
 package com.linkedin.venice.writer;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.Measurable;

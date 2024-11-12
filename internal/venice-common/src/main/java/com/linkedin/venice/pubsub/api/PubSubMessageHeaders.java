@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.utils.collections.MeasurableLinkedHashMap;

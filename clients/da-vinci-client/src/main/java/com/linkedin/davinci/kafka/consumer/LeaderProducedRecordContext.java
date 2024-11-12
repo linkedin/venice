@@ -3,8 +3,8 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.CONTROL_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.DELETE;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
-import static com.linkedin.venice.memory.MeasurableUtils.getSize;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.InstanceSizeEstimator.getSize;
 
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;

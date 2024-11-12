@@ -21,8 +21,8 @@ import org.apache.logging.log4j.Logger;
  *    the internals of the JVM. If any of the assumptions are wrong, then of course the results will be inaccurate.
  * 2. This utility class assumes we are using the HotSpot JVM.
  */
-public class HeapSizeEstimator {
-  private static final Logger LOGGER = LogManager.getLogger(HeapSizeEstimator.class);
+public class ClassSizeEstimator {
+  private static final Logger LOGGER = LogManager.getLogger(ClassSizeEstimator.class);
   private static final Map<Class, Integer> KNOWN_SIZES;
   private static final boolean IS_64_BITS;
   private static final boolean COMPRESSED_OOPS;
@@ -71,12 +71,17 @@ public class HeapSizeEstimator {
     JAVA_MAJOR_VERSION = Utils.getJavaMajorVersion();
   }
 
+  private ClassSizeEstimator() {
+    // Static utility
+  }
+
   /**
-   * This function is a helper to make it easier to implement {@link Measurable#getHeapSize()}. It provides the "overhead"
-   * of each instance of the given class, while making the following assumptions:
+   * This function is a helper to make it easier to implement {@link Measurable#getHeapSize()}. It provides the base
+   * "overhead" of each instance of the given class, while making the following assumptions:
    * <p>
-   * 1. No pointer is null 2. Any variable sized objects (e.g., arrays and other collections) are empty 3. Polymorphism
-   * is ignored (i.e., we do not guess the size of any potential implementation of an abstraction)
+   * 1. If {@param shallow} is true, then all pointers are null, else they are all not null (and recursively evaluated).
+   * 2. Any variable sized objects (e.g., arrays and other collections) are empty.
+   * 3. Polymorphism is ignored (i.e., we do not guess the size of any potential implementation of an abstraction).
    * <p>
    * The intended usage of this function is to call it once per runtime per class of interest and to store the result in
    * a static field. If the instances of this class (and any other class contained within it) contain no fields which
@@ -85,9 +90,10 @@ public class HeapSizeEstimator {
    * implemented which uses this class overhead as a base and then makes adjustments, e.g.:
    * <p>
    * 1. For any null pointer, we can subtract from the base a value equal to the output of this function for the type of
-   * the field which is null. 2. For any variable-sized object, then the actual size has to be taken into account. 3. If
-   * polymorphism comes into play, then the specific sizes of actual instances need to take into account the concrete
-   * classes they are made of.
+   * the field which is null.
+   * 2. For any variable-sized object, then the actual size has to be taken into account.
+   * 3. If polymorphism comes into play, then the specific sizes of actual instances need to take into account the
+   * concrete classes they are made of. For example, see {@link InstanceSizeEstimator#getObjectSize(Object)}.
    *
    * @param c       The {@link Class} for which to predict the "base overhead", as defined above.
    * @param shallow If true, references to other objects contribute only the size of their pointer. This yields the
@@ -96,8 +102,8 @@ public class HeapSizeEstimator {
    *                If false, we recursively evaluate the size of referenced classes.
    * @return The base overhead of the class, which can be any positive number (including zero).
    *
-   * @throws {@link StackOverflowError} It should be noted that this function is recursive in nature and so any class
-   *                which contains a loop in its class graph will cause a stack overflow.
+   * @throws {@link StackOverflowError} It should be noted that when {@param shallow} is false, this function becomes
+   *         recursive, and so any class which contains a loop in its class graph will cause a stack overflow.
    */
   public static int getClassOverhead(@Nonnull final Class<?> c, boolean shallow) {
     if (c == null) {

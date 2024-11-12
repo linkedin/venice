@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub;
 
-import com.linkedin.venice.memory.HeapSizeEstimator;
-import com.linkedin.venice.memory.MeasurableUtils;
+import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -10,7 +10,7 @@ import java.util.Objects;
 
 public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   private static final int SHALLOW_CLASS_OVERHEAD =
-      HeapSizeEstimator.getClassOverhead(ImmutablePubSubMessage.class, true);
+      ClassSizeEstimator.getClassOverhead(ImmutablePubSubMessage.class, true);
   private final K key;
   private final V value;
   private final PubSubTopicPartition topicPartition;
@@ -95,6 +95,7 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   @Override
   public int getHeapSize() {
     /** The {@link #topicPartition} is supposed to be a shared instance, and is therefore ignored. */
-    return SHALLOW_CLASS_OVERHEAD + MeasurableUtils.getObjectSize(key) + MeasurableUtils.getObjectSize(value);
+    return SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getObjectSize(key)
+        + InstanceSizeEstimator.getObjectSize(value);
   }
 }

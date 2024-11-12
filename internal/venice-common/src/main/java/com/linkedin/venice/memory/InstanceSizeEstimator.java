@@ -1,7 +1,7 @@
 package com.linkedin.venice.memory;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.ARRAY_HEADER_SIZE;
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.ClassSizeEstimator.ARRAY_HEADER_SIZE;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -15,10 +15,47 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.function.ToIntFunction;
 import javax.annotation.Nonnull;
 
 
-public class MeasurableUtils {
+/**
+ * This utility class provides functions to measure the heap size of objects for a limited number of classes. Wherever
+ * possible, the logic makes use of knowledge of the Venice code so that shared or static instances are ignored (i.e.,
+ * assuming that their amortized cost is negligible). The code here should all be hot path friendly, and make no use of
+ * reflection (except in static constants).
+ *
+ * If more classes require heap size measurement, the preferred approach is NOT to add code into this class! Rather, the
+ * preferred approach is to implement {@link Measurable} and write the logic in {@link Measurable#getHeapSize()}. This
+ * utility class is for cases where we wish to measure classes that we cannot modify, such as those coming from the JDK,
+ * from third-party libraries, or from code-gen.
+ */
+public class InstanceSizeEstimator {
+  private static final ClassValue<ToIntFunction<Object>> CACHE = new ClassValue<ToIntFunction<Object>>() {
+    @Override
+    protected ToIntFunction<Object> computeValue(Class<?> type) {
+      if (Measurable.class.isAssignableFrom(type)) {
+        return value -> ((Measurable) value).getHeapSize();
+      } else if (Put.class.isAssignableFrom(type)) {
+        return value -> getSize((Put) value);
+      } else if (Delete.class.isAssignableFrom(type)) {
+        return value -> getSize((Delete) value);
+      } else if (Update.class.isAssignableFrom(type)) {
+        return value -> getSize((Update) value);
+      } else if (ControlMessage.class.isAssignableFrom(type)) {
+        return value -> getSize((ControlMessage) value);
+      } else if (KafkaMessageEnvelope.class.isAssignableFrom(type)) {
+        return value -> getSize((KafkaMessageEnvelope) value);
+      } else if (ProducerMetadata.class.isAssignableFrom(type)) {
+        return value -> getSize((ProducerMetadata) value);
+      } else if (ByteBuffer.class.isAssignableFrom(type)) {
+        return value -> getSize((ByteBuffer) value);
+      } else if (type.isArray() && type.getComponentType().equals(byte.class)) {
+        return value -> getSize((byte[]) value);
+      }
+      return null;
+    }
+  };
   private static final int GUID_FULL_CLASS_OVERHEAD =
       getClassOverhead(GUID.class, true) + getByteArraySizeByLength(GUID.getClassSchema().getFixedSize());
   private static final int PRODUCER_METADATA_FULL_CLASS_OVERHEAD =
@@ -32,6 +69,10 @@ public class MeasurableUtils {
   private static final int LEADER_METADATA_SHALLOW_CLASS_OVERHEAD = getClassOverhead(LeaderMetadata.class, true);
   private static final int BYTE_BUFFER_SHALLOW_CLASS_OVERHEAD = getClassOverhead(ByteBuffer.class, true);
 
+  private InstanceSizeEstimator() {
+    // Static utility
+  }
+
   /**
    * Works for {@link Measurable} objects and a small number of other types.
    *
@@ -42,21 +83,16 @@ public class MeasurableUtils {
   public static int getObjectSize(@Nonnull Object o) {
     if (o instanceof Measurable) {
       return ((Measurable) o).getHeapSize();
-    } else if (o == null) {
-      return 0;
-    } else if (o instanceof KafkaMessageEnvelope) {
-      return getSize((KafkaMessageEnvelope) o);
-    } else if (o instanceof ProducerMetadata) {
-      return PRODUCER_METADATA_FULL_CLASS_OVERHEAD;
-    } else if (o instanceof Put) {
-      return getSize((Put) o);
-    } else {
+    }
+    ToIntFunction<Object> sizeComputation = CACHE.get(o.getClass());
+    if (sizeComputation == null) {
       throw new IllegalArgumentException("Object of type " + o.getClass() + " is not measurable!");
     }
+    return sizeComputation.applyAsInt(o);
   }
 
   public static int getByteArraySizeByLength(int length) {
-    return HeapSizeEstimator.roundUpToNearestAlignment(ARRAY_HEADER_SIZE + length);
+    return ClassSizeEstimator.roundUpToNearestAlignment(ARRAY_HEADER_SIZE + length);
   }
 
   public static int getSize(@Nonnull byte[] bytes) {
@@ -72,6 +108,10 @@ public class MeasurableUtils {
     }
 
     throw new IllegalArgumentException("Only array-backed ByteBuffers are measurable with this function.");
+  }
+
+  public static int getSize(@Nonnull ProducerMetadata producerMetadata) {
+    return PRODUCER_METADATA_FULL_CLASS_OVERHEAD;
   }
 
   public static int getSize(@Nonnull Put put) {

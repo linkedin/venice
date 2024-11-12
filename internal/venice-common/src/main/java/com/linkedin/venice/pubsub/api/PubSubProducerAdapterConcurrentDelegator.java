@@ -1,11 +1,11 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
-import com.linkedin.venice.memory.MeasurableUtils;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
@@ -153,7 +153,7 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
 
     @Override
     public int getHeapSize() {
-      int size = PRODUCER_QUEUE_NODE_PARTIAL_OVERHEAD + key.getHeapSize() + MeasurableUtils.getSize(value)
+      int size = PRODUCER_QUEUE_NODE_PARTIAL_OVERHEAD + key.getHeapSize() + InstanceSizeEstimator.getSize(value)
           + headers.getHeapSize();
       if (this.callback instanceof Measurable) {
         size += ((Measurable) this.callback).getHeapSize();

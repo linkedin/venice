@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
@@ -10,7 +10,7 @@ import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.memory.HeapSizeEstimator;
+import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -391,7 +391,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
   public static class QueueNode implements Measurable {
-    private static final int SHALLOW_CLASS_OVERHEAD = HeapSizeEstimator.getClassOverhead(QueueNode.class, true);
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class, true);
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
@@ -514,7 +514,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class LeaderQueueNode extends QueueNode {
-    private static final int SHALLOW_CLASS_OVERHEAD = HeapSizeEstimator.getClassOverhead(QueueNode.class, true);
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class, true);
 
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
@@ -752,7 +752,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class FakePubSubMessage implements PubSubMessage {
-    private static final int SHALLOW_CLASS_OVERHEAD = HeapSizeEstimator.getClassOverhead(FakePubSubMessage.class, true);
+    private static final int SHALLOW_CLASS_OVERHEAD =
+        ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class, true);
     private final PubSubTopicPartition topicPartition;
 
     FakePubSubMessage(PubSubTopicPartition topicPartition) {

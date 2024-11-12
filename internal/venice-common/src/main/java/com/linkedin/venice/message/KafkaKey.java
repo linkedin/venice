@@ -3,9 +3,9 @@ package com.linkedin.venice.message;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.memory.HeapSizeEstimator;
+import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
-import com.linkedin.venice.memory.MeasurableUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import javax.annotation.Nonnull;
@@ -17,7 +17,7 @@ import org.apache.avro.specific.FixedSize;
  * {@link com.linkedin.venice.serialization.KafkaKeySerializer}.
  */
 public class KafkaKey implements Measurable {
-  private static final int SHALLOW_CLASS_OVERHEAD = HeapSizeEstimator.getClassOverhead(KafkaKey.class, true);
+  private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(KafkaKey.class, true);
   /**
    * For control messages, the Key part of the {@link KafkaKey} includes the producer GUID, segment and sequence number.
    *
@@ -83,6 +83,6 @@ public class KafkaKey implements Measurable {
   }
 
   public int getHeapSize() {
-    return SHALLOW_CLASS_OVERHEAD + MeasurableUtils.getSize(this.key);
+    return SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getSize(this.key);
   }
 }

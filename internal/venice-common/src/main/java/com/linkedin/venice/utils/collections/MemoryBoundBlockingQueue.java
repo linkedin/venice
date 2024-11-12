@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils.collections;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.memory.Measurable;

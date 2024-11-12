@@ -1,7 +1,7 @@
 package com.linkedin.venice.utils.collections;
 
-import static com.linkedin.venice.memory.HeapSizeEstimator.getClassOverhead;
-import static com.linkedin.venice.memory.MeasurableUtils.getByteArraySizeByLength;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.InstanceSizeEstimator.getByteArraySizeByLength;
 
 import com.linkedin.venice.memory.Measurable;
 import java.util.LinkedHashMap;

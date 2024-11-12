@@ -11,7 +11,7 @@ import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
-import com.linkedin.venice.memory.HeapSizeEstimator;
+import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.VeniceEnumValue;
 import java.util.List;
@@ -54,7 +54,7 @@ public enum ControlMessageType implements VeniceEnumValue {
   ControlMessageType(int value, Supplier<Object> constructor) {
     this.value = value;
     this.constructor = constructor;
-    this.shallowClassOverhead = HeapSizeEstimator.getClassOverhead(constructor.get().getClass(), true);
+    this.shallowClassOverhead = ClassSizeEstimator.getClassOverhead(constructor.get().getClass(), true);
   }
 
   @Override
