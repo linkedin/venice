@@ -5,8 +5,9 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -15,15 +16,23 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new VeniceConcurrentHashMap<>();
 
   public AggRouterHttpRequestStats(
-      MetricsRepository metricsRepository,
+      VeniceMetricsRepository metricsRepository,
+      String clusterName,
       RequestType requestType,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
-    this(metricsRepository, requestType, false, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
+    this(
+        metricsRepository,
+        clusterName,
+        requestType,
+        false,
+        metadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
   }
 
   public AggRouterHttpRequestStats(
-      MetricsRepository metricsRepository,
+      VeniceMetricsRepository metricsRepository,
+      String clusterName,
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
@@ -41,7 +50,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
         stats = scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
       }
 
-      return new RouterHttpRequestStats(metricsRepo, storeName, requestType, stats, isKeyValueProfilingEnabled);
+      return new RouterHttpRequestStats(
+          metricsRepo,
+          storeName,
+          clusterName,
+          requestType,
+          stats,
+          isKeyValueProfilingEnabled);
     });
   }
 
@@ -50,19 +65,19 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordRequest(String storeName) {
-    totalStats.recordRequest();
-    getStoreStats(storeName).recordRequest();
+    totalStats.recordIncomingRequest();
+    getStoreStats(storeName).recordIncomingRequest();
   }
 
-  public void recordHealthyRequest(String storeName, double latency) {
-    totalStats.recordHealthyRequest(latency);
-    getStoreStats(storeName).recordHealthyRequest(latency);
+  public void recordHealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
+    totalStats.recordHealthyRequest(latency, responseStatus);
+    getStoreStats(storeName).recordHealthyRequest(latency, responseStatus);
   }
 
-  public void recordUnhealthyRequest(String storeName) {
-    totalStats.recordUnhealthyRequest();
+  public void recordUnhealthyRequest(String storeName, HttpResponseStatus responseStatus) {
+    totalStats.recordUnhealthyRequest(responseStatus);
     if (storeName != null) {
-      getStoreStats(storeName).recordUnhealthyRequest();
+      getStoreStats(storeName).recordUnhealthyRequest(responseStatus);
     }
   }
 
@@ -71,10 +86,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     getStoreStats(storeName).recordUnavailableReplicaStreamingRequest();
   }
 
-  public void recordUnhealthyRequest(String storeName, double latency) {
-    totalStats.recordUnhealthyRequest(latency);
+  public void recordUnhealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
+    totalStats.recordUnhealthyRequest(latency, responseStatus);
     if (storeName != null) {
-      getStoreStats(storeName).recordUnhealthyRequest(latency);
+      getStoreStats(storeName).recordUnhealthyRequest(latency, responseStatus);
     }
   }
 
@@ -89,9 +104,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     getStoreStats(storeName).recordReadQuotaUsage(quotaUsage);
   }
 
-  public void recordTardyRequest(String storeName, double latency) {
-    totalStats.recordTardyRequest(latency);
-    getStoreStats(storeName).recordTardyRequest(latency);
+  public void recordTardyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
+    totalStats.recordTardyRequest(latency, responseStatus);
+    getStoreStats(storeName).recordTardyRequest(latency, responseStatus);
   }
 
   /**
@@ -101,20 +116,20 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
    *
    * TODO: Remove this overload after fixing the above.
    */
-  public void recordThrottledRequest(String storeName) {
-    totalStats.recordThrottledRequest();
-    getStoreStats(storeName).recordThrottledRequest();
+  public void recordThrottledRequest(String storeName, HttpResponseStatus httpResponseStatus) {
+    totalStats.recordThrottledRequest(httpResponseStatus);
+    getStoreStats(storeName).recordThrottledRequest(httpResponseStatus);
   }
 
-  public void recordThrottledRequest(String storeName, double latency) {
-    totalStats.recordThrottledRequest(latency);
-    getStoreStats(storeName).recordThrottledRequest(latency);
+  public void recordThrottledRequest(String storeName, double latency, HttpResponseStatus httpResponseStatus) {
+    totalStats.recordThrottledRequest(latency, httpResponseStatus);
+    getStoreStats(storeName).recordThrottledRequest(latency, httpResponseStatus);
   }
 
-  public void recordBadRequest(String storeName) {
-    totalStats.recordBadRequest();
+  public void recordBadRequest(String storeName, HttpResponseStatus responseStatus) {
+    totalStats.recordBadRequest(responseStatus);
     if (storeName != null) {
-      getStoreStats(storeName).recordBadRequest();
+      getStoreStats(storeName).recordBadRequest(responseStatus);
     }
   }
 
@@ -146,7 +161,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
 
   public void recordLatency(String storeName, double latency) {
     totalStats.recordLatency(latency);
-    getStoreStats(storeName).recordLatency(latency);
+    if (storeName != null) {
+      getStoreStats(storeName).recordLatency(latency);
+    }
   }
 
   public void recordResponseWaitingTime(String storeName, double waitingTime) {

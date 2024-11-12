@@ -19,9 +19,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.RouterCurrentVersionStats;
 import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,7 +51,7 @@ public class VeniceVersionFinder {
   private final HelixBaseRoutingRepository routingDataRepository;
   private final CompressorFactory compressorFactory;
 
-  private final MetricsRepository metricsRepository;
+  private final VeniceMetricsRepository metricsRepository;
 
   public VeniceVersionFinder(
       ReadOnlyStoreRepository metadataRepository,
@@ -61,7 +61,7 @@ public class VeniceVersionFinder {
       Map<String, String> clusterToD2Map,
       String clusterName,
       CompressorFactory compressorFactory,
-      MetricsRepository metricsRepository) {
+      VeniceMetricsRepository metricsRepository) {
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
     this.stats = stats;

@@ -2,8 +2,8 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategy;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
@@ -19,7 +19,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
   private final Sensor minGroupPendingRequest;
   private final Sensor avgGroupPendingRequest;
 
-  public HelixGroupStats(MetricsRepository metricsRepository, HelixGroupSelectionStrategy strategy) {
+  public HelixGroupStats(VeniceMetricsRepository metricsRepository, HelixGroupSelectionStrategy strategy) {
     super(metricsRepository, "HelixGroupStats");
     this.strategy = strategy;
 

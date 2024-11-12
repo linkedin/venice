@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils.metrics;
 
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -20,6 +22,10 @@ public class MetricsRepositoryUtils {
     return createSingleThreadedMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100);
   }
 
+  public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository() {
+    return createSingleThreadedVeniceMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100);
+  }
+
   public static MetricsRepository createSingleThreadedMetricsRepository(
       long maxMetricsMeasurementTimeoutMs,
       long initialMetricsMeasurementTimeoutMs) {
@@ -30,5 +36,18 @@ public class MetricsRepositoryUtils {
                 .setInitialMetricsMeasurementTimeoutInMs(initialMetricsMeasurementTimeoutMs)
                 .setMaxMetricsMeasurementTimeoutInMs(maxMetricsMeasurementTimeoutMs)
                 .build()));
+  }
+
+  public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository(
+      long maxMetricsMeasurementTimeoutMs,
+      long initialMetricsMeasurementTimeoutMs) {
+    MetricConfig tehutiMetricsConfig = new MetricConfig(
+        new AsyncGauge.AsyncGaugeExecutor.Builder().setMetricMeasurementThreadCount(1)
+            .setSlowMetricMeasurementThreadCount(1)
+            .setInitialMetricsMeasurementTimeoutInMs(initialMetricsMeasurementTimeoutMs)
+            .setMaxMetricsMeasurementTimeoutInMs(maxMetricsMeasurementTimeoutMs)
+            .build());
+    return new VeniceMetricsRepository(
+        new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setTehutiMetricConfig(tehutiMetricsConfig).build());
   }
 }

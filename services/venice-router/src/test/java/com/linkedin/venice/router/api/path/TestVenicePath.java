@@ -10,12 +10,12 @@ import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.concurrent.ScheduledExecutorService;
@@ -83,13 +83,13 @@ public class TestVenicePath {
   }
 
   private RetryManager disabledRetryManager;
-  private MetricsRepository metricsRepository;
+  private VeniceMetricsRepository metricsRepository;
 
   private final ScheduledExecutorService retryManagerScheduler = Executors.newScheduledThreadPool(1);
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    metricsRepository = new VeniceMetricsRepository();
     // retry manager is disabled by default
     disabledRetryManager =
         new RetryManager(metricsRepository, "disabled-test-retry-manager", 0, 0, retryManagerScheduler);

@@ -2,7 +2,7 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
@@ -19,7 +19,7 @@ public class SecurityStats extends AbstractVeniceStats {
   private final Sensor sslLiveConnectionCount;
   private final Sensor nonSslConnectionCount;
 
-  public SecurityStats(MetricsRepository repository, String name, IntSupplier secureConnectionCountSupplier) {
+  public SecurityStats(VeniceMetricsRepository repository, String name, IntSupplier secureConnectionCountSupplier) {
     super(repository, name);
     this.secureConnectionCountSupplier = secureConnectionCountSupplier;
     this.sslErrorCount = registerSensor("ssl_error", new Count());

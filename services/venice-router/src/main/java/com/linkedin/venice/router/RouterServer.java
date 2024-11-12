@@ -82,6 +82,8 @@ import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -135,7 +137,7 @@ public class RouterServer extends AbstractVeniceService {
   private static final String ROUTER_RETRY_MANAGER_THREAD_PREFIX = "Router-retry-manager-thread";
   // Immutable state
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
-  private final MetricsRepository metricsRepository;
+  private final VeniceMetricsRepository metricsRepository;
   private final Optional<SSLFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -194,6 +196,7 @@ public class RouterServer extends AbstractVeniceService {
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
 
   private static final String ROUTER_SERVICE_NAME = "venice-router";
+  private static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
 
   /**
    * Thread number used to monitor the listening port;
@@ -272,7 +275,8 @@ public class RouterServer extends AbstractVeniceService {
         serviceDiscoveryAnnouncers,
         accessController,
         sslFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        TehutiUtils
+            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getPropsMap()),
         null,
         "venice-discovery");
   }
@@ -287,7 +291,7 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
-      MetricsRepository metricsRepository) {
+      VeniceMetricsRepository metricsRepository) {
     this(
         properties,
         serviceDiscoveryAnnouncers,
@@ -304,6 +308,28 @@ public class RouterServer extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository,
+      D2Client d2Client,
+      String d2ServiceName) {
+    this(
+        properties,
+        serviceDiscoveryAnnouncers,
+        accessController,
+        sslFactory,
+        new VeniceMetricsRepository(
+            metricsRepository,
+            new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setServiceName("venice-router")
+                .extractAndSetOtelConfigs(properties.getPropsMap())
+                .build()),
+        d2Client,
+        d2ServiceName);
+  }
+
+  public RouterServer(
+      VeniceProperties properties,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
+      Optional<DynamicAccessController> accessController,
+      Optional<SSLFactory> sslFactory,
+      VeniceMetricsRepository metricsRepository,
       D2Client d2Client,
       String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
@@ -323,6 +349,7 @@ public class RouterServer extends AbstractVeniceService {
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
             metricsRepository,
+            config.getClusterName(),
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
@@ -366,7 +393,7 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
-      MetricsRepository metricsRepository,
+      VeniceMetricsRepository metricsRepository,
       boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
     zkClient =
@@ -409,13 +436,23 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor) {
-    this(properties, serviceDiscoveryAnnouncers, Optional.empty(), sslFactory, new MetricsRepository(), false);
+    this(
+        properties,
+        serviceDiscoveryAnnouncers,
+        Optional.empty(),
+        sslFactory,
+        new VeniceMetricsRepository(
+            new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setServiceName("venice-router")
+                .extractAndSetOtelConfigs(properties.getPropsMap())
+                .build()),
+        false);
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
             metricsRepository,
+            config.getClusterName(),
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,

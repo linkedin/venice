@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -25,7 +25,7 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
       MetricsRepository metricsRepository,
       String storeName,
       Supplier<STATS> statsInitiator,
-      StatsSupplier<STATS_REPORTER> reporterSupplier) {
+      StatsSupplierMetricsRepository<STATS_REPORTER> reporterSupplier) {
     this.storeName = storeName;
     this.versionedStats = new Int2ObjectOpenHashMap<>();
     this.reporters = new VeniceVersionedStatsReporter<>(metricsRepository, storeName, reporterSupplier);

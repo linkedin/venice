@@ -3,8 +3,8 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
@@ -13,10 +13,10 @@ import java.util.Map;
 
 public class RouteHttpStats {
   private final Map<String, InternalRouteHttpStats> routeStatsMap = new VeniceConcurrentHashMap<>();
-  private final MetricsRepository metricsRepository;
+  private final VeniceMetricsRepository metricsRepository;
   private final RequestType requestType;
 
-  public RouteHttpStats(MetricsRepository metricsRepository, RequestType requestType) {
+  public RouteHttpStats(VeniceMetricsRepository metricsRepository, RequestType requestType) {
     this.metricsRepository = metricsRepository;
     this.requestType = requestType;
   }
@@ -31,7 +31,7 @@ public class RouteHttpStats {
     private final Sensor responseWaitingTimeSensor;
     private final Sensor requestSensor;
 
-    public InternalRouteHttpStats(MetricsRepository metricsRepository, String hostName, RequestType requestType) {
+    public InternalRouteHttpStats(VeniceMetricsRepository metricsRepository, String hostName, RequestType requestType) {
       super(metricsRepository, hostName.replace('.', '_'), requestType);
 
       requestSensor = registerSensor("request", new Count());

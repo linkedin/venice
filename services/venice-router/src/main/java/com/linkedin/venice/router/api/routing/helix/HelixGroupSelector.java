@@ -4,7 +4,7 @@ import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.router.stats.HelixGroupStats;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import java.util.concurrent.TimeUnit;
 
 
@@ -26,7 +26,7 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
   private final HelixGroupStats helixGroupStats;
 
   public HelixGroupSelector(
-      MetricsRepository metricsRepository,
+      VeniceMetricsRepository metricsRepository,
       HelixInstanceConfigRepository instanceConfigRepository,
       HelixGroupSelectionStrategyEnum strategyEnum,
       TimeoutProcessor timeoutProcessor) {

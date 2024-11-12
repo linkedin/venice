@@ -2,18 +2,14 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.StatsUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 
 
 public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> {
-  private final Map<String, HostHealthStats> hostHealthStatsMap = new VeniceConcurrentHashMap<>();
-
-  public AggHostHealthStats(MetricsRepository metricsRepository) {
+  public AggHostHealthStats(VeniceMetricsRepository metricsRepository) {
     super(
-        metricsRepository,
-        (repo, hostName) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)));
+        (repo, hostName) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)),
+        metricsRepository);
   }
 
   private HostHealthStats getHostStats(String hostName) {

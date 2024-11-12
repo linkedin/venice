@@ -5,7 +5,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -29,7 +29,7 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
         unregisterMetricForDeletedStoreEnabled);
   }
 
-  static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {
+  static class HostLevelStoreIngestionStatsSupplier implements StatsSupplierMetricsRepository<HostLevelIngestionStats> {
     private final VeniceServerConfig serverConfig;
     private final Map<String, StoreIngestionTask> ingestionTaskMap;
     private final Time time;

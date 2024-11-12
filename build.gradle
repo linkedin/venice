@@ -139,6 +139,11 @@ ext.libraries = [
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
     zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    opentelemetryApi: "io.opentelemetry:opentelemetry-api:1.43.0",
+    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:1.43.0",
+    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:1.43.0",
+    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:1.43.0",
+    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:1.43.0"
 ]
 
 group = 'com.linkedin.venice'

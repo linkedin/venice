@@ -60,6 +60,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
       ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
   private static final String ROUTER_SERVICE_NAME = "venice-router";
+  private static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
   private final VeniceProperties properties;
   private final String zkAddress;
   private RouterServer service;
@@ -152,6 +153,9 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
+          .put("otel.exporter.otlp.metrics.protocol", "http/protobuf")
+          .put("otel.exporter.otlp.metrics.endpoint", "http://[::1]:22784/v1/metrics")
+          .put("otel.exporter.otlp.metrics.temporality.preference", "delta")
           .put(properties);
 
       // setup d2 config first
@@ -175,7 +179,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           d2Servers,
           Optional.empty(),
           Optional.of(SslUtils.getVeniceLocalSslFactory()),
-          TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+          TehutiUtils.getVeniceMetricsRepository(
+              ROUTER_SERVICE_NAME,
+              ROUTER_SERVICE_METRIC_PREFIX,
+              routerProperties.getPropsMap()),
           D2TestUtils.getAndStartD2Client(zkAddress),
           CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       return new VeniceRouterWrapper(
@@ -237,7 +244,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
         d2Servers,
         Optional.empty(),
         Optional.of(SslUtils.getVeniceLocalSslFactory()),
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        TehutiUtils
+            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getPropsMap()),
         D2TestUtils.getAndStartD2Client(zkAddress),
         CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     LOGGER.info("Started VeniceRouterWrapper: {}", this);
