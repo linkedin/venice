@@ -503,7 +503,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     boolean skipOffsetCommandHasBeenProcessed = false;
     for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
-        if (checkOffsetToSkip(entry.getValue().peek().getOffset(), false)) {
+        long adminMessageOffset = entry.getValue().peek().getOffset();
+        if (checkOffsetToSkip(adminMessageOffset, false)) {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
@@ -526,7 +527,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           LOGGER.info(
               "Adding admin message from store {} with offset {} to the task list",
               entry.getKey(),
-              entry.getValue().peek().getOffset());
+              adminMessageOffset);
           this.tasks.add(newTask);
           stores.add(entry.getKey());
         }
