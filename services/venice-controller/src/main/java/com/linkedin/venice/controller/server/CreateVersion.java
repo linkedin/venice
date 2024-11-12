@@ -16,6 +16,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -306,7 +307,8 @@ public class CreateVersion extends AbstractRoute {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
             } else if (pushType.isIncremental()) {
               isTopicRT = true;
-              if (version.isSeparateRealTimeTopicEnabled()) {
+              if (version.isSeparateRealTimeTopicEnabled()
+                  && Boolean.parseBoolean(request.queryParamOrDefault(SEPARATE_REAL_TIME_TOPIC_ENABLED, "false"))) {
                 admin.getSeparateRealTimeTopic(clusterName, storeName);
                 responseTopic = Version.composeSeparateRealTimeTopic(storeName);
               } else {

@@ -41,7 +41,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -944,7 +943,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       TopicSwitch topicSwitch,
       PubSubTopic newSourceTopic,
       List<CharSequence> unreachableBrokerList) {
-    Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
     long rewindStartTimestamp;
     // calculate the rewind start time here if controller asked to do so by using this sentinel value.
@@ -958,14 +956,23 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     } else {
       rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
     }
+    LOGGER.info("DEBUGGING TOPIC SWITCH: {}", topicSwitch.sourceKafkaServers);
+    List<CharSequence> sourceKafkaServers = new ArrayList<>(topicSwitch.sourceKafkaServers);
+    if (isSeparatedRealtimeTopicEnabled && newSourceTopic.isRealTime()) {
+      for (CharSequence cs: topicSwitch.sourceKafkaServers) {
+        sourceKafkaServers.add(cs + Utils.SEPARATE_TOPIC_SUFFIX);
+      }
+    }
 
-    topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
+    Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
+
+    sourceKafkaServers.forEach(sourceKafkaURL -> {
       Long upstreamStartOffset =
           partitionConsumptionState.getLatestProcessedUpstreamRTOffsetWithNoDefault(sourceKafkaURL.toString());
       if (upstreamStartOffset == null || upstreamStartOffset < 0) {
         if (rewindStartTimestamp > 0) {
           PubSubTopicPartition newSourceTopicPartition =
-              new PubSubTopicPartitionImpl(newSourceTopic, sourceTopicPartition.getPartitionNumber());
+              resolveTopicPartitionWithKafkaURL(newSourceTopic, partitionConsumptionState, sourceKafkaURL.toString());
           try {
             upstreamStartOffset =
                 getTopicPartitionOffsetByKafkaURL(sourceKafkaURL, newSourceTopicPartition, rewindStartTimestamp);
@@ -1090,7 +1097,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     // subscribe to the new upstream
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
-      consumerSubscribe(partitionConsumptionState.getSourceTopicPartition(leaderTopic), leaderStartOffset, kafkaURL);
+      consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, kafkaURL);
     });
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
@@ -1168,7 +1175,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         newSourceTopic,
         unreachableBrokerList);
     // unsubscribe the old source and subscribe to the new source
-    consumerUnSubscribeForStateTransition(currentLeaderTopic, partitionConsumptionState);
+    unsubscribeFromTopic(currentLeaderTopic, partitionConsumptionState);
     waitForLastLeaderPersistFuture(
         partitionConsumptionState,
         String.format(
@@ -1203,10 +1210,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     // Subscribe new leader topic for all regions.
     upstreamOffsetsByKafkaURLs.forEach((kafkaURL, upstreamStartOffset) -> {
-      consumerSubscribe(
-          partitionConsumptionState.getSourceTopicPartition(newSourceTopic),
-          upstreamStartOffset,
-          kafkaURL);
+      consumerSubscribe(newSourceTopic, partitionConsumptionState, upstreamStartOffset, kafkaURL);
     });
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, upstreamOffsetsByKafkaURLs);
@@ -1540,12 +1544,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long rewindStartTimestamp,
       PartitionConsumptionState pcs) {
     return () -> {
+      PubSubTopic pubSubTopic = sourceTopicPartition.getPubSubTopic();
+      PubSubTopicPartition resolvedTopicPartition = resolveTopicPartitionWithKafkaURL(pubSubTopic, pcs, sourceKafkaUrl);
       // Calculate upstream offset
       long upstreamOffset =
-          getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, sourceTopicPartition, rewindStartTimestamp);
+          getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);
 
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
-      consumerSubscribe(sourceTopicPartition, upstreamOffset, sourceKafkaUrl);
+      consumerSubscribe(pubSubTopic, pcs, upstreamOffset, sourceKafkaUrl);
 
       // syncConsumedUpstreamRTOffsetMapIfNeeded
       Map<String, Long> urlToOffsetMap = new HashMap<>();

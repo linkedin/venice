@@ -3920,13 +3920,13 @@ public abstract class StoreIngestionTaskTest {
     partitionConsumptionState.setConsumeRemotely(false);
     leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
     verify(leaderFollowerStoreIngestionTask, times(1))
-        .consumerSubscribe(any(), eq(localVersionTopicOffset), anyString());
+        .consumerSubscribe(any(), any(), eq(localVersionTopicOffset), anyString());
 
     // Test 2: if leader is consuming remotely, leader must subscribe to the remote VT offset
     partitionConsumptionState.setConsumeRemotely(true);
     leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
     verify(leaderFollowerStoreIngestionTask, times(1))
-        .consumerSubscribe(any(), eq(remoteVersionTopicOffset), anyString());
+        .consumerSubscribe(any(), any(), eq(remoteVersionTopicOffset), anyString());
   }
 
   private void produceRecordsUsingSpecificWriter(

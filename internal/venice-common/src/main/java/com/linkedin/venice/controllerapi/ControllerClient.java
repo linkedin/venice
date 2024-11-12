@@ -51,6 +51,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
@@ -308,7 +309,8 @@ public class ControllerClient implements Closeable {
         rewindTimeInSecondsOverride,
         false,
         null,
-        -1);
+        -1,
+        false);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -340,7 +342,8 @@ public class ControllerClient implements Closeable {
         rewindTimeInSecondsOverride,
         deferVersionSwap,
         null,
-        -1);
+        -1,
+        false);
   }
 
   /**
@@ -383,7 +386,8 @@ public class ControllerClient implements Closeable {
       long rewindTimeInSecondsOverride,
       boolean deferVersionSwap,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      boolean pushToSeparateRealtimeTopic) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -398,7 +402,8 @@ public class ControllerClient implements Closeable {
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
-        .add(REPUSH_SOURCE_VERSION, repushSourceVersion);
+        .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
+        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic);
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }

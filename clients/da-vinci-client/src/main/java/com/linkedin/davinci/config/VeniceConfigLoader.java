@@ -144,8 +144,11 @@ public class VeniceConfigLoader {
 
     try {
       VeniceProperties clusterProperties = Utils.parseProperties(configDirPath, CLUSTER_PROPERTIES_FILE, false);
+      LOGGER.info("DEBUGGING CLUSTER PROP: {}", clusterProperties);
       VeniceProperties serverProperties = Utils.parseProperties(configDirPath, SERVER_PROPERTIES_FILE, false);
+      LOGGER.info("DEBUGGING SERVER PROP: {}", serverProperties);
       Map<String, Map<String, String>> kafkaClusterMap = parseKafkaClusterMap(configDirPath);
+      LOGGER.info("DEBUGGING kafkaClusterMap PROP: {}", kafkaClusterMap);
       return new VeniceConfigLoader(clusterProperties, serverProperties, kafkaClusterMap);
     } catch (Exception e) {
       throw new ConfigurationException("Loading configuration files failed", e);

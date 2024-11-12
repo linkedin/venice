@@ -345,6 +345,8 @@ public class PartialUpdateTest {
               .setWriteComputationEnabled(true)
               .setChunkingEnabled(true)
               .setIncrementalPushEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setSeparateRealTimeTopicEnabled(true)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =

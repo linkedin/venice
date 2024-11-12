@@ -355,4 +355,6 @@ public final class VenicePushJobConstants {
    * The class must extend {@link DataWriterComputeJob} and have a zero-arg constructor.
    */
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
+
+  public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
 }

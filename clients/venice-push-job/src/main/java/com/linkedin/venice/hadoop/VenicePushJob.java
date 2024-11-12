@@ -61,6 +61,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -362,6 +363,8 @@ public class VenicePushJob implements AutoCloseable {
         props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
     pushJobSettingToReturn.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSettingToReturn.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
+    pushJobSettingToReturn.pushToSeparateRealtimeTopicEnabled =
+        props.getBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, false);
     pushJobSettingToReturn.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSettingToReturn.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
@@ -2218,7 +2221,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.rewindTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
-            pushJobSetting.repushSourceVersion));
+            pushJobSetting.repushSourceVersion,
+            setting.pushToSeparateRealtimeTopicEnabled));
     if (versionCreationResponse.isError()) {
       if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
         LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
@@ -2231,7 +2235,7 @@ public class VenicePushJob implements AutoCloseable {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got version 0 from: " + versionCreationResponse);
     } else {
-      LOGGER.info(versionCreationResponse.toString());
+      LOGGER.info("Push target version response: {}", versionCreationResponse);
     }
 
     setting.topic = versionCreationResponse.getKafkaTopic();
