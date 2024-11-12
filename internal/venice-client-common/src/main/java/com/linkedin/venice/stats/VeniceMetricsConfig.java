@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.tehuti.metrics.MetricConfig;
 import java.util.HashMap;
@@ -52,10 +53,10 @@ public class VeniceMetricsConfig {
   public static class VeniceMetricsConfigBuilder {
     private String serviceName = "NOOP_SERVICE";
     private String metricPrefix = null;
-    private boolean emitOpenTelemetryMetrics = true;
+    private boolean emitOpenTelemetryMetrics = false;
     private boolean emitTehutiMetrics = true;
-    private boolean emitToHttpGrpcEndpoint = true;
-    private boolean emitToLog = true;
+    private boolean emitToHttpGrpcEndpoint = false;
+    private boolean emitToLog = false;
     private VeniceOpenTelemetryMetricFormat metricFormat = VeniceOpenTelemetryMetricFormat.SNAKE_CASE;
     private boolean useExponentialHistogram = true;
     private int exponentialHistogramMaxScale = 3;
@@ -131,25 +132,10 @@ public class VeniceMetricsConfig {
           }
         }
         if (emitToHttpGrpcEndpoint) {
-          if (!otelConfigs.containsKey("otel.exporter.otlp.metrics.protocol")) {
-            /**
-             * "grpc" for protobuf-encoded data using gRPC wire format over HTTP/2 connection
-             * "http/protobuf" for protobuf-encoded data over HTTP connection
-             * "http/json" for JSON-encoded data over HTTP connection
-             */
-            LOGGER
-                .warn("OpenTelemetry config missing for otel.exporter.otlp.metrics.protocol, setting to http/protobuf");
-            otelConfigs.put("otel.exporter.otlp.metrics.protocol", "http/protobuf");
-          }
-          if (!otelConfigs.containsKey("otel.exporter.otlp.metrics.endpoint")) {
-            LOGGER.warn(
-                "OpenTelemetry config missing for otel.exporter.otlp.metrics.endpoint, setting to http://[::1]:22784/v1/metrics");
-            otelConfigs.put("otel.exporter.otlp.metrics.endpoint", "http://[::1]:22784/v1/metrics");
-          }
-          if (!otelConfigs.containsKey("otel.exporter.otlp.metrics.temporality.preference")) {
-            LOGGER.warn(
-                "OpenTelemetry config missing for otel.exporter.otlp.metrics.temporality.preference, setting to delta");
-            otelConfigs.put("otel.exporter.otlp.metrics.temporality.preference", "delta");
+          if (!otelConfigs.containsKey("otel.exporter.otlp.metrics.protocol")
+              || !otelConfigs.containsKey("otel.exporter.otlp.metrics.endpoint")) {
+            throw new VeniceException(
+                "otel settings missing for otel.exporter.otlp.metrics.protocol and otel.exporter.otlp.metrics.endpoint");
           }
         }
       }
@@ -172,10 +158,6 @@ public class VeniceMetricsConfig {
 
   public boolean isEmitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
-  }
-
-  public boolean isEmitTehutiMetrics() {
-    return emitTehutiMetrics;
   }
 
   public boolean isEmitToHttpGrpcEndpoint() {
