@@ -69,7 +69,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   private final AtomicBoolean waitingForPoll = new AtomicBoolean(false);
 
-  private long maxWaitMs;
+  private long timeoutMsOverride = -1; // for unit test purposes
 
   private final Time time;
 
@@ -108,7 +108,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       Time time) {
     this.delegate = delegate;
     this.stats = stats;
-    this.maxWaitMs = DEFAULT_MAX_WAIT_MS;
     this.assignmentChangeListener = assignmentChangeListener;
     this.unsubscriptionListener = unsubscriptionListener;
     this.time = time;
@@ -212,9 +211,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       long currentPollTimes,
       Set<PubSubTopicPartition> topicPartitions,
       long timeoutMs) {
-    // This clause is mainly for unit test purposes, when the timeout needs to be set to 0.
-    if (timeoutMs == DEFAULT_MAX_WAIT_MS) {
-      timeoutMs = maxWaitMs;
+    // This clause is only for unit test purposes, for when the timeout needs to be set to 0.
+    if (timeoutMsOverride != -1) {
+      timeoutMs = timeoutMsOverride;
     }
 
     currentPollTimes++;
@@ -251,8 +250,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   // Only for testing.
-  void setMaxWaitMs(long maxWaitMs) {
-    this.maxWaitMs = maxWaitMs;
+  void setTimeoutMsOverride(long timeoutMsOverride) {
+    this.timeoutMsOverride = timeoutMsOverride;
   }
 
   // Only for testing.

@@ -48,6 +48,7 @@ public class SharedKafkaConsumerTest {
   @Test
   public void testSubscriptionEmptyPoll() {
     PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v3");
+
     SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, (c, vt, tp) -> {});
 
     Set<PubSubTopicPartition> assignmentReturnedConsumer = new HashSet<>();
