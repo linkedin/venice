@@ -32,17 +32,17 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
 
   public AggRouterHttpRequestStats(
       VeniceMetricsRepository metricsRepository,
-      String clusterName,
+      String cluster,
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
-    super(metricsRepository, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
+    super(metricsRepository, cluster, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
     /**
      * Use a setter function to bypass the restriction that the supertype constructor could not
      * touch member fields of current object.
      */
-    setStatsSupplier((metricsRepo, storeName) -> {
+    setStatsSupplier((metricsRepo, storeName, clusterName) -> {
       ScatterGatherStats stats;
       if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
         stats = new AggScatterGatherStats();

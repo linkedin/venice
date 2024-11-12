@@ -14,6 +14,7 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   private StatsSupplierVeniceMetricsRepository<T> statsFactoryVeniceMetricsRepository;
 
   private final MetricsRepository metricsRepository;
+  private String clusterName = null;
 
   private AbstractVeniceAggStats(
       MetricsRepository metricsRepository,
@@ -27,9 +28,11 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   private AbstractVeniceAggStats(
       VeniceMetricsRepository metricsRepository,
       StatsSupplierVeniceMetricsRepository<T> statsSupplier,
+      String clusterName,
       T totalStats) {
     this.metricsRepository = metricsRepository;
     this.statsFactoryVeniceMetricsRepository = statsSupplier;
+    this.clusterName = clusterName;
     this.totalStats = totalStats;
   }
 
@@ -39,18 +42,25 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
 
   public AbstractVeniceAggStats(
       StatsSupplierVeniceMetricsRepository<T> statsSupplier,
-      VeniceMetricsRepository metricsRepository) {
-    this(metricsRepository, statsSupplier, statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, null));
+      VeniceMetricsRepository metricsRepository,
+      String clusterName) {
+    this(
+        metricsRepository,
+        statsSupplier,
+        clusterName,
+        statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, clusterName, null));
   }
 
-  public AbstractVeniceAggStats(MetricsRepository metricsRepository) {
+  public AbstractVeniceAggStats(MetricsRepository metricsRepository, String clusterName) {
     this.metricsRepository = metricsRepository;
+    this.clusterName = clusterName;
   }
 
   public void setStatsSupplier(StatsSupplierVeniceMetricsRepository<T> statsSupplier) {
     this.statsFactoryVeniceMetricsRepository = statsSupplier;
     if (metricsRepository instanceof VeniceMetricsRepository) {
-      this.totalStats = statsSupplier.get((VeniceMetricsRepository) metricsRepository, STORE_NAME_FOR_TOTAL_STAT, null);
+      this.totalStats =
+          statsSupplier.get((VeniceMetricsRepository) metricsRepository, STORE_NAME_FOR_TOTAL_STAT, clusterName, null);
     }
   }
 
@@ -62,6 +72,7 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
         metricsRepository,
         statsSupplier,
         statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT + "." + clusterName, null));
+    this.clusterName = clusterName;
   }
 
   public T getStoreStats(String storeName) {
@@ -69,7 +80,7 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
       return storeStats.computeIfAbsent(
           storeName,
           k -> statsFactoryVeniceMetricsRepository
-              .get((VeniceMetricsRepository) metricsRepository, storeName, totalStats));
+              .get((VeniceMetricsRepository) metricsRepository, storeName, clusterName, totalStats));
     } else {
       return storeStats
           .computeIfAbsent(storeName, k -> statsFactoryMetricsRepository.get(metricsRepository, storeName, totalStats));

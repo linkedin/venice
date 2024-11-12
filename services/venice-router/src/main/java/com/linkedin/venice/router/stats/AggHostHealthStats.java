@@ -6,10 +6,11 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 
 
 public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> {
-  public AggHostHealthStats(VeniceMetricsRepository metricsRepository) {
+  public AggHostHealthStats(VeniceMetricsRepository metricsRepository, String clusterName) {
     super(
-        (repo, hostName) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)),
-        metricsRepository);
+        (repo, hostName, cluster) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)),
+        metricsRepository,
+        clusterName);
   }
 
   private HostHealthStats getHostStats(String hostName) {

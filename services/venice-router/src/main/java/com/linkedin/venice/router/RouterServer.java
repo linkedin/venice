@@ -408,7 +408,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = Optional.empty();
     this.metricsRepository = metricsRepository;
 
-    this.aggHostHealthStats = new AggHostHealthStats(metricsRepository);
+    this.aggHostHealthStats = new AggHostHealthStats(metricsRepository, config.getClusterName());
 
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     this.accessController = accessController;
