@@ -245,16 +245,19 @@ public class LeaderProducedRecordContext implements Measurable {
   public int getHeapSize() {
     int size = PARTIAL_CLASS_OVERHEAD + getSize(this.keyBytes);
     switch (this.messageType) {
-      /**
-       * Only these two cases contribute any size.
-       *
-       * {@link DELETE} contributes nothing, and {@link UPDATE} should never happen.
-       */
       case PUT:
         size += getSize((Put) this.valueUnion);
         break;
       case CONTROL_MESSAGE:
         size += getSize((ControlMessage) this.valueUnion);
+        break;
+      default:
+        /**
+         * Only the above two cases contribute any size.
+         *
+         * {@link DELETE} contributes nothing, and {@link com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE}
+         * should never happen.
+         */
         break;
     }
     return size;

@@ -156,7 +156,7 @@ public class TestAdminToolConsumption {
         new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 0, 0, 20);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage2 =
         new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope2, pubSubTopicPartition, 1, 0, 10);
-    KafkaKey kafkaControlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey kafkaControlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     EndOfPush endOfPush = new EndOfPush();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();

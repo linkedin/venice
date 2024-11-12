@@ -83,8 +83,6 @@ public class KafkaKey implements Measurable {
   }
 
   public int getHeapSize() {
-    // This constant is the estimated size of the enclosing object + the byte[]'s overhead.
-    // TODO: Find a library that would allow us to precisely measure this and store it in a static constant.
     return SHALLOW_CLASS_OVERHEAD + MeasurableUtils.getSize(this.key);
   }
 }

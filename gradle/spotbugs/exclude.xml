@@ -212,6 +212,12 @@
     </Or>
   </Match>
   <Match>
+    <Bug pattern="UUF_UNUSED_FIELD"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.collections.MeasurableLinkedHashMap"/>
+    </Or>
+  </Match>
+  <Match>
     <!--These fields are initialized either by public keyword access or not been used at all in the test suite-->
     <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
     <Or>
@@ -295,6 +301,12 @@
     </Or>
   </Match>
   <Match>
+    <Bug pattern="SE_NO_SUITABLE_CONSTRUCTOR_FOR_EXTERNALIZATION"/>
+    <Or>
+      <Class name="com.linkedin.venice.writer.VeniceWriter"/>
+    </Or>
+  </Match>
+  <Match>
     <!--Spotbug suggests return empty array instead of null, but it'd require lots of refactoring-->
     <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS" />
   </Match>
@@ -318,6 +330,10 @@
   <Match>
     <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
     <Class name="com.linkedin.venice.utils.HashCodeComparator"/>
+  </Match>
+  <Match>
+    <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    <Class name="com.linkedin.venice.utils.collections.MeasurableLinkedHashMap"/>
   </Match>
   <Match>
     <!--Legacy codes catch NPE and handle them-->
