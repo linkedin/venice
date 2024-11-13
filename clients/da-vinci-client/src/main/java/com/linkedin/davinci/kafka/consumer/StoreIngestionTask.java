@@ -2,7 +2,10 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.DROP_PARTITION;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;

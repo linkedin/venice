@@ -22,6 +22,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -72,6 +73,7 @@ import org.testng.annotations.Test;
 
 @Test
 public abstract class KafkaStoreIngestionServiceTest {
+  private StorageService mockStorageService;
   private StorageEngineRepository mockStorageEngineRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
@@ -88,6 +90,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
   @BeforeClass
   public void setUp() {
+    mockStorageService = mock(StorageService.class);
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
@@ -149,6 +152,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @Test
   public void testDisableMetricsEmission() {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
@@ -233,6 +237,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Without starting the ingestion service test getIngestingTopicsWithVersionStatusNotOnline would return the correct
     // topics under different scenarios.
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
@@ -321,6 +326,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @Test
   public void testCloseStoreIngestionTask() {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
@@ -386,6 +392,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testStoreIngestionTaskShutdownLastPartition(boolean isIsolatedIngestion) {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
