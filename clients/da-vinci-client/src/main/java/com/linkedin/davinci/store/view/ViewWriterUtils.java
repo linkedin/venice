@@ -15,6 +15,7 @@ public class ViewWriterUtils extends ViewUtils {
       String viewClass,
       VeniceConfigLoader configLoader,
       Store store,
+      int version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
     Properties params = configLoader.getCombinedProperties().toProperties();
@@ -25,8 +26,8 @@ public class ViewWriterUtils extends ViewUtils {
 
     VeniceViewWriter viewWriter = ReflectUtils.callConstructor(
         ReflectUtils.loadClass(view.getWriterClassName()),
-        new Class<?>[] { VeniceConfigLoader.class, Store.class, Schema.class, Map.class },
-        new Object[] { configLoader, store, keySchema, extraViewParameters });
+        new Class<?>[] { VeniceConfigLoader.class, Store.class, Integer.TYPE, Schema.class, Map.class },
+        new Object[] { configLoader, store, version, keySchema, extraViewParameters });
 
     return viewWriter;
   }

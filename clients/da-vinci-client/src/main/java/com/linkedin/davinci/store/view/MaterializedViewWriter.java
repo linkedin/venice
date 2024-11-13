@@ -58,10 +58,11 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   public MaterializedViewWriter(
       VeniceConfigLoader props,
       Store store,
+      int version,
       Schema keySchema,
       Map<String, String> extraViewParameters,
       Clock clock) {
-    super(props, store, keySchema, extraViewParameters);
+    super(props, store, version, keySchema, extraViewParameters);
     pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
     internalView = new MaterializedView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
     this.clock = clock;
@@ -70,9 +71,17 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   public MaterializedViewWriter(
       VeniceConfigLoader props,
       Store store,
+      int version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    this(props, store, keySchema, extraViewParameters, Clock.systemUTC());
+    this(props, store, version, keySchema, extraViewParameters, Clock.systemUTC());
+  }
+
+  /**
+   * package private for testing purpose
+   */
+  void setVeniceWriter(VeniceWriter veniceWriter) {
+    this.veniceWriter = veniceWriter;
   }
 
   @Override
@@ -80,21 +89,16 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
-      int version,
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
-    return processRecord(newValue, key, version, newValueSchemaId);
+    return processRecord(newValue, key, newValueSchemaId);
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
-      ByteBuffer newValue,
-      byte[] key,
-      int version,
-      int newValueSchemaId) {
+  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
     if (veniceWriter == null) {
-      initializeVeniceWriter(version);
+      initializeVeniceWriter();
     }
     return veniceWriter.put(key, newValue.array(), newValueSchemaId);
   }
@@ -105,16 +109,14 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      PartitionConsumptionState partitionConsumptionState,
-      int version) {
+      PartitionConsumptionState partitionConsumptionState) {
     final ControlMessageType type = ControlMessageType.valueOf(controlMessage);
     // Ignore other control messages for materialized view.
     if (type == ControlMessageType.START_OF_SEGMENT && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
       maybePropagateHeartbeatLowWatermarkToViewTopic(
           partition,
           partitionConsumptionState,
-          kafkaMessageEnvelope.producerMetadata.messageTimestamp,
-          version);
+          kafkaMessageEnvelope.getProducerMetadata().getMessageTimestamp());
     }
   }
 
@@ -137,7 +139,7 @@ public class MaterializedViewWriter extends VeniceViewWriter {
     return setProducerOptimizations(configBuilder).build();
   }
 
-  synchronized private void initializeVeniceWriter(int version) {
+  synchronized private void initializeVeniceWriter() {
     if (veniceWriter == null) {
       veniceWriter = new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null)
           .createVeniceWriter(buildWriterOptions(version));
@@ -162,10 +164,9 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   private void maybePropagateHeartbeatLowWatermarkToViewTopic(
       int partition,
       PartitionConsumptionState partitionConsumptionState,
-      long heartbeatTimestamp,
-      int version) {
+      long heartbeatTimestamp) {
     boolean propagate = false;
-    long oldestHeartbeatTimestamp;
+    long oldestHeartbeatTimestamp = 0;
     broadcastHBLock.lock();
     try {
       partitionToHeartbeatTimestampMap.put(partition, heartbeatTimestamp);
@@ -178,14 +179,17 @@ public class MaterializedViewWriter extends VeniceViewWriter {
           propagate = true;
           lastHBBroadcastTimestamp = now;
         }
+        // We have determined that the oldestHeartbeatTimestamp offers no value in monitoring the lag for this view
+        // topic since it's within the DEFAULT_HEARTBEAT_BROADCAST_DELAY_THRESHOLD. We are also clearing the map, so we
+        // don't need to worry about removing timestamps belonging to partitions that we are no longer leader of.
         partitionToHeartbeatTimestampMap.clear();
       }
     } finally {
       broadcastHBLock.unlock();
     }
-    if (propagate) {
+    if (propagate && oldestHeartbeatTimestamp > 0) {
       if (veniceWriter == null) {
-        initializeVeniceWriter(version);
+        initializeVeniceWriter();
       }
       LeaderCompleteState leaderCompleteState =
           LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
@@ -205,7 +209,7 @@ public class MaterializedViewWriter extends VeniceViewWriter {
             VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
             true,
             leaderCompleteState,
-            heartbeatTimestamp);
+            oldestHeartbeatTimestamp);
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));

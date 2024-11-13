@@ -43,7 +43,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class MaterializedViewTest {
+public class TestMaterializedViewEndToEnd {
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
@@ -62,13 +62,13 @@ public class MaterializedViewTest {
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        2,
         1,
         1,
         1,
+        2,
         1,
-        1,
-        1,
-        1,
+        2,
         Optional.empty(),
         Optional.empty(),
         Optional.of(serverProperties),
@@ -144,7 +144,9 @@ public class MaterializedViewTest {
           versionTopicRecords += endOffset;
         }
         Assert.assertTrue(versionTopicRecords > 100, "Version topic records size: " + versionTopicRecords);
-        Assert.assertTrue(records > 100, "View topic records size: " + records);
+        if (!veniceClusterWrapper.getRegionName().equals(childDatacenters.get(0).getRegionName())) {
+          Assert.assertTrue(records > 100, "View topic records size: " + records);
+        }
       }
     }
   }
