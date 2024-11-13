@@ -29,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -262,7 +263,7 @@ public class TopicMetadataFetcherTest {
     assertEquals(res.get(1), 222L);
     assertEquals(
         topicMetadataFetcher.getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
-        -1);
+        PubSubConstants.UNKNOWN_LATEST_OFFSET);
 
     verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
     verify(consumerMock, times(1)).endOffsets(eq(offsetsMap.keySet()), any(Duration.class));

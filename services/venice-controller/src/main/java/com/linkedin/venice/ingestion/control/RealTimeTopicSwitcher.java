@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPIC
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.TOPIC_SWITCH;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.ConfigKeys;
@@ -113,9 +114,11 @@ public class RealTimeTopicSwitcher {
           .broadcastTopicSwitch(sourceClusters, realTimeTopic.getName(), rewindStartTimestamp, Collections.emptyMap());
     }
     LOGGER.info(
-        "Successfully sent TopicSwitch into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
+        "Successfully sent {} into '{}' instructing to switch to {} at {} with a rewindStartTimestamp of {}.",
+        TOPIC_SWITCH,
         topicWhereToSendTheTopicSwitch,
         realTimeTopic,
+        remoteKafkaUrls,
         rewindStartTimestamp);
   }
 
@@ -300,7 +303,8 @@ public class RealTimeTopicSwitcher {
       remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     LOGGER.info(
-        "Will send TopicSwitch into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
+        "Will send {} into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
+        TOPIC_SWITCH,
         topicWhereToSendTheTopicSwitch,
         realTimeTopic,
         rewindStartTimestamp);
