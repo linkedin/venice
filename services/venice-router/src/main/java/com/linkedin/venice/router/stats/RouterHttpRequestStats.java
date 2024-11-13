@@ -110,11 +110,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     latencySensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
     healthyRequestLatencySensor =
         registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg(), new Max(0));
-    unhealthyRequestLatencySensor =
-        registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg(), new Max(0));
-    tardyRequestLatencySensor = registerSensorWithDetailedPercentiles("tardy_request_latency", new Avg(), new Max(0));
-    throttledRequestLatencySensor =
-        registerSensorWithDetailedPercentiles("throttled_request_latency", new Avg(), new Max(0));
+    unhealthyRequestLatencySensor = registerSensor("unhealthy_request_latency", new Avg(), new Max(0));
+    tardyRequestLatencySensor = registerSensor("tardy_request_latency", new Avg(), new Max(0));
+    throttledRequestLatencySensor = registerSensor("throttled_request_latency", new Avg(), new Max(0));
     routerResponseWaitingTimeSensor = registerSensor(
         "response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
