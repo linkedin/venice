@@ -12,6 +12,7 @@ import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABL
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
 import static java.util.Comparator.comparingInt;
@@ -2319,16 +2320,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * written to, the end offset is 0.
    */
   protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
-    long offsetFromConsumer = aggKafkaConsumerService
-        .getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, new PubSubTopicPartitionImpl(pubSubTopic, partition));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    long offsetFromConsumer =
+        aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, topicPartition);
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
-        if (offset == -1) {
-          throw new VeniceException("Found latest offset -1");
+        if (offset == UNKNOWN_LATEST_OFFSET) {
+          throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
         }
         return offset;
       },
@@ -3076,6 +3078,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
+        TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+        LOGGER.info(
+            "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
+            type.name(),
+            partitionConsumptionState.getReplicaId(),
+            offset,
+            topicSwitch.getSourceKafkaServers());
         checkReadyToServeAfterProcess =
             processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;

@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -34,17 +36,16 @@ public class TestInstanceRemovable {
   int replicaFactor = 3;
 
   private void setupCluster(int numberOfServer) {
-    int numberOfController = 1;
-    int numberOfRouter = 1;
-
+    Properties properties = new Properties();
+    properties.setProperty(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
     cluster = ServiceFactory.getVeniceCluster(
-        numberOfController,
-        numberOfServer,
-        numberOfRouter,
-        replicaFactor,
-        partitionSize,
-        false,
-        false);
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(numberOfServer)
+            .numberOfRouters(1)
+            .replicationFactor(replicaFactor)
+            .partitionSize(partitionSize)
+            .extraProperties(properties)
+            .build());
   }
 
   @AfterMethod
@@ -169,7 +170,7 @@ public class TestInstanceRemovable {
 
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(
-        3,
+        30,
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()

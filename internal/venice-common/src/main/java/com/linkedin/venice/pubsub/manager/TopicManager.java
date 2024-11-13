@@ -272,6 +272,17 @@ public class TopicManager implements Closeable {
     return false;
   }
 
+  public boolean updateTopicRetentionWithRetries(PubSubTopic topicName, long expectedRetentionInMs) {
+    PubSubTopicConfiguration topicConfiguration = getCachedTopicConfig(topicName);
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> updateTopicRetention(topicName, expectedRetentionInMs, topicConfiguration),
+        5,
+        Duration.ofMillis(200),
+        Duration.ofSeconds(1),
+        Duration.ofMillis(2 * topicManagerContext.getPubSubOperationTimeoutMs()),
+        CREATE_TOPIC_RETRIABLE_EXCEPTIONS);
+  }
+
   public void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted) {
     updateTopicCompactionPolicy(topic, expectedLogCompacted, -1, Optional.empty());
   }
