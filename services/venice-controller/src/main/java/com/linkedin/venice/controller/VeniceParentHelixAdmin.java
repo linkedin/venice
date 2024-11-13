@@ -1526,7 +1526,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     Version newVersion;
     if (pushType.isIncremental()) {
-      newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
+      newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
 
@@ -1704,19 +1704,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getRealTimeTopic(String, String)
-   */
-  @Override
-  public String getRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, storeName);
-  }
-
-  @Override
-  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getSeparateRealTimeTopic(clusterName, storeName);
-  }
-
-  /**
    * A couple of extra checks are needed in parent controller
    * 1. check batch job statuses across child controllers. (We cannot only check the version status
    * in parent controller since they are marked as STARTED)
@@ -1724,12 +1711,17 @@ public class VeniceParentHelixAdmin implements Admin {
    * preserve incremental push topic in parent Kafka anymore
    */
   @Override
-  public Version getIncrementalPushVersion(String clusterName, String storeName) {
-    Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
+  public Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId) {
+    Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
     ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic).getExecutionStatus();
 
     return getIncrementalPushVersion(incrementalPushVersion, status);
+  }
+
+  @Override
+  public Version getReferenceVersionForStreamingWrites(String clusterName, String storeName, String pushJobId) {
+    return getVeniceHelixAdmin().getReferenceVersionForStreamingWrites(clusterName, storeName, pushJobId);
   }
 
   // This method is only for internal / test use case
