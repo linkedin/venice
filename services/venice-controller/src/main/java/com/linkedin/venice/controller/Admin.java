@@ -289,26 +289,9 @@ public interface Admin extends AutoCloseable, Closeable {
       String targetedRegions,
       int repushSourceVersion);
 
-  String getRealTimeTopic(String clusterName, Store store);
+  Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId);
 
-  default String getRealTimeTopic(String clusterName, String storeName) {
-    Store store = getStore(clusterName, storeName);
-    if (store == null) {
-      throw new VeniceNoStoreException(storeName, clusterName);
-    }
-    return getRealTimeTopic(clusterName, store);
-  }
-
-  String getSeparateRealTimeTopic(String clusterName, String storeName);
-
-  /**
-   * Right now, it will return the latest version recorded in parent controller. There are a couple of edge cases.
-   * 1. If a push fails in some colos, the version will be inconsistent among colos
-   * 2. If rollback happens, latest version will not be the current version.
-   *
-   * TODO: figure out how we'd like to cover these edge cases
-   */
-  Version getIncrementalPushVersion(String clusterName, String storeName);
+  Version getReferenceVersionForStreamingWrites(String clusterName, String storeName, String pushJobId);
 
   int getCurrentVersion(String clusterName, String storeName);
 
