@@ -67,7 +67,7 @@ public class VeniceOpenTelemetryMetricsRepository {
         "OpenTelemetry initialization for {} started with config: {}",
         metricsConfig.getServiceName(),
         metricsConfig.toString());
-    this.metricPrefix = "venice." + metricsConfig.getMetricPrefix();
+    this.metricPrefix = transformMetricName("venice." + metricsConfig.getMetricPrefix());
 
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
@@ -101,7 +101,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       // Register MeterProvider with OpenTelemetry instance
       openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
 
-      this.meter = openTelemetry.getMeter(getMetricPrefix(metricPrefix));
+      this.meter = openTelemetry.getMeter(getMetricPrefix());
       LOGGER.info(
           "OpenTelemetry initialization for {} completed with config: {}",
           metricsConfig.getServiceName(),
@@ -133,19 +133,14 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  public String getFullMetricName(String metricPrefix, String name) {
+  String getFullMetricName(String metricPrefix, String name) {
     String fullMetricName = metricPrefix + "." + name;
     validateMetricName(fullMetricName);
     return transformMetricName(fullMetricName);
   }
 
-  public String getDimensionName(String name) {
-    validateMetricName(name);
-    return transformMetricName(name);
-  }
-
-  public String getMetricPrefix(String metricPrefix) {
-    return transformMetricName(metricPrefix);
+  private String getMetricPrefix() {
+    return metricPrefix;
   }
 
   /**
@@ -205,7 +200,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public DoubleHistogram getHistogram(String name, String unit, String description) {
     if (emitOpenTelemetryMetrics) {
-      String fullMetricName = getFullMetricName(metricPrefix, name);
+      String fullMetricName = getFullMetricName(getMetricPrefix(), name);
       if (openTelemetry != null) {
         return histogramMap.computeIfAbsent(name, key -> {
           DoubleHistogramBuilder builder =
@@ -223,7 +218,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public DoubleHistogram getHistogramWithoutBuckets(String name, String unit, String description) {
     if (emitOpenTelemetryMetrics) {
-      String fullMetricName = getFullMetricName(metricPrefix, name);
+      String fullMetricName = getFullMetricName(getMetricPrefix(), name);
       if (openTelemetry != null) {
         return histogramMap.computeIfAbsent(name, key -> {
           DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
@@ -243,7 +238,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public LongCounter getCounter(String name, String unit, String description) {
     if (emitOpenTelemetryMetrics) {
-      String fullMetricName = getFullMetricName(metricPrefix, name);
+      String fullMetricName = getFullMetricName(getMetricPrefix(), name);
       if (openTelemetry != null) {
         return counterMap.computeIfAbsent(name, key -> {
           LongCounterBuilder builder = meter.counterBuilder(fullMetricName).setUnit(unit).setDescription(description);
@@ -285,5 +280,18 @@ public class VeniceOpenTelemetryMetricsRepository {
     public CompletableResultCode shutdown() {
       return CompletableResultCode.ofSuccess();
     }
+  }
+
+  // for testing purpose
+  public SdkMeterProvider getSdkMeterProvider() {
+    return sdkMeterProvider;
+  }
+
+  public OpenTelemetry getOpenTelemetry() {
+    return openTelemetry;
+  }
+
+  public Meter getMeter() {
+    return meter;
   }
 }

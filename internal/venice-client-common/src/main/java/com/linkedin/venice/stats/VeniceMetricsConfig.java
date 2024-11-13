@@ -19,9 +19,9 @@ public class VeniceMetricsConfig {
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
 
-  /** extra configs for OpenTelemetry. Supports 2 exporter currently
+  /** extra configs for OpenTelemetry. Supports 2 exporter currently <br>
    * 1. {@link MetricExporter} for exporting to Http/Grpc endpoint. More details are supported via configs,
-   *    check {@link VeniceMetricsConfigBuilder#extractAndSetOtelConfigs} and {@link VeniceOpenTelemetryMetricsRepository#getOtlpHttpMetricExporter}
+   *    check {@link VeniceMetricsConfigBuilder#extractAndSetOtelConfigs} and {@link VeniceOpenTelemetryMetricsRepository#getOtlpHttpMetricExporter}<br>
    * 2. {@link VeniceOpenTelemetryMetricsRepository.LogBasedMetricExporter} for debug purposes
    */
   private final Map<String, String> otelConfigs;
@@ -51,7 +51,7 @@ public class VeniceMetricsConfig {
   }
 
   public static class VeniceMetricsConfigBuilder {
-    private String serviceName = "NOOP_SERVICE";
+    private String serviceName = "noop_service";
     private String metricPrefix = null;
     private boolean emitOpenTelemetryMetrics = false;
     private boolean emitTehutiMetrics = true;
@@ -71,6 +71,31 @@ public class VeniceMetricsConfig {
 
     public VeniceMetricsConfigBuilder setMetricPrefix(String metricPrefix) {
       this.metricPrefix = metricPrefix;
+      return this;
+    }
+
+    public VeniceMetricsConfigBuilder setEmitOpenTelemetryMetrics(boolean emitOpenTelemetryMetrics) {
+      this.emitOpenTelemetryMetrics = emitOpenTelemetryMetrics;
+      return this;
+    }
+
+    public VeniceMetricsConfigBuilder setEmitTehutiMetrics(boolean emitTehutiMetrics) {
+      this.emitTehutiMetrics = emitTehutiMetrics;
+      return this;
+    }
+
+    public VeniceMetricsConfigBuilder setEmitToHttpGrpcEndpoint(boolean emitToHttpGrpcEndpoint) {
+      this.emitToHttpGrpcEndpoint = emitToHttpGrpcEndpoint;
+      return this;
+    }
+
+    public VeniceMetricsConfigBuilder setEmitToLog(boolean emitToLog) {
+      this.emitToLog = emitToLog;
+      return this;
+    }
+
+    public VeniceMetricsConfigBuilder setMetricFormat(VeniceOpenTelemetryMetricFormat metricFormat) {
+      this.metricFormat = metricFormat;
       return this;
     }
 
@@ -102,33 +127,39 @@ public class VeniceMetricsConfig {
     // Validate required fields before building
     private void checkAndSetDefaults() {
       if (tehutiMetricConfig == null) {
-        tehutiMetricConfig = new MetricConfig();
+        setTehutiMetricConfig(new MetricConfig());
       }
       if (metricPrefix == null) {
-        metricPrefix = getMetricsPrefix(serviceName);
+        setMetricPrefix(getMetricsPrefix(serviceName));
       }
       if (otelConfigs.containsKey("otel.venice.enabled")) {
         String status = otelConfigs.get("otel.venice.enabled");
         if (status != null) {
-          emitOpenTelemetryMetrics = status.toLowerCase(Locale.ROOT).equals("true");
+          setEmitOpenTelemetryMetrics(status.toLowerCase(Locale.ROOT).equals("true"));
         }
       }
       // check otelConfigs and set defaults
       if (emitOpenTelemetryMetrics) {
-        if (otelConfigs.containsKey("otel.venice.metric.format")) {
-          String format = otelConfigs.get("otel.venice.metric.format");
-          if (format != null) {
-            try {
-              metricFormat = VeniceOpenTelemetryMetricFormat.valueOf(format.toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException e) {
-              LOGGER.warn("Invalid metric format: {}, setting to default: {}", format, metricFormat);
-            }
+        if (otelConfigs.containsKey("otel.venice.export.to.log")) {
+          String emitStatus = otelConfigs.get("otel.venice.export.to.log");
+          if (emitStatus != null) {
+            setEmitToLog(emitStatus.toLowerCase(Locale.ROOT).equals("true"));
           }
         }
         if (otelConfigs.containsKey("otel.venice.export.to.http.grpc.endpoint")) {
           String emitStatus = otelConfigs.get("otel.venice.export.to.http.grpc.endpoint");
           if (emitStatus != null) {
-            emitToHttpGrpcEndpoint = emitStatus.toLowerCase(Locale.ROOT).equals("true");
+            setEmitToHttpGrpcEndpoint(emitStatus.toLowerCase(Locale.ROOT).equals("true"));
+          }
+        }
+        if (otelConfigs.containsKey("otel.venice.metrics.format")) {
+          String format = otelConfigs.get("otel.venice.metrics.format");
+          if (format != null) {
+            try {
+              setMetricFormat(VeniceOpenTelemetryMetricFormat.valueOf(format.toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+              LOGGER.warn("Invalid metric format: {}, setting to default: {}", format, metricFormat);
+            }
           }
         }
         if (emitToHttpGrpcEndpoint) {
