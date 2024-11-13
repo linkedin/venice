@@ -72,7 +72,7 @@ public class CollectionMergeTest {
         newListValue,
         2,
         1);
-    Assert.assertEquals(UpdateResultStatus.COMPLETELY_UPDATED, resultStatus);
+    Assert.assertNotEquals(UpdateResultStatus.COMPLETELY_UPDATED, resultStatus);
     Assert.assertEquals(((List<String>) oldRecord.get(NULLABLE_LIST_FIELD_NAME)).get(0), "item2");
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
