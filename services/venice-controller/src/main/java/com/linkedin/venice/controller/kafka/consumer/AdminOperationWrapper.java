@@ -4,11 +4,11 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 
 
 public class AdminOperationWrapper {
-  private AdminOperation adminOperation;
-  private long offset;
-  private long producerTimestamp;
-  private long localBrokerTimestamp;
-  private long delegateTimestamp;
+  private final AdminOperation adminOperation;
+  private final long offset;
+  private final long producerTimestamp;
+  private final long localBrokerTimestamp;
+  private final long delegateTimestamp;
 
   private Long startProcessingTimestamp = null;
 

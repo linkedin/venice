@@ -109,7 +109,6 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionCycleTimeoutMs(),
         config.getAdminConsumptionMaxWorkerThreadPoolSize(),
         pubSubTopicRepository,
-        pubSubMessageDeserializer,
         config.getRegionName());
   }
 
