@@ -332,7 +332,8 @@ public class KafkaConsumerServiceDelegatorTest {
     // Change the AAWC flag
     retValueForIsAAWCStoreFunc.set(true);
     delegator.unSubscribe(versionTopic, topicPartitionForRT);
-    verify(mockDefaultConsumerService).unSubscribe(versionTopic, topicPartitionForRT);
+    verify(mockDefaultConsumerService)
+        .unSubscribe(versionTopic, topicPartitionForRT, SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS);
     verify(mockDedicatedConsumerService, never()).unSubscribe(versionTopic, topicPartitionForRT);
   }
 
