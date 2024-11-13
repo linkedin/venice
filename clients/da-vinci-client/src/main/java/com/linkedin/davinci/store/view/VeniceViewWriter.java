@@ -28,12 +28,16 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
+  protected final int version;
+
   public VeniceViewWriter(
       VeniceConfigLoader props,
       Store store,
+      int version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
     super(props.getCombinedProperties().toProperties(), store, extraViewParameters);
+    this.version = version;
   }
 
   /**
@@ -52,7 +56,6 @@ public abstract class VeniceViewWriter extends VeniceView {
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
-      int version,
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord);
@@ -69,7 +72,6 @@ public abstract class VeniceViewWriter extends VeniceView {
   public abstract CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       byte[] key,
-      int version,
       int newValueSchemaId);
 
   /**
@@ -85,15 +87,13 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param controlMessage the control message we're processing
    * @param partition the partition this control message was delivered to
    * @param partitionConsumptionState the pcs of the consuming node
-   * @param version the store version that received this message
    */
   public void processControlMessage(
       KafkaKey kafkaKey,
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      PartitionConsumptionState partitionConsumptionState,
-      int version) {
+      PartitionConsumptionState partitionConsumptionState) {
     // Optionally act on Control Message
   }
 

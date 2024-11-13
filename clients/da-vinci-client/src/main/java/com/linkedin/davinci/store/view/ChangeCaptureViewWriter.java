@@ -49,9 +49,10 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   public ChangeCaptureViewWriter(
       VeniceConfigLoader props,
       Store store,
+      int version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    super(props, store, keySchema, extraViewParameters);
+    super(props, store, version, keySchema, extraViewParameters);
     internalView = new ChangeCaptureView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
     kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
     pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -63,7 +64,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
-      int version,
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
@@ -77,18 +77,14 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     recordChangeEvent.replicationCheckpointVector = RmdUtils.extractOffsetVectorFromRmd(replicationMetadataRecord);
 
     if (veniceWriter == null) {
-      initializeVeniceWriter(version);
+      initializeVeniceWriter();
     }
     // TODO: RecordChangeEvent isn't versioned today.
     return veniceWriter.put(key, recordChangeEvent, 1);
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
-      ByteBuffer newValue,
-      byte[] key,
-      int version,
-      int newValueSchemaId) {
+  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
     // No op
     return CompletableFuture.completedFuture(null);
   }
@@ -99,8 +95,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      PartitionConsumptionState partitionConsumptionState,
-      int version) {
+      PartitionConsumptionState partitionConsumptionState) {
 
     // We only care (for now) about version swap control Messages
     if (!(controlMessage.getControlMessageUnion() instanceof VersionSwap)) {
@@ -136,7 +131,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
     // Write the message on veniceWriter to the change capture topic
     if (veniceWriter == null) {
-      initializeVeniceWriter(version);
+      initializeVeniceWriter();
     }
 
     veniceWriter.sendControlMessage(
@@ -193,7 +188,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     return setProducerOptimizations(configBuilder).build();
   }
 
-  synchronized private void initializeVeniceWriter(int version) {
+  synchronized private void initializeVeniceWriter() {
     if (veniceWriter != null) {
       return;
     }

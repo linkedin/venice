@@ -111,7 +111,7 @@ public class ChangeCaptureViewWriterTest {
 
     // Build the change capture writer and set the mock writer
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, 1, SCHEMA, Collections.emptyMap());
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Verify that we never produce the version swap from a follower replica
@@ -120,8 +120,7 @@ public class ChangeCaptureViewWriterTest {
         kafkaMessageEnvelope,
         controlMessage,
         1,
-        mockFollowerPartitionConsumptionState,
-        1);
+        mockFollowerPartitionConsumptionState);
     Mockito.verify(mockVeniceWriter, Mockito.never())
         .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
 
@@ -133,8 +132,7 @@ public class ChangeCaptureViewWriterTest {
         kafkaMessageEnvelope,
         ignoredControlMessage,
         1,
-        mockLeaderPartitionConsumptionState,
-        1);
+        mockLeaderPartitionConsumptionState);
     Mockito.verify(mockVeniceWriter, Mockito.never())
         .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
 
@@ -148,18 +146,12 @@ public class ChangeCaptureViewWriterTest {
         kafkaMessageEnvelope,
         ignoredControlMessage,
         1,
-        mockLeaderPartitionConsumptionState,
-        1);
+        mockLeaderPartitionConsumptionState);
     Mockito.verify(mockVeniceWriter, Mockito.never())
         .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
 
-    changeCaptureViewWriter.processControlMessage(
-        kafkaKey,
-        kafkaMessageEnvelope,
-        controlMessage,
-        1,
-        mockLeaderPartitionConsumptionState,
-        1);
+    changeCaptureViewWriter
+        .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, mockLeaderPartitionConsumptionState);
     ArgumentCaptor<ControlMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ControlMessage.class);
 
     // Verify and capture input
@@ -210,7 +202,7 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, 1, SCHEMA, Collections.emptyMap());
 
     VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions(1);
 
@@ -245,7 +237,7 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, 1, SCHEMA, Collections.emptyMap());
 
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(SCHEMA, 1);
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
@@ -255,13 +247,13 @@ public class ChangeCaptureViewWriterTest {
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Update Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Insert Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Deletion Case
-    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Set up argument captors
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);

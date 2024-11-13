@@ -1445,7 +1445,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           mergeConflictResult.getNewValue(),
           oldValueBB,
           keyBytes,
-          versionNumber,
           mergeConflictResult.getValueSchemaId(),
           oldValueSchemaId,
           mergeConflictResult.getRmdRecord());

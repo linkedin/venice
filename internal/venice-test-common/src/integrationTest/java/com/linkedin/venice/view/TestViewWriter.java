@@ -25,9 +25,10 @@ public class TestViewWriter extends VeniceViewWriter {
   public TestViewWriter(
       VeniceConfigLoader props,
       Store store,
+      int version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    super(props, store, keySchema, extraViewParameters);
+    super(props, store, version, keySchema, extraViewParameters);
     internalView = new TestView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
   }
 
@@ -36,7 +37,6 @@ public class TestViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
-      int version,
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
@@ -46,11 +46,7 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
-      ByteBuffer newValue,
-      byte[] key,
-      int version,
-      int newValueSchemaId) {
+  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
     internalView.incrementRecordCount(store.getName());
     return CompletableFuture.completedFuture(null);
   }
@@ -61,8 +57,7 @@ public class TestViewWriter extends VeniceViewWriter {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      PartitionConsumptionState partitionConsumptionState,
-      int version) {
+      PartitionConsumptionState partitionConsumptionState) {
 
     // TODO: The below logic only operates on VersionSwap. We might want to augment this
     // logic to handle other control messages.

@@ -55,6 +55,7 @@ public class ViewWriterUtilsTest {
         ChangeCaptureView.class.getCanonicalName(),
         mockVeniceConfigLoader,
         mockStore,
+        1,
         SCHEMA,
         Collections.EMPTY_MAP);
 
