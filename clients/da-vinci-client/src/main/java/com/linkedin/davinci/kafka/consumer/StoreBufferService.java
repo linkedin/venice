@@ -514,6 +514,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class LeaderQueueNode extends QueueNode {
+    // TODO: FIX THIS!!!!!
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
 
     private final LeaderProducedRecordContext leaderProducedRecordContext;

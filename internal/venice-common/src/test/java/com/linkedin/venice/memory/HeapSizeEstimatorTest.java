@@ -218,7 +218,7 @@ public abstract class HeapSizeEstimatorTest {
     }
   }
 
-  /** Different algo that the main code because why not? It should be equivalent... */
+  /** Different algo than the main code because why not? It should be equivalent... */
   protected static int roundUpToNearestAlignment(int size) {
     double numberOfAlignmentWindowsFittingWithinTheSize = (double) size / ALIGNMENT_SIZE;
     double roundedUp = Math.ceil(numberOfAlignmentWindowsFittingWithinTheSize);
