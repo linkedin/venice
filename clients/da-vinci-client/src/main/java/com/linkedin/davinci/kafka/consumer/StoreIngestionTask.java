@@ -2,9 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.*;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
@@ -34,6 +32,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -189,6 +188,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
 
   /** storage destination for consumption */
+  protected final StorageService storageService;
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
 
@@ -344,6 +344,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   public StoreIngestionTask(
+      StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
@@ -361,6 +362,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
     this.kafkaProps = kafkaConsumerProperties;
+    this.storageService = storageService;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
@@ -626,6 +628,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ConsumerAction consumerAction =
         new ConsumerAction(UNSUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
 
+    consumerActionsQueue.add(consumerAction);
+    return consumerAction.getFuture();
+  }
+
+  /**
+   *
+   * Adds an asynchronous partition drop request for the task.
+   * This is always a Helix triggered action
+   */
+  public synchronized CompletableFuture<Void> dropPartition(PubSubTopicPartition topicPartition) {
+    throwIfNotRunning();
+    ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
     consumerActionsQueue.add(consumerAction);
     return consumerAction.getFuture();
   }
@@ -2135,6 +2149,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
+      case DROP_PARTITION:
+        LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
+        this.storageService.dropStorePartition(storeConfig, partition, true);
+        LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }

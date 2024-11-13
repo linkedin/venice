@@ -31,6 +31,7 @@ import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.SSLConfig;
@@ -130,6 +131,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
+  private final StorageService storageService;
 
   private final VeniceConfigLoader veniceConfigLoader;
 
@@ -190,6 +192,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
 
   public KafkaStoreIngestionService(
+      StorageService storageService,
       StorageEngineRepository storageEngineRepository,
       VeniceConfigLoader veniceConfigLoader,
       StorageMetadataService storageMetadataService,
@@ -212,6 +215,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
       HeartbeatMonitoringService heartbeatMonitoringService) {
+    this.storageService = storageService;
     this.cacheBackend = cacheBackend;
     this.recordTransformerFunction = recordTransformerFunction;
     this.storageMetadataService = storageMetadataService;
@@ -519,6 +523,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     };
 
     return ingestionTaskFactory.getNewIngestionTask(
+        storageService,
         store,
         version,
         getKafkaConsumerProperties(veniceStoreVersionConfig),
@@ -916,6 +921,31 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       } else {
         LOGGER.info("Shutting down ingestion task of topic {}", topicName);
         shutdownStoreIngestionTask(topicName);
+      }
+    }
+  }
+
+  /**
+   * Drops the corresponding Venice Partition gracefully.
+   * This should only be called after {@link #stopConsumptionAndWait} has been called
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
+   */
+  public CompletableFuture<Void> dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    final String topic = veniceStore.getStoreVersionName();
+
+    if (isPartitionConsuming(topic, partitionId)) {
+      throw new VeniceException("Tried to drop storage partition that is still consuming");
+    }
+
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      if (ingestionTask != null && ingestionTask.isRunning()) {
+        return ingestionTask
+            .dropPartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+      } else {
+        LOGGER.warn("Ignoring drop partition message for Topic {} Partition {}", topic, partitionId);
+        return CompletableFuture.completedFuture(null);
       }
     }
   }

@@ -695,6 +695,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(
+        storageService,
         storageService.getStorageEngineRepository(),
         configLoader,
         storageMetadataService,
