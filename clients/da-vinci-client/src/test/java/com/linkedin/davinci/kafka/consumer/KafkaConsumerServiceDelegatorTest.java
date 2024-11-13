@@ -65,11 +65,41 @@ public class KafkaConsumerServiceDelegatorTest {
         { "unSubscribe" }, { "getOffsetLagBasedOnMetrics" }, { "getLatestOffsetBasedOnMetrics" } };
   }
 
+  private void invokeAndVerify(
+      KafkaConsumerServiceDelegator delegator,
+      KafkaConsumerService invokedConsumerService,
+      KafkaConsumerService unusedConsumerService,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition topicPartition,
+      String methodName) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    boolean includeLongParam = methodName.equals("unSubscribe");
+    if (includeLongParam) {
+      Method testMethod = KafkaConsumerServiceDelegator.class
+          .getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class, long.class);
+      Method verifyMethod =
+          KafkaConsumerService.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class, long.class);
+      testMethod.invoke(delegator, versionTopic, topicPartition, 0L);
+      verifyMethod.invoke(verify(invokedConsumerService), versionTopic, topicPartition, 0L);
+      verifyMethod.invoke(verify(unusedConsumerService, never()), versionTopic, topicPartition, 0L);
+    } else {
+      Method testMethod =
+          KafkaConsumerServiceDelegator.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class);
+      Method verifyMethod =
+          KafkaConsumerService.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class);
+      testMethod.invoke(delegator, versionTopic, topicPartition);
+      verifyMethod.invoke(verify(invokedConsumerService), versionTopic, topicPartition);
+      verifyMethod.invoke(verify(unusedConsumerService, never()), versionTopic, topicPartition);
+    }
+
+    reset(invokedConsumerService);
+    reset(unusedConsumerService);
+  }
+
   @Test(dataProvider = "Method-List")
   public void chooseConsumerServiceTest(String methodName)
       throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-    KafkaConsumerService mockDefaultConsumerService = mock(KafkaConsumerService.class);
-    KafkaConsumerService mockDedicatedConsumerService = mock(KafkaConsumerService.class);
+    KafkaConsumerService defaultMockService = mock(KafkaConsumerService.class);
+    KafkaConsumerService dedicatedMockService = mock(KafkaConsumerService.class);
     VeniceServerConfig mockConfig = mock(VeniceServerConfig.class);
     doReturn(true).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED).when(mockConfig)
@@ -78,8 +108,8 @@ public class KafkaConsumerServiceDelegatorTest {
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
     KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
         (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
-            ? mockDefaultConsumerService
-            : mockDedicatedConsumerService;
+            ? defaultMockService
+            : dedicatedMockService;
 
     KafkaConsumerServiceDelegator delegator =
         new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
@@ -105,35 +135,16 @@ public class KafkaConsumerServiceDelegatorTest {
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, 0, dataReceiver);
 
-    Method testMethod =
-        KafkaConsumerServiceDelegator.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class);
-    Method verifyMethod =
-        KafkaConsumerService.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class);
-
-    testMethod.invoke(delegator, versionTopic, topicPartitionForVT);
-    verifyMethod.invoke(verify(mockDefaultConsumerService), versionTopic, topicPartitionForVT);
-    verifyMethod.invoke(verify(mockDedicatedConsumerService, never()), versionTopic, topicPartitionForVT);
-    reset(mockDefaultConsumerService);
-    reset(mockDedicatedConsumerService);
-    testMethod.invoke(delegator, versionTopic, topicPartitionForRT);
-    verifyMethod.invoke(verify(mockDedicatedConsumerService), versionTopic, topicPartitionForRT);
-    verifyMethod.invoke(verify(mockDefaultConsumerService, never()), versionTopic, topicPartitionForRT);
-    reset(mockDefaultConsumerService);
-    reset(mockDedicatedConsumerService);
+    invokeAndVerify(delegator, defaultMockService, dedicatedMockService, versionTopic, topicPartitionForVT, methodName);
+    invokeAndVerify(delegator, dedicatedMockService, defaultMockService, versionTopic, topicPartitionForRT, methodName);
 
     isAAWCStoreFunc = vt -> false;
     delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, 0, dataReceiver);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, 0, dataReceiver);
 
-    testMethod.invoke(delegator, versionTopic, topicPartitionForVT);
-    verifyMethod.invoke(verify(mockDefaultConsumerService), versionTopic, topicPartitionForVT);
-    verifyMethod.invoke(verify(mockDedicatedConsumerService, never()), versionTopic, topicPartitionForVT);
-    reset(mockDefaultConsumerService);
-    reset(mockDedicatedConsumerService);
-    testMethod.invoke(delegator, versionTopic, topicPartitionForRT);
-    verifyMethod.invoke(verify(mockDefaultConsumerService), versionTopic, topicPartitionForRT);
-    verifyMethod.invoke(verify(mockDedicatedConsumerService, never()), versionTopic, topicPartitionForRT);
+    invokeAndVerify(delegator, defaultMockService, dedicatedMockService, versionTopic, topicPartitionForVT, methodName);
+    invokeAndVerify(delegator, defaultMockService, dedicatedMockService, versionTopic, topicPartitionForRT, methodName);
   }
 
   @Test
