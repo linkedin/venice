@@ -117,12 +117,10 @@ public class BlobSnapshotManager {
 
     // check if the concurrent user count exceeds the limit
     checkIfConcurrentUserExceedsLimit(topicName, partitionId);
-    concurrentSnapshotUsers.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partitionId, k -> new AtomicLong(0))
-        .incrementAndGet();
 
     boolean isHybrid = isStoreHybrid(payload.getStoreName());
     if (!isHybrid) {
+      increaseConcurrentUserCount(topicName, partitionId);
       return prepareMetadata(payload);
     } else {
       snapshotTimestamps.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
@@ -139,6 +137,7 @@ public class BlobSnapshotManager {
               topicName,
               partitionId);
         }
+        increaseConcurrentUserCount(topicName, partitionId);
         return snapshotMetadataRecords.get(topicName).get(partitionId);
       }
     }
@@ -150,6 +149,17 @@ public class BlobSnapshotManager {
    * @param blobTransferRequest the blob transfer request
    */
   private void recreateSnapshotAndMetadata(BlobTransferPayload blobTransferRequest) {
+    // Only create a new snapshot if there is no concurrent user.
+    // Otherwise, the snapshot is still in use and being transferred, and should not be recreated.
+    if (getConcurrentSnapshotUsers(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) != 0L) {
+      String errorMessage = String.format(
+          "Snapshot for topic %s partition %d is still in use by others, can not recreate snapshot for new transfer request.",
+          blobTransferRequest.getTopicName(),
+          blobTransferRequest.getPartition());
+      LOGGER.error(errorMessage);
+      throw new VeniceException(errorMessage);
+    }
+
     String topicName = blobTransferRequest.getTopicName();
     int partitionId = blobTransferRequest.getPartition();
     try {
@@ -202,6 +212,15 @@ public class BlobSnapshotManager {
     }
     return System.currentTimeMillis()
         - snapshotTimestamps.get(topicName).get(partitionId) > snapshotRetentionTimeInMillis;
+  }
+
+  /**
+   * Increase the count of hosts using the snapshot
+   */
+  public void increaseConcurrentUserCount(String topicName, int partitionId) {
+    concurrentSnapshotUsers.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partitionId, k -> new AtomicLong(0))
+        .incrementAndGet();
   }
 
   /**

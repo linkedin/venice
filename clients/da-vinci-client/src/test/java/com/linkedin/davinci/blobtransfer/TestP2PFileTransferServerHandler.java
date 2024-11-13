@@ -160,6 +160,7 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    String file1ChecksumHeader = "attachment; checksum=\"" + BlobTransferUtils.generateFileChecksum(file1) + "\"";
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
 
     ch.writeInbound(request);
@@ -171,6 +172,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(
         httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
         "attachment; filename=\"file1\"");
+    Assert.assertEquals(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5), file1ChecksumHeader);
     Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
     // send the content in one chunk
     response = ch.readOutbound();
@@ -211,31 +213,43 @@ public class TestP2PFileTransferServerHandler {
 
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);
+
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    String file1ChecksumHeader = "attachment; checksum=\"" + BlobTransferUtils.generateFileChecksum(file1) + "\"";
+
     Path file2 = snapshotDir.resolve("file2");
     Files.write(file2.toAbsolutePath(), "world".getBytes());
+    String file2ChecksumHeader = "attachment; checksum=\"" + BlobTransferUtils.generateFileChecksum(file2) + "\"";
+
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
     Set<String> fileNames = new HashSet<>();
+    Set<String> fileChecksums = new HashSet<>();
     // the order of file transfer is not guaranteed so put them into a set and remove them one by one
     Collections.addAll(fileNames, "attachment; filename=\"file1\"", "attachment; filename=\"file2\"");
+    Collections.addAll(fileChecksums, file1ChecksumHeader, file2ChecksumHeader);
+
     ch.writeInbound(request);
     // start of file1
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
+    Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
     fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
+    fileChecksums.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5));
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof LastHttpContent);
     // end of file1
+
     // start of file2
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
+    Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
     response = ch.readOutbound();

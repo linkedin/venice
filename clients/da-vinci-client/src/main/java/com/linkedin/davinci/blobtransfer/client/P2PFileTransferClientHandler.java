@@ -41,12 +41,15 @@ import org.apache.logging.log4j.Logger;
 public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<HttpObject> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferClientHandler.class);
   private static final Pattern FILENAME_PATTERN = Pattern.compile("filename=\"(.+?)\"");
+  private static final Pattern CHECKSUM_PATTERN = Pattern.compile("checksum=\"(.+?)\"");
   private final CompletionStage<InputStream> inputStreamFuture;
   private final BlobTransferPayload payload;
 
   // mutable states for a single file transfer. It will be updated for each file transfer.
   private FileChannel outputFileChannel;
   private String fileName;
+  private String fileChecksum;
+  private Path file;
   private long fileContentLength;
 
   public P2PFileTransferClientHandler(
@@ -88,11 +91,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         return;
       }
 
-      // Parse the file name
+      // Parse the file name and checksum from the response
       this.fileName = getFileNameFromHeader(response);
+      this.fileChecksum = getChecksumFromHeader(response);
+
       if (this.fileName == null) {
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
+
       LOGGER.debug("Starting blob transfer for file: {}", fileName);
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
@@ -109,7 +115,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
             payload.getPartition());
       }
 
-      Path file = Files.createFile(partitionDir.resolve(fileName));
+      this.file = Files.createFile(partitionDir.resolve(fileName));
 
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
 
@@ -153,6 +159,15 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
               "File size mismatch for " + fileName + ". Expected: " + fileContentLength + ", Actual: "
                   + outputFileChannel.size());
         }
+
+        // Checksum validation
+        String receivedFileChecksum = BlobTransferUtils.generateFileChecksum(file);
+        if (!receivedFileChecksum.equals(fileChecksum)) {
+          throw new VeniceException(
+              "File checksum mismatch for " + fileName + ". Expected: " + fileChecksum + ", Actual: "
+                  + receivedFileChecksum);
+        }
+
         resetState();
       }
     } else {
@@ -184,6 +199,17 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     String contentDisposition = response.headers().get(HttpHeaderNames.CONTENT_DISPOSITION);
     if (contentDisposition != null) {
       Matcher matcher = FILENAME_PATTERN.matcher(contentDisposition);
+      if (matcher.find()) {
+        return matcher.group(1);
+      }
+    }
+    return null;
+  }
+
+  private String getChecksumFromHeader(HttpResponse response) {
+    String contentMd5 = response.headers().get(HttpHeaderNames.CONTENT_MD5);
+    if (contentMd5 != null) {
+      Matcher matcher = CHECKSUM_PATTERN.matcher(contentMd5);
       if (matcher.find()) {
         return matcher.group(1);
       }

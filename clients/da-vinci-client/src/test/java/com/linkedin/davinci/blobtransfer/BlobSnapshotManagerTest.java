@@ -288,4 +288,38 @@ public class BlobSnapshotManagerTest {
       }
     }
   }
+
+  @Test
+  public void testNotAllowRecreateSnapshotWhenHavingConcurrentUsers() {
+    // Prepare
+    Store mockStore = mock(Store.class);
+
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.isHybrid()).thenReturn(true);
+
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
+
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
+
+    // Mock there is one existing snapshot user
+    blobSnapshotManager.increaseConcurrentUserCount(TOPIC_NAME, PARTITION_ID);
+
+    // New request but the snapshot info is not recorded, and it will try to generate a new snapshot
+    try {
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      Assert.fail("Should throw exception");
+    } catch (VeniceException e) {
+      String errorMessage = String.format(
+          "Snapshot for topic %s partition %d is still in use by others, can not recreate snapshot for new transfer request.",
+          TOPIC_NAME,
+          PARTITION_ID);
+      Assert.assertEquals(e.getMessage(), errorMessage);
+    }
+  }
 }

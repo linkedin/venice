@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
+
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -11,6 +13,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -100,6 +103,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return CompletableFuture.completedFuture(null);
     }
 
+    // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
+    // can bootstrap from Kafka.
+    if (!isOffsetLagged(store.getName(), versionNumber, partitionId, BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD)) {
+      return CompletableFuture.completedFuture(null);
+    }
+
     String storeName = store.getName();
     return blobTransferManager.get(storeName, versionNumber, partitionId).handle((inputStream, throwable) -> {
       if (throwable != null) {
@@ -113,6 +122,51 @@ public class DefaultIngestionBackend implements IngestionBackend {
       }
       return null;
     });
+  }
+
+  /**
+   * A helper method to check if the offset lag is within the allowed threshold.
+   * If the offset lag is smaller than the `blobTransferDisabledOffsetLagThreshold`,
+   * bootstrapping from Kafka firstly, even if blob transfer is enabled.
+   *
+   * @param store the store name
+   * @param versionNumber the version number
+   * @param partition the partition number
+   * @param blobTransferDisabledOffsetLagThreshold the maximum allowed offset lag threshold.
+   *        If the offset lag is within this threshold, bootstrapping from Kafka is allowed, even if blob transfer is enabled.
+   *        If the lag exceeds this threshold, bootstrapping should happen from blobs transfer firstly.
+   *
+   * @return true if the offset lag exceeds the threshold or if the lag is 0, indicating bootstrapping should happen from blobs transfer.
+   *         false otherwise
+   */
+  public boolean isOffsetLagged(
+      String store,
+      int versionNumber,
+      int partition,
+      long blobTransferDisabledOffsetLagThreshold) {
+    String topicName = Version.composeKafkaTopic(store, versionNumber);
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partition);
+    LOGGER.info(
+        "Store {} partition {} topic offset is {}, offset lag is {}",
+        store,
+        partition,
+        offsetRecord.getLocalVersionTopicOffset(),
+        offsetRecord.getOffsetLag());
+
+    if (offsetRecord == null || (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1)) {
+      return true;
+    }
+
+    if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
+      LOGGER.info(
+          "Offset lag {} for store {} partition {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
+          offsetRecord.getOffsetLag(),
+          store,
+          partition,
+          blobTransferDisabledOffsetLagThreshold);
+      return false;
+    }
+    return true;
   }
 
   @Override

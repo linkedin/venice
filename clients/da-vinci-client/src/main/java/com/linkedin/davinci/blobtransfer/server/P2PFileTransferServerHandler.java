@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.Unpooled;
@@ -140,6 +141,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
       // transfer files
       for (File file: files) {
+        // check if the transfer for all files is timed out for this partition
         if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN)) {
           String errMessage = String
               .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
@@ -147,7 +149,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
           return;
         }
-
+        // send file
         sendFile(file, ctx);
       }
 
@@ -201,10 +203,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ChannelFuture sendFileFuture;
     ChannelFuture lastContentFuture;
     long length = raf.length();
+    String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
+
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_OCTET_STREAM);
     response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"");
+    response.headers().set(HttpHeaderNames.CONTENT_MD5, "attachment; checksum=\"" + fileChecksum + "\"");
     response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     ctx.write(response);
