@@ -37,12 +37,14 @@ import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -157,8 +159,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * metadata of each admin operation are included in the {@link AdminOperationWrapper}.
    */
   private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
-
-  private final ConcurrentHashMap<String, AdminExecutionTask> storeToScheduledTask;
 
   /**
    * Map of store names that have encountered some sort of exception during consumption to {@link AdminErrorInfo}
@@ -280,7 +280,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
-    this.storeToScheduledTask = new ConcurrentHashMap<>();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
         maxWorkerThreadPoolSize,
@@ -454,7 +453,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
-      storeToScheduledTask.clear();
       failingOffset = UNASSIGNED_VALUE;
       offsetToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
@@ -485,6 +483,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void executeMessagesAndCollectResults() throws InterruptedException {
     lastSucceededExecutionIdMap =
         new ConcurrentHashMap<>(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName));
+    /** This set is used to track which store has a task scheduled, so that we schedule at most one per store. */
+    Set<String> storesWithScheduledTask = new HashSet<>();
     /** List of tasks to be executed by the worker threads. */
     List<Callable<Void>> tasks = new ArrayList<>();
     /**
@@ -518,10 +518,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             executionIdAccessor,
             isParentController,
             stats,
-            regionName,
-            storeToScheduledTask);
+            regionName);
         // Check if there is previously created scheduled task still occupying one thread from the pool.
-        if (storeToScheduledTask.putIfAbsent(storeName, newTask) == null) {
+        if (storesWithScheduledTask.add(storeName)) {
           // Log the store name and the offset of the task being added into the task list
           LOGGER.info(
               "Adding admin message from store {} with offset {} to the task list",
