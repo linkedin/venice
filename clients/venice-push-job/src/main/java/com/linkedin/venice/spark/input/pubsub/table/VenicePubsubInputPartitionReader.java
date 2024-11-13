@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -150,8 +151,13 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
   @Override
   public void close() {
     pubSubConsumer.close();
-    LOGGER.info("Consuming ended for Topic: {} , consumed {} records,", targetPubSubTopicName, recordsServed);
-    LOGGER.info(" skipped {} records, gets invoked : {} .", recordsSkipped, recordsDeliveredByGet);
+    double progressPercent = (currentOffset - startingOffset) * 100.0 / offsetLength;
+    LOGGER.info(
+        "Consuming ended for Topic: {} , consumed {}% of {} records,",
+        targetPubSubTopicName,
+        progressPercent,
+        recordsServed);
+    LOGGER.info("Skipped {} records, delivered rows {} times .", recordsSkipped, recordsDeliveredByGet);
   }
 
   // borrowing Gaojie's code for dealing with empty polls.
@@ -215,7 +221,6 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
     long offset = pubSubMessage.getOffset();
     ByteBuffer key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
     ByteBuffer value;
-    int partition = targetPartitionNumber;
     int messageType;
     int schemaId;
     ByteBuffer replicationMetadataPayload;
@@ -282,29 +287,33 @@ public class VenicePubsubInputPartitionReader implements PartitionReader<Interna
     replicationMetadataPayload.get(replicationMetadataPayloadBytes);
 
     return new GenericInternalRow(
-        new Object[] { offset, keyBytes, valueBytes, partition, messageType, schemaId, replicationMetadataPayloadBytes,
-            replicationMetadataVersionId });
+        new Object[] { offset, keyBytes, valueBytes, targetPartitionNumber, messageType, schemaId,
+            replicationMetadataPayloadBytes, replicationMetadataVersionId });
   }
 
   private void maybeLogProgress() {
-    long progressPercent = (currentOffset - startingOffset) * 100 / offsetLength;
+    double progressPercent = (currentOffset - startingOffset) * 100.0 / offsetLength;
     if (progressPercent > 10 + lastKnownProgressPercent) {
       logProgress();
-      lastKnownProgressPercent = progressPercent;
+      lastKnownProgressPercent = (long) progressPercent;
     }
   }
 
   private void logProgress() {
-    long progressPercent = (currentOffset - startingOffset) * 100 / offsetLength;
+    double progressPercent = (currentOffset - startingOffset) * 100.0 / offsetLength;
     LOGGER.info(
         "Consuming progress for"
             + " Topic: {}, partition {} , consumed {}% of {} records. actual records delivered: {}, records skipped: {}",
         targetPubSubTopicName,
         targetPartitionNumber,
-        progressPercent,
+        String.format("%.1f", (float) progressPercent),
         offsetLength,
         recordsServed,
         recordsSkipped);
+  }
+
+  public List<Long> getStats() {
+    return Arrays.asList(currentOffset, recordsServed, recordsSkipped, recordsDeliveredByGet);
   }
 
   // go through the current buffer and find the next usable message
