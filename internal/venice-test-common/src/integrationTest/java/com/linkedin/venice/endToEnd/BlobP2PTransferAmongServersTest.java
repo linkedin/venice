@@ -342,9 +342,9 @@ public class BlobP2PTransferAmongServersTest {
       veniceProducer.stop();
     }
 
+    cluster.restartVeniceServer(server1.getPort());
     // restart server 1
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-      cluster.restartVeniceServer(server1.getPort());
       Assert.assertTrue(server1.isRunning());
     });
 

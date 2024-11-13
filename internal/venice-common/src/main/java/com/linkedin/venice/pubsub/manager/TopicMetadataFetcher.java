@@ -392,7 +392,7 @@ class TopicMetadataFetcher implements Closeable {
     if (cachedValue == null) {
       cachedValue = latestOffsetCache.get(pubSubTopicPartition);
       if (cachedValue == null) {
-        return -1;
+        return PubSubConstants.UNKNOWN_LATEST_OFFSET;
       }
     }
     return cachedValue.getValue();

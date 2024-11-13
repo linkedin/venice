@@ -1,7 +1,9 @@
 package com.linkedin.venice.helix;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.mockito.Mockito;

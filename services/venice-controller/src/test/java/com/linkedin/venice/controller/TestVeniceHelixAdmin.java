@@ -75,7 +75,7 @@ public class TestVeniceHelixAdmin {
   @Test
   public void enforceRealTimeTopicCreationBeforeWriting() {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doReturn("test_rt").when(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString());
+    doReturn("test_rt").when(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString(), any());
     doCallRealMethod().when(veniceHelixAdmin).setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString());
 
     InOrder inorder = inOrder(veniceHelixAdmin);
@@ -92,7 +92,7 @@ public class TestVeniceHelixAdmin {
     veniceHelixAdmin.setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString());
 
     // Enforce that getRealTimeTopic happens before storeMetadataUpdate. See the above comments for the reasons.
-    inorder.verify(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString());
+    inorder.verify(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString(), any());
     inorder.verify(veniceHelixAdmin).storeMetadataUpdate(anyString(), anyString(), any());
   }
 
