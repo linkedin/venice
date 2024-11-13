@@ -209,6 +209,9 @@ public class VeniceServerTest {
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
+      server.getVeniceServer().getStorageService().removeStorageEngine(storeName);
+      repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
     }
   }
 
