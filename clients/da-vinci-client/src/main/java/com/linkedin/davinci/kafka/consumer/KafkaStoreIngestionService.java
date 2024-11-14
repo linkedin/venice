@@ -20,7 +20,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -1147,7 +1147,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return kafkaConsumerProperties;
   }
 
-  @Override
   public ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
     return storageMetadataService.getStoreVersionCompressionDictionary(topicName);
   }
@@ -1156,7 +1155,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicNameToIngestionTaskMap.get(topicName);
   }
 
-  @Override
   public AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions) {
     AdminResponse response = new AdminResponse();
     StoreIngestionTask ingestionTask = getStoreIngestionTask(topicName);
@@ -1172,26 +1170,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return response;
   }
 
-  public TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
+  public ReplicaIngestionResponse getTopicPartitionIngestionContext(
       String versionTopic,
       String topicName,
       int partitionId) {
-    TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
-        new TopicPartitionIngestionContextResponse();
+    ReplicaIngestionResponse replicaIngestionResponse = new ReplicaIngestionResponse();
     PubSubTopic pubSubVersionTopic = pubSubTopicRepository.getTopic(versionTopic);
     PubSubTopic requestTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(requestTopic, partitionId);
     try {
       byte[] topicPartitionInfo = aggKafkaConsumerService.getIngestionInfoFor(pubSubVersionTopic, pubSubTopicPartition);
-      topicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(topicPartitionInfo);
+      replicaIngestionResponse.setPayload(topicPartitionInfo);
     } catch (Exception e) {
-      topicPartitionIngestionContextResponse.setError(true);
-      topicPartitionIngestionContextResponse.setMessage(e.getMessage());
+      replicaIngestionResponse.setError(true);
+      replicaIngestionResponse.setMessage(e.getMessage());
       LOGGER.error(
           "Error on get topic partition ingestion context for resource: " + Utils.getReplicaId(topicName, partitionId),
           e);
     }
-    return topicPartitionIngestionContextResponse;
+    return replicaIngestionResponse;
   }
 
   /**

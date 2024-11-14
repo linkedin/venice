@@ -32,6 +32,7 @@ public class TestTopicCleanupServiceForParentController {
   @BeforeTest
   public void setUp() {
     admin = mock(Admin.class);
+    doReturn(true).when(admin).isParent();
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);

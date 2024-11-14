@@ -450,6 +450,8 @@ public abstract class TestRead {
         storeClient.batchGet(keySet).get();
         fail("Should receive exception since the batch request key count exceeds cluster-level threshold");
       } catch (Exception e) {
+        double unhealthyRequestCount = getAggregateRouterMetricValue(".total--multiget_unhealthy_request.Count");
+        Assert.assertEquals(unhealthyRequestCount, 0.0, "There should not be any unhealthy requests!");
         LOGGER.info(e);
       }
       // Bump up store-level max key count in batch-get request

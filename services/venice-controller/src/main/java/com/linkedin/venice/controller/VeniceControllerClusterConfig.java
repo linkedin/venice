@@ -52,6 +52,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -145,7 +146,6 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCH
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -191,8 +191,8 @@ import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
-import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -213,6 +213,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
+import org.apache.helix.model.CloudConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -366,10 +367,9 @@ public class VeniceControllerClusterConfig {
 
   private final boolean controllerClusterHelixCloudEnabled;
   private final boolean storageClusterHelixCloudEnabled;
-  private final CloudProvider helixCloudProvider;
-  private final String helixCloudId;
-  private final List<String> helixCloudInfoSources;
-  private final String helixCloudInfoProcessorName;
+  private final CloudConfig helixCloudConfig;
+
+  private final String helixRestCustomizedHealthUrl;
 
   private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
@@ -430,7 +430,6 @@ public class VeniceControllerClusterConfig {
   private final boolean sslToKafka;
   private final int helixSendMessageTimeoutMilliseconds;
   private final int adminTopicReplicationFactor;
-  private final PushMonitorType pushMonitorType;
 
   private final String kafkaSecurityProtocol;
   // SSL related config
@@ -629,8 +628,6 @@ public class VeniceControllerClusterConfig {
     this.pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
     this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
     this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
-    this.pushMonitorType =
-        PushMonitorType.valueOf(props.getString(PUSH_MONITOR_TYPE, PushMonitorType.WRITE_COMPUTE_STORE.name()));
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
@@ -910,26 +907,33 @@ public class VeniceControllerClusterConfig {
     this.storageClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
 
     if (controllerClusterHelixCloudEnabled || storageClusterHelixCloudEnabled) {
+      CloudProvider helixCloudProvider;
       String controllerCloudProvider = props.getString(CONTROLLER_HELIX_CLOUD_PROVIDER).toUpperCase();
       try {
-        this.helixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
+        helixCloudProvider = CloudProvider.valueOf(controllerCloudProvider);
       } catch (IllegalArgumentException e) {
         throw new VeniceException(
             "Invalid Helix cloud provider: " + controllerCloudProvider + ". Must be one of: "
                 + Arrays.toString(CloudProvider.values()));
       }
+
+      String helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
+      String helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
+
+      List<String> helixCloudInfoSources;
+      if (props.getString(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, "").isEmpty()) {
+        helixCloudInfoSources = Collections.emptyList();
+      } else {
+        helixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES);
+      }
+
+      helixCloudConfig = HelixUtils
+          .getCloudConfig(helixCloudProvider, helixCloudId, helixCloudInfoSources, helixCloudInfoProcessorName);
     } else {
-      this.helixCloudProvider = null;
+      helixCloudConfig = null;
     }
 
-    this.helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
-    this.helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
-
-    if (props.getString(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, "").isEmpty()) {
-      this.helixCloudInfoSources = Collections.emptyList();
-    } else {
-      this.helixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES);
-    }
+    this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1577,20 +1581,12 @@ public class VeniceControllerClusterConfig {
     return storageClusterHelixCloudEnabled;
   }
 
-  public CloudProvider getHelixCloudProvider() {
-    return helixCloudProvider;
+  public CloudConfig getHelixCloudConfig() {
+    return helixCloudConfig;
   }
 
-  public String getHelixCloudId() {
-    return helixCloudId;
-  }
-
-  public List<String> getHelixCloudInfoSources() {
-    return helixCloudInfoSources;
-  }
-
-  public String getHelixCloudInfoProcessorName() {
-    return helixCloudInfoProcessorName;
+  public String getHelixRestCustomizedHealthUrl() {
+    return helixRestCustomizedHealthUrl;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {

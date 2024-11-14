@@ -51,7 +51,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
@@ -1454,14 +1454,14 @@ public class PartialUpdateTest {
           .getVeniceServers()) {
         KafkaStoreIngestionService kafkaStoreIngestionService =
             serverWrapper.getVeniceServer().getKafkaStoreIngestionService();
-        TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
+        ReplicaIngestionResponse replicaIngestionResponse =
             kafkaStoreIngestionService.getTopicPartitionIngestionContext(
                 versionTopic.getName(),
                 pubSubTopicPartition.getTopicName(),
                 pubSubTopicPartition.getPartitionNumber());
         try {
-          Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContexts = VENICE_JSON_SERIALIZER
-              .deserialize(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(), "");
+          Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContexts =
+              VENICE_JSON_SERIALIZER.deserialize(replicaIngestionResponse.getPayload(), "");
           if (!topicPartitionIngestionContexts.isEmpty()) {
             int regionCount = 0;
             for (Map.Entry<String, Map<String, TopicPartitionIngestionInfo>> entry: topicPartitionIngestionContexts

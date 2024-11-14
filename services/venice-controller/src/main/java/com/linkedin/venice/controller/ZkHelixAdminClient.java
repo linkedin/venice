@@ -19,12 +19,12 @@ import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
-import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
+import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -92,18 +92,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         if (!helixAdmin.addCluster(controllerClusterName, false)) {
           throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
         }
-        Map<String, String> helixClusterProperties = new HashMap<>();
-        helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+        ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
+        clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
         // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
         // choose proper instance to hold the replica.
-        helixClusterProperties
-            .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
+        clusterConfig.setTopologyAwareEnabled(false);
 
-        updateClusterConfigs(controllerClusterName, helixClusterProperties);
+        updateClusterConfigs(controllerClusterName, clusterConfig);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
         if (commonConfig.isControllerClusterHelixCloudEnabled()) {
-          setCloudConfig(controllerClusterName, commonConfig);
+          helixAdmin.addCloudConfig(controllerClusterName, commonConfig.getHelixCloudConfig());
         }
       }
       return true;
@@ -116,21 +115,25 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceStorageCluster(String, Map)
+   * @see HelixAdminClient#createVeniceStorageCluster(String, ClusterConfig, RESTConfig)
    */
   @Override
-  public void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties) {
+  public void createVeniceStorageCluster(String clusterName, ClusterConfig helixClusterConfig, RESTConfig restConfig) {
     boolean success = RetryUtils.executeWithMaxAttempt(() -> {
       if (!isVeniceStorageClusterCreated(clusterName)) {
         if (!helixAdmin.addCluster(clusterName, false)) {
           throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
         }
-        updateClusterConfigs(clusterName, helixClusterProperties);
+        updateClusterConfigs(clusterName, helixClusterConfig);
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-        if (config.isStorageClusterHelixCloudEnabled()) {
-          setCloudConfig(clusterName, config);
+        VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+        if (clusterConfig.isStorageClusterHelixCloudEnabled()) {
+          helixAdmin.addCloudConfig(clusterName, clusterConfig.getHelixCloudConfig());
+        }
+
+        if (restConfig != null) {
+          updateRESTConfigs(clusterName, restConfig);
         }
       }
       return true;
@@ -207,13 +210,25 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#updateClusterConfigs(String, Map)
+   * @see HelixAdminClient#updateClusterConfigs(String, ClusterConfig)
    */
   @Override
-  public void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties) {
+  public void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig) {
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
+    Map<String, String> helixClusterProperties = new HashMap<>(clusterConfig.getRecord().getSimpleFields());
     helixAdmin.setConfig(configScope, helixClusterProperties);
+  }
+
+  /**
+   * @see HelixAdminClient#updateRESTConfigs(String, RESTConfig)
+   */
+  @Override
+  public void updateRESTConfigs(String clusterName, RESTConfig restConfig) {
+    HelixConfigScope configScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.REST).forCluster(clusterName).build();
+    Map<String, String> helixRestProperties = new HashMap<>(restConfig.getRecord().getSimpleFields());
+    helixAdmin.setConfig(configScope, helixRestProperties);
   }
 
   /**
@@ -317,26 +332,5 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void close() {
     helixAdmin.close();
-  }
-
-  public void setCloudConfig(String clusterName, VeniceControllerClusterConfig config) {
-    String cloudId = config.getHelixCloudId();
-    List<String> cloudInfoSources = config.getHelixCloudInfoSources();
-    String cloudInfoProcessorName = config.getHelixCloudInfoProcessorName();
-    CloudConfig.Builder cloudConfigBuilder =
-        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(config.getHelixCloudProvider());
-
-    if (!cloudId.isEmpty()) {
-      cloudConfigBuilder.setCloudID(cloudId);
-    }
-
-    if (!cloudInfoSources.isEmpty()) {
-      cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
-    }
-
-    if (!cloudInfoProcessorName.isEmpty()) {
-      cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
-    }
-    helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
   }
 }

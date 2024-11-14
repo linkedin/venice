@@ -1106,6 +1106,8 @@ public class DaVinciClientTest {
 
         // Verify that closed cached client can be restarted.
         client.close();
+        // Verify that 2nd close call on the same store won't throw exception.
+        client.close();
         DaVinciClient<Integer, Integer> client1 = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
         assertEquals((int) client1.get(1).get(), 1);
 

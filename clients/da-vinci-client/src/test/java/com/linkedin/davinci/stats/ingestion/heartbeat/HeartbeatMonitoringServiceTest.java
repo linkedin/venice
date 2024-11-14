@@ -1,5 +1,15 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.mock;
+
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -8,9 +18,14 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.tuple.MutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -21,6 +36,111 @@ public class HeartbeatMonitoringServiceTest {
   private static final String REMOTE_FABRIC = "remote";
 
   private static final String TEST_STORE = "Vivaldi_store";
+
+  @Test
+  public void testGetHeartbeatInfo() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService).getHeartbeatInfo(anyString(), anyInt(), anyBoolean());
+    heartbeatMonitoringService.getHeartbeatInfo("", -1, false);
+    Mockito.verify(heartbeatMonitoringService, Mockito.times(2))
+        .getHeartbeatInfoFromMap(any(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
+  }
+
+  @Test
+  public void testGetHeartbeatInfoFromMap() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getHeartbeatInfoFromMap(anyMap(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
+    Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> leaderMap =
+        new VeniceConcurrentHashMap<>();
+    String store = "testStore";
+    int version = 1;
+    int partition = 1;
+    String region = "dc-0";
+    long timestamp = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(5);
+    leaderMap.put(store, new VeniceConcurrentHashMap<>());
+    leaderMap.get(store).put(version, new VeniceConcurrentHashMap<>());
+    leaderMap.get(store).get(version).put(partition, new VeniceConcurrentHashMap<>());
+    leaderMap.get(store).get(version).get(partition).put(region, new MutablePair<>(timestamp, true));
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, version),
+                -1,
+                false)
+            .size(),
+        1);
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, version),
+                -1,
+                true)
+            .size(),
+        0);
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, version),
+                -1,
+                false)
+            .size(),
+        1);
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, version),
+                1,
+                false)
+            .size(),
+        1);
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, version),
+                2,
+                false)
+            .size(),
+        0);
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, 2),
+                -1,
+                false)
+            .size(),
+        0);
+    Assert.assertEquals(
+        heartbeatMonitoringService
+            .getHeartbeatInfoFromMap(
+                leaderMap,
+                LeaderFollowerStateType.LEADER.name(),
+                System.currentTimeMillis(),
+                Version.composeKafkaTopic(store, version),
+                1,
+                false)
+            .size(),
+        1);
+
+  }
 
   @Test
   public void testAddLeaderLagMonitor() {
@@ -38,7 +158,7 @@ public class HeartbeatMonitoringServiceTest {
 
     currentVersion.setActiveActiveReplicationEnabled(true);
 
-    Store mockStore = Mockito.mock(Store.class);
+    Store mockStore = mock(Store.class);
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
     Mockito.when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
     Mockito.when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
@@ -47,7 +167,7 @@ public class HeartbeatMonitoringServiceTest {
     Mockito.when(mockStore.getVersion(3)).thenReturn(futureVersion);
 
     MetricsRepository mockMetricsRepository = new MetricsRepository();
-    ReadOnlyStoreRepository mockReadOnlyRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
     Mockito.when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
 
     Set<String> regions = new HashSet<>();

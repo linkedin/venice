@@ -4,10 +4,14 @@ import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EX
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
@@ -42,6 +46,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -230,5 +235,20 @@ public class AvroGenericDaVinciClientTest {
         readChunkExecutor);
     assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), readChunkExecutor);
 
+    // Close a not-ready client won't throw exception.
+    daVinciClient.close();
+  }
+
+  @Test
+  public void closeTest() {
+    AvroGenericDaVinciClient client = mock(AvroGenericDaVinciClient.class);
+    doCallRealMethod().when(client).close();
+    doReturn(LogManager.getLogger(AvroGenericDaVinciClient.class)).when(client).getClientLogger();
+    doReturn(false).when(client).isReady();
+    client.close();
+    verify(client, never()).closeInner();
+    doReturn(true).when(client).isReady();
+    client.close();
+    verify(client, times(1)).closeInner();
   }
 }

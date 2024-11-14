@@ -10,8 +10,14 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
@@ -29,9 +35,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -47,6 +56,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.commons.lang.StringUtils;
+import org.apache.helix.cloud.constants.CloudProvider;
+import org.apache.helix.model.CloudConfig;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -224,5 +236,63 @@ public class TestVeniceControllerClusterConfig {
       VeniceProperties controllerPropsInvalid = new VeniceProperties(properties);
       assertThrows(IllegalArgumentException.class, () -> parsePushJobUserErrorCheckpoints(controllerPropsInvalid));
     }
+  }
+
+  @Test
+  public void testHelixCloudConfig() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.setProperty(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, "true");
+
+    UndefinedPropertyException e1 = expectThrows(
+        UndefinedPropertyException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(baseProps)));
+    assertTrue(e1.getMessage().contains("Missing required property '" + CONTROLLER_HELIX_CLOUD_PROVIDER + "'"));
+
+    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_PROVIDER, "invalidProvider");
+    VeniceException e2 =
+        expectThrows(VeniceException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(baseProps)));
+    assertTrue(e2.getMessage().contains("Invalid Helix cloud provider"));
+
+    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_PROVIDER, CloudProvider.AZURE.name());
+    VeniceControllerClusterConfig clusterConfig1 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    validateCloudConfig(clusterConfig1, CloudProvider.AZURE, null, null, null);
+
+    CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
+    String cloudId = "ABC";
+    String processorName = "testProcessor";
+    List<String> cloudInfoSources = Arrays.asList("source1", "source2");
+
+    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_PROVIDER, cloudProvider.name());
+    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_ID, cloudId);
+    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, processorName);
+    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, StringUtils.join(cloudInfoSources, ","));
+
+    VeniceControllerClusterConfig clusterConfig2 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    validateCloudConfig(clusterConfig2, CloudProvider.CUSTOMIZED, cloudId, processorName, cloudInfoSources);
+  }
+
+  private void validateCloudConfig(
+      VeniceControllerClusterConfig clusterConfig,
+      CloudProvider cloudProvider,
+      String cloudId,
+      String processorName,
+      List<String> cloudInfoSources) {
+    CloudConfig cloudConfig = clusterConfig.getHelixCloudConfig();
+    assertTrue(cloudConfig.isCloudEnabled());
+    assertEquals(cloudConfig.getCloudProvider(), cloudProvider.name());
+    assertEquals(cloudConfig.getCloudID(), cloudId);
+    assertEquals(cloudConfig.getCloudInfoProcessorName(), processorName);
+    assertEquals(cloudConfig.getCloudInfoSources(), cloudInfoSources);
+  }
+
+  @Test
+  public void testHelixRestCustomizedHealthUrl() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    String healthUrl = "http://localhost:8080/health";
+    baseProps.setProperty(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, healthUrl);
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getHelixRestCustomizedHealthUrl(), healthUrl);
   }
 }

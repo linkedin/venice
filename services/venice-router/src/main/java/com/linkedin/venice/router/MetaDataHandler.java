@@ -146,7 +146,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER = "Store: %s could not be found in cluster: %s";
 
   static final String REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS =
-      "Blob Discovery: blob transfer is not enabled or store: %s is not a batch-only store";
+      "Blob Discovery: blob transfer is not enabled for store: %s";
 
   static final String REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS =
       "Blob Discovery: missing storeName:%s, storeVersion:%s, or storePartition:%s";
@@ -553,7 +553,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    if (!store.isBlobTransferEnabled() || store.isHybrid()) {
+    if (!store.isBlobTransferEnabled()) {
       byte[] errBody = (String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, storeName)).getBytes();
       setupResponseAndFlush(FORBIDDEN, errBody, false, ctx);
       return;
