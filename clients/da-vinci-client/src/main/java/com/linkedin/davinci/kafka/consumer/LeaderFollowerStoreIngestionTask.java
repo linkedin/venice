@@ -2157,7 +2157,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
         LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
         LeaderCompleteState newState = oldState;
-        for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+        for (PubSubMessageHeader header: pubSubMessageHeaders) {
           if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
             newState = LeaderCompleteState.valueOf(header.value()[0]);
             partitionConsumptionState

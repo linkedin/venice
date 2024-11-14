@@ -369,7 +369,8 @@ subprojects {
         }
         classes = classDirs.asFileTree.matching { exclude generatedClasses }
         auxClassPaths += classDirs.asFileTree.matching { include generatedClasses }.each {
-          println "Excluding generated class ${project.relativePath(it)}"
+          // Muted to reduce noise, but can be uncommented to debug exclusions
+          // println "Excluding generated class ${project.relativePath(it)}"
         }
       }
     }

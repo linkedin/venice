@@ -537,7 +537,7 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic newTopic,
       int partition,
       List<Long> localHighWatermarks) {
-    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     VersionSwap versionSwapMessage = new VersionSwap();
     versionSwapMessage.oldServingVersionTopic = oldTopic.getName();
     versionSwapMessage.newServingVersionTopic = newTopic.getName();
@@ -616,7 +616,7 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic versionTopic,
       int partition,
       Long offset) {
-    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     EndOfPush endOfPush = new EndOfPush();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();
@@ -633,7 +633,7 @@ public class VeniceChangelogConsumerImplTest {
   private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructStartOfPushMessage(
       PubSubTopic versionTopic,
       int partition) {
-    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.compressionStrategy = CompressionStrategy.NO_OP.getValue();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();

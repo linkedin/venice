@@ -46,7 +46,7 @@ public class DictionaryUtilsTest {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
     doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
-    KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
     startOfPush.compressionDictionary = ByteBuffer.wrap(dictionaryToSend);
@@ -77,7 +77,7 @@ public class DictionaryUtilsTest {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
     doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
-    KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
 
     ControlMessage sopCM = new ControlMessage();
@@ -134,7 +134,7 @@ public class DictionaryUtilsTest {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
     doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
-    KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
     startOfPush.compressionDictionary = ByteBuffer.wrap(dictionaryToSend);

@@ -248,11 +248,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private final String regionName;
 
-  /**
-   * List of tasks to be executed by the worker threads.
-   */
-  private List<Callable<Void>> tasks;
-
   public AdminConsumptionTask(
       String clusterName,
       PubSubConsumerAdapter consumer,
@@ -497,7 +492,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void executeMessagesAndCollectResults() throws InterruptedException {
     lastSucceededExecutionIdMap =
         new ConcurrentHashMap<>(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName));
-    this.tasks = new ArrayList<>();
+    List<Callable<Void>> tasks = new ArrayList<>();
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
     boolean skipOffsetCommandHasBeenProcessed = false;
@@ -528,7 +523,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               "Adding admin message from store {} with offset {} to the task list",
               entry.getKey(),
               adminMessageOffset);
-          this.tasks.add(newTask);
+          tasks.add(newTask);
           stores.add(entry.getKey());
         }
       }
@@ -538,13 +533,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
 
     if (isRunning.get()) {
-      if (!this.tasks.isEmpty()) {
+      if (!tasks.isEmpty()) {
         int pendingAdminMessagesCount = 0;
         int storesWithPendingAdminMessagesCount = 0;
         long adminExecutionTasksInvokeTime = System.currentTimeMillis();
         // Wait for the worker threads to finish processing the internal admin topics.
         List<Future<Void>> results =
-            executorService.invokeAll(this.tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
+            executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
         stats.recordAdminConsumptionCycleDurationMs(System.currentTimeMillis() - adminExecutionTasksInvokeTime);
         Map<String, Long> newLastSucceededExecutionIdMap =
             executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
