@@ -107,16 +107,16 @@ jobs:
            echo "StaticAnalysis failed."
            exit 1
          fi
-         if [ "${{ needs.ClientsUnitTestCov.result }}" != "success" ]; then
-           echo "ClientsUnitTestCov failed."
+         if [ "${{ needs.ClientsModule.result }}" != "success" ]; then
+           echo "ClientsModule failed."
            exit 1
          fi
-         if [ "${{ needs.InternalUnitTestCov.result }}" != "success" ]; then
-           echo "InternalUnitTestCov failed."
+         if [ "${{ needs.InternalModule.result }}" != "success" ]; then
+           echo "InternalModule failed."
            exit 1
          fi
-         if [ "${{ needs.ServicesUnitTestCov.result }}" != "success" ]; then
-           echo "ServicesUnitTestCov failed."
+         if [ "${{ needs.ServicesModule.result }}" != "success" ]; then
+           echo "ServicesModule failed."
            exit 1
          fi
       # If all previous jobs were successful, proceed
