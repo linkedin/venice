@@ -640,11 +640,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Adds an asynchronous partition drop request for the task.
    * This is always a Helix triggered action
    */
-  public synchronized CompletableFuture<Void> dropPartition(PubSubTopicPartition topicPartition) {
+  public synchronized void dropPartition(PubSubTopicPartition topicPartition) {
     throwIfNotRunning();
     ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
     consumerActionsQueue.add(consumerAction);
-    return consumerAction.getFuture();
   }
 
   public boolean hasAnySubscription() {
@@ -3907,6 +3906,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
     // resources before exiting.
+
+    LOGGER.info("Closed ingestionTask");
 
     if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();

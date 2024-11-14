@@ -919,8 +919,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (isIsolatedIngestion) {
         LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
       } else {
-        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
-        shutdownStoreIngestionTask(topicName);
+        // LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+        // shutdownStoreIngestionTask(topicName);
       }
     }
   }
@@ -931,7 +931,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    */
-  public CompletableFuture<Void> dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
+  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
     final String topic = veniceStore.getStoreVersionName();
 
     if (isPartitionConsuming(topic, partitionId)) {
@@ -941,11 +941,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null && ingestionTask.isRunning()) {
-        return ingestionTask
-            .dropPartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+        ingestionTask.dropPartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
-        LOGGER.warn("Ignoring drop partition message for Topic {} Partition {}", topic, partitionId);
-        return CompletableFuture.completedFuture(null);
+        LOGGER.info(
+            "Ingestion task isn't running for Topic {} Partition {}. Dropping partition synchronously instead",
+            veniceStore.getStoreVersionName(),
+            partitionId);
+        this.storageService.dropStorePartition(veniceStore, partitionId, true);
       }
     }
   }
