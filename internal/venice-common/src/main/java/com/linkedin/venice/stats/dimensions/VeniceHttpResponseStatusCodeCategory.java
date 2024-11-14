@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats.opentelemetrydimensions;
+package com.linkedin.venice.stats.dimensions;
 
 /**
  * Copied {@link io.netty.handler.codec.http.HttpStatusClass} and modified it to have 1xx, 2xx, etc. as categories

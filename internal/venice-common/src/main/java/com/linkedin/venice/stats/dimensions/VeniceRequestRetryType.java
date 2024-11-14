@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats.opentelemetrydimensions;
+package com.linkedin.venice.stats.dimensions;
 
 public enum VeniceRequestRetryType {
   ERROR_RETRY("error_retry"), LONG_TAIL_RETRY("long_tail_retry");

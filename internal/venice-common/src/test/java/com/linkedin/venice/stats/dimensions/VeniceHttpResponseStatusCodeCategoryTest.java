@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats.opentelemetrydimensions;
+package com.linkedin.venice.stats.dimensions;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;

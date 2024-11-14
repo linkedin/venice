@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats.opentelemetrydimensions;
+package com.linkedin.venice.stats.dimensions;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat.CAMEL_CASE;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat.PASCAL_CASE;

@@ -1,14 +1,5 @@
-package com.linkedin.venice.stats.opentelemetrydimensions;
+package com.linkedin.venice.stats.dimensions;
 
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.opentelemetrydimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat;

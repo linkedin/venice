@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats.opentelemetrydimensions;
+package com.linkedin.venice.stats.dimensions;
 
 public enum VeniceResponseStatusCategory {
   HEALTHY("healthy"), UNHEALTHY("unhealthy"), TARDY("tardy"), THROTTLED("throttled"), BAD_REQUEST("bad_request");
