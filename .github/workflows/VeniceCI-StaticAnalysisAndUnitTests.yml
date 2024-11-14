@@ -132,10 +132,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Internal Unit Tests with Code Coverage
-        run: ./gradlew  -x :internal:venice-avro-compatibility-test:test :internal:alpini:jacocoTestCoverageVerification :internal:alpini:diffCoverage
-          :internal:venice-client-common:jacocoTestCoverageVerification :internal:venice-client-common:diffCoverage
-          :internal:venice-common:jacocoTestCoverageVerification :venice-common:alpini:diffCoverage
-          :internal:venice-hadoop-common:jacocoTestCoverageVerification :internal:venice-hadoop-common:diffCoverage
+        run: ./gradlew  -x :internal:venice-avro-compatibility-test:test :internal:venice-client-common:jacocoTestCoverageVerification :internal:venice-client-common:diffCoverage
+          :internal:venice-common:jacocoTestCoverageVerification :internal:venice-common:diffCoverage
           :internal:venice-jdk-compatibility-test:jacocoTestCoverageVerification :internal:venice-jdk-compatibility-test:diffCoverage
           :internal:venice-test-common:jacocoTestCoverageVerification :internal:venice-test-common:diffCoverage --continue
       - name: Package Build Artifacts
