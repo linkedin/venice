@@ -58,7 +58,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  ClientsUnitTestCov:
+  ClientsModule:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     arg: :clients:da-vinci-client:jacocoTestCoverageVerification :clients:da-vinci-client:diffCoverage
@@ -70,7 +70,7 @@ jobs:
       :clients:venice-samza:jacocoTestCoverageVerification :clients:venice-samza:diffCoverage
       :clients:venice-thin-client:jacocoTestCoverageVerification :clients:venice-thin-client:diffCoverage --continue
 
-  InternalUnitTestCov:
+  InternalModule:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     arg: :internal:venice-client-common:jacocoTestCoverageVerification :internal:venice-client-common:diffCoverage
@@ -79,7 +79,7 @@ jobs:
      :internal:venice-test-common:jacocoTestCoverageVerification :internal:venice-test-common:diffCoverage --continue
 
 
-  ServicesUnitTestCov:
+  ServicesModule:
     uses: ./.github/workflows/UnitTests-core.yml
     with:
       arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage

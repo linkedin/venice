@@ -7,6 +7,7 @@ on:
 
 jobs:
   reusable_job:
+    name: "Running Unit Tests and Code Coverage"
     strategy:
       fail-fast: false
       matrix:
