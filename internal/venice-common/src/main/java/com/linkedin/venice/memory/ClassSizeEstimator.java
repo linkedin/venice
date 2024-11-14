@@ -44,7 +44,7 @@ public class ClassSizeEstimator {
      */
     String propertyName = "sun.arch.data.model";
     String arch = System.getProperty(propertyName);
-    LOGGER.info("System property {} has value: {}", propertyName, arch);
+    LOGGER.debug("System property {} has value: {}", propertyName, arch);
     IS_64_BITS = (arch == null) || !arch.contains("32");
     COMPRESSED_OOPS = getBooleanVmOption("UseCompressedOops");
     COMPRESSED_CLASS_POINTERS = getBooleanVmOption("UseCompressedClassPointers");
@@ -218,6 +218,11 @@ public class ClassSizeEstimator {
       }
     }
 
+    /**
+     * N.B.: The output of this function could be cached, though we're currently not doing it since the intent is not
+     * to call this on the hat path anyway.
+     */
+
     return size;
   }
 
@@ -239,7 +244,7 @@ public class ClassSizeEstimator {
   private static boolean getBooleanVmOption(String optionName) {
     String optionValue =
         ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class).getVMOption(optionName).getValue();
-    LOGGER.info("VM option {} has value: {}", optionName, optionValue);
+    LOGGER.debug("VM option {} has value: {}", optionName, optionValue);
     return Boolean.parseBoolean(optionValue);
   }
 }

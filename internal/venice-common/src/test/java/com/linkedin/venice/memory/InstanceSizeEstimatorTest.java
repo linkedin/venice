@@ -2,7 +2,8 @@ package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 
-import com.linkedin.davinci.kafka.consumer.StoreBufferService;
+import com.linkedin.davinci.kafka.consumer.LeaderProducedRecordContext;
+import com.linkedin.davinci.kafka.consumer.SBSQueueNodeFactory;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
@@ -25,7 +26,7 @@ import org.testng.annotations.Test;
 
 public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
   public InstanceSizeEstimatorTest() {
-    super(ImmutablePubSubMessage.class);
+    super(LeaderProducedRecordContext.class);
   }
 
   @Test
@@ -49,7 +50,16 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
     empiricalInstanceMeasurement(ProducerMetadata.class, producerMetadataSupplier);
 
     Supplier<Put> rtPutSupplier = () -> new Put(ByteBuffer.allocate(10), 1, -1, null);
-    empiricalInstanceMeasurement(Put.class, rtPutSupplier);
+    Supplier<Put> vtPutSupplier = () -> {
+      byte[] rawKafkaValue = new byte[50];
+      return new Put(ByteBuffer.wrap(rawKafkaValue, 10, 10), 1, 1, ByteBuffer.wrap(rawKafkaValue, 25, 10));
+    };
+    List<Supplier<Put>> putSuppliers = new ArrayList<>();
+    putSuppliers.add(rtPutSupplier);
+    putSuppliers.add(vtPutSupplier);
+    for (Supplier<Put> putSupplier: putSuppliers) {
+      empiricalInstanceMeasurement(Put.class, putSupplier);
+    }
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     /** The {@link PubSubTopicPartition} is supposed to be a shared instance, but it cannot be null. */
@@ -59,27 +69,24 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
     VeniceWriter.DefaultLeaderMetadata defaultLeaderMetadata = new VeniceWriter.DefaultLeaderMetadata("blah");
 
     List<Supplier<KafkaMessageEnvelope>> kmeSuppliers = new ArrayList<>();
-    kmeSuppliers.add(
-        () -> new KafkaMessageEnvelope(
-            // What a message in the RT topic might look like
-            PUT.getValue(),
-            producerMetadataSupplier.get(),
-            rtPutSupplier.get(),
-            // The (improperly-named) "leader" metadata footer is always populated, but in this path it points to a
-            // static instance.
-            defaultLeaderMetadata));
-    kmeSuppliers.add(() -> {
-      // What a VT message produced by a leader replica might look like
-      byte[] rawKafkaValue = new byte[50];
-      return new KafkaMessageEnvelope(
-          PUT.getValue(),
-          producerMetadataSupplier.get(),
-          new Put(ByteBuffer.wrap(rawKafkaValue, 10, 10), 1, 1, ByteBuffer.wrap(rawKafkaValue, 25, 10)),
-          new LeaderMetadata(
-              null, // shared instance
-              0L,
-              0));
-    });
+    Supplier<KafkaMessageEnvelope> rtKmeSupplier = () -> new KafkaMessageEnvelope(
+        // What a message in the RT topic might look like
+        PUT.getValue(),
+        producerMetadataSupplier.get(),
+        rtPutSupplier.get(),
+        // The (improperly-named) "leader" metadata footer is always populated, but in this path it points to a
+        // static instance.
+        defaultLeaderMetadata);
+    Supplier<KafkaMessageEnvelope> vtKmeSupplier = () -> new KafkaMessageEnvelope(
+        PUT.getValue(),
+        producerMetadataSupplier.get(),
+        vtPutSupplier.get(),
+        new LeaderMetadata(
+            null, // shared instance
+            0L,
+            0));
+    kmeSuppliers.add(rtKmeSupplier);
+    kmeSuppliers.add(vtKmeSupplier);
     // TODO: Add updates, deletes...
 
     for (Supplier<KafkaMessageEnvelope> kmeSupplier: kmeSuppliers) {
@@ -106,8 +113,31 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
     for (Supplier<KafkaKey> kafkaKeySupplier: kafkaKeySuppliers) {
       for (Supplier<KafkaMessageEnvelope> kmeSupplier: kmeSuppliers) {
         empiricalInstanceMeasurement(
-            StoreBufferService.QueueNode.class,
-            () -> new StoreBufferService.QueueNode(psmProvider.apply(kafkaKeySupplier, kmeSupplier), null, null, 0));
+            SBSQueueNodeFactory.queueNodeClass(),
+            () -> SBSQueueNodeFactory.queueNode(psmProvider.apply(kafkaKeySupplier, kmeSupplier), null, null, 0));
+      }
+    }
+
+    int kafkaClusterId = 0;
+    Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplierForPut =
+        () -> LeaderProducedRecordContext.newPutRecord(kafkaClusterId, 0, new byte[10], vtPutSupplier.get());
+    List<Supplier<LeaderProducedRecordContext>> leaderProducedRecordContextSuppliers = new ArrayList<>();
+    leaderProducedRecordContextSuppliers.add(leaderProducedRecordContextSupplierForPut);
+
+    for (Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplier: leaderProducedRecordContextSuppliers) {
+      empiricalInstanceMeasurement(LeaderProducedRecordContext.class, leaderProducedRecordContextSupplier);
+    }
+
+    for (Supplier<KafkaKey> kafkaKeySupplier: kafkaKeySuppliers) {
+      for (Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplier: leaderProducedRecordContextSuppliers) {
+        empiricalInstanceMeasurement(
+            SBSQueueNodeFactory.leaderQueueNodeClass(),
+            () -> SBSQueueNodeFactory.leaderQueueNode(
+                psmProvider.apply(kafkaKeySupplier, vtKmeSupplier),
+                null,
+                null,
+                0,
+                leaderProducedRecordContextSupplier.get()));
       }
     }
 

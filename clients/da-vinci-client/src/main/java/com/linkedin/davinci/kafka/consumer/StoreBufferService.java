@@ -390,7 +390,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
-  public static class QueueNode implements Measurable {
+  static class QueueNode implements Measurable {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
@@ -513,9 +513,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static class LeaderQueueNode extends QueueNode {
-    // TODO: FIX THIS!!!!!
-    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
+  static class LeaderQueueNode extends QueueNode {
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(LeaderQueueNode.class);
 
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
