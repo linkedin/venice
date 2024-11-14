@@ -204,11 +204,14 @@ public class VeniceServerTest {
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
 
       cluster.stopVeniceServer(server.getPort());
-      cluster.getControllerClient().deleteStore(storeName);
+
+      // Create new servers so partition assignment is removed for the offline participant
+      cluster.addVeniceServer(featureProperties, new Properties());
+      cluster.addVeniceServer(featureProperties, new Properties());
+
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
-      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0);
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
     }
   }
 
