@@ -58,7 +58,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  ClientsUnitTestsAndCodeCoverage:
+  ClientsUnitTestCov:
     strategy:
       fail-fast: false
       matrix:
@@ -107,7 +107,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  InternalUnitTestsAndCodeCoverage:
+  InternalUnitTestCov:
     strategy:
       fail-fast: false
       matrix:
@@ -154,7 +154,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  ServicesUnitTestsAndCodeCoverage:
+  ServicesUnitTestCov:
     strategy:
       fail-fast: false
       matrix:
@@ -202,7 +202,7 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, ClientsUnitTestsAndCodeCoverage, InternalUnitTestsAndCodeCoverage, ServicesUnitTestsAndCodeCoverage]
+    needs: [ValidateGradleWrapper, StaticAnalysis, ClientsUnitTestCov, InternalUnitTestCov, ServicesUnitTestCov]
     timeout-minutes: 120
     if: success() || failure()  # Always run this job, regardless of previous job status
     steps:
