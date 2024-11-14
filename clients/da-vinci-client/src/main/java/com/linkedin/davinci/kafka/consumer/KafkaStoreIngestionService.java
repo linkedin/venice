@@ -919,8 +919,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (isIsolatedIngestion) {
         LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
       } else {
-        // LOGGER.info("Shutting down ingestion task of topic {}", topicName);
-        // shutdownStoreIngestionTask(topicName);
+        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+        shutdownStoreIngestionTask(topicName);
       }
     }
   }

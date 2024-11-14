@@ -3907,8 +3907,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // This method signals the run method to end, which closes the
     // resources before exiting.
 
-    LOGGER.info("Closed ingestionTask");
-
     if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();
       recordTransformer.onEndVersionIngestion();
