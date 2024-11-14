@@ -90,7 +90,7 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, ClientsUnitTestCov, InternalUnitTestCov, ServicesUnitTestCov]
+    needs: [ValidateGradleWrapper, StaticAnalysis, ClientsModule, InternalModule, ServicesModule]
     timeout-minutes: 120
     if: success() || failure()  # Always run this job, regardless of previous job status
     steps:
