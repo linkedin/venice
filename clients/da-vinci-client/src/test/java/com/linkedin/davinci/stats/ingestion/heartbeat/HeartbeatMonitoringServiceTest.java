@@ -24,8 +24,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang3.tuple.MutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -51,7 +49,7 @@ public class HeartbeatMonitoringServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService)
         .getHeartbeatInfoFromMap(anyMap(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
-    Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> leaderMap =
+    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMap =
         new VeniceConcurrentHashMap<>();
     String store = "testStore";
     int version = 1;
@@ -61,7 +59,7 @@ public class HeartbeatMonitoringServiceTest {
     leaderMap.put(store, new VeniceConcurrentHashMap<>());
     leaderMap.get(store).put(version, new VeniceConcurrentHashMap<>());
     leaderMap.get(store).get(version).put(partition, new VeniceConcurrentHashMap<>());
-    leaderMap.get(store).get(version).get(partition).put(region, new MutablePair<>(timestamp, true));
+    leaderMap.get(store).get(version).get(partition).put(region, new HeartbeatTimeStampEntry(timestamp, true, true));
     Assert.assertEquals(
         heartbeatMonitoringService
             .getHeartbeatInfoFromMap(
@@ -247,16 +245,14 @@ public class HeartbeatMonitoringServiceTest {
         .get(TEST_STORE)
         .get(futureVersion.getNumber())
         .get(1)
-        .get(LOCAL_FABRIC)
-        .getLeft();
+        .get(LOCAL_FABRIC).timestamp;
     Assert.assertTrue(value >= baseTimeStamp + 1001L);
 
     value = heartbeatMonitoringService.getFollowerHeartbeatTimeStamps()
         .get(TEST_STORE)
         .get(futureVersion.getNumber())
         .get(1)
-        .get(REMOTE_FABRIC)
-        .getLeft();
+        .get(REMOTE_FABRIC).timestamp;
     Assert.assertTrue(value >= baseTimeStamp + 1001L);
 
     // Leader state transitions
@@ -329,15 +325,13 @@ public class HeartbeatMonitoringServiceTest {
         .get(TEST_STORE)
         .get(futureVersion.getNumber())
         .get(1)
-        .get(REMOTE_FABRIC)
-        .getLeft();
+        .get(REMOTE_FABRIC).timestamp;
     Assert.assertEquals((long) value, baseTimeStamp + 1003L);
     value = heartbeatMonitoringService.getFollowerHeartbeatTimeStamps()
         .get(TEST_STORE)
         .get(currentVersion.getNumber())
         .get(1)
-        .get(REMOTE_FABRIC)
-        .getLeft();
+        .get(REMOTE_FABRIC).timestamp;
     Assert.assertEquals((long) value, baseTimeStamp + 1003L);
 
     // Drop/Error some
