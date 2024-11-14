@@ -14,12 +14,12 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.DnsLookupStats;
 import com.linkedin.venice.stats.HttpConnectionPoolStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -83,7 +83,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
   public ApacheHttpAsyncStorageNodeClient(
       VeniceRouterConfig config,
       Optional<SSLFactory> sslFactory,
-      MetricsRepository metricsRepository,
+      VeniceMetricsRepository metricsRepository,
       LiveInstanceMonitor monitor) {
 
     int totalIOThreadNum = config.getIoThreadCountInPoolMode();

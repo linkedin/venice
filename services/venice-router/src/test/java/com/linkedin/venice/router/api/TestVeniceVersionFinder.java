@@ -28,11 +28,11 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -75,7 +75,7 @@ public class TestVeniceVersionFinder {
         clusterToD2Map,
         CLUSTER,
         compressorFactory,
-        mock(MetricsRepository.class));
+        mock(VeniceMetricsRepository.class));
     try {
       versionFinder.getVersion("", request);
       Assert.fail(
@@ -115,7 +115,7 @@ public class TestVeniceVersionFinder {
         clusterToD2Map,
         CLUSTER,
         compressorFactory,
-        mock(MetricsRepository.class));
+        mock(VeniceMetricsRepository.class));
     try {
       request.headers().add(HttpConstants.VENICE_ALLOW_REDIRECT, "1");
       versionFinder.getVersion("store", request);
@@ -150,7 +150,7 @@ public class TestVeniceVersionFinder {
         clusterToD2Map,
         CLUSTER,
         compressorFactory,
-        mock(MetricsRepository.class));
+        mock(VeniceMetricsRepository.class));
     try {
       versionFinder.getVersion(storeName, request);
       Assert.fail("Store should be disabled and forbidden to read.");
@@ -190,7 +190,7 @@ public class TestVeniceVersionFinder {
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
@@ -277,7 +277,7 @@ public class TestVeniceVersionFinder {
           clusterToD2Map,
           CLUSTER,
           compressorFactory,
-          mock(MetricsRepository.class));
+          mock(VeniceMetricsRepository.class));
 
       String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
@@ -326,7 +326,7 @@ public class TestVeniceVersionFinder {
         clusterToD2Map,
         CLUSTER,
         compressorFactory,
-        mock(MetricsRepository.class));
+        mock(VeniceMetricsRepository.class));
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
@@ -361,7 +361,7 @@ public class TestVeniceVersionFinder {
     doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
@@ -419,7 +419,7 @@ public class TestVeniceVersionFinder {
     doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
     doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
     doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
+    VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 

@@ -25,7 +25,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
         unregisterMetricForDeletedStoreEnabled);
   }
 
-  static class ServerHttpRequestStatsSupplier implements StatsSupplier<ServerHttpRequestStats> {
+  static class ServerHttpRequestStatsSupplier implements StatsSupplierMetricsRepository<ServerHttpRequestStats> {
     private final RequestType requestType;
     private final boolean isKeyValueProfilingEnabled;
 

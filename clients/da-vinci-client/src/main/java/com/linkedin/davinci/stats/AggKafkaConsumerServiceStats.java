@@ -3,7 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
 import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.LongSupplier;
@@ -99,7 +99,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     totalStats.recordLatestOffsetIsPresent();
   }
 
-  static class KafkaConsumerServiceStatsSupplier implements StatsSupplier<KafkaConsumerServiceStats> {
+  static class KafkaConsumerServiceStatsSupplier implements StatsSupplierMetricsRepository<KafkaConsumerServiceStats> {
     private final LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool;
 
     KafkaConsumerServiceStatsSupplier(LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {

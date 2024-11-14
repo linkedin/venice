@@ -4,7 +4,7 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 
@@ -22,7 +22,7 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   public VeniceVersionedStatsReporter(
       MetricsRepository metricsRepository,
       String storeName,
-      StatsSupplier<STATS_REPORTER> statsSupplier) {
+      StatsSupplierMetricsRepository<STATS_REPORTER> statsSupplier) {
     super(metricsRepository, storeName);
 
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);

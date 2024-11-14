@@ -3,8 +3,8 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.StatsUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
@@ -20,11 +20,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * to {@link RouteHttpStats} which stores only per type stats.
  */
 public class RouteHttpRequestStats {
-  private final MetricsRepository metricsRepository;
+  private final VeniceMetricsRepository metricsRepository;
   private final StorageNodeClient storageNodeClient;
   private final Map<String, InternalHostStats> routeStatsMap = new VeniceConcurrentHashMap<>();
 
-  public RouteHttpRequestStats(MetricsRepository metricsRepository, StorageNodeClient storageNodeClient) {
+  public RouteHttpRequestStats(VeniceMetricsRepository metricsRepository, StorageNodeClient storageNodeClient) {
     this.metricsRepository = metricsRepository;
     this.storageNodeClient = storageNodeClient;
   }
@@ -58,7 +58,7 @@ public class RouteHttpRequestStats {
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
 
-    public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
+    public InternalHostStats(VeniceMetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       pendingRequestCount = new AtomicLong();
       // pendingRequestCountSensor =

@@ -30,6 +30,7 @@ import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.throttle.PendingRequestThrottler;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
@@ -40,7 +41,6 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -95,7 +95,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       VeniceRouterConfig config,
       ReadOnlyStoreRepository storeRepository,
       RouterStats<AggRouterHttpRequestStats> perStoreStatsByType,
-      MetricsRepository metricsRepository,
+      VeniceMetricsRepository metricsRepository,
       StorageNodeClient storageNodeClient,
       RouteHttpRequestStats routeHttpRequestStats,
       AggHostHealthStats aggHostHealthStats,

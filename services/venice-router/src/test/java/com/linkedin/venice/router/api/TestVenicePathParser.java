@@ -34,6 +34,7 @@ import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
@@ -41,7 +42,6 @@ import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -100,7 +100,8 @@ public class TestVenicePathParser {
     RouterExceptionAndTrackingUtils.setRouterStats(
         new RouterStats<>(
             requestType -> new AggRouterHttpRequestStats(
-                new MetricsRepository(),
+                new VeniceMetricsRepository(),
+                CLUSTER,
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));
@@ -128,7 +129,7 @@ public class TestVenicePathParser {
         storeRepository,
         mock(VeniceRouterConfig.class),
         mock(CompressorFactory.class),
-        mock(MetricsRepository.class),
+        mock(VeniceMetricsRepository.class),
         mock(ScheduledExecutorService.class));
 
     String storeName = "test-store";
@@ -190,7 +191,7 @@ public class TestVenicePathParser {
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(MetricsRepository.class),
+        mock(VeniceMetricsRepository.class),
         mock(ScheduledExecutorService.class));
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
@@ -221,7 +222,7 @@ public class TestVenicePathParser {
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(MetricsRepository.class),
+        mock(VeniceMetricsRepository.class),
         mock(ScheduledExecutorService.class)).parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
     Assert.assertEquals(
@@ -242,7 +243,7 @@ public class TestVenicePathParser {
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(MetricsRepository.class),
+        mock(VeniceMetricsRepository.class),
         mock(ScheduledExecutorService.class)).parseResourceUri("/badAction/storeName/key");
   }
 
@@ -289,7 +290,7 @@ public class TestVenicePathParser {
         storeRepository,
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(MetricsRepository.class),
+        mock(VeniceMetricsRepository.class),
         mock(ScheduledExecutorService.class));
     try {
       pathParser.parseResourceUri(myUri, request);

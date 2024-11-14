@@ -7,9 +7,9 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
-import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -22,13 +22,18 @@ public class RouteHttpRequestStatsTest {
 
   @BeforeSuite
   public void setUp() {
-    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    VeniceMetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 
     stats = new RouteHttpRequestStats(metrics, mock(StorageNodeClient.class));
-    routerHttpRequestStats =
-        new RouterHttpRequestStats(metrics, "", RequestType.SINGLE_GET, mock(ScatterGatherStats.class), false);
+    routerHttpRequestStats = new RouterHttpRequestStats(
+        metrics,
+        "test-store",
+        "test-cluster",
+        RequestType.SINGLE_GET,
+        mock(ScatterGatherStats.class),
+        false);
   }
 
   @Test
@@ -46,7 +51,7 @@ public class RouteHttpRequestStatsTest {
 
     Assert.assertEquals(stats.getPendingRequestCount("my_host1"), 1);
     Assert.assertEquals(stats.getPendingRequestCount("my_host2"), 0);
-    routerHttpRequestStats.recordRequest();
+    routerHttpRequestStats.recordIncomingRequest();
     Assert.assertTrue(RouterHttpRequestStats.hasInFlightRequests());
   }
 }

@@ -3,7 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 
 
-public interface StatsSupplier<T extends AbstractVeniceStats> {
+public interface StatsSupplierMetricsRepository<T extends AbstractVeniceStats> {
   /**
    * Legacy function, for implementations that do not use total stats in their constructor.
    *
