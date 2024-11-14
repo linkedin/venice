@@ -41,7 +41,6 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -436,6 +435,8 @@ public class KafkaConsumerServiceTest {
     String topicForStoreName3 = Version.composeKafkaTopic(storeName3, 1);
     PubSubTopic pubSubTopicForStoreName3 = pubSubTopicRepository.getTopic(topicForStoreName3);
 
+    String storeName4 = Utils.getUniqueString("test_consumer_service4");
+
     SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
     SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
     ConsumptionTask consumptionTask = mock(ConsumptionTask.class);
@@ -449,6 +450,11 @@ public class KafkaConsumerServiceTest {
     consumptionTaskIndexedMap.put(consumer2, consumptionTask);
     when(consumerService.getConsumerToConsumptionTask()).thenReturn(consumptionTaskIndexedMap);
 
+    Map<SharedKafkaConsumer, Integer> consumerToBasicLoadMap = new VeniceConcurrentHashMap<>();
+    when(consumerService.getConsumerToBaseLoadCount()).thenReturn(consumerToBasicLoadMap);
+    Map<SharedKafkaConsumer, Map<String, Integer>> consumerToStoreLoadMap = new VeniceConcurrentHashMap<>();
+    when(consumerService.getConsumerToStoreLoadCount()).thenReturn(consumerToStoreLoadMap);
+
     Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
         new VeniceConcurrentHashMap<>();
     when(consumerService.getRtTopicPartitionToConsumerMap()).thenReturn(rtTopicPartitionToConsumerMap);
@@ -456,15 +462,18 @@ public class KafkaConsumerServiceTest {
         .thenReturn(LogManager.getLogger(StoreAwarePartitionWiseKafkaConsumerService.class));
     doCallRealMethod().when(consumerService).pickConsumerForPartition(any(), any());
     doCallRealMethod().when(consumerService).getConsumerStoreLoad(any(), anyString());
+    doCallRealMethod().when(consumerService).increaseConsumerStoreLoad(any(), anyString());
+    doCallRealMethod().when(consumerService).decreaseConsumerStoreLoad(any(), anyString());
 
-    when(consumer1.getAssignmentSize()).thenReturn(1);
-    when(consumer1.getAssignment())
-        .thenReturn(Collections.singleton(new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 100)));
-    Set<PubSubTopicPartition> tpSet = new HashSet<>();
-    tpSet.add(new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 100));
-    tpSet.add(new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 101));
-    when(consumer2.getAssignmentSize()).thenReturn(2);
-    when(consumer2.getAssignment()).thenReturn(tpSet);
+    consumerToBasicLoadMap.put(consumer1, 1);
+    Map<String, Integer> innerMap1 = new VeniceConcurrentHashMap<>();
+    innerMap1.put(storeName1, 1);
+    consumerToStoreLoadMap.put(consumer1, innerMap1);
+    consumerToBasicLoadMap.put(consumer2, 2);
+    Map<String, Integer> innerMap2 = new VeniceConcurrentHashMap<>();
+    innerMap2.put(storeName2, 2);
+    consumerToStoreLoadMap.put(consumer2, innerMap2);
+
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName1), 10001);
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName2), 1);
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName3), 1);
@@ -478,16 +487,53 @@ public class KafkaConsumerServiceTest {
             pubSubTopicForStoreName1,
             new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 0)),
         consumer2);
+    Assert.assertEquals(consumerToBasicLoadMap.get(consumer2).intValue(), 3);
+    Assert.assertEquals(consumerToStoreLoadMap.get(consumer2).get(storeName1).intValue(), 1);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer2, storeName1), 10003);
     Assert.assertEquals(
         consumerService.pickConsumerForPartition(
             pubSubTopicForStoreName2,
             new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 0)),
         consumer1);
+    Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 2);
+    Assert.assertEquals(consumerToStoreLoadMap.get(consumer1).get(storeName2).intValue(), 1);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName2), 10002);
     Assert.assertEquals(
         consumerService.pickConsumerForPartition(
             pubSubTopicForStoreName3,
             new PubSubTopicPartitionImpl(pubSubTopicForStoreName3, 0)),
         consumer1);
+    Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 3);
+    Assert.assertEquals(consumerToStoreLoadMap.get(consumer1).get(storeName3).intValue(), 1);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName3), 10003);
+
+    // Validate decrease consumer entry
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName4));
+
+    consumerService.decreaseConsumerStoreLoad(consumer1, storeName1);
+    Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 2);
+    Assert.assertNull(consumerToStoreLoadMap.get(consumer1).get(storeName1));
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName1), 2);
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName1));
+
+    consumerService.decreaseConsumerStoreLoad(consumer1, storeName2);
+    Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 1);
+    Assert.assertNull(consumerToStoreLoadMap.get(consumer1).get(storeName2));
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName2), 1);
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName2));
+
+    consumerService.decreaseConsumerStoreLoad(consumer1, storeName3);
+    Assert.assertNull(consumerToBasicLoadMap.get(consumer1));
+    Assert.assertNull(consumerToStoreLoadMap.get(consumer1));
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName3), 0);
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName3));
+
+    // Validate increase consumer entry
+    consumerService.increaseConsumerStoreLoad(consumer1, storeName1);
+    Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 1);
+    Assert.assertEquals(consumerToStoreLoadMap.get(consumer1).get(storeName1).intValue(), 1);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName1), 10001);
+    Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName2), 1);
   }
 
   @Test

@@ -2,14 +2,16 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Properties;
 
 
@@ -26,6 +28,9 @@ import java.util.Properties;
 public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKafkaConsumerService {
   // This constant makes sure the store subscription count will always be prioritized over consumer assignment count.
   private static final int IMPOSSIBLE_MAX_PARTITION_COUNT_PER_CONSUMER = 10000;
+  private final Map<SharedKafkaConsumer, Integer> consumerToBaseLoadCount = new VeniceConcurrentHashMap<>();
+  private final Map<SharedKafkaConsumer, Map<String, Integer>> consumerToStoreLoadCount =
+      new VeniceConcurrentHashMap<>();
 
   StoreAwarePartitionWiseKafkaConsumerService(
       final ConsumerPoolType poolType,
@@ -73,7 +78,7 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
     String storeName = versionTopic.getStoreName();
-    long minLoad = Long.MAX_VALUE;
+    int minLoad = Integer.MAX_VALUE;
     SharedKafkaConsumer minLoadConsumer = null;
     for (SharedKafkaConsumer consumer: getConsumerToConsumptionTask().keySet()) {
       int index = getConsumerToConsumptionTask().indexOf(consumer);
@@ -85,13 +90,13 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
             topicPartition);
         continue;
       }
-      long overallLoad = getConsumerStoreLoad(consumer, storeName);
+      int overallLoad = getConsumerStoreLoad(consumer, storeName);
       if (overallLoad < minLoad) {
         minLoadConsumer = consumer;
         minLoad = overallLoad;
       }
     }
-    if (minLoad == Long.MAX_VALUE) {
+    if (minLoad == Integer.MAX_VALUE) {
       throw new IllegalStateException("Unable to find least loaded consumer entry.");
     }
 
@@ -103,19 +108,58 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
     getLOGGER().info(
         "Picked consumer id: {}, assignment size: {}, computed load: {} for topic partition: {}, version topic: {}",
         getConsumerToConsumptionTask().indexOf(minLoadConsumer),
-        minLoadConsumer.getAssignmentSize(),
+        getConsumerToBaseLoadCount().getOrDefault(minLoadConsumer, 0),
         minLoad,
         topicPartition,
         versionTopic);
+    increaseConsumerStoreLoad(minLoadConsumer, storeName);
     return minLoadConsumer;
   }
 
-  long getConsumerStoreLoad(SharedKafkaConsumer consumer, String storeName) {
-    long baseAssignmentCount = consumer.getAssignmentSize();
-    long storeSubscriptionCount = consumer.getAssignment()
-        .stream()
-        .filter(x -> Version.parseStoreFromKafkaTopicName(x.getTopicName()).equals(storeName))
-        .count();
+  @Override
+  void handleUnsubscription(
+      SharedKafkaConsumer consumer,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
+    super.handleUnsubscription(consumer, versionTopic, pubSubTopicPartition);
+    decreaseConsumerStoreLoad(consumer, versionTopic.getStoreName());
+  }
+
+  int getConsumerStoreLoad(SharedKafkaConsumer consumer, String storeName) {
+    int baseAssignmentCount = getConsumerToBaseLoadCount().getOrDefault(consumer, 0);
+    int storeSubscriptionCount =
+        getConsumerToStoreLoadCount().getOrDefault(consumer, Collections.emptyMap()).getOrDefault(storeName, 0);
     return storeSubscriptionCount * IMPOSSIBLE_MAX_PARTITION_COUNT_PER_CONSUMER + baseAssignmentCount;
+  }
+
+  void increaseConsumerStoreLoad(SharedKafkaConsumer consumer, String storeName) {
+    getConsumerToBaseLoadCount().compute(consumer, (k, v) -> (v == null) ? 1 : v + 1);
+    getConsumerToStoreLoadCount().computeIfAbsent(consumer, k -> new VeniceConcurrentHashMap<>())
+        .compute(storeName, (k, v) -> (v == null) ? 1 : v + 1);
+  }
+
+  void decreaseConsumerStoreLoad(SharedKafkaConsumer consumer, String storeName) {
+    if (!getConsumerToBaseLoadCount().containsKey(consumer)) {
+      throw new IllegalStateException("Consumer to base load count map does not contain consumer: " + consumer);
+    }
+    if (!getConsumerToStoreLoadCount().containsKey(consumer)) {
+      throw new IllegalStateException("Consumer to store load count map does not contain consumer: " + consumer);
+    }
+    if (!getConsumerToStoreLoadCount().get(consumer).containsKey(storeName)) {
+      throw new IllegalStateException("Consumer to store load count map does not contain store: " + storeName);
+    }
+    getConsumerToBaseLoadCount().computeIfPresent(consumer, (k, v) -> (v == 1) ? null : v - 1);
+    getConsumerToStoreLoadCount().computeIfPresent(consumer, (k, innerMap) -> {
+      innerMap.computeIfPresent(storeName, (s, c) -> (c == 1) ? null : c - 1);
+      return innerMap.isEmpty() ? null : innerMap;
+    });
+  }
+
+  Map<SharedKafkaConsumer, Map<String, Integer>> getConsumerToStoreLoadCount() {
+    return consumerToStoreLoadCount;
+  }
+
+  Map<SharedKafkaConsumer, Integer> getConsumerToBaseLoadCount() {
+    return consumerToBaseLoadCount;
   }
 }
