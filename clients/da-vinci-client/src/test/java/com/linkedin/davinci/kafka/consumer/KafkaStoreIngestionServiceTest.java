@@ -4,13 +4,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atMostOnce;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -53,9 +47,11 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -63,6 +59,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
@@ -495,5 +492,51 @@ public abstract class KafkaStoreIngestionServiceTest {
     mapContainsCurrentBootstrappingTask.put("current_version_bootstrapping", currentVersionBootstrappingTask);
 
     assertTrue(KafkaStoreIngestionService.hasCurrentVersionBootstrapping(mapContainsCurrentBootstrappingTask));
+  }
+
+  @Test
+  public void testDropStoragePartitionGracefully() throws NoSuchFieldException, IllegalAccessException {
+    kafkaStoreIngestionService = mock(KafkaStoreIngestionService.class);
+    String topicName = "test-store_v1";
+    int partitionId = 0;
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    doCallRealMethod().when(kafkaStoreIngestionService).dropStoragePartitionGracefully(config, partitionId);
+
+    Field topicLockManagerField = kafkaStoreIngestionService.getClass().getDeclaredField("topicLockManager");
+    topicLockManagerField.setAccessible(true);
+    topicLockManagerField.set(kafkaStoreIngestionService, new ResourceAutoClosableLockManager<>(ReentrantLock::new));
+
+    NavigableMap topicNameToIngestionTaskMap = mock(NavigableMap.class);
+    Field topicNameToIngestionTaskMapField =
+        kafkaStoreIngestionService.getClass().getDeclaredField("topicNameToIngestionTaskMap");
+    topicNameToIngestionTaskMapField.setAccessible(true);
+    topicNameToIngestionTaskMapField.set(kafkaStoreIngestionService, topicNameToIngestionTaskMap);
+
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    Field pubSubTopicRepositoryField = kafkaStoreIngestionService.getClass().getDeclaredField("pubSubTopicRepository");
+    pubSubTopicRepositoryField.setAccessible(true);
+    pubSubTopicRepositoryField.set(kafkaStoreIngestionService, pubSubTopicRepository);
+
+    StorageService storageService = mock(StorageService.class);
+    Field storageServiceField = kafkaStoreIngestionService.getClass().getDeclaredField("storageService");
+    storageServiceField.setAccessible(true);
+    storageServiceField.set(kafkaStoreIngestionService, storageService);
+
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    when(topicNameToIngestionTaskMap.get(topicName)).thenReturn(storeIngestionTask);
+
+    PubSubTopic pubSubTopic = mock(PubSubTopic.class);
+    when(pubSubTopicRepository.getTopic(topicName)).thenReturn(pubSubTopic);
+
+    // Verify that when the ingestion task is running, it drops the store partition asynchronously
+    when(storeIngestionTask.isRunning()).thenReturn(true);
+    kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
+    verify(storeIngestionTask).dropPartition(any());
+
+    // Verify that when the ingestion task isn't running, it drops the store partition synchronously
+    when(storeIngestionTask.isRunning()).thenReturn(false);
+    kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
+    verify(storageService).dropStorePartition(config, partitionId, true);
   }
 }
