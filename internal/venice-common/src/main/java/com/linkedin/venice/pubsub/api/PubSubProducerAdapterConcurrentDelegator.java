@@ -1,11 +1,13 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.common.Measurable;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.memory.InstanceSizeEstimator;
+import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.ProtocolUtils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
@@ -120,8 +122,9 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
   }
 
   public static class ProducerQueueNode implements Measurable {
-    // Rough estimation.
-    private static final int PRODUCER_QUEUE_NODE_OVERHEAD = 256;
+    /** We assume that the {@link #produceFuture} is empty, and the {@link #topic} is a shared instance. */
+    private static final int PRODUCER_QUEUE_NODE_PARTIAL_OVERHEAD =
+        getClassOverhead(ProducerQueueNode.class) + getClassOverhead(CompletableFuture.class);
 
     private final String topic;
     private final int partition;
@@ -149,10 +152,13 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
     }
 
     @Override
-    public int getSize() {
-      return topic.length() + 4 + key.getEstimatedObjectSizeOnHeap()
-          + ProtocolUtils.getEstimateOfMessageEnvelopeSizeOnHeap(value) + headers.getSize()
-          + PRODUCER_QUEUE_NODE_OVERHEAD;
+    public int getHeapSize() {
+      int size = PRODUCER_QUEUE_NODE_PARTIAL_OVERHEAD + key.getHeapSize() + InstanceSizeEstimator.getSize(value)
+          + headers.getHeapSize();
+      if (this.callback instanceof Measurable) {
+        size += ((Measurable) this.callback).getHeapSize();
+      }
+      return size;
     }
   }
 
