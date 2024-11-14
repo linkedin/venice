@@ -245,7 +245,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String region,
       Long timestamp,
       boolean isReadyToServe) {
-    recordHeartbeat(store, version, partition, region, timestamp, leaderHeartbeatTimeStamps, isReadyToServe);
+    recordHeartbeat(store, version, partition, region, timestamp, leaderHeartbeatTimeStamps, isReadyToServe, false);
   }
 
   /**
@@ -265,7 +265,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String region,
       Long timestamp,
       boolean isReadyToServe) {
-    recordHeartbeat(store, version, partition, region, timestamp, followerHeartbeatTimeStamps, isReadyToServe);
+    recordHeartbeat(store, version, partition, region, timestamp, followerHeartbeatTimeStamps, isReadyToServe, true);
   }
 
   private void recordHeartbeat(
@@ -275,12 +275,20 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String region,
       Long timestamp,
       Map<String, Map<Integer, Map<Integer, Map<String, Pair<Long, Boolean>>>>> heartbeatTimestamps,
-      boolean isReadyToServe) {
+      boolean isReadyToServe,
+      boolean retainHighestTimeStamp) {
     if (region != null) {
       heartbeatTimestamps.computeIfPresent(store, (storeKey, perVersionMap) -> {
         perVersionMap.computeIfPresent(version, (versionKey, perPartitionMap) -> {
           perPartitionMap.computeIfPresent(partition, (partitionKey, perRegionMap) -> {
-            perRegionMap.put(region, new MutablePair<>(timestamp, isReadyToServe));
+            // If we are retaining only the highest timestamp for a given heartbeat, d
+            if (retainHighestTimeStamp && perRegionMap.get(region) != null
+                && perRegionMap.get(region).getLeft() > timestamp) {
+              // No-Op
+            } else {
+              // record the heartbeat time stamp
+              perRegionMap.put(region, new MutablePair<>(timestamp, isReadyToServe));
+            }
             return perRegionMap;
           });
           return perPartitionMap;

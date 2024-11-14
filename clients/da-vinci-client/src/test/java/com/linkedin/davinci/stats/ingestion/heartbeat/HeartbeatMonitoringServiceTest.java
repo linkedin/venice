@@ -148,7 +148,6 @@ public class HeartbeatMonitoringServiceTest {
     // Default hybrid store config
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(1L, 1L, 1L, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_SOP);
-
     // Version configs
     Version backupVersion = new VersionImpl(TEST_STORE, 1, "1"); // Non-hybrid version
     Version currentVersion = new VersionImpl(TEST_STORE, 2, "2"); // hybrid version, active/active
@@ -201,30 +200,34 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.addFollowerLagMonitor(futureVersion, 1);
     heartbeatMonitoringService.addFollowerLagMonitor(futureVersion, 2);
 
+    // The above calls initialize entries with current time, and followers will retain the highest timestamp.
+    // we'll note the current time that comes AFTER the initialization and use that from which to increment the time.
+    long baseTimeStamp = System.currentTimeMillis();
+
     // Follower heartbeats
     // local fabric heartbeats
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 0, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 1, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 1, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 1, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 2, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 2, LOCAL_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 2, LOCAL_FABRIC, 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 0, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 1, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 1, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 1, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 2, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 2, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 2, LOCAL_FABRIC, baseTimeStamp + 1001L, true);
 
     // remote fabric heartbeats
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 0, REMOTE_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, REMOTE_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 0, REMOTE_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 1, REMOTE_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 1, REMOTE_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 1, REMOTE_FABRIC, 1001L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 3, REMOTE_FABRIC, 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 0, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 0, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 1, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 1, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 1, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 3, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
 
     // bogus heartbeats
-    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, 1002L, true);
-    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 3, 0, LOCAL_FABRIC, 1002L, true);
+    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, baseTimeStamp + 1002L, true);
+    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 3, 0, LOCAL_FABRIC, baseTimeStamp + 1002L, true);
 
     Assert.assertEquals(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().size(), 1);
     // We only expect two entries as version 1 is a non-hybrid version
@@ -246,7 +249,7 @@ public class HeartbeatMonitoringServiceTest {
         .get(1)
         .get(LOCAL_FABRIC)
         .getLeft();
-    Assert.assertEquals((long) value, 1001L);
+    Assert.assertTrue(value >= baseTimeStamp + 1001L);
 
     value = heartbeatMonitoringService.getFollowerHeartbeatTimeStamps()
         .get(TEST_STORE)
@@ -254,7 +257,7 @@ public class HeartbeatMonitoringServiceTest {
         .get(1)
         .get(REMOTE_FABRIC)
         .getLeft();
-    Assert.assertEquals((long) value, 1001L);
+    Assert.assertTrue(value >= baseTimeStamp + 1001L);
 
     // Leader state transitions
     heartbeatMonitoringService.addLeaderLagMonitor(currentVersion, 1);
@@ -294,9 +297,9 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertNull(
         heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(backupVersion.getNumber()));
 
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 1, REMOTE_FABRIC, 1003L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 1, REMOTE_FABRIC, 1003L, true);
-    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 1, REMOTE_FABRIC, 1003L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 1, REMOTE_FABRIC, baseTimeStamp + 1003L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 1, REMOTE_FABRIC, baseTimeStamp + 1003L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 1, REMOTE_FABRIC, baseTimeStamp + 1003L, true);
 
     // make sure leaders are cleared out
     Assert.assertNull(
@@ -328,14 +331,14 @@ public class HeartbeatMonitoringServiceTest {
         .get(1)
         .get(REMOTE_FABRIC)
         .getLeft();
-    Assert.assertEquals((long) value, 1003L);
+    Assert.assertEquals((long) value, baseTimeStamp + 1003L);
     value = heartbeatMonitoringService.getFollowerHeartbeatTimeStamps()
         .get(TEST_STORE)
         .get(currentVersion.getNumber())
         .get(1)
         .get(REMOTE_FABRIC)
         .getLeft();
-    Assert.assertEquals((long) value, 1003L);
+    Assert.assertEquals((long) value, baseTimeStamp + 1003L);
 
     // Drop/Error some
     heartbeatMonitoringService.removeLagMonitor(currentVersion, 0);
@@ -344,11 +347,11 @@ public class HeartbeatMonitoringServiceTest {
 
     // Send heartbeats to resources we just dropped
     heartbeatMonitoringService
-        .recordFollowerHeartbeat(TEST_STORE, backupVersion.getNumber(), 2, LOCAL_FABRIC, 1005L, true);
+        .recordFollowerHeartbeat(TEST_STORE, backupVersion.getNumber(), 2, LOCAL_FABRIC, baseTimeStamp + 1005L, true);
     heartbeatMonitoringService
-        .recordFollowerHeartbeat(TEST_STORE, currentVersion.getNumber(), 0, LOCAL_FABRIC, 1005L, true);
+        .recordFollowerHeartbeat(TEST_STORE, currentVersion.getNumber(), 0, LOCAL_FABRIC, baseTimeStamp + 1005L, true);
     heartbeatMonitoringService
-        .recordFollowerHeartbeat(TEST_STORE, futureVersion.getNumber(), 1, LOCAL_FABRIC, 1005L, true);
+        .recordFollowerHeartbeat(TEST_STORE, futureVersion.getNumber(), 1, LOCAL_FABRIC, baseTimeStamp + 1005L, true);
 
     Assert.assertNull(
         heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().get(TEST_STORE).get(backupVersion.getNumber()));
