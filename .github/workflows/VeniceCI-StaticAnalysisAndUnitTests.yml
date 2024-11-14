@@ -59,7 +59,6 @@ jobs:
           retention-days: 30
 
   ClientsUnitTestCov:
-   name: Running Client Unit Tests and Code Coverage
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     arg: :clients:da-vinci-client:jacocoTestCoverageVerification :clients:da-vinci-client:diffCoverage
@@ -72,7 +71,6 @@ jobs:
       :clients:venice-thin-client:jacocoTestCoverageVerification :clients:venice-thin-client:diffCoverage --continue
 
   InternalUnitTestCov:
-   name: Running Internal Unit Tests and Code Covereage
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     arg: :internal:venice-client-common:jacocoTestCoverageVerification :internal:venice-client-common:diffCoverage
@@ -82,7 +80,6 @@ jobs:
 
 
   ServicesUnitTestCov:
-    name: Run Services Unit Tests and Code Covereage
     uses: ./.github/workflows/UnitTests-core.yml
     with:
       arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage
