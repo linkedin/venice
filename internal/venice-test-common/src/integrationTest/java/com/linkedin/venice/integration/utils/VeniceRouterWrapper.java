@@ -154,6 +154,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           .put("otel.venice.enabled", Boolean.TRUE.toString())
+          .put("otel.venice.export.to.log", Boolean.TRUE.toString())
           .put("otel.venice.export.to.http.grpc.endpoint", Boolean.TRUE.toString())
           .put("otel.exporter.otlp.metrics.protocol", "http/protobuf")
           .put("otel.exporter.otlp.metrics.endpoint", "http://localhost:4318/v1/metrics")

@@ -1,10 +1,12 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.stats.opentelemetrydimensions;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat.CAMEL_CASE;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat.PASCAL_CASE;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat.SNAKE_CASE;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.validateMetricName;
+
+import com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat;
 
 
 public enum VeniceMetricsDimensions {

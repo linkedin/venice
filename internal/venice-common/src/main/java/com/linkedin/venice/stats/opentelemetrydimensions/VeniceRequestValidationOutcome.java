@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.stats.opentelemetrydimensions;
 
 public enum VeniceRequestValidationOutcome {
   VALID("valid"), INVALID_KEY_COUNT_LIMIT_EXCEEDED("invalid_key_count_limit_exceeded");

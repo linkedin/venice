@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.stats.opentelemetrydimensions;
 
 /**
  * Copied {@link io.netty.handler.codec.http.HttpStatusClass} and modified it to have 1xx, 2xx, etc. as categories
@@ -95,5 +95,14 @@ public enum VeniceHttpResponseStatusCodeCategory {
    */
   public String getCategory() {
     return category;
+  }
+
+  // used for tests
+  public int getMin() {
+    return min;
+  }
+
+  public int getMax() {
+    return max;
   }
 }

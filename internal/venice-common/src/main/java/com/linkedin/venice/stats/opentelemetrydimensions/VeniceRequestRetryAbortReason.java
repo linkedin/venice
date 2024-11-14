@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.stats.opentelemetrydimensions;
 
 public enum VeniceRequestRetryAbortReason {
   RETRY_ABORTED_BY_SLOW_ROUTE("slow_route"), RETRY_ABORTED_BY_DELAY_CONSTRAINT("delay_constraint"),
