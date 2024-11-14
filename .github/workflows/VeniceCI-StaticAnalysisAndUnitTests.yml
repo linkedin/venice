@@ -207,16 +207,24 @@ jobs:
       - name: Check previous job statuses
         run: |
          if [ "${{ needs.ValidateGradleWrapper.result }}" != "success" ]; then
-          echo "ValidateGradleWrapper failed."
-          exit 1
+           echo "ValidateGradleWrapper failed."
+           exit 1
          fi
          if [ "${{ needs.StaticAnalysis.result }}" != "success" ]; then
-          echo "StaticAnalysis failed."
-          exit 1
+           echo "StaticAnalysis failed."
+           exit 1
          fi
-         if [ "${{ needs.UnitTestsAndCodeCoverage.result }}" != "success" ]; then
-          echo "UnitTestsAndCodeCoverage failed."
-          exit 1
+         if [ "${{ needs.ClientsUnitTestCov.result }}" != "success" ]; then
+           echo "ClientsUnitTestCov failed."
+           exit 1
+         fi
+         if [ "${{ needs.InternalUnitTestCov.result }}" != "success" ]; then
+           echo "InternalUnitTestCov failed."
+           exit 1
+         fi
+         if [ "${{ needs.ServicesUnitTestCov.result }}" != "success" ]; then
+           echo "ServicesUnitTestCov failed."
+           exit 1
          fi
       # If all previous jobs were successful, proceed
       - name: Final Completion Check
