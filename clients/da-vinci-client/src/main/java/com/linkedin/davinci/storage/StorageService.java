@@ -392,7 +392,7 @@ public class StorageService extends AbstractVeniceService {
         Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
         for (Integer partitionId: storageEnginePartitionIds) {
           if (storageEngine.isMetadataPartition(partitionId)) {
-            storageEngine.dropPartition(partitionId);
+            continue;
           }
           String partitionDbName = storeName + "_" + partitionId;
           if (!mapFields.containsKey(partitionDbName)

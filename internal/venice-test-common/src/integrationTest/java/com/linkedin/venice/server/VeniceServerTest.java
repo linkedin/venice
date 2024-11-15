@@ -205,10 +205,6 @@ public class VeniceServerTest {
 
       cluster.stopVeniceServer(server.getPort());
 
-      // Create new servers so partition assignment is removed for the offline participant
-      cluster.addVeniceServer(featureProperties, new Properties());
-      cluster.addVeniceServer(featureProperties, new Properties());
-
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
