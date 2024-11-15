@@ -285,7 +285,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             // we will No-Op in favor of retaining that higher timestamp. This behavior is specific to follower
             // nodes because the intent of this metric is to only show the lag of the follower relative to the leader
             if (retainHighestTimeStamp && perRegionMap.get(region) != null
-                && perRegionMap.get(region).timestamp > timestamp && !perRegionMap.get(region).consumedFromUpstream) {
+                && perRegionMap.get(region).timestamp > timestamp && perRegionMap.get(region).consumedFromUpstream) {
               // No-Op
             } else {
               // record the heartbeat time stamp
