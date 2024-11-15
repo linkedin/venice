@@ -69,7 +69,7 @@ public abstract class VeniceCompressor implements Closeable {
    */
   public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
       throws IOException {
-    return executeWithSafeGuard(() -> decompressAndPrependSchemaHeader(data, offset, length, schemaHeader));
+    return executeWithSafeGuard(() -> decompressAndPrependSchemaHeaderInternal(data, offset, length, schemaHeader));
   }
 
   protected abstract ByteBuffer decompressAndPrependSchemaHeaderInternal(
