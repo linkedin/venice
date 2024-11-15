@@ -13,6 +13,9 @@ public abstract class VeniceCompressor implements Closeable {
   protected static final int SCHEMA_HEADER_LENGTH = ByteUtils.SIZE_OF_INT;
   private final CompressionStrategy compressionStrategy;
   private boolean isClosed = false;
+  /**
+   * To avoid the race condition between 'compress'/'decompress' operation and 'close'.
+   */
   private final ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
   protected VeniceCompressor(CompressionStrategy compressionStrategy) {
