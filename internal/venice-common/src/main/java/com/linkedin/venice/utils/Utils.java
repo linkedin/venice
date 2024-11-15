@@ -1039,6 +1039,14 @@ public class Utils {
   }
 
   /**
+   * Check whether input region is for separate RT topic.
+   */
+  public static boolean isSepTopicRegion(String region) {
+    return region.endsWith(SEPARATE_TOPIC_SUFFIX);
+  }
+
+
+  /**
    * Parses a date-time string to epoch milliseconds using the default format and time zone.
    *
    * @param dateTime the date-time string in the format "yyyy-MM-dd hh:mm:ss"

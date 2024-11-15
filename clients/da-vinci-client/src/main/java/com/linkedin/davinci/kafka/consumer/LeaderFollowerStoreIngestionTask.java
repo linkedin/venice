@@ -2262,10 +2262,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    // Separate incremental push pubsub entries has the same pubsub url but differnet cluster id, which creates
-    // confusion
-    // for heartbeat tracking. We need to resolve the kafka url to the actual kafka cluster url.
+    // Separate incremental push pubsub entries has the same pubsub url but different cluster id, which creates
+    // confusion for heartbeat tracking. We need to resolve the kafka url to the actual kafka cluster url.
     String resolvedKafkaUrl = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaUrl) : kafkaUrl;
+    // This is just sanity check, as there is no leader producing HB to sep topic by design.
+    if (!Objects.equals(resolvedKafkaUrl, kafkaUrl)) {
+      return;
+    }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       heartbeatMonitoringService.recordLeaderHeartbeat(
           storeName,
