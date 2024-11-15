@@ -12,12 +12,12 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
-  public byte[] compress(byte[] data) throws IOException {
+  protected byte[] compressInternal(byte[] data) throws IOException {
     return data;
   }
 
   @Override
-  public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
+  protected ByteBuffer compressInternal(ByteBuffer data, int startPositionOfOutput) throws IOException {
     if (startPositionOfOutput != 0) {
       throw new UnsupportedOperationException("Compression with front padding is not supported for NO_OP.");
     }
@@ -30,17 +30,17 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompress(ByteBuffer data) throws IOException {
+  protected ByteBuffer decompressInternal(ByteBuffer data) throws IOException {
     return data;
   }
 
   @Override
-  public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
+  protected ByteBuffer decompressInternal(byte[] data, int offset, int length) throws IOException {
     return ByteBuffer.wrap(data, offset, length);
   }
 
   @Override
-  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+  protected ByteBuffer decompressAndPrependSchemaHeaderInternal(byte[] data, int offset, int length, int schemaHeader)
       throws IOException {
     if (offset < SCHEMA_HEADER_LENGTH) {
       throw new VeniceException("Start offset does not have enough room for schema header.");
@@ -51,8 +51,13 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
-  public InputStream decompress(InputStream inputStream) throws IOException {
+  protected InputStream decompressInternal(InputStream inputStream) throws IOException {
     return inputStream;
+  }
+
+  @Override
+  protected void closeInternal() throws IOException {
+    // do nothing
   }
 
   @Override
