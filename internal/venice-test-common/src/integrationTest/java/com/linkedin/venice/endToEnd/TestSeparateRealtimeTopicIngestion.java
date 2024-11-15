@@ -44,14 +44,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestTest {
+public class TestSeparateRealtimeTopicIngestion {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int TEST_TIMEOUT_MS = 180_000;
+  private static final long TEST_TIMEOUT_MS = 60_000;
 
   private static final int REPLICATION_FACTOR = 2;
   private static final String CLUSTER_NAME = "venice-cluster0";
@@ -60,9 +61,8 @@ public class TestTest {
   private VeniceControllerWrapper parentController;
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testIncrementalPushPartialUpdateClassicFormat() throws IOException {
-
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, false);
     serverProperties.put(
@@ -89,6 +89,15 @@ public class TestTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+  }
+
+  @AfterClass(alwaysRun = true)
+  public void cleanUp() {
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testIncrementalPushPartialUpdate() throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
@@ -119,7 +128,6 @@ public class TestTest {
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
-      LogManager.getLogger(TestTest.class).info("DEBUGGING UPDATE COMPLETE");
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");

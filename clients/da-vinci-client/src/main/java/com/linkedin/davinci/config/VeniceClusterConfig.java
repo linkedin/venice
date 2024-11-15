@@ -98,6 +98,7 @@ public class VeniceClusterConfig {
       throws ConfigurationException {
     this.clusterName = clusterProps.getString(CLUSTER_NAME);
     this.zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
+
     try {
       this.persistenceType =
           PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString()));
@@ -200,7 +201,6 @@ public class VeniceClusterConfig {
           tmpKafkaClusterUrlToIdMap.put(otherUrl, clusterId);
           String previousMappingForSameName = tmpKafkaUrlResolution.put(otherUrl, url);
           if (previousMappingForSameName != null) {
-            LOGGER.info("DEBUGGING ILLEGAL: {} {} {} {}", previousMappingForSameName, mappings, url, otherUrl);
             throw new IllegalArgumentException(
                 "Alternative URLs must be unique, they cannot map to two different Kafka clusters!");
           }
