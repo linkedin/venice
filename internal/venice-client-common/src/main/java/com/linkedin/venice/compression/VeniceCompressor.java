@@ -30,8 +30,6 @@ public abstract class VeniceCompressor implements Closeable {
         throw new VeniceException(getCompressionStrategy() + " has been closed");
       }
       return runnable.run();
-    } catch (IOException e) {
-      throw e;
     } finally {
       readWriteLock.readLock().unlock();
     }
