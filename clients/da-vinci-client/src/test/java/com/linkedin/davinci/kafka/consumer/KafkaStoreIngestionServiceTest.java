@@ -59,6 +59,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -524,7 +525,14 @@ public abstract class KafkaStoreIngestionServiceTest {
     storageServiceField.set(kafkaStoreIngestionService, storageService);
 
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+
+    PriorityBlockingQueue consumerActionsQueue = mock(PriorityBlockingQueue.class);
+    Field consumerActionsQueueField = StoreIngestionTask.class.getDeclaredField("consumerActionsQueue");
+    consumerActionsQueueField.setAccessible(true);
+    consumerActionsQueueField.set(storeIngestionTask, consumerActionsQueue);
+
     when(topicNameToIngestionTaskMap.get(topicName)).thenReturn(storeIngestionTask);
+    doCallRealMethod().when(storeIngestionTask).dropPartition(any());
 
     PubSubTopic pubSubTopic = mock(PubSubTopic.class);
     when(pubSubTopicRepository.getTopic(topicName)).thenReturn(pubSubTopic);
@@ -533,6 +541,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     when(storeIngestionTask.isRunning()).thenReturn(true);
     kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
     verify(storeIngestionTask).dropPartition(any());
+    verify(consumerActionsQueue).add(any());
 
     // Verify that when the ingestion task isn't running, it drops the store partition synchronously
     when(storeIngestionTask.isRunning()).thenReturn(false);
