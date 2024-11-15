@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -7,9 +8,10 @@ import spark.Request;
 
 
 public class AuditInfo {
-  private String url;
-  private Map<String, String> params;
-  private String method;
+  private final String url;
+  private final Map<String, String> params;
+  private final String method;
+  private final String bodyContent;
 
   public AuditInfo(Request request) {
     this.url = request.url();
@@ -18,6 +20,33 @@ public class AuditInfo {
       this.params.put(param, request.queryParams(param));
     }
     this.method = request.requestMethod();
+
+    ControllerRoute route = ControllerRoute.valueOfPath(request.uri());
+    if (route != null && !route.doesBodyHaveSensitiveContent()) {
+      this.bodyContent = request.body();
+    } else {
+      this.bodyContent = null;
+    }
+  }
+
+  // Visible for testing
+  String getUrl() {
+    return url;
+  }
+
+  // Visible for testing
+  Map<String, String> getParams() {
+    return params;
+  }
+
+  // Visible for testing
+  String getMethod() {
+    return method;
+  }
+
+  // Visible for testing
+  String getBodyContent() {
+    return bodyContent;
   }
 
   /**
@@ -30,6 +59,11 @@ public class AuditInfo {
     joiner.add(method);
     joiner.add(url);
     joiner.add(params.toString());
+
+    if (bodyContent != null) {
+      joiner.add(bodyContent);
+    }
+
     return joiner.toString();
   }
 
@@ -53,7 +87,7 @@ public class AuditInfo {
     if (success) {
       joiner.add("SUCCESS");
     } else {
-      joiner.add("FAILURE: ");
+      joiner.add("FAILURE");
       if (errMsg != null) {
         joiner.add(errMsg);
       }
@@ -61,6 +95,11 @@ public class AuditInfo {
     joiner.add(method);
     joiner.add(url);
     joiner.add(params.toString());
+
+    if (bodyContent != null) {
+      joiner.add(bodyContent);
+    }
+
     return joiner.toString();
   }
 }
