@@ -942,13 +942,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null && ingestionTask.isRunning()) {
         LOGGER.info(
-            "Ingestion task is still running for Topic {} Partition {}. Dropping partition asynchronously.",
+            "Ingestion task is still running for Topic {}. Dropping partition {} asynchronously",
             veniceStore.getStoreVersionName(),
             partitionId);
         ingestionTask.dropPartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
         LOGGER.info(
-            "Ingestion task isn't running for Topic {} Partition {}. Dropping partition synchronously instead",
+            "Ingestion task isn't running for Topic {}. Dropping partition {} synchronously",
             veniceStore.getStoreVersionName(),
             partitionId);
         this.storageService.dropStorePartition(veniceStore, partitionId, true);
