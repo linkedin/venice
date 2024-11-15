@@ -173,6 +173,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       for (Version version: versions) {
         customizedViewRepository.subscribeRoutingDataChange(version.kafkaTopicName(), this);
       }
+      // also invoke handle store change to ensure corresponding token bucket and stats are initialized.
+      handleStoreChanged(store);
     }
     this.initializedVolatile = true;
   }
