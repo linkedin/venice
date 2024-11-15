@@ -956,7 +956,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     } else {
       rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
     }
-    LOGGER.info("DEBUGGING TOPIC SWITCH: {}", topicSwitch.sourceKafkaServers);
     List<CharSequence> sourceKafkaServers = new ArrayList<>(topicSwitch.sourceKafkaServers);
     if (isSeparatedRealtimeTopicEnabled && newSourceTopic.isRealTime()) {
       for (CharSequence cs: topicSwitch.sourceKafkaServers) {
@@ -964,7 +963,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
     }
 
-    Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
+    Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(sourceKafkaServers.size());
 
     sourceKafkaServers.forEach(sourceKafkaURL -> {
       Long upstreamStartOffset =
@@ -977,7 +976,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             upstreamStartOffset =
                 getTopicPartitionOffsetByKafkaURL(sourceKafkaURL, newSourceTopicPartition, rewindStartTimestamp);
             LOGGER.info(
-                "{} get upstreamStartOffset: {} for source URL: {}, topic: {}, rewind timestamp: {}",
+                "{} get upstreamStartOffset: {} for source URL: {}, topic-partition: {}, rewind timestamp: {}",
                 ingestionTaskName,
                 upstreamStartOffset,
                 sourceKafkaURL,
@@ -1038,7 +1037,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
       }
     });
-    if (unreachableBrokerList.size() >= ((topicSwitch.sourceKafkaServers.size() + 1) / 2)) {
+    if (unreachableBrokerList.size() >= ((sourceKafkaServers.size() + 1) / 2)) {
       // We couldn't reach a quorum of brokers and that's a red flag, so throw exception and abort!
       throw new VeniceException("Couldn't reach any broker!!  Aborting topic switch triggered consumer subscription!");
     }
@@ -1061,53 +1060,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LOGGER
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
-
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
-    for (String kafkaURL: leaderSourceKafkaURLs) {
-      leaderOffsetByKafkaURL.put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository));
-    }
-    List<CharSequence> unreachableBrokerList = new ArrayList<>();
-    if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
-      TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
-      if (topicSwitch == null) {
-        throw new VeniceException(
-            "New leader does not have topic switch, unable to switch to realtime leader topic: " + leaderTopic);
-      }
-      leaderOffsetByKafkaURL = calculateLeaderUpstreamOffsetWithTopicSwitch(
-          partitionConsumptionState,
-          topicSwitch,
-          leaderTopic,
-          unreachableBrokerList);
-    }
-
-    if (!unreachableBrokerList.isEmpty()) {
-      LOGGER.warn(
-          "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
-          unreachableBrokerList.toString());
-    }
-    LOGGER.info(
-        "{} is promoted to leader for partition {} and it is going to start consuming from "
-            + "topic {} with offset by Kafka URL mapping {}",
-        ingestionTaskName,
-        partition,
-        leaderTopic,
-        leaderOffsetByKafkaURL);
-
-    // subscribe to the new upstream
-    leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
-      consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, kafkaURL);
-    });
-
-    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
-
-    LOGGER.info(
-        "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL mapping {}",
-        ingestionTaskName,
-        leaderTopic,
-        partition,
-        leaderOffsetByKafkaURL);
+    prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
   /**
@@ -1132,32 +1086,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             pubSubTopicPartition));
   }
 
-  private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
-    long rewindStartTime = 0;
-    long rewindTimeInMs = hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
-    if (isDataRecovery) {
-      // Override the user rewind if the version is under data recovery to avoid data loss when user have short rewind.
-      rewindTimeInMs = Math.max(PubSubConstants.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN, rewindTimeInMs);
-    }
-    switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
-      case REWIND_FROM_SOP:
-        rewindStartTime = partitionConsumptionState.getStartOfPushTimestamp() - rewindTimeInMs;
-        break;
-      case REWIND_FROM_EOP:
-      default:
-        rewindStartTime = partitionConsumptionState.getEndOfPushTimestamp() - rewindTimeInMs;
-    }
-    return rewindStartTime;
-  }
-
   @Override
   protected void leaderExecuteTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
       TopicSwitch topicSwitch,
       PubSubTopic newSourceTopic) {
     if (partitionConsumptionState.getLeaderFollowerState() != LEADER) {
-      throw new VeniceException(
-          String.format("Expect state %s but got %s", LEADER, partitionConsumptionState.toString()));
+      throw new VeniceException(String.format("Expect state %s but got %s", LEADER, partitionConsumptionState));
     }
     if (topicSwitch.sourceKafkaServers.isEmpty()) {
       throw new VeniceException(
@@ -1168,12 +1103,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final PubSubTopic currentLeaderTopic =
         partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
-    List<CharSequence> unreachableBrokerList = new ArrayList<>();
-    Map<String, Long> upstreamOffsetsByKafkaURLs = calculateLeaderUpstreamOffsetWithTopicSwitch(
-        partitionConsumptionState,
-        topicSwitch,
-        newSourceTopic,
-        unreachableBrokerList);
+
     // unsubscribe the old source and subscribe to the new source
     unsubscribeFromTopic(currentLeaderTopic, partitionConsumptionState);
     waitForLastLeaderPersistFuture(
@@ -1188,41 +1118,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         || (!Objects.equals(topicSwitch.sourceKafkaServers.get(0).toString(), localKafkaServer))) {
       partitionConsumptionState.setConsumeRemotely(true);
       LOGGER.info(
-          "{} enabled remote consumption and switch to topic {} partition {} with offset by Kafka URL mapping {}",
+          "{} enabled remote consumption and switch to topic-partition {}",
           ingestionTaskName,
-          newSourceTopic,
-          sourceTopicPartition,
-          upstreamOffsetsByKafkaURLs);
+          sourceTopicPartition);
     }
-
     // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-    // Sync the upstream offset calculated for each region to OffsetRecord.
-    upstreamOffsetsByKafkaURLs.forEach(
-        (upstreamKafkaURL, upstreamStartOffset) -> partitionConsumptionState.getOffsetRecord()
-            .setLeaderUpstreamOffset(upstreamKafkaURL, upstreamStartOffset));
 
-    if (!unreachableBrokerList.isEmpty()) {
-      LOGGER.warn(
-          "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
-          unreachableBrokerList.toString());
-    }
-
-    // Subscribe new leader topic for all regions.
-    upstreamOffsetsByKafkaURLs.forEach((kafkaURL, upstreamStartOffset) -> {
-      consumerSubscribe(newSourceTopic, partitionConsumptionState, upstreamStartOffset, kafkaURL);
-    });
-
-    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, upstreamOffsetsByKafkaURLs);
-    LOGGER.info(
-        "{} leader successfully switch feed topic from {} to {} on partition {} with offset by Kafka URL mapping {}",
-        ingestionTaskName,
-        currentLeaderTopic,
-        newSourceTopic,
-        partition,
-        upstreamOffsetsByKafkaURLs);
+    prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, true);
 
     // In case new topic is empty and leader can never become online
+    // TODO: Remove this check after AGG mode is deprecated.
     defaultReadyToServeChecker.apply(partitionConsumptionState);
   }
 
@@ -1549,10 +1455,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Calculate upstream offset
       long upstreamOffset =
           getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);
-
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
       consumerSubscribe(pubSubTopic, pcs, upstreamOffset, sourceKafkaUrl);
-
       // syncConsumedUpstreamRTOffsetMapIfNeeded
       Map<String, Long> urlToOffsetMap = new HashMap<>();
       urlToOffsetMap.put(sourceKafkaUrl, upstreamOffset);
@@ -1618,4 +1522,85 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
   }
+
+  void prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(
+      PubSubTopic leaderTopic,
+      PartitionConsumptionState partitionConsumptionState,
+      boolean calculateUpstreamOffsetFromTopicSwitch) {
+    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
+    Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
+    List<CharSequence> unreachableBrokerList = new ArrayList<>();
+
+    // For leader executing topic switch
+    // TODO: Potentially this logic can be merged into below branch.
+    if (calculateUpstreamOffsetFromTopicSwitch) {
+      TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
+      if (topicSwitch == null) {
+        throw new VeniceException(
+            "New leader does not have topic switch, unable to switch to realtime leader topic: " + leaderTopic);
+      }
+      leaderOffsetByKafkaURL = calculateLeaderUpstreamOffsetWithTopicSwitch(
+          partitionConsumptionState,
+          topicSwitch,
+          leaderTopic,
+          unreachableBrokerList);
+    } else {
+      // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
+      for (String kafkaURL: leaderSourceKafkaURLs) {
+        leaderOffsetByKafkaURL
+            .put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository));
+      }
+      if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
+        TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
+        if (topicSwitch == null) {
+          throw new VeniceException(
+              "New leader does not have topic switch, unable to switch to realtime leader topic: " + leaderTopic);
+        }
+        leaderOffsetByKafkaURL = calculateLeaderUpstreamOffsetWithTopicSwitch(
+            partitionConsumptionState,
+            topicSwitch,
+            leaderTopic,
+            unreachableBrokerList);
+      }
+    }
+
+    if (!unreachableBrokerList.isEmpty()) {
+      LOGGER.warn(
+          "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
+          unreachableBrokerList.toString());
+    }
+
+    // subscribe to the new upstream
+    leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
+      consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, kafkaURL);
+    });
+
+    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
+
+    LOGGER.info(
+        "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL mapping {}",
+        ingestionTaskName,
+        leaderTopic,
+        partitionConsumptionState.getPartition(),
+        leaderOffsetByKafkaURL);
+  }
+
+  private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
+    long rewindStartTime;
+    long rewindTimeInMs = hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    if (isDataRecovery) {
+      // Override the user rewind if the version is under data recovery to avoid data loss when user have short rewind.
+      rewindTimeInMs = Math.max(PubSubConstants.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN, rewindTimeInMs);
+    }
+    switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
+      case REWIND_FROM_SOP:
+        rewindStartTime = partitionConsumptionState.getStartOfPushTimestamp() - rewindTimeInMs;
+        break;
+      case REWIND_FROM_EOP:
+      default:
+        rewindStartTime = partitionConsumptionState.getEndOfPushTimestamp() - rewindTimeInMs;
+    }
+    return rewindStartTime;
+  }
+
 }

@@ -1139,6 +1139,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (topicSwitchWrapper == null) {
       return Collections.emptySet();
     }
+    if (isSeparatedRealtimeTopicEnabled) {
+      Set<String> result = new HashSet<>();
+      for (String server: topicSwitchWrapper.getSourceServers()) {
+        result.add(server);
+        result.add(server + Utils.SEPARATE_TOPIC_SUFFIX);
+      }
+      return result;
+    }
     return topicSwitchWrapper.getSourceServers();
   }
 
