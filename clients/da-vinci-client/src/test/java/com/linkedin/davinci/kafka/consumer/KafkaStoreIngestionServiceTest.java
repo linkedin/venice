@@ -98,6 +98,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   public void setUp() {
     mockStorageService = mock(StorageService.class);
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
@@ -159,7 +160,6 @@ public abstract class KafkaStoreIngestionServiceTest {
   public void testDisableMetricsEmission() {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
-        mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -244,7 +244,6 @@ public abstract class KafkaStoreIngestionServiceTest {
     // topics under different scenarios.
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
-        mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -333,7 +332,6 @@ public abstract class KafkaStoreIngestionServiceTest {
   public void testCloseStoreIngestionTask() {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
-        mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -399,7 +397,6 @@ public abstract class KafkaStoreIngestionServiceTest {
   public void testStoreIngestionTaskShutdownLastPartition(boolean isIsolatedIngestion) {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
-        mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,

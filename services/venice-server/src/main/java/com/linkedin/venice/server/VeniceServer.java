@@ -366,7 +366,6 @@ public class VeniceServer {
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService,
-        storageService.getStorageEngineRepository(),
         veniceConfigLoader,
         storageMetadataService,
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),

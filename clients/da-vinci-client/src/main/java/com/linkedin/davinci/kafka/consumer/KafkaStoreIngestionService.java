@@ -29,7 +29,6 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -193,7 +192,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public KafkaStoreIngestionService(
       StorageService storageService,
-      StorageEngineRepository storageEngineRepository,
       VeniceConfigLoader veniceConfigLoader,
       StorageMetadataService storageMetadataService,
       ClusterInfoProvider clusterInfoProvider,
@@ -452,7 +450,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
-        .setStorageEngineRepository(storageEngineRepository)
+        .setStorageEngineRepository(storageService.getStorageEngineRepository())
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)
