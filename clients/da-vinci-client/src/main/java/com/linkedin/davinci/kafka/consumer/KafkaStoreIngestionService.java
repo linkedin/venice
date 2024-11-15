@@ -941,6 +941,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null && ingestionTask.isRunning()) {
+        LOGGER.info(
+            "Ingestion task is still running for Topic {} Partition {}. Dropping partition asynchronously.",
+            veniceStore.getStoreVersionName(),
+            partitionId);
         ingestionTask.dropPartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
         LOGGER.info(

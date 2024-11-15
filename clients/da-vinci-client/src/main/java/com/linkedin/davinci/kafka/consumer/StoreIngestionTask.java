@@ -2155,6 +2155,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
         this.storageService.dropStorePartition(storeConfig, partition, true);
         LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
+        break;
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
