@@ -403,6 +403,8 @@ public class StorageService extends AbstractVeniceService {
         if (storageEngine.getPartitionIds().isEmpty()) {
           removeStorageEngine(storeName);
         }
+      } else {
+        removeStorageEngine(storeName);
       }
     }
   }
