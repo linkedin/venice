@@ -345,6 +345,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean batchReportIncPushStatusEnabled;
 
   protected final ExecutorService parallelProcessingThreadPool;
+  private final Set<Integer> pendingPartitionDrops = Collections.synchronizedSet(new HashSet<>());
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -644,6 +645,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throwIfNotRunning();
     ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
     consumerActionsQueue.add(consumerAction);
+    pendingPartitionDrops.add(topicPartition.getPartitionNumber());
   }
 
   public boolean hasAnySubscription() {
@@ -2149,11 +2151,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
+
+        if (!this.pendingPartitionDrops.isEmpty()) {
+          LOGGER.info(
+              "Partitions {} are pending to be dropped for Topic: {}. Dropping them before killing consumer task.",
+              this.pendingPartitionDrops,
+              topic);
+          synchronized (this.pendingPartitionDrops) {
+            for (Integer partitionToDrop: this.pendingPartitionDrops) {
+              this.storageService.dropStorePartition(storeConfig, partitionToDrop, true);
+              this.pendingPartitionDrops.remove(partitionToDrop);
+            }
+          }
+        }
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
         LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
         this.storageService.dropStorePartition(storeConfig, partition, true);
+        this.pendingPartitionDrops.remove(partition);
         LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
         break;
       default:
