@@ -866,9 +866,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
-      TopicSwitch topicSwitch,
       PubSubTopic newSourceTopic,
       List<CharSequence> unreachableBrokerList) {
+    /**
+     * In this case, new leader should already been seeing a TopicSwitch, which has the rewind time information for
+     * it to replay from realtime topic.
+     */
+    TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
+    if (topicSwitch == null) {
+      throw new VeniceException(
+          "New leader does not have topic switch, unable to switch to realtime leader topic: " + newSourceTopic);
+    }
     final String newSourceKafkaServer = topicSwitch.sourceKafkaServers.get(0).toString();
     final PubSubTopicPartition newSourceTopicPartition =
         partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
@@ -944,21 +952,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     if (leaderStartOffset < 0 && leaderTopic.isRealTime()) {
-      /**
-       * In this case, new leader should already been seeing a TopicSwitch, which has the rewind time information for
-       * it to replay from realtime topic.
-       */
-      TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
-      if (topicSwitch == null) {
-        throw new VeniceException(
-            "New leader does not have topic switch, unable to switch to realtime leader topic: "
-                + leaderTopicPartition);
-      }
-      leaderStartOffset = calculateLeaderUpstreamOffsetWithTopicSwitch(
-          partitionConsumptionState,
-          topicSwitch,
-          leaderTopic,
-          Collections.emptyList())
+      leaderStartOffset =
+          calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
               .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
     }
 
@@ -1020,7 +1015,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (upstreamStartOffset < 0 && newSourceTopic.isRealTime()) {
       upstreamStartOffset = calculateLeaderUpstreamOffsetWithTopicSwitch(
           partitionConsumptionState,
-          topicSwitch,
           newSourceTopic,
           Collections.emptyList())
               .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
@@ -1139,15 +1133,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (topicSwitchWrapper == null) {
       return Collections.emptySet();
     }
-    if (isSeparatedRealtimeTopicEnabled) {
-      Set<String> result = new HashSet<>();
-      for (String server: topicSwitchWrapper.getSourceServers()) {
-        result.add(server);
-        result.add(server + Utils.SEPARATE_TOPIC_SUFFIX);
-      }
-      return result;
-    }
-    return topicSwitchWrapper.getSourceServers();
+    return getKafkaUrlSetFromTopicSwitch(topicSwitchWrapper);
   }
 
   /**
@@ -3898,5 +3884,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // reset lastSendIngestionHeartbeatTimestamp to force sending HB SOS to the respective RT topics.
       lastSendIngestionHeartbeatTimestamp.set(0);
     }
+  }
+
+  Set<String> getKafkaUrlSetFromTopicSwitch(TopicSwitchWrapper topicSwitchWrapper) {
+    if (isSeparatedRealtimeTopicEnabled()) {
+      Set<String> result = new HashSet<>();
+      for (String server: topicSwitchWrapper.getSourceServers()) {
+        result.add(server);
+        result.add(server + Utils.SEPARATE_TOPIC_SUFFIX);
+      }
+      return result;
+    }
+    return topicSwitchWrapper.getSourceServers();
   }
 }

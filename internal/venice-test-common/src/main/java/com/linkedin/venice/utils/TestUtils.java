@@ -817,7 +817,7 @@ public class TestUtils {
     } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version);
     } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
-      return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+      return PubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
           + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;

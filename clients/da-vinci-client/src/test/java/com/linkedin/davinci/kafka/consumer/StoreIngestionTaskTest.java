@@ -5173,6 +5173,62 @@ public abstract class StoreIngestionTaskTest {
     }, AA_OFF);
   }
 
+  @Test
+  public void testResolveTopicPartitionWithKafkaURL() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    doCallRealMethod().when(storeIngestionTask).resolveTopicPartitionWithKafkaURL(any(), any(), anyString());
+    doReturn(pubSubTopicRepository).when(storeIngestionTask).getPubSubTopicRepository();
+    doReturn(resolver).when(storeIngestionTask).getKafkaClusterUrlResolver();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(1).when(pcs).getPartition();
+    doCallRealMethod().when(pcs).getSourceTopicPartition(any());
+    String store = "test_store";
+    String kafkaUrl = "localhost:1234";
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    Assert.assertEquals(
+        storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl).getPubSubTopic(),
+        realTimeTopic);
+    Assert.assertEquals(
+        storeIngestionTask.resolveTopicPartitionWithKafkaURL(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
+        versionTopic);
+    Assert.assertEquals(
+        storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
+            .getPubSubTopic(),
+        separateRealTimeTopic);
+  }
+
+  @Test
+  public void testUnsubscribeFromTopic() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    doCallRealMethod().when(storeIngestionTask).unsubscribeFromTopic(any(), any());
+    doReturn(pubSubTopicRepository).when(storeIngestionTask).getPubSubTopicRepository();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    String store = "test_store";
+    String kafkaUrl = "localhost:1234";
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+
+    doReturn(true).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
+    storeIngestionTask.unsubscribeFromTopic(realTimeTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribe(realTimeTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribe(separateRealTimeTopic, pcs);
+    storeIngestionTask.unsubscribeFromTopic(versionTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribe(versionTopic, pcs);
+
+    doReturn(false).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
+    storeIngestionTask.unsubscribeFromTopic(realTimeTopic, pcs);
+    verify(storeIngestionTask, times(2)).consumerUnSubscribe(realTimeTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribe(separateRealTimeTopic, pcs);
+    storeIngestionTask.unsubscribeFromTopic(versionTopic, pcs);
+    verify(storeIngestionTask, times(2)).consumerUnSubscribe(versionTopic, pcs);
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config

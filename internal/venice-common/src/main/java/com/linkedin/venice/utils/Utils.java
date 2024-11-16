@@ -1043,7 +1043,7 @@ public class Utils {
   /**
    * Check whether input region is for separate RT topic.
    */
-  public static boolean isSepTopicRegion(String region) {
+  public static boolean isSeparateTopicRegion(String region) {
     return region.endsWith(SEPARATE_TOPIC_SUFFIX);
   }
 

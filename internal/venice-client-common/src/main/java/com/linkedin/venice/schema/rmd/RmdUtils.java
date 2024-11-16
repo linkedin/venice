@@ -87,6 +87,7 @@ public class RmdUtils {
    * @return                True if the advancedOffset vector has grown beyond the baseOffset
    */
   static public boolean hasOffsetAdvanced(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
+    // TODO: Figure out if this is expected, or should we NOT send watermark for sep-RT?
     for (int i = 0; i < baseOffset.size(); i++) {
       if (advancedOffset.size() - 1 < i) {
         if (baseOffset.get(i) > 0) {

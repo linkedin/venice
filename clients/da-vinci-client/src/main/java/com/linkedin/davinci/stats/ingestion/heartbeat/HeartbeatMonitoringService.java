@@ -59,7 +59,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       ReadOnlyStoreRepository metadataRepository,
       Set<String> regionNames,
       String localRegionName) {
-    this.regionNames = regionNames.stream().filter(x -> !Utils.isSepTopicRegion(x)).collect(Collectors.toSet());
+    this.regionNames = regionNames.stream().filter(x -> !Utils.isSeparateTopicRegion(x)).collect(Collectors.toSet());
     this.localRegionName = localRegionName;
     this.reportingThread = new HeartbeatReporterThread();
     this.lagLoggingThread = new HeartbeatLagLoggingThread();

@@ -420,7 +420,7 @@ public class TestChangelogConsumer {
       polledChangeEvents.clear();
       // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as 0
       // is new message.
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         // poll enough to get through the empty push and the topic jump to RT.
         pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
         pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);

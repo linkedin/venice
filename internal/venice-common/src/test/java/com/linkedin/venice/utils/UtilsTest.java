@@ -9,10 +9,16 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
+<<<<<<< HEAD
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+=======
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+>>>>>>> 3fc9c6139 (remove logging; improvement)
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -372,4 +378,22 @@ public class UtilsTest {
     assertEquals(utcEpochTime, expectedEpoch, "The epoch time does not match the expected value for UTC.");
   }
 
+  @Test
+  public void testIsSeparateTopicRegion() {
+    Assert.assertTrue(Utils.isSeparateTopicRegion("dc-0_sep"));
+    Assert.assertFalse(Utils.isSeparateTopicRegion("dc-0"));
+  }
+
+  @Test
+  public void testGetLeaderTopicFromPubSubTopic() {
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    String store = "test_store";
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    Assert.assertEquals(Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, versionTopic), versionTopic);
+    Assert.assertEquals(Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, realTimeTopic), realTimeTopic);
+    Assert
+        .assertEquals(Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, separateRealTimeTopic), realTimeTopic);
+  }
 }

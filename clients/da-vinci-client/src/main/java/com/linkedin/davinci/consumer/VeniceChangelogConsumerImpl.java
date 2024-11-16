@@ -261,7 +261,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
-          LOGGER.info("DEBUGGING SUBSCRIBE1: {}", topicPartition);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
         }
       }
@@ -966,7 +965,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(partitionId)) {
       List<Long> partitionCurrentVersionHighWatermarks =
           currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_LIST);
-      LOGGER.info("DEBUGGING: FILTER COMP {} {}", partitionCurrentVersionHighWatermarks, recordCheckpointVector);
       return !RmdUtils.hasOffsetAdvanced(partitionCurrentVersionHighWatermarks, recordCheckpointVector);
     }
     // Has not met version swap message after client initialization.
