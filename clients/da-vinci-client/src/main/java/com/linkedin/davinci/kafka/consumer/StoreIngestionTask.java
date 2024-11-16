@@ -4502,7 +4502,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       String kafkaURL) {
     PubSubTopicPartition pubSubTopicPartition = partitionConsumptionState.getSourceTopicPartition(topic);
-    if (!kafkaURL.equals(kafkaClusterUrlResolver.apply(kafkaURL)) && topic.isRealTime()) {
+    if (kafkaClusterUrlResolver != null && !kafkaURL.equals(kafkaClusterUrlResolver.apply(kafkaURL))
+        && topic.isRealTime()) {
       PubSubTopic separateRealTimeTopic =
           pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
       pubSubTopicPartition =

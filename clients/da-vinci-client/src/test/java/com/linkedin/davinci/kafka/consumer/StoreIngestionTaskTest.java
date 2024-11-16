@@ -3911,6 +3911,8 @@ public abstract class StoreIngestionTaskTest {
 
     // Run the actual codes inside function "startConsumingAsLeader"
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).startConsumingAsLeader(any());
+
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).resolveTopicPartitionWithKafkaURL(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).shouldNewLeaderSwitchToRemoteConsumption(any());
     Set<String> kafkaServerSet = new HashSet<>();
     kafkaServerSet.add("localhost");

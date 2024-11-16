@@ -3853,7 +3853,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "Follower replica: {} unsubscribe finished for future resubscribe.",
         partitionConsumptionState.getReplicaId());
-    PubSubTopicPartition followerTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     long latestProcessedLocalVersionTopicOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     consumerSubscribe(
         versionTopic,
