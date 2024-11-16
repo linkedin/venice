@@ -1555,7 +1555,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           forceUnSubscribedCount++;
         }
       }
-      if (topicPartitionsToUnsubscribe.size() != 0) {
+      if (!topicPartitionsToUnsubscribe.isEmpty()) {
         consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
       }
     }
@@ -3526,11 +3526,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     // TODO: pass special format of kafka url as input here when subscribe to the separate incremental push topic
     String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
-    LOGGER.info(
-        "DEBUGGING resolved kafka URL: {}, original URL: {}, kafka props: {}",
-        resolvedKafkaURL,
-        kafkaURL,
-        kafkaProps);
     final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {

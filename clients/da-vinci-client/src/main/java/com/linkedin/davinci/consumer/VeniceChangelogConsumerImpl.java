@@ -261,6 +261,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
+          LOGGER.info("DEBUGGING SUBSCRIBE1: {}", topicPartition);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
         }
       }
@@ -857,7 +858,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       partitionToPutMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
-
     // Determine if the event should be filtered or not
     if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
       return Optional.empty();
@@ -893,9 +893,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
       LOGGER.info(
-          "Obtain version swap message: {} and versions swap high watermarks: {}",
+          "Obtain version swap message: {} and versions swap high watermarks: {} for topic-partition: {}",
           versionSwap,
-          versionSwap.getLocalHighWatermarks());
+          versionSwap.getLocalHighWatermarks(),
+          pubSubTopicPartition);
       PubSubTopic newServingVersionTopic =
           pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
@@ -965,6 +966,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(partitionId)) {
       List<Long> partitionCurrentVersionHighWatermarks =
           currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_LIST);
+      LOGGER.info("DEBUGGING: FILTER COMP {} {}", partitionCurrentVersionHighWatermarks, recordCheckpointVector);
       return !RmdUtils.hasOffsetAdvanced(partitionCurrentVersionHighWatermarks, recordCheckpointVector);
     }
     // Has not met version swap message after client initialization.
