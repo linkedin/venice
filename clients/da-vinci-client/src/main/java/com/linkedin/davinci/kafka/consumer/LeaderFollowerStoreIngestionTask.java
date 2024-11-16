@@ -1917,10 +1917,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         }
 
-        if (!record.getTopicPartition()
-            .getPubSubTopic()
-            .getPubSubTopicType()
-            .equals(currentLeaderTopic.getPubSubTopicType())) {
+        if (!Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, record.getTopicPartition().getPubSubTopic())
+            .equals(currentLeaderTopic)) {
           String errorMsg =
               "Leader replica: {} received a pubsub message that doesn't belong to the leader topic. Leader topic: "
                   + currentLeaderTopic + ", topic of incoming message: "
@@ -1979,7 +1977,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       case LEADER:
         PubSubTopic currentLeaderTopic =
             partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-        if (!incomingMessageTopic.getPubSubTopicType().equals(currentLeaderTopic.getPubSubTopicType())) {
+        if (!Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, incomingMessageTopic)
+            .equals(currentLeaderTopic)) {
           String errorMsg =
               "Leader replica: {} received a pubsub message that doesn't belong to the leader topic. Leader topic: "
                   + currentLeaderTopic + ", topic of incoming message: " + incomingMessageTopic.getName();
