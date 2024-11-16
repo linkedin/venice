@@ -536,6 +536,11 @@ public abstract class KafkaStoreIngestionServiceTest {
     consumerActionsQueueField.setAccessible(true);
     consumerActionsQueueField.set(storeIngestionTask, consumerActionsQueue);
 
+    Set<Integer> pendingPartitionDrops = mock(Set.class);
+    Field pendingPartitionDropsField = StoreIngestionTask.class.getDeclaredField("pendingPartitionDrops");
+    pendingPartitionDropsField.setAccessible(true);
+    pendingPartitionDropsField.set(storeIngestionTask, pendingPartitionDrops);
+
     when(topicNameToIngestionTaskMap.get(topicName)).thenReturn(storeIngestionTask);
     doCallRealMethod().when(storeIngestionTask).dropPartition(any());
 
