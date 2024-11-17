@@ -3524,10 +3524,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
-    // TODO: pass special format of kafka url as input here when subscribe to the separate incremental push topic
     String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
     final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
-    if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled
+    if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled()
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       return;
     }

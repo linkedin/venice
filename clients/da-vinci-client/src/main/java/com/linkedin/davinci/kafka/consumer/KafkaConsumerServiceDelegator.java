@@ -295,7 +295,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         PartitionReplicaIngestionContext topicPartitionReplicaRole) {
       PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic versionTopic = topicPartitionReplicaRole.getVersionTopic();
-      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()) {
+      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()
+          && !topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
         return dedicatedConsumerService;
       }
       return defaultConsumerService;
@@ -341,14 +342,14 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
        */
       if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
-            && pubSubTopic.isRealTime()) {
+            && pubSubTopic.isRealTime() && !pubSubTopic.isSeparateRealTimeTopic()) {
           return consumerServiceForCurrentVersionAAWCLeader;
         } else {
           return consumerServiceForCurrentVersionNonAAWCLeader;
         }
       } else {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
-            && pubSubTopic.isRealTime()) {
+            && pubSubTopic.isRealTime() && !pubSubTopic.isSeparateRealTimeTopic()) {
           return consumerServiceForNonCurrentVersionAAWCLeader;
         } else {
           return consumerServiceNonCurrentNonAAWCLeader;
