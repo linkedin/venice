@@ -5216,17 +5216,17 @@ public abstract class StoreIngestionTaskTest {
 
     doReturn(true).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
     storeIngestionTask.unsubscribeFromTopic(realTimeTopic, pcs);
-    verify(storeIngestionTask, times(1)).consumerUnSubscribe(realTimeTopic, pcs);
-    verify(storeIngestionTask, times(1)).consumerUnSubscribe(separateRealTimeTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribeForStateTransition(realTimeTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribeForStateTransition(separateRealTimeTopic, pcs);
     storeIngestionTask.unsubscribeFromTopic(versionTopic, pcs);
-    verify(storeIngestionTask, times(1)).consumerUnSubscribe(versionTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribeForStateTransition(versionTopic, pcs);
 
     doReturn(false).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
     storeIngestionTask.unsubscribeFromTopic(realTimeTopic, pcs);
-    verify(storeIngestionTask, times(2)).consumerUnSubscribe(realTimeTopic, pcs);
-    verify(storeIngestionTask, times(1)).consumerUnSubscribe(separateRealTimeTopic, pcs);
+    verify(storeIngestionTask, times(2)).consumerUnSubscribeForStateTransition(realTimeTopic, pcs);
+    verify(storeIngestionTask, times(1)).consumerUnSubscribeForStateTransition(separateRealTimeTopic, pcs);
     storeIngestionTask.unsubscribeFromTopic(versionTopic, pcs);
-    verify(storeIngestionTask, times(2)).consumerUnSubscribe(versionTopic, pcs);
+    verify(storeIngestionTask, times(2)).consumerUnSubscribeForStateTransition(versionTopic, pcs);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
