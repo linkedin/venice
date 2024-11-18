@@ -4491,6 +4491,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isSeparatedRealtimeTopicEnabled;
   }
 
+  public boolean isSeparatedRealtimeTopicEnabled() {
+    return isSeparatedRealtimeTopicEnabled;
+  }
+
   PubSubTopicPartition resolveTopicPartitionWithKafkaURL(
       PubSubTopic topic,
       PartitionConsumptionState partitionConsumptionState,
