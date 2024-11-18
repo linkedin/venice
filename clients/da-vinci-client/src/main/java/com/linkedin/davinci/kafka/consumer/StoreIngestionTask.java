@@ -3487,9 +3487,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * leader-follower state vs the intended state when the message was polled. Thus, we use an increased timeout of up to
    * 30 minutes according to the maximum value of the metric consumer_records_producing_to_write_buffer_latency.
    */
-  void consumerUnSubscribeForStateTransition(
-      PubSubTopic topic,
-      PartitionConsumptionState partitionConsumptionState) {
+  void consumerUnSubscribeForStateTransition(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
@@ -4486,9 +4484,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     return true;
-  }
-  public boolean isSeparatedRealtimeTopicEnabled() {
-    return isSeparatedRealtimeTopicEnabled;
   }
 
   public boolean isSeparatedRealtimeTopicEnabled() {
