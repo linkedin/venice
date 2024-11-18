@@ -932,10 +932,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public void dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
     final String topic = veniceStore.getStoreVersionName();
 
-    if (isPartitionConsuming(topic, partitionId)) {
-      throw new VeniceException("Tried to drop storage partition that is still consuming");
-    }
-
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null && ingestionTask.isRunning()) {
