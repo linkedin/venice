@@ -243,15 +243,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    * Stop specific subscription associated with the given version topic.
    */
   @Override
-  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
+    SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       /**
        * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
       synchronized (consumer) {
-        consumer.unSubscribe(pubSubTopicPartition);
+        consumer.unSubscribe(pubSubTopicPartition, timeoutMs);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
