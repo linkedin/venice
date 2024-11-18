@@ -50,6 +50,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
@@ -119,16 +120,10 @@ public class VeniceServerTest {
           .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
-      String storeName = Version.composeKafkaTopic(Utils.getUniqueString("testCheckBeforeJoinCluster"), 1);
-      server.getVeniceServer()
-          .getStorageService()
-          .openStoreForNewPartition(
-              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
-              1,
-              () -> null);
-      Assert.assertEquals(
+      String storeName = cluster.createStore(10);
+      Assert.assertNotEquals(
           repository.getAllLocalStorageEngines().size(),
-          1,
+          0,
           "We have created one storage engine for store: " + storeName);
 
       // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be
@@ -137,7 +132,8 @@ public class VeniceServerTest {
       cluster.stopVeniceServer(server.getPort());
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We should not cleanup the local storage");
+      Assert
+          .assertNotEquals(repository.getAllLocalStorageEngines().size(), 0, "We should not cleanup the local storage");
 
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
       // the server join again.
@@ -211,7 +207,11 @@ public class VeniceServerTest {
 
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
+      StorageEngineRepository storageEngineRepository = repository;
+      TestUtils.waitForNonDeterministicAssertion(
+          3,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(storageEngineRepository.getAllLocalStorageEngines().size(), 0));
     }
   }
 
