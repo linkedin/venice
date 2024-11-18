@@ -529,7 +529,7 @@ public class KafkaConsumerServiceDelegatorTest {
         factory,
         properties,
         1000l,
-        versionNum * 2, // To simulate real production cases: consumers # >> version # per store.
+        versionNum + 2, // To simulate real production cases: consumers # >> version # per store.
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
@@ -625,8 +625,8 @@ public class KafkaConsumerServiceDelegatorTest {
           }
           consumerServiceDelegator
               .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, consumedDataReceiver);
-          // Avoid wait time here to increase the chance for race condition.
-          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(0L);
+          // Use low wait time to trigger unsubscribe and poll lock handoff.
+          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(1L);
           int versionNum =
               Version.parseVersionFromKafkaTopicName(partitionReplicaIngestionContext.getVersionTopic().getName());
           if (versionNum % 3 == 0) {
