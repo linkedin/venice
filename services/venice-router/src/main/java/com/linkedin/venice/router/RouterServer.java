@@ -124,6 +124,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
+import org.apache.commons.cli.MissingArgumentException;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -195,8 +196,8 @@ public class RouterServer extends AbstractVeniceService {
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
 
-  private static final String ROUTER_SERVICE_NAME = "venice-router";
-  private static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
+  public static final String ROUTER_SERVICE_NAME = "venice-router";
+  public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
 
   /**
    * Thread number used to monitor the listening port;
@@ -269,14 +270,14 @@ public class RouterServer extends AbstractVeniceService {
       VeniceProperties properties,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
-      Optional<SSLFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory) throws MissingArgumentException {
     this(
         properties,
         serviceDiscoveryAnnouncers,
         accessController,
         sslFactory,
         TehutiUtils
-            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getPropsMap()),
+            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getAsMap()),
         null,
         "venice-discovery");
   }
@@ -309,7 +310,7 @@ public class RouterServer extends AbstractVeniceService {
       Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository,
       D2Client d2Client,
-      String d2ServiceName) {
+      String d2ServiceName) throws MissingArgumentException {
     this(
         properties,
         serviceDiscoveryAnnouncers,
@@ -317,8 +318,8 @@ public class RouterServer extends AbstractVeniceService {
         sslFactory,
         new VeniceMetricsRepository(
             metricsRepository,
-            new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setServiceName("venice-router")
-                .extractAndSetOtelConfigs(properties.getPropsMap())
+            new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
+                .extractAndSetOtelConfigs(properties.getAsMap())
                 .build()),
         d2Client,
         d2ServiceName);
@@ -435,15 +436,15 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
-      HelixLiveInstanceMonitor liveInstanceMonitor) {
+      HelixLiveInstanceMonitor liveInstanceMonitor) throws MissingArgumentException {
     this(
         properties,
         serviceDiscoveryAnnouncers,
         Optional.empty(),
         sslFactory,
         new VeniceMetricsRepository(
-            new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setServiceName("venice-router")
-                .extractAndSetOtelConfigs(properties.getPropsMap())
+            new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
+                .extractAndSetOtelConfigs(properties.getAsMap())
                 .build()),
         false);
     this.routingDataRepository = routingDataRepository;

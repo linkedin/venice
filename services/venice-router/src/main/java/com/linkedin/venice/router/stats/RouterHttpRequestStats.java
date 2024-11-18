@@ -1,6 +1,9 @@
 package com.linkedin.venice.router.stats;
 
+import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
+import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
+import static com.linkedin.venice.stats.dimensions.VeniceHttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
@@ -19,8 +22,7 @@ import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat;
-import com.linkedin.venice.stats.dimensions.VeniceHttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.VeniceRequestRetryType;
@@ -44,12 +46,25 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.cli.MissingArgumentException;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(10, TimeUnit.SECONDS);
-  private static final VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
-      new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setTehutiMetricConfig(METRIC_CONFIG).build());
+  private static final VeniceMetricsRepository localMetricRepo;
+
+  static {
+    try {
+      localMetricRepo = new VeniceMetricsRepository(
+          new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
+              .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
+              .setTehutiMetricConfig(METRIC_CONFIG)
+              .build());
+    } catch (MissingArgumentException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
   static {
     totalInflightRequestSensor.add("total_inflight_request_count", new Rate());
@@ -126,9 +141,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
 
   private final String systemStoreName;
-  private final Attributes otelMetricDimensions;
+  private final Attributes commonMetricDimensions;
   private final boolean emitOpenTelemetryMetrics;
-  private final VeniceOpenTelemetryMetricFormat openTelemetryMetricFormat;
+  private final VeniceOpenTelemetryMetricNamingFormat openTelemetryMetricFormat;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -139,11 +154,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-    emitOpenTelemetryMetrics = metricsRepository.getVeniceMetricsConfig().isEmitOpenTelemetryMetrics();
-    openTelemetryMetricFormat = metricsRepository.getVeniceMetricsConfig().getMetricFormat();
-    otelMetricDimensions = Attributes.builder()
+    emitOpenTelemetryMetrics = metricsRepository.getVeniceMetricsConfig().emitOtelMetrics();
+    openTelemetryMetricFormat = metricsRepository.getVeniceMetricsConfig().getMetricNamingFormat();
+    commonMetricDimensions = Attributes.builder()
         .put(getDimensionName(VENICE_STORE_NAME), storeName)
-        .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.getRequestTypeName())
+        .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
         .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName)
         .build();
 
@@ -294,7 +309,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
     totalInflightRequestSensor.record();
     if (emitOpenTelemetryMetrics) {
-      incomingRequestSensorOtel.add(1, otelMetricDimensions);
+      incomingRequestSensorOtel.add(1, commonMetricDimensions);
     }
   }
 
@@ -363,7 +378,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordRetryTriggeredSensorOtel(VeniceRequestRetryType retryType) {
     if (emitOpenTelemetryMetrics) {
       Attributes dimensions = Attributes.builder()
-          .putAll(otelMetricDimensions)
+          .putAll(commonMetricDimensions)
           .put(getDimensionName(VENICE_REQUEST_RETRY_TYPE), retryType.getRetryType())
           .build();
       retryTriggeredSensorOtel.add(1, dimensions);
@@ -373,7 +388,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordAbortedRetrySensorOtel(VeniceRequestRetryAbortReason abortReason) {
     if (emitOpenTelemetryMetrics) {
       Attributes dimensions = Attributes.builder()
-          .putAll(otelMetricDimensions)
+          .putAll(commonMetricDimensions)
           .put(getDimensionName(VENICE_REQUEST_RETRY_ABORT_REASON), abortReason.getAbortReason())
           .build();
       abortedRetrySensorOtel.add(1, dimensions);
@@ -412,11 +427,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       VeniceResponseStatusCategory veniceResponseStatusCategory) {
     if (emitOpenTelemetryMetrics) {
       Attributes dimensions = Attributes.builder()
-          .putAll(otelMetricDimensions)
+          .putAll(commonMetricDimensions)
           // only add HTTP_RESPONSE_STATUS_CODE_CATEGORY to reduce the cardinality for histogram
           .put(
               getDimensionName(HTTP_RESPONSE_STATUS_CODE_CATEGORY),
-              VeniceHttpResponseStatusCodeCategory.valueOf(responseStatus.code()).getCategory())
+              getVeniceHttpResponseStatusCodeCategory(responseStatus))
           .put(getDimensionName(VENICE_RESPONSE_STATUS_CODE_CATEGORY), veniceResponseStatusCategory.getCategory())
           .build();
       latencySensorOtel.record(latency, dimensions);
@@ -428,10 +443,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       VeniceResponseStatusCategory veniceResponseStatusCategory) {
     if (emitOpenTelemetryMetrics) {
       Attributes dimensions = Attributes.builder()
-          .putAll(otelMetricDimensions)
+          .putAll(commonMetricDimensions)
           .put(
               getDimensionName(HTTP_RESPONSE_STATUS_CODE_CATEGORY),
-              VeniceHttpResponseStatusCodeCategory.valueOf(responseStatus.code()).getCategory())
+              getVeniceHttpResponseStatusCodeCategory(responseStatus))
           .put(getDimensionName(VENICE_RESPONSE_STATUS_CODE_CATEGORY), veniceResponseStatusCategory.getCategory())
           .put(getDimensionName(HTTP_RESPONSE_STATUS_CODE), responseStatus.codeAsText().toString())
           .build();
@@ -478,7 +493,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     keyNumSensor.record(keyNum);
     if (emitOpenTelemetryMetrics) {
       Attributes dimensions = Attributes.builder()
-          .putAll(otelMetricDimensions)
+          .putAll(commonMetricDimensions)
           .put(getDimensionName(VENICE_REQUEST_VALIDATION_OUTCOME), outcome.getOutcome())
           .build();
       keyCountSensorOtel.record(keyNum, dimensions);
@@ -542,12 +557,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordAllowedRetryRequest() {
     allowedRetryRequestSensor.record();
-    allowedRetryRequestSensorOtel.add(1, otelMetricDimensions);
+    allowedRetryRequestSensorOtel.add(1, commonMetricDimensions);
   }
 
   public void recordDisallowedRetryRequest() {
     disallowedRetryRequestSensor.record();
-    disallowedRetryRequestSensorOtel.add(1, otelMetricDimensions);
+    disallowedRetryRequestSensorOtel.add(1, commonMetricDimensions);
   }
 
   public void recordErrorRetryAttemptTriggeredByPendingRequestCheck() {
@@ -557,7 +572,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordRetryDelay(double delay) {
     retryDelaySensor.record(delay);
     if (emitOpenTelemetryMetrics) {
-      retryDelaySensorOtel.record(delay, otelMetricDimensions);
+      retryDelaySensorOtel.record(delay, commonMetricDimensions);
     }
   }
 

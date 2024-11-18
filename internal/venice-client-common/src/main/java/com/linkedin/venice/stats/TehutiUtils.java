@@ -10,6 +10,7 @@ import io.tehuti.metrics.stats.Percentiles;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Map;
+import org.apache.commons.cli.MissingArgumentException;
 
 
 /**
@@ -133,9 +134,9 @@ public class TehutiUtils {
   public static VeniceMetricsRepository getVeniceMetricsRepository(
       String serviceName,
       String metricPrefix,
-      Map<String, String> configs) {
+      Map<String, String> configs) throws MissingArgumentException {
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.VeniceMetricsConfigBuilder().setServiceName(serviceName)
+        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
             .setMetricPrefix(metricPrefix)
             .extractAndSetOtelConfigs(configs)
             .build());

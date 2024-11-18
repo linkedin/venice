@@ -1,18 +1,17 @@
 package com.linkedin.venice.stats;
 
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.fail;
 
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import java.util.HashMap;
-import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -21,19 +20,18 @@ import org.testng.annotations.Test;
 public class VeniceOpenTelemetryMetricsRepositoryTest {
   private VeniceOpenTelemetryMetricsRepository metricsRepository;
 
-  @Mock
   private VeniceMetricsConfig mockMetricsConfig;
 
   @BeforeMethod
   public void setUp() {
-    MockitoAnnotations.initMocks(this);
-
-    Mockito.when(mockMetricsConfig.isEmitOpenTelemetryMetrics()).thenReturn(true);
-    Mockito.when(mockMetricsConfig.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricFormat.SNAKE_CASE);
+    mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
+    Mockito.when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
+    Mockito.when(mockMetricsConfig.getMetricNamingFormat())
+        .thenReturn(VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
     Mockito.when(mockMetricsConfig.getMetricPrefix()).thenReturn("test_prefix");
     Mockito.when(mockMetricsConfig.getServiceName()).thenReturn("test_service");
-    Mockito.when(mockMetricsConfig.isEmitToHttpGrpcEndpoint()).thenReturn(true);
-    Mockito.when(mockMetricsConfig.isUseExponentialHistogram()).thenReturn(false);
+    Mockito.when(mockMetricsConfig.exportOtelMetricsToEndpoint()).thenReturn(true);
+    Mockito.when(mockMetricsConfig.getOtelEndpoint()).thenReturn("http://localhost:4318");
 
     metricsRepository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
   }
@@ -46,19 +44,17 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testConstructorInitialize() {
     // Check if OpenTelemetry and SdkMeterProvider are initialized correctly
-    assertNotNull(metricsRepository.getOpenTelemetry());
     assertNotNull(metricsRepository.getSdkMeterProvider());
     assertNotNull(metricsRepository.getMeter());
   }
 
   @Test
   public void testConstructorWithEmitDisabled() {
-    Mockito.when(mockMetricsConfig.isEmitOpenTelemetryMetrics()).thenReturn(false);
+    Mockito.when(mockMetricsConfig.emitOtelMetrics()).thenReturn(false);
     VeniceOpenTelemetryMetricsRepository metricsRepository =
         new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
 
     // Verify that metrics-related fields are null when metrics are disabled
-    assertNull(metricsRepository.getOpenTelemetry());
     assertNull(metricsRepository.getSdkMeterProvider());
     assertNull(metricsRepository.getMeter());
     assertNull(metricsRepository.getHistogram("test", "unit", "desc"));
@@ -69,55 +65,39 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   public void testGetOtlpHttpMetricExporterWithValidConfig() {
     HashMap<String, String> otelConfigs = new HashMap<>();
     otelConfigs.put("otel.exporter.otlp.endpoint", "http://localhost:4318");
-    Mockito.when(mockMetricsConfig.getOtelConfigs()).thenReturn(otelConfigs);
 
     MetricExporter exporter = metricsRepository.getOtlpHttpMetricExporter(mockMetricsConfig);
 
     // Verify that the exporter is not null and is of the expected type
     assertNotNull(exporter);
-
-    // Check that the exporter uses the correct endpoint
-    assertEquals(otelConfigs.get("otel.exporter.otlp.endpoint"), "http://localhost:4318");
-  }
-
-  @Test
-  public void testGetOtlpHttpMetricExporterWithEmptyConfig() {
-    Mockito.when(mockMetricsConfig.getOtelConfigs()).thenReturn(new HashMap<>());
-
-    try {
-      MetricExporter exporter = metricsRepository.getOtlpHttpMetricExporter(mockMetricsConfig);
-      assertNotNull(exporter, "Exporter should be created even with an empty config.");
-    } catch (Exception e) {
-      fail("Exporter creation should not throw an exception with empty config.");
-    }
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testValidateMetricNameWithNullName() {
-    VeniceOpenTelemetryMetricsRepository.validateMetricName(null);
+    validateMetricName(null);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testValidateMetricNameWithEmptyName() {
-    VeniceOpenTelemetryMetricsRepository.validateMetricName("");
+    validateMetricName("");
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testValidateMetricNameWithInvalidName() {
-    VeniceOpenTelemetryMetricsRepository.validateMetricName("Invalid Name!");
+    validateMetricName("Invalid Name!");
   }
 
   @Test
   public void testTransformMetricName() {
-    Mockito.when(mockMetricsConfig.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricFormat.SNAKE_CASE);
+    Mockito.when(mockMetricsConfig.getMetricNamingFormat())
+        .thenReturn(VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
     assertEquals(metricsRepository.getFullMetricName("prefix", "metric_name"), "prefix.metric_name");
 
-    String transformedName = VeniceOpenTelemetryMetricsRepository
-        .transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricFormat.PASCAL_CASE);
+    String transformedName =
+        transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE);
     assertEquals(transformedName, "Test.TestMetricName");
 
-    transformedName = VeniceOpenTelemetryMetricsRepository
-        .transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricFormat.CAMEL_CASE);
+    transformedName = transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricNamingFormat.CAMEL_CASE);
     assertEquals(transformedName, "test.testMetricName");
   }
 

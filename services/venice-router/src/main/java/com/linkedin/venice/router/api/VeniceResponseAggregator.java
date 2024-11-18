@@ -243,6 +243,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything
       // here...
       double latency = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+      stats.recordLatency(storeName, latency);
       if (HEALTHY_STATUSES.contains(httpResponseStatus)) {
         routerStats.getStatsByType(RequestType.SINGLE_GET)
             .recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());

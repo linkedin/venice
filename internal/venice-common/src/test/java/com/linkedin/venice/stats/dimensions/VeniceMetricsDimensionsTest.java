@@ -2,14 +2,14 @@ package com.linkedin.venice.stats.dimensions;
 
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.stats.VeniceOpenTelemetryMetricFormat;
+import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import org.testng.annotations.Test;
 
 
 public class VeniceMetricsDimensionsTest {
   @Test
   public void testGetDimensionNameInSnakeCase() {
-    VeniceOpenTelemetryMetricFormat format = VeniceOpenTelemetryMetricFormat.SNAKE_CASE;
+    VeniceOpenTelemetryMetricNamingFormat format = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
     for (VeniceMetricsDimensions dimension: VeniceMetricsDimensions.values()) {
       switch (dimension) {
         case VENICE_STORE_NAME:
@@ -47,7 +47,7 @@ public class VeniceMetricsDimensionsTest {
 
   @Test
   public void testGetDimensionNameInCamelCase() {
-    VeniceOpenTelemetryMetricFormat format = VeniceOpenTelemetryMetricFormat.CAMEL_CASE;
+    VeniceOpenTelemetryMetricNamingFormat format = VeniceOpenTelemetryMetricNamingFormat.CAMEL_CASE;
     for (VeniceMetricsDimensions dimension: VeniceMetricsDimensions.values()) {
       switch (dimension) {
         case VENICE_STORE_NAME:
@@ -85,7 +85,7 @@ public class VeniceMetricsDimensionsTest {
 
   @Test
   public void testGetDimensionNameInPascalCase() {
-    VeniceOpenTelemetryMetricFormat format = VeniceOpenTelemetryMetricFormat.PASCAL_CASE;
+    VeniceOpenTelemetryMetricNamingFormat format = VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE;
     for (VeniceMetricsDimensions dimension: VeniceMetricsDimensions.values()) {
       switch (dimension) {
         case VENICE_STORE_NAME:

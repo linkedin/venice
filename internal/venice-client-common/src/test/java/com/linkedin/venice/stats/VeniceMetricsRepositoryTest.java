@@ -9,6 +9,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Map;
+import org.apache.commons.cli.MissingArgumentException;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -21,8 +22,9 @@ public class VeniceMetricsRepositoryTest {
   private MetricsRepository mockDelegate;
 
   @BeforeMethod
-  public void setUp() {
-    VeniceMetricsConfig config = new VeniceMetricsConfig.VeniceMetricsConfigBuilder().build();
+  public void setUp() throws MissingArgumentException {
+    VeniceMetricsConfig config =
+        new VeniceMetricsConfig.Builder().setServiceName("test").setMetricPrefix("test").build();
     mockOpenTelemetryMetricsRepository = Mockito.mock(VeniceOpenTelemetryMetricsRepository.class);
     mockDelegate = Mockito.mock(MetricsRepository.class);
     metricsRepository = new VeniceMetricsRepository(mockDelegate, config, mockOpenTelemetryMetricsRepository);
@@ -34,8 +36,9 @@ public class VeniceMetricsRepositoryTest {
   }
 
   @Test
-  public void testConstructorWithDelegateAndConfig() {
-    VeniceMetricsConfig config = new VeniceMetricsConfig.VeniceMetricsConfigBuilder().build();
+  public void testConstructorWithDelegateAndConfig() throws MissingArgumentException {
+    VeniceMetricsConfig config =
+        new VeniceMetricsConfig.Builder().setServiceName("test").setMetricPrefix("test").build();
     VeniceMetricsRepository repo =
         new VeniceMetricsRepository(mockDelegate, config, mockOpenTelemetryMetricsRepository);
 

@@ -56,6 +56,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.cli.MissingArgumentException;
 import org.apache.http.client.methods.HttpGet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -64,7 +65,7 @@ import org.testng.annotations.Test;
 //TODO: refactor Dispatcher to take a HttpClient Factory, so we don't need to spin up an HTTP server for these tests
 public class TestVeniceDispatcher {
   @Test
-  public void testErrorRetry() {
+  public void testErrorRetry() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -93,7 +94,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void testErrorRetryOnPendingCheckFail() {
+  public void testErrorRetryOnPendingCheckFail() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(true, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -123,7 +124,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void testErrorRetryOnPendingCheckLeak() {
+  public void testErrorRetryOnPendingCheckLeak() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, true);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -153,7 +154,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void passesThroughHttp429() {
+  public void passesThroughHttp429() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -182,7 +183,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void passThroughCompressedDataIfClientSupportsDecompressionForSingleGet() {
+  public void passThroughCompressedDataIfClientSupportsDecompressionForSingleGet() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -215,7 +216,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void decompressRecordIfClientDoesntSupportsDecompressionForSingleGet() {
+  public void decompressRecordIfClientDoesntSupportsDecompressionForSingleGet() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -247,7 +248,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void passThroughCompressedDataIfClientSupportsDecompressionForMultiGet() {
+  public void passThroughCompressedDataIfClientSupportsDecompressionForMultiGet() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -279,7 +280,7 @@ public class TestVeniceDispatcher {
   }
 
   @Test
-  public void decompressRecordIfClientDoesntSupportsDecompressionForMultiGet() {
+  public void decompressRecordIfClientDoesntSupportsDecompressionForMultiGet() throws MissingArgumentException {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
@@ -310,7 +311,8 @@ public class TestVeniceDispatcher {
     }
   }
 
-  private VeniceDispatcher getMockDispatcher(boolean forcePendingCheck, boolean forceLeakPending) {
+  private VeniceDispatcher getMockDispatcher(boolean forcePendingCheck, boolean forceLeakPending)
+      throws MissingArgumentException {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();

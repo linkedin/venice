@@ -10,6 +10,7 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Objects;
+import org.apache.commons.cli.MissingArgumentException;
 
 
 /** extends MetricsRepository to keep the changes to a minimum. Next step would be to create a MetricsRepository inside rather than extending it */
@@ -18,9 +19,9 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
   private VeniceMetricsConfig veniceMetricsConfig;
   VeniceOpenTelemetryMetricsRepository openTelemetryMetricsRepository;
 
-  public VeniceMetricsRepository() {
+  public VeniceMetricsRepository() throws MissingArgumentException {
     super();
-    this.veniceMetricsConfig = new VeniceMetricsConfig.VeniceMetricsConfigBuilder().build();
+    this.veniceMetricsConfig = new VeniceMetricsConfig.Builder().build();
     this.openTelemetryMetricsRepository = new VeniceOpenTelemetryMetricsRepository(veniceMetricsConfig);
   }
 

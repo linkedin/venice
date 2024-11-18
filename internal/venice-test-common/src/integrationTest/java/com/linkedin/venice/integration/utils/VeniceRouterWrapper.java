@@ -48,6 +48,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.cli.MissingArgumentException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -155,10 +156,13 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           .put("otel.venice.enabled", Boolean.TRUE.toString())
           .put("otel.venice.export.to.log", Boolean.TRUE.toString())
-          .put("otel.venice.export.to.http.grpc.endpoint", Boolean.TRUE.toString())
+          .put("otel.venice.export.to.endpoint", Boolean.TRUE.toString())
           .put("otel.exporter.otlp.metrics.protocol", "http/protobuf")
           .put("otel.exporter.otlp.metrics.endpoint", "http://localhost:4318/v1/metrics")
           .put("otel.exporter.otlp.metrics.temporality.preference", "delta")
+          .put("otel.exporter.otlp.metrics.default.histogram.aggregation", "base2_exponential_bucket_histogram")
+          .put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale", 3)
+          .put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets", 250)
           .put(properties);
 
       // setup d2 config first
@@ -185,7 +189,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           TehutiUtils.getVeniceMetricsRepository(
               ROUTER_SERVICE_NAME,
               ROUTER_SERVICE_METRIC_PREFIX,
-              routerProperties.getPropsMap()),
+              routerProperties.getAsMap()),
           D2TestUtils.getAndStartD2Client(zkAddress),
           CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       return new VeniceRouterWrapper(
@@ -234,7 +238,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  protected void newProcess() {
+  protected void newProcess() throws MissingArgumentException {
     String httpURI = "http://" + getHost() + ":" + getPort();
     String httpsURI = "https://" + getHost() + ":" + getSslPort();
 
@@ -248,7 +252,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
         Optional.empty(),
         Optional.of(SslUtils.getVeniceLocalSslFactory()),
         TehutiUtils
-            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getPropsMap()),
+            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getAsMap()),
         D2TestUtils.getAndStartD2Client(zkAddress),
         CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     LOGGER.info("Started VeniceRouterWrapper: {}", this);
