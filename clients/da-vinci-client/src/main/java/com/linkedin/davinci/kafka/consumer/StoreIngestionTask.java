@@ -1784,7 +1784,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     } catch (Exception e) {
-      LOGGER.error("{} Error while resetting offset.", ingestionTaskName, e);
+      LOGGER.error("{} Error while handling message in internalClose", ingestionTaskName, e);
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
     aggKafkaConsumerService.unsubscribeAll(versionTopic);

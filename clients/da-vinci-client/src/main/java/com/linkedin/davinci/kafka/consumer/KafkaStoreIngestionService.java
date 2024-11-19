@@ -939,7 +939,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             "Ingestion task is still running for Topic {}. Dropping partition {} asynchronously",
             veniceStore.getStoreVersionName(),
             partitionId);
-        ingestionTask.dropPartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+        ingestionTask.dropPartitionAsynchronously(
+            new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
         LOGGER.info(
             "Ingestion task isn't running for Topic {}. Dropping partition {} synchronously",
