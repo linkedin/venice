@@ -1792,6 +1792,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storageMetadataService.clearOffset(topic, partition);
         } else if (opType == DROP_PARTITION) {
           PubSubTopicPartition topicPartition = message.getTopicPartition();
+          LOGGER.info("Processing DROP_PARTITION message for {} in internalClose", topicPartition);
           dropPartitionSynchronously(topicPartition);
         } else {
           LOGGER.info("Cleanup ignoring the Message: {} Replica: {}", message, replica);

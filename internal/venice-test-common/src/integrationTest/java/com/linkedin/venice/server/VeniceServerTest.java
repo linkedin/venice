@@ -73,6 +73,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceServerTest {
+  static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 70 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerTest.class);
 
   @Test
@@ -341,7 +342,7 @@ public class VeniceServerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDropStorePartitionAsynchronously() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
       Properties featureProperties = new Properties();
@@ -366,7 +367,6 @@ public class VeniceServerTest {
       // Add servers to trigger a rebalance, which will redistribute and drop partitions for the current participant
       cluster.addVeniceServer(featureProperties, new Properties());
       cluster.addVeniceServer(featureProperties, new Properties());
-      cluster.addVeniceServer(featureProperties, new Properties());
 
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
 
@@ -377,7 +377,7 @@ public class VeniceServerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDropStorePartitionSynchronously() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
       Properties featureProperties = new Properties();
