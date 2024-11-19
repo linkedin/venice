@@ -1,41 +1,21 @@
 package com.linkedin.venice.controllerapi;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import org.testng.annotations.Test;
 
 
 public class TestStoppableNodeStatusResponse {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-
-  private static class StoppableNodeStatusResponseForTest {
-    private List<String> stoppableInstances;
-    private Map<String, String> nonStoppableInstancesWithReasons;
-
-    public Map<String, String> getNonStoppableInstancesWithReasons() {
-      return nonStoppableInstancesWithReasons;
-    }
-
-    public void setNonStoppableInstancesWithReason(Map<String, String> nonStoppableInstancesWithReasons) {
-      this.nonStoppableInstancesWithReasons = nonStoppableInstancesWithReasons;
-    }
-
-    public List<String> getStoppableInstances() {
-      return stoppableInstances;
-    }
-
-    public void setStoppableInstances(List<String> removableInstances) {
-      this.stoppableInstances = removableInstances;
-    }
-  }
 
   @Test
   public void testJsonSerialization() throws JsonProcessingException {
@@ -49,11 +29,14 @@ public class TestStoppableNodeStatusResponse {
     });
 
     String serializedResponse = OBJECT_MAPPER.writeValueAsString(response);
-    StoppableNodeStatusResponseForTest deserializedResponse =
-        OBJECT_MAPPER.readValue(serializedResponse, StoppableNodeStatusResponseForTest.class);
+    JsonNode deserializedResponse = OBJECT_MAPPER.readTree(serializedResponse);
 
-    assertEquals(deserializedResponse.stoppableInstances, response.getStoppableInstances());
-    assertEquals(deserializedResponse.nonStoppableInstancesWithReasons, response.getNonStoppableInstancesWithReasons());
+    assertTrue(deserializedResponse.get("stoppableInstances") instanceof ArrayNode);
+    assertEquals(deserializedResponse.get("stoppableInstances").get(0).asText(), "instance1");
+    assertEquals(deserializedResponse.get("stoppableInstances").get(1).asText(), "instance2");
+    assertTrue(deserializedResponse.get("nonStoppableInstancesWithReasons") instanceof ObjectNode);
+    assertEquals(deserializedResponse.get("nonStoppableInstancesWithReasons").get("instance3").asText(), "reason1");
+    assertEquals(deserializedResponse.get("nonStoppableInstancesWithReasons").get("instance4").asText(), "reason2");
   }
 
   @Test
@@ -61,10 +44,9 @@ public class TestStoppableNodeStatusResponse {
     StoppableNodeStatusResponse response = new StoppableNodeStatusResponse();
 
     String serializedResponse = OBJECT_MAPPER.writeValueAsString(response);
-    StoppableNodeStatusResponseForTest deserializedResponse =
-        OBJECT_MAPPER.readValue(serializedResponse, StoppableNodeStatusResponseForTest.class);
+    JsonNode deserializedResponse = OBJECT_MAPPER.readTree(serializedResponse);
 
-    assertEquals(deserializedResponse.stoppableInstances, Collections.emptyList());
-    assertEquals(deserializedResponse.nonStoppableInstancesWithReasons, Collections.emptyMap());
+    assertTrue(deserializedResponse.get("stoppableInstances").isEmpty());
+    assertTrue(deserializedResponse.get("nonStoppableInstancesWithReasons").isEmpty());
   }
 }
