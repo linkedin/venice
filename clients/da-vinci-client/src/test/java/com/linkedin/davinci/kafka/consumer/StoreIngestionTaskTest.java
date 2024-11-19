@@ -768,7 +768,7 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  public void runTest(StoreIngestionTaskTestConfig config) throws Exception {
+  private void runTest(StoreIngestionTaskTestConfig config) throws Exception {
     runTest(
         config.getPollStrategy(),
         config.getPartitions(),
