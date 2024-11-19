@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -9,6 +10,10 @@ public class StoppableNodeStatusResponse extends ControllerResponse {
   private Map<String, String> nonStoppableInstancesWithReasons;
 
   public Map<String, String> getNonStoppableInstancesWithReasons() {
+    if (nonStoppableInstancesWithReasons == null) {
+      return Collections.emptyMap();
+    }
+
     return nonStoppableInstancesWithReasons;
   }
 
@@ -17,10 +22,14 @@ public class StoppableNodeStatusResponse extends ControllerResponse {
   }
 
   public List<String> getStoppableInstances() {
+    if (stoppableInstances == null) {
+      return Collections.emptyList();
+    }
+
     return stoppableInstances;
   }
 
-  public void setStoppableInstances(List<String> remoableInstances) {
-    this.stoppableInstances = remoableInstances;
+  public void setStoppableInstances(List<String> removableInstances) {
+    this.stoppableInstances = removableInstances;
   }
 }
