@@ -39,9 +39,7 @@ include 'clients:da-vinci-client'
 include 'clients:venice-admin-tool'
 include 'clients:venice-client'
 include 'clients:venice-producer'
-include 'clients:venice-pulsar'
 include 'clients:venice-push-job'
-include 'clients:venice-samza'
 include 'clients:venice-thin-client'
 
 // Service modules
@@ -69,6 +67,10 @@ include 'internal:alpini:netty4:alpini-netty4-base'
 include 'internal:alpini:router:alpini-router-api'
 include 'internal:alpini:router:alpini-router-base'
 include 'internal:alpini:router:alpini-router-impl'
+
+// 3rd-party system integration modules
+include 'integrations:venice-pulsar'
+include 'integrations:venice-samza'
 
 // integration tests
 include 'tests:venice-pulsar-test'
