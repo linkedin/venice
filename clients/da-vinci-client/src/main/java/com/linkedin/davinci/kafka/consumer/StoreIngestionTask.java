@@ -641,11 +641,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Adds an asynchronous partition drop request for the task.
    * This is always a Helix triggered action
    */
-  public synchronized void dropPartition(PubSubTopicPartition topicPartition) {
+  public synchronized void dropPartitionAsynchronously(PubSubTopicPartition topicPartition) {
     throwIfNotRunning();
     ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
     consumerActionsQueue.add(consumerAction);
     pendingPartitionDrops.add(topicPartition.getPartitionNumber());
+  }
+
+  /**
+   * Drops a partition synchrnously. This is invoked when processing a DROP_PARTITION message.
+   */
+  private void dropPartitionSynchronously(PubSubTopicPartition topicPartition) {
+    LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
+    int partition = topicPartition.getPartitionNumber();
+    this.storageService.dropStorePartition(storeConfig, partition, true);
+    this.pendingPartitionDrops.remove(partition);
+    LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
   }
 
   public boolean hasAnySubscription() {
@@ -1748,9 +1759,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void internalClose(boolean doFlush) {
+    // Set isRunning to false to prevent messages being added after we've already looped through consumerActionsQueue.
+    getIsRunning().set(false);
+
     this.missingSOPCheckExecutor.shutdownNow();
 
-    // Only reset Offset Messages are important, subscribe/unsubscribe will be handled
+    // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     try {
       this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
@@ -1762,6 +1776,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (opType == ConsumerActionType.RESET_OFFSET) {
           LOGGER.info("Cleanup Reset OffSet. Replica: {}", replica);
           storageMetadataService.clearOffset(topic, partition);
+        } else if (opType == DROP_PARTITION) {
+          PubSubTopicPartition topicPartition = message.getTopicPartition();
+          dropPartitionSynchronously(topicPartition);
         } else {
           LOGGER.info("Cleanup ignoring the Message: {} Replica: {}", message, replica);
         }
@@ -2167,10 +2184,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
-        LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
-        this.storageService.dropStorePartition(storeConfig, partition, true);
-        this.pendingPartitionDrops.remove(partition);
-        LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
+        dropPartitionSynchronously(topicPartition);
         break;
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
