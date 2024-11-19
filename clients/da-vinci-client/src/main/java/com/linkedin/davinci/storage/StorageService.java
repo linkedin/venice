@@ -398,17 +398,19 @@ public class StorageService extends AbstractVeniceService {
           if (!mapFields.containsKey(partitionDbName)
               || !mapFields.get(partitionDbName).containsKey(instanceHostName)) {
             LOGGER.info(
-                "the following partition is being dropped from storage engine with store name {}: {}",
+                "the following partition is not assigned to the current host {} and is being dropped from storage engine {}: {}",
+                instanceHostName,
                 storeName,
                 String.valueOf(partitionId));
             storageEngine.dropPartition(partitionId);
           }
         }
         if (storageEngine.getPartitionIds().isEmpty()) {
-          LOGGER.info("all partitions have been dropped from storage engine with store name {}", storeName);
+          LOGGER.info("removing the storage engine {}, which has no partitions", storeName);
           removeStorageEngine(storeName);
         }
       } else {
+        LOGGER.info("removing the storage engine {} as the ideal state is null", storeName);
         removeStorageEngine(storeName);
       }
     }
