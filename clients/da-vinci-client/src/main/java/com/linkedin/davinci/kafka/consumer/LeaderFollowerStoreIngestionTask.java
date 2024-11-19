@@ -3111,8 +3111,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (shouldCompressData(partitionConsumptionState)) {
       try {
+        long startTimeInNS = System.nanoTime();
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
-        return compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
+        ByteBuffer result = compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
+        hostLevelIngestionStats.recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+        return result;
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
         throw new RuntimeException(

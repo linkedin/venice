@@ -4,6 +4,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -225,8 +226,10 @@ public class ChunkingTest {
     int readerSchemaId = schemaEntry.getId();
     try (StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(mock(StorageMetadataService.class))) {
-      VeniceCompressor compressor =
-          compressorFactory.getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreVersionName());
+      VeniceCompressor compressor = compressorFactory.getCompressor(
+          CompressionStrategy.NO_OP,
+          storageEngine.getStoreVersionName(),
+          Zstd.defaultCompressionLevel());
       Object retrievedObject;
       if (getWithSchemaId) {
         retrievedObject = chunkingAdapter.getWithSchemaId(
