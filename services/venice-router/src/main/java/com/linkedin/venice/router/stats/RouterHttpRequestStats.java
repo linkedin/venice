@@ -2,6 +2,15 @@ package com.linkedin.venice.router.stats;
 
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.ABORTED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.ALLOWED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_KEY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_TIME;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.DISALLOWED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.INCOMING_CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 import static com.linkedin.venice.stats.dimensions.VeniceHttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
@@ -159,8 +168,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     Rate tardyRequestRate = new OccurrenceRate();
 
     incomingRequestSensor = registerSensor("request", new Count(), requestRate);
-    incomingRequestSensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getCounter("incoming_call_count", "Number", "Count of all incoming requests");
+    incomingRequestSensorOtel =
+        (LongCounter) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(INCOMING_CALL_COUNT);
 
     healthySensor = registerSensor("healthy_request", new Count(), healthyRequestRate);
     unhealthySensor = registerSensor("unhealthy_request", new Count());
@@ -171,30 +180,29 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     tardyRequestRatioSensor =
         registerSensor(new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate, "tardy_request_ratio"));
     badRequestSensor = registerSensor("bad_request", new Count());
-    requestSensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getCounter("call_count", "Number", "Count of all requests with response details");
+    requestSensorOtel = (LongCounter) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(CALL_COUNT);
 
     errorRetryCountSensor = registerSensor("error_retry", new Count());
-    retryTriggeredSensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getCounter("retry_call_count", "Number", "Count of retries triggered");
+    retryTriggeredSensorOtel =
+        (LongCounter) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(RETRY_COUNT);
     allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
-    allowedRetryRequestSensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getCounter("allowed_retry_call_count", "Number", "Count of allowed retry requests");
+    allowedRetryRequestSensorOtel =
+        (LongCounter) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(ALLOWED_RETRY_COUNT);
     disallowedRetryRequestSensor = registerSensor("disallowed_retry_request_count", new OccurrenceRate());
-    disallowedRetryRequestSensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getCounter("disallowed_retry_call_count", "Number", "Count of disallowed retry requests");
+    disallowedRetryRequestSensorOtel =
+        (LongCounter) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(DISALLOWED_RETRY_COUNT);
     errorRetryAttemptTriggeredByPendingRequestCheckSensor =
         registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
     retryDelaySensor = registerSensor("retry_delay", new Avg(), new Max());
-    retryDelaySensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getHistogramWithoutBuckets("retry_delay", TimeUnit.MILLISECONDS.name(), "Retry delay time");
+    retryDelaySensorOtel =
+        (DoubleHistogram) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(RETRY_DELAY);
 
     delayConstraintAbortedRetryRequest = registerSensor("delay_constraint_aborted_retry_request", new Count());
     slowRouteAbortedRetryRequest = registerSensor("slow_route_aborted_retry_request", new Count());
     retryRouteLimitAbortedRetryRequest = registerSensor("retry_route_limit_aborted_retry_request", new Count());
     noAvailableReplicaAbortedRetryRequest = registerSensor("no_available_replica_aborted_retry_request", new Count());
-    abortedRetrySensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getCounter("aborted_retry_call_count", "Number", "Count of aborted retry requests");
+    abortedRetrySensorOtel =
+        (LongCounter) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(ABORTED_RETRY_COUNT);
 
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     requestThrottledByRouterCapacitySensor = registerSensor("request_throttled_by_router_capacity", new Count());
@@ -206,8 +214,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unhealthyRequestLatencySensor = registerSensor("unhealthy_request_latency", new Avg(), new Max(0));
     tardyRequestLatencySensor = registerSensor("tardy_request_latency", new Avg(), new Max(0));
     throttledRequestLatencySensor = registerSensor("throttled_request_latency", new Avg(), new Max(0));
-    latencySensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getHistogram("call_time", TimeUnit.MILLISECONDS.name(), "Latency based on all responses");
+    latencySensorOtel =
+        (DoubleHistogram) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(CALL_TIME);
 
     routerResponseWaitingTimeSensor = registerSensor(
         "response_waiting_time",
@@ -244,8 +252,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
     badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
-    keyCountSensorOtel = metricsRepository.getOpenTelemetryMetricsRepository()
-        .getHistogramWithoutBuckets("call_key_count", "Number", "Count of keys in multi key requests");
+    keyCountSensorOtel =
+        (DoubleHistogram) metricsRepository.getOpenTelemetryMetricsRepository().getInstrument(CALL_KEY_COUNT);
 
     /**
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS

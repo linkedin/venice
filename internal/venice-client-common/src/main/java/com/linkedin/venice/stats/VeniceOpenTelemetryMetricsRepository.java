@@ -154,6 +154,22 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
+  public Object getInstrument(MetricEntity metricEntity) {
+    switch (metricEntity.getMetricType()) {
+      case HISTOGRAM:
+        return getHistogram(metricEntity.getMetricName(), metricEntity.getUnit(), metricEntity.getDescription());
+      case HISTOGRAM_WITHOUT_BUCKETS:
+        return getHistogramWithoutBuckets(
+            metricEntity.getMetricName(),
+            metricEntity.getUnit(),
+            metricEntity.getDescription());
+      case COUNTER:
+        return getCounter(metricEntity.getMetricName(), metricEntity.getUnit(), metricEntity.getDescription());
+      default:
+        throw new VeniceException("Unknown metric type: " + metricEntity.getMetricType());
+    }
+  }
+
   public void close() {
     LOGGER.info("OpenTelemetry close");
     if (sdkMeterProvider != null) {
