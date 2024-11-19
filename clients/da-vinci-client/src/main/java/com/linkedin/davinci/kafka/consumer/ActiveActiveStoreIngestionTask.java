@@ -1146,7 +1146,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         newSourceTopic,
         unreachableBrokerList);
     // unsubscribe the old source and subscribe to the new source
-    consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+    consumerUnSubscribeForStateTransition(currentLeaderTopic, partitionConsumptionState);
     waitForLastLeaderPersistFuture(
         partitionConsumptionState,
         String.format(

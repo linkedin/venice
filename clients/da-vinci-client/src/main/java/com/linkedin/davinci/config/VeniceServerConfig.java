@@ -153,6 +153,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERV
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
+import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
@@ -168,6 +169,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
@@ -555,6 +557,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
   private final boolean isGlobalRtDivEnabled;
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
+  private final int zstdDictCompressionLevel;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -929,6 +932,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
     nearlineWorkloadProducerThroughputOptimizationEnabled =
         serverProperties.getBoolean(SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED, true);
+    zstdDictCompressionLevel =
+        serverProperties.getInt(SERVER_ZSTD_DICT_COMPRESSION_LEVEL, Zstd.defaultCompressionLevel());
+    if (zstdDictCompressionLevel < Zstd.minCompressionLevel()
+        || zstdDictCompressionLevel > Zstd.maxCompressionLevel()) {
+      throw new VeniceException(
+          "Invalid zstd dict compression level: " + zstdDictCompressionLevel + " should be between "
+              + Zstd.minCompressionLevel() + " and " + Zstd.maxCompressionLevel());
+    }
   }
 
   long extractIngestionMemoryLimit(
@@ -1689,5 +1700,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isNearlineWorkloadProducerThroughputOptimizationEnabled() {
     return nearlineWorkloadProducerThroughputOptimizationEnabled;
+  }
+
+  public int getZstdDictCompressionLevel() {
+    return zstdDictCompressionLevel;
   }
 }

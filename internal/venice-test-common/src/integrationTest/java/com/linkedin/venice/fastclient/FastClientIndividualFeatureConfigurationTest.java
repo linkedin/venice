@@ -186,6 +186,10 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       LOGGER.info("RESTARTING servers");
       veniceCluster.stopAndRestartVeniceServer(veniceServerWrapper.getPort());
     }
+    serverMetrics.clear();
+    for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
+      serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
+    }
     for (int j = 0; j < 5; j++) {
       for (int i = 0; i < recordCnt; i++) {
         String key = keyPrefix + i;
@@ -198,7 +202,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
     }
-    assertTrue(quotaRequestedQPSSum >= 0, "Quota request sum: " + quotaRequestedQPSSum);
+    assertTrue(quotaRequestedQPSSum > 0, "Quota request sum: " + quotaRequestedQPSSum);
   }
 
   @Test(timeOut = TIME_OUT)

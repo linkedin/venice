@@ -503,7 +503,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
     this.compressionStrategy = version.getCompressionStrategy();
     this.compressorFactory = builder.getCompressorFactory();
-    this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+    this.compressor = Lazy.of(
+        () -> compressorFactory
+            .getCompressor(compressionStrategy, kafkaVersionTopic, serverConfig.getZstdDictCompressionLevel()));
     this.isChunked = version.isChunkingEnabled();
     this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
@@ -3454,11 +3456,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         .hasConsumerAssignedFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  public void consumerUnSubscribe(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
+  /**
+   * It is important during a state transition to wait in {@link SharedKafkaConsumer#waitAfterUnsubscribe(long, Set, long)}
+   * until all inflight messages have been processed by the consumer, otherwise there could be a mismatch in the PCS's
+   * leader-follower state vs the intended state when the message was polled. Thus, we use an increased timeout of up to
+   * 30 minutes according to the maximum value of the metric consumer_records_producing_to_write_buffer_latency.
+   */
+  public void consumerUnSubscribeForStateTransition(
+      PubSubTopic topic,
+      PartitionConsumptionState partitionConsumptionState) {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
-    aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, topicPartition);
+    aggKafkaConsumerService
+        .unsubscribeConsumerFor(versionTopic, topicPartition, SharedKafkaConsumer.STATE_TRANSITION_MAX_WAIT_MS);
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,

@@ -1189,6 +1189,27 @@ public abstract class StoreIngestionTaskTest {
     }).when(aggKafkaConsumerService).unsubscribeConsumerFor(any(), any());
 
     doAnswer(invocation -> {
+      PubSubTopic versionTopic = invocation.getArgument(0, PubSubTopic.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      Long timeoutMs = invocation.getArgument(2, Long.class);
+      /**
+       * The internal {@link SharedKafkaConsumer} has special logic for unsubscription to avoid some race condition
+       * between the fast unsubscribe and re-subscribe.
+       * Please check {@link SharedKafkaConsumer#unSubscribe} to find more details.
+       *
+       * We shouldn't use {@link #mockLocalKafkaConsumer} or {@link #inMemoryRemoteKafkaConsumer} here since
+       * they don't have the proper synchronization.
+       */
+      if (inMemoryLocalKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
+        localKafkaConsumerService.unSubscribe(versionTopic, pubSubTopicPartition, timeoutMs.longValue());
+      }
+      if (inMemoryRemoteKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
+        remoteKafkaConsumerService.unSubscribe(versionTopic, pubSubTopicPartition, timeoutMs.longValue());
+      }
+      return null;
+    }).when(aggKafkaConsumerService).unsubscribeConsumerFor(any(), any(), anyLong());
+
+    doAnswer(invocation -> {
       PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
       if (inMemoryLocalKafkaConsumer.hasSubscription(pubSubTopicPartition)) {
         inMemoryLocalKafkaConsumer.resetOffset(pubSubTopicPartition);

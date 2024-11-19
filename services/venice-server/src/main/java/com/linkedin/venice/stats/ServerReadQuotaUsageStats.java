@@ -79,6 +79,14 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
     }
   }
 
+  public int getCurrentVersion() {
+    return currentVersion.get();
+  }
+
+  public int getBackupVersion() {
+    return backupVersion.get();
+  }
+
   public void removeVersion(int version) {
     versionedStats.remove(version);
   }
