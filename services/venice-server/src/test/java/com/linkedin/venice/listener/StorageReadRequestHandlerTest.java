@@ -202,7 +202,7 @@ public class StorageReadRequestHandlerTest {
     doReturn(partitionerConfig).when(version).getPartitionerConfig();
 
     doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(any());
-    doReturn(new NoopCompressor()).when(compressorFactory).getCompressor(any(), any());
+    doReturn(new NoopCompressor()).when(compressorFactory).getCompressor(any(), any(), anyInt());
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
