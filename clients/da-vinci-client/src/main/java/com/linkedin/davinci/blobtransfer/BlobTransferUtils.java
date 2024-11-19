@@ -1,5 +1,7 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
+
 import io.netty.handler.codec.http.HttpResponse;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,7 +13,7 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
-  public static final long BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD = 1000L;
+  public static final long BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD = 100000L;
 
   public enum BlobTransferType {
     FILE, METADATA
@@ -37,12 +39,12 @@ public class BlobTransferUtils {
    * @throws IOException if an I/O error occurs
    */
   public static String generateFileChecksum(Path filePath) throws IOException {
-    String md5Hex;
+    String md5Digest;
     try (InputStream inputStream = Files.newInputStream(filePath)) {
-      md5Hex = org.apache.commons.codec.digest.DigestUtils.md5Hex(inputStream);
+      md5Digest = md5Hex(inputStream);
     } catch (IOException e) {
       throw new IOException("Failed to generate checksum for file: " + filePath.toAbsolutePath(), e);
     }
-    return md5Hex;
+    return md5Digest;
   }
 }

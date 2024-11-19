@@ -146,14 +146,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
       long blobTransferDisabledOffsetLagThreshold) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partition);
-    LOGGER.info(
-        "Store {} partition {} topic offset is {}, offset lag is {}",
-        store,
-        partition,
-        offsetRecord.getLocalVersionTopicOffset(),
-        offsetRecord.getOffsetLag());
 
     if (offsetRecord == null || (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1)) {
+      LOGGER.info(
+          "Offset record is null or offset lag is 0 and topic offset is -1 for store {} partition {}.",
+          store,
+          partition);
       return true;
     }
 
@@ -166,6 +164,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
           blobTransferDisabledOffsetLagThreshold);
       return false;
     }
+
+    LOGGER.info(
+        "Store {} partition {} topic offset is {}, offset lag is {}",
+        store,
+        partition,
+        offsetRecord.getLocalVersionTopicOffset(),
+        offsetRecord.getOffsetLag());
     return true;
   }
 

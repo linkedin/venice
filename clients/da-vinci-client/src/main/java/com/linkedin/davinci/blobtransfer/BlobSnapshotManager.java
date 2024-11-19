@@ -217,7 +217,7 @@ public class BlobSnapshotManager {
   /**
    * Increase the count of hosts using the snapshot
    */
-  public void increaseConcurrentUserCount(String topicName, int partitionId) {
+  void increaseConcurrentUserCount(String topicName, int partitionId) {
     concurrentSnapshotUsers.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partitionId, k -> new AtomicLong(0))
         .incrementAndGet();

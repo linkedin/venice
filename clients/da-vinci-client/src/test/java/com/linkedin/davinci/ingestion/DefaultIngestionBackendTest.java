@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import java.io.InputStream;
 import java.time.Duration;
@@ -59,6 +60,8 @@ public class DefaultIngestionBackendTest {
   private Version version;
   @Mock
   private StoreVersionState storeVersionState;
+  @Mock
+  private OffsetRecord offsetRecord;
 
   private static final int VERSION_NUMBER = 1;
   private static final int PARTITION = 1;
@@ -79,6 +82,11 @@ public class DefaultIngestionBackendTest {
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
+
+    when(offsetRecord.getOffsetLag()).thenReturn(0L);
+    when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(-1L);
+    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
+        .thenReturn(offsetRecord);
 
     // Create the DefaultIngestionBackend instance with mocked dependencies
     ingestionBackend = new DefaultIngestionBackend(
