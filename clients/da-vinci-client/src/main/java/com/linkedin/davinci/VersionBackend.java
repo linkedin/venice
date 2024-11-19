@@ -109,7 +109,11 @@ public class VersionBackend {
         backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 60);
     this.storeDeserializerCache = backend.getStoreOrThrow(store.getName()).getStoreDeserializerCache();
     this.compressor = Lazy.of(
-        () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
+        () -> backend.getCompressorFactory()
+            .getCompressor(
+                version.getCompressionStrategy(),
+                version.kafkaTopicName(),
+                config.getZstdDictCompressionLevel()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
     long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
     if (daVinciPushStatusCheckIntervalInMs >= 0) {

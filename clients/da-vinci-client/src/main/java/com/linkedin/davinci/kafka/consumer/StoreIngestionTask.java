@@ -498,7 +498,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
     this.compressionStrategy = version.getCompressionStrategy();
     this.compressorFactory = builder.getCompressorFactory();
-    this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+    this.compressor = Lazy.of(
+        () -> compressorFactory
+            .getCompressor(compressionStrategy, kafkaVersionTopic, serverConfig.getZstdDictCompressionLevel()));
     this.isChunked = version.isChunkingEnabled();
     this.isRmdChunked = version.isRmdChunkingEnabled();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
