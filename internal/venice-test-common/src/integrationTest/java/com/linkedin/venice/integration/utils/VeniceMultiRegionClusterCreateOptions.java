@@ -28,6 +28,7 @@ public class VeniceMultiRegionClusterCreateOptions {
   private final AuthorizerService parentAuthorizerService;
   private final String parentVeniceZkBasePath;
   private final String childVeniceZkBasePath;
+  private final boolean parentControllerInChildRegion;
 
   public int getNumberOfRegions() {
     return numberOfRegions;
@@ -93,6 +94,10 @@ public class VeniceMultiRegionClusterCreateOptions {
     return childVeniceZkBasePath;
   }
 
+  public boolean isParentControllerInChildRegion() {
+    return parentControllerInChildRegion;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -143,6 +148,9 @@ public class VeniceMultiRegionClusterCreateOptions {
         .append(", ")
         .append("childVeniceZkBasePath:")
         .append(childVeniceZkBasePath)
+        .append(", ")
+        .append("parentControllerInChildRegion:")
+        .append(parentControllerInChildRegion)
         .toString();
   }
 
@@ -163,6 +171,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     parentAuthorizerService = builder.parentAuthorizerService;
     parentVeniceZkBasePath = builder.parentVeniceZkBasePath;
     childVeniceZkBasePath = builder.childVeniceZkBasePath;
+    parentControllerInChildRegion = builder.parentControllerInChildRegion;
   }
 
   public static class Builder {
@@ -182,6 +191,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     private AuthorizerService parentAuthorizerService;
     private String parentVeniceZkBasePath = "/";
     private String childVeniceZkBasePath = "/";
+    private boolean parentControllerInChildRegion = false;
 
     public Builder numberOfRegions(int numberOfRegions) {
       this.numberOfRegions = numberOfRegions;
@@ -268,6 +278,11 @@ public class VeniceMultiRegionClusterCreateOptions {
       }
 
       this.childVeniceZkBasePath = veniceZkBasePath;
+      return this;
+    }
+
+    public Builder parentControllerInChildRegion(boolean parentControllerInChildRegion) {
+      this.parentControllerInChildRegion = parentControllerInChildRegion;
       return this;
     }
 

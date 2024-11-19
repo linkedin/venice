@@ -253,8 +253,13 @@ public class VeniceController {
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
+    // do not register with service discovery if the parent controller is not ACTIVE
+    boolean doNotRegisterServiceDiscoveryAnnouncers = multiClusterConfigs.isParent()
+        && multiClusterConfigs.getParentControllerRegionState() != ParentControllerRegionState.ACTIVE;
     // register with service discovery at the end
-    asyncRetryingServiceDiscoveryAnnouncer.register();
+    if (!doNotRegisterServiceDiscoveryAnnouncers) {
+      asyncRetryingServiceDiscoveryAnnouncer.register();
+    }
     LOGGER.info("Controller is started.");
   }
 
@@ -303,8 +308,13 @@ public class VeniceController {
    * Causes venice controller and its associated services to stop executing.
    */
   public void stop() {
+    // do not unregister from service discovery if parent controller is not ACTIVE
+    boolean doNotUnregisterServiceDiscoveryAnnouncers = multiClusterConfigs.isParent()
+        && multiClusterConfigs.getParentControllerRegionState() != ParentControllerRegionState.ACTIVE;
     // unregister from service discovery first
-    asyncRetryingServiceDiscoveryAnnouncer.unregister();
+    if (!doNotUnregisterServiceDiscoveryAnnouncers) {
+      asyncRetryingServiceDiscoveryAnnouncer.unregister();
+    }
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
