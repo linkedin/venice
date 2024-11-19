@@ -356,6 +356,11 @@ public class VeniceServer {
       return helixData;
     });
 
+    managerFuture.thenApply(manager -> {
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+      return true;
+    });
+
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
