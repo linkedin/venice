@@ -29,7 +29,7 @@ public class StoppableNodeStatusResponse extends ControllerResponse {
     return stoppableInstances;
   }
 
-  public void setStoppableInstances(List<String> removableInstances) {
-    this.stoppableInstances = removableInstances;
+  public void setStoppableInstances(List<String> stoppableInstances) {
+    this.stoppableInstances = stoppableInstances;
   }
 }
