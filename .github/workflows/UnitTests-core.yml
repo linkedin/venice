@@ -11,7 +11,7 @@ on:
 
 jobs:
   reusable_job:
-    name: "Unit Tests And Coverage"
+    name: "UT & CodeCov"
     strategy:
       fail-fast: false
       matrix:
