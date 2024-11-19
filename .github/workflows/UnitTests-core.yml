@@ -11,7 +11,7 @@ on:
 
 jobs:
   reusable_job:
-    name: "UT And CodeCov"
+    name: "UT & CodeCov"
     strategy:
       fail-fast: false
       matrix:
