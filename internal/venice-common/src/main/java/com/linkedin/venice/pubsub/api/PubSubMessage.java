@@ -1,6 +1,9 @@
 package com.linkedin.venice.pubsub.api;
 
-public interface PubSubMessage<K, V, OFFSET> {
+import com.linkedin.venice.memory.Measurable;
+
+
+public interface PubSubMessage<K, V, OFFSET> extends Measurable {
   /**
    * @return the key part of this message
    */

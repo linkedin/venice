@@ -24,7 +24,7 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public byte[] compress(byte[] data) throws IOException {
+  protected byte[] compressInternal(byte[] data) throws IOException {
     ReusableGzipOutputStream out = gzipPool.getReusableGzipOutputStream();
     try {
       out.writeHeader();
@@ -37,7 +37,7 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public void close() throws IOException {
+  protected void closeInternal() throws IOException {
     try {
       gzipPool.close();
     } catch (Exception e) {
@@ -47,7 +47,7 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
+  protected ByteBuffer compressInternal(ByteBuffer data, int startPositionOfOutput) throws IOException {
     /**
      * N.B.: We initialize the size of buffer in this output stream at the size of the deflated payload, which is not
      * ideal, but not necessarily bad either. The assumption is that GZIP usually doesn't compress our payloads that
@@ -74,7 +74,7 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompress(ByteBuffer data) throws IOException {
+  protected ByteBuffer decompressInternal(ByteBuffer data) throws IOException {
     if (data.hasRemaining()) {
       if (data.hasArray()) {
         return decompress(data.array(), data.position(), data.remaining());
@@ -89,14 +89,14 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
+  protected ByteBuffer decompressInternal(byte[] data, int offset, int length) throws IOException {
     try (InputStream gis = decompress(new ByteArrayInputStream(data, offset, length))) {
       return ByteBuffer.wrap(IOUtils.toByteArray(gis));
     }
   }
 
   @Override
-  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+  protected ByteBuffer decompressAndPrependSchemaHeaderInternal(byte[] data, int offset, int length, int schemaHeader)
       throws IOException {
     byte[] decompressedByteArray;
     try (InputStream gis = decompress(new ByteArrayInputStream(data, offset, length))) {
@@ -111,7 +111,7 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public InputStream decompress(InputStream inputStream) throws IOException {
+  protected InputStream decompressInternal(InputStream inputStream) throws IOException {
     return new GZIPInputStream(inputStream);
   }
 

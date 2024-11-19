@@ -508,7 +508,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
         PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
         if (leaderTopic != null && (!topic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely())) {
-          consumerUnSubscribe(leaderTopic, partitionConsumptionState);
+          consumerUnSubscribeForStateTransition(leaderTopic, partitionConsumptionState);
           waitForAllMessageToBeProcessedFromTopicPartition(
               new PubSubTopicPartitionImpl(leaderTopic, partition),
               partitionConsumptionState);
@@ -605,7 +605,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * this replica can finally be promoted to leader.
              */
             // unsubscribe from previous topic/partition
-            consumerUnSubscribe(versionTopic, partitionConsumptionState);
+            consumerUnSubscribeForStateTransition(versionTopic, partitionConsumptionState);
 
             LOGGER.info(
                 "Starting promotion of replica: {} to leader for the partition, unsubscribed from current topic: {}",
@@ -675,7 +675,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           /** If LEADER is consuming remote VT or SR, EOP is already received, switch back to local fabrics. */
           if (shouldLeaderSwitchToLocalConsumption(partitionConsumptionState)) {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
-            consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+            consumerUnSubscribeForStateTransition(currentLeaderTopic, partitionConsumptionState);
             // If remote consumption flag is false, existing messages for the partition in the drainer queue should be
             // processed before that
             PubSubTopicPartition leaderTopicPartition =
@@ -1015,7 +1015,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // unsubscribe the old source and subscribe to the new source
-    consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+    consumerUnSubscribeForStateTransition(currentLeaderTopic, partitionConsumptionState);
     waitForLastLeaderPersistFuture(
         partitionConsumptionState,
         String.format(
@@ -2154,7 +2154,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
         LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
         LeaderCompleteState newState = oldState;
-        for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+        for (PubSubMessageHeader header: pubSubMessageHeaders) {
           if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
             newState = LeaderCompleteState.valueOf(header.value()[0]);
             partitionConsumptionState
@@ -2323,7 +2323,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * messages to disk, and potentially rewind a k/v pair to an old value.
          */
         divErrorMetricCallback.accept(e);
-        LOGGER.info(
+        LOGGER.debug(
             "Skipping a duplicate record from: {} offset: {} for replica: {}",
             record.getTopicPartition(),
             record.getOffset(),
@@ -3816,7 +3816,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void resubscribeAsFollower(PartitionConsumptionState partitionConsumptionState)
       throws InterruptedException {
     int partition = partitionConsumptionState.getPartition();
-    consumerUnSubscribe(versionTopic, partitionConsumptionState);
+    consumerUnSubscribeForStateTransition(versionTopic, partitionConsumptionState);
     waitForAllMessageToBeProcessedFromTopicPartition(
         new PubSubTopicPartitionImpl(versionTopic, partition),
         partitionConsumptionState);
@@ -3836,7 +3836,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     int partition = partitionConsumptionState.getPartition();
-    consumerUnSubscribe(leaderTopic, partitionConsumptionState);
+    consumerUnSubscribeForStateTransition(leaderTopic, partitionConsumptionState);
     PubSubTopicPartition leaderTopicPartition = new PubSubTopicPartitionImpl(leaderTopic, partition);
     waitForAllMessageToBeProcessedFromTopicPartition(
         new PubSubTopicPartitionImpl(leaderTopic, partition),
