@@ -542,7 +542,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     pendingPartitionDropsField.set(storeIngestionTask, pendingPartitionDrops);
 
     when(topicNameToIngestionTaskMap.get(topicName)).thenReturn(storeIngestionTask);
-    doCallRealMethod().when(storeIngestionTask).dropPartition(any());
+    doCallRealMethod().when(storeIngestionTask).dropPartitionAsynchronously(any());
 
     PubSubTopic pubSubTopic = mock(PubSubTopic.class);
     when(pubSubTopicRepository.getTopic(topicName)).thenReturn(pubSubTopic);
@@ -550,7 +550,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Verify that when the ingestion task is running, it drops the store partition asynchronously
     when(storeIngestionTask.isRunning()).thenReturn(true);
     kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
-    verify(storeIngestionTask).dropPartition(any());
+    verify(storeIngestionTask).dropPartitionAsynchronously(any());
     verify(consumerActionsQueue).add(any());
 
     // Verify that when the ingestion task isn't running, it drops the store partition synchronously

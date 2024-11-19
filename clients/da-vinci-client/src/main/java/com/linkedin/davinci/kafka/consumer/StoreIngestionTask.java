@@ -345,7 +345,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean batchReportIncPushStatusEnabled;
 
   protected final ExecutorService parallelProcessingThreadPool;
-  private final Set<Integer> pendingPartitionDrops = Collections.synchronizedSet(new HashSet<>());
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -645,7 +644,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throwIfNotRunning();
     ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
     consumerActionsQueue.add(consumerAction);
-    pendingPartitionDrops.add(topicPartition.getPartitionNumber());
   }
 
   /**
@@ -655,7 +653,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
     int partition = topicPartition.getPartitionNumber();
     this.storageService.dropStorePartition(storeConfig, partition, true);
-    this.pendingPartitionDrops.remove(partition);
     LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
   }
 
@@ -1760,7 +1757,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void internalClose(boolean doFlush) {
     // Set isRunning to false to prevent messages being added after we've already looped through consumerActionsQueue.
-    getIsRunning().set(false);
+    // Wrapping in synchronized to prevent a race condition on methods reading the value of isRunning.
+    synchronized (this) {
+      getIsRunning().set(false);
+    }
 
     this.missingSOPCheckExecutor.shutdownNow();
 
@@ -2168,19 +2168,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
-
-        if (!this.pendingPartitionDrops.isEmpty()) {
-          LOGGER.info(
-              "Partitions {} are pending to be dropped for Topic: {}. Dropping them before killing consumer task.",
-              this.pendingPartitionDrops,
-              topic);
-          synchronized (this.pendingPartitionDrops) {
-            for (Integer partitionToDrop: this.pendingPartitionDrops) {
-              this.storageService.dropStorePartition(storeConfig, partitionToDrop, true);
-              this.pendingPartitionDrops.remove(partitionToDrop);
-            }
-          }
-        }
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
