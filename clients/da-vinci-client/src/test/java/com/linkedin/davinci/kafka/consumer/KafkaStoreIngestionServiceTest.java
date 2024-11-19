@@ -524,11 +524,6 @@ public abstract class KafkaStoreIngestionServiceTest {
     pubSubTopicRepositoryField.setAccessible(true);
     pubSubTopicRepositoryField.set(kafkaStoreIngestionService, pubSubTopicRepository);
 
-    StorageService storageService = mock(StorageService.class);
-    Field storageServiceField = kafkaStoreIngestionService.getClass().getDeclaredField("storageService");
-    storageServiceField.setAccessible(true);
-    storageServiceField.set(kafkaStoreIngestionService, storageService);
-
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
 
     PriorityBlockingQueue consumerActionsQueue = mock(PriorityBlockingQueue.class);
@@ -537,15 +532,24 @@ public abstract class KafkaStoreIngestionServiceTest {
     consumerActionsQueueField.set(storeIngestionTask, consumerActionsQueue);
 
     when(topicNameToIngestionTaskMap.get(topicName)).thenReturn(storeIngestionTask);
-    doCallRealMethod().when(storeIngestionTask).dropPartitionAsynchronously(any());
+    doCallRealMethod().when(storeIngestionTask).dropStoragePartitionGracefully(any());
 
     PubSubTopic pubSubTopic = mock(PubSubTopic.class);
     when(pubSubTopicRepository.getTopic(topicName)).thenReturn(pubSubTopic);
 
+    StorageService storageService = mock(StorageService.class);
+    Field storageServiceField = StoreIngestionTask.class.getDeclaredField("storageService");
+    storageServiceField.setAccessible(true);
+    storageServiceField.set(storeIngestionTask, storageService);
+
+    Field storeConfigField = StoreIngestionTask.class.getDeclaredField("storeConfig");
+    storeConfigField.setAccessible(true);
+    storeConfigField.set(storeIngestionTask, config);
+
     // Verify that when the ingestion task is running, it drops the store partition asynchronously
     when(storeIngestionTask.isRunning()).thenReturn(true);
     kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
-    verify(storeIngestionTask).dropPartitionAsynchronously(any());
+    verify(storeIngestionTask).dropStoragePartitionGracefully(any());
     verify(consumerActionsQueue).add(any());
 
     // Verify that when the ingestion task isn't running, it drops the store partition synchronously

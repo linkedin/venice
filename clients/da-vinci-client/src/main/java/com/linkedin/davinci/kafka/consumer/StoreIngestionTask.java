@@ -636,14 +636,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   *
-   * Adds an asynchronous partition drop request for the task.
-   * This is always a Helix triggered action
+   * Drops a storage partition gracefully.
+   * This is always a Helix triggered action.
    */
-  public synchronized void dropPartitionAsynchronously(PubSubTopicPartition topicPartition) {
-    throwIfNotRunning();
-    ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
-    consumerActionsQueue.add(consumerAction);
+  public void dropStoragePartitionGracefully(PubSubTopicPartition topicPartition) {
+    int partitionId = topicPartition.getPartitionNumber();
+    synchronized (this) {
+      if (isRunning()) {
+        LOGGER.info(
+            "Ingestion task is still running for Topic {}. Dropping partition {} asynchronously",
+            topicPartition.getTopicName(),
+            partitionId);
+        ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
+        consumerActionsQueue.add(consumerAction);
+        return;
+      }
+    }
+
+    LOGGER.info(
+        "Ingestion task isn't running for Topic {}. Dropping partition {} synchronously",
+        topicPartition.getTopicName(),
+        partitionId);
+    dropPartitionSynchronously(topicPartition);
   }
 
   /**
