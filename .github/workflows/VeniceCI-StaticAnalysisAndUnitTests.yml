@@ -58,7 +58,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  ClientsModule:
+  Clients:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: clients
@@ -71,7 +71,7 @@ jobs:
       :clients:venice-samza:jacocoTestCoverageVerification :clients:venice-samza:diffCoverage
       :clients:venice-thin-client:jacocoTestCoverageVerification :clients:venice-thin-client:diffCoverage --continue
 
-  InternalModule:
+  Internal:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: internal
@@ -81,7 +81,7 @@ jobs:
      :internal:venice-test-common:jacocoTestCoverageVerification :internal:venice-test-common:diffCoverage --continue
 
 
-  ServicesModule:
+  Services:
     uses: ./.github/workflows/UnitTests-core.yml
     with:
       artifact_suffix: services
