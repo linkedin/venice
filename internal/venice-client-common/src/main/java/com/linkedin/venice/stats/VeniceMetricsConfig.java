@@ -16,22 +16,73 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceMetricsConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceMetricsConfig.class);
-  // create constants for all the configs
+
+  /**
+   * Config to enable OpenTelemetry metrics
+   */
   public static final String OTEL_VENICE_ENABLED = "otel.venice.enabled";
+
+  /**
+   * Config to set the naming format for OpenTelemetry metrics
+   * {@link VeniceOpenTelemetryMetricNamingFormat}
+   */
   public static final String OTEL_VENICE_METRICS_NAMING_FORMAT = "otel.venice.metrics.naming.format";
+
+  /**
+   * Export opentelemetry metrics to a log exporter
+   * {@link VeniceOpenTelemetryMetricsRepository.LogBasedMetricExporter}
+   */
   public static final String OTEL_VENICE_EXPORT_TO_LOG = "otel.venice.export.to.log";
+
+  /**
+   * Export opentelemetry metrics to {@link #OTEL_EXPORTER_OTLP_METRICS_ENDPOINT}
+   * over {@link #OTEL_EXPORTER_OTLP_METRICS_PROTOCOL}
+   */
   public static final String OTEL_VENICE_EXPORT_TO_ENDPOINT = "otel.venice.export.to.endpoint";
+
+  /**
+   * Protocol over which the metrics are exported to {@link #OTEL_EXPORTER_OTLP_METRICS_ENDPOINT} <br>
+   * 1. {@link OtlpConfigUtil#PROTOCOL_HTTP_PROTOBUF}  => "http/protobuf" <br>
+   * 2. {@link OtlpConfigUtil#PROTOCOL_GRPC}  => "grpc"
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_PROTOCOL = "otel.exporter.otlp.metrics.protocol";
+
+  /**
+   * The Endpoint to which the metrics are exported
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = "otel.exporter.otlp.metrics.endpoint";
+
+  /**
+   * Additional headers to pass while creating OpenTelemetry exporter
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_HEADERS = "otel.exporter.otlp.metrics.headers";
+
+  /**
+   * Aggregation Temporality selector to export only the delta or cumulate or different
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE =
       "otel.exporter.otlp.metrics.temporality.preference";
+
+  /**
+   * Default histogram aggregation to be used for all histograms: Select one of the below <br>
+   * 1. base2_exponential_bucket_histogram <br>
+   * 2. explicit_bucket_histogram
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION =
       "otel.exporter.otlp.metrics.default.histogram.aggregation";
+
+  /**
+   * Max scale for base2_exponential_bucket_histogram
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE =
       "otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale";
+
+  /**
+   * Max buckets for base2_exponential_bucket_histogram
+   */
   public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS =
       "otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets";
+
   private final String serviceName;
   private final String metricPrefix;
   /** reusing tehuti's MetricConfig */

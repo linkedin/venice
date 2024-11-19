@@ -4,7 +4,10 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 
 
-/** extends MetricsRepository to keep the changes to a minimum. Next step would be to create a MetricsRepository inside rather than extending it */
+/**
+ * extends {@link MetricsRepository} to keep the changes to a minimum.
+ * Next step would be to create a MetricsRepository inside rather than extending it
+ */
 public class VeniceMetricsRepository extends MetricsRepository implements Closeable {
   private VeniceMetricsConfig veniceMetricsConfig;
   VeniceOpenTelemetryMetricsRepository openTelemetryMetricsRepository;

@@ -118,38 +118,31 @@ public class VeniceOpenTelemetryMetricsRepository {
     return metricPrefix;
   }
 
-  public DoubleHistogram getHistogram(String name, String unit, String description) {
+  public DoubleHistogram getHistogram(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics) {
       return null;
     }
-    return histogramMap.computeIfAbsent(name, key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(), name);
-      DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName).setUnit(unit).setDescription(description);
-      return builder.build();
-    });
-  }
-
-  public DoubleHistogram getHistogramWithoutBuckets(String name, String unit, String description) {
-    if (!emitOpenTelemetryMetrics) {
-      return null;
-    }
-    return histogramMap.computeIfAbsent(name, key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(), name);
+    return histogramMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(getMetricPrefix(), metricEntity.getMetricName());
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
-          .setExplicitBucketBoundariesAdvice(new ArrayList<>())
-          .setUnit(unit)
-          .setDescription(description);
+          .setUnit(metricEntity.getUnit())
+          .setDescription(metricEntity.getDescription());
+      if (metricEntity.getMetricType() == MetricEntity.MetricType.HISTOGRAM_WITHOUT_BUCKETS) {
+        builder.setExplicitBucketBoundariesAdvice(new ArrayList<>());
+      }
       return builder.build();
     });
   }
 
-  public LongCounter getCounter(String name, String unit, String description) {
+  public LongCounter getCounter(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics) {
       return null;
     }
-    return counterMap.computeIfAbsent(name, key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(), name);
-      LongCounterBuilder builder = meter.counterBuilder(fullMetricName).setUnit(unit).setDescription(description);
+    return counterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(getMetricPrefix(), metricEntity.getMetricName());
+      LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit())
+          .setDescription(metricEntity.getDescription());
       return builder.build();
     });
   }
@@ -157,14 +150,11 @@ public class VeniceOpenTelemetryMetricsRepository {
   public Object getInstrument(MetricEntity metricEntity) {
     switch (metricEntity.getMetricType()) {
       case HISTOGRAM:
-        return getHistogram(metricEntity.getMetricName(), metricEntity.getUnit(), metricEntity.getDescription());
       case HISTOGRAM_WITHOUT_BUCKETS:
-        return getHistogramWithoutBuckets(
-            metricEntity.getMetricName(),
-            metricEntity.getUnit(),
-            metricEntity.getDescription());
+        return getHistogram(metricEntity);
+
       case COUNTER:
-        return getCounter(metricEntity.getMetricName(), metricEntity.getUnit(), metricEntity.getDescription());
+        return getCounter(metricEntity);
       default:
         throw new VeniceException("Unknown metric type: " + metricEntity.getMetricType());
     }
