@@ -205,13 +205,12 @@ public class VeniceServerTest {
       cluster.addVeniceServer(featureProperties, new Properties());
       cluster.addVeniceServer(featureProperties, new Properties());
 
-      cluster.restartVeniceServer(server.getPort());
-      repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      StorageEngineRepository storageEngineRepository = repository;
-      TestUtils.waitForNonDeterministicAssertion(
-          3,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(storageEngineRepository.getAllLocalStorageEngines().size(), 0));
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+        cluster.restartVeniceServer(server.getPort());
+        StorageEngineRepository storageEngineRepository =
+            server.getVeniceServer().getStorageService().getStorageEngineRepository();
+        Assert.assertEquals(storageEngineRepository.getAllLocalStorageEngines().size(), 0);
+      });
     }
   }
 
