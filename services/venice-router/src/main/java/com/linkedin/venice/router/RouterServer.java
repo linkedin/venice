@@ -124,7 +124,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
-import org.apache.commons.cli.MissingArgumentException;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -270,7 +269,7 @@ public class RouterServer extends AbstractVeniceService {
       VeniceProperties properties,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
-      Optional<SSLFactory> sslFactory) throws MissingArgumentException {
+      Optional<SSLFactory> sslFactory) {
     this(
         properties,
         serviceDiscoveryAnnouncers,
@@ -301,28 +300,6 @@ public class RouterServer extends AbstractVeniceService {
         metricsRepository,
         null,
         DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-  }
-
-  public RouterServer(
-      VeniceProperties properties,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
-      Optional<DynamicAccessController> accessController,
-      Optional<SSLFactory> sslFactory,
-      MetricsRepository metricsRepository,
-      D2Client d2Client,
-      String d2ServiceName) throws MissingArgumentException {
-    this(
-        properties,
-        serviceDiscoveryAnnouncers,
-        accessController,
-        sslFactory,
-        new VeniceMetricsRepository(
-            metricsRepository,
-            new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
-                .extractAndSetOtelConfigs(properties.getAsMap())
-                .build()),
-        d2Client,
-        d2ServiceName);
   }
 
   public RouterServer(
@@ -436,7 +413,7 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
-      HelixLiveInstanceMonitor liveInstanceMonitor) throws MissingArgumentException {
+      HelixLiveInstanceMonitor liveInstanceMonitor) {
     this(
         properties,
         serviceDiscoveryAnnouncers,

@@ -6,14 +6,13 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
-import org.apache.commons.cli.MissingArgumentException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class AdminOperationsStatsTest {
   @Test
-  public void testAdminOperationsStats() throws MissingArgumentException {
+  public void testAdminOperationsStats() {
     VeniceMetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);

@@ -51,7 +51,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
       }
 
       return new RouterHttpRequestStats(
-          metricsRepo,
+          (VeniceMetricsRepository) metricsRepo,
           storeName,
           clusterName,
           requestType,

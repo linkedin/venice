@@ -7,7 +7,6 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import org.apache.commons.cli.MissingArgumentException;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
@@ -20,7 +19,7 @@ public class AggRouterHttpRequestStatsTest {
   private ReadOnlyStoreRepository storeMetadataRepository;
 
   @BeforeSuite
-  public void setUp() throws MissingArgumentException {
+  public void setUp() {
     this.metricsRepository = new VeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);

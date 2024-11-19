@@ -5,7 +5,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
+import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -29,7 +29,7 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
         unregisterMetricForDeletedStoreEnabled);
   }
 
-  static class HostLevelStoreIngestionStatsSupplier implements StatsSupplierMetricsRepository<HostLevelIngestionStats> {
+  static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {
     private final VeniceServerConfig serverConfig;
     private final Map<String, StoreIngestionTask> ingestionTaskMap;
     private final Time time;
@@ -44,7 +44,7 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
     }
 
     @Override
-    public HostLevelIngestionStats get(MetricsRepository metricsRepository, String storeName) {
+    public HostLevelIngestionStats get(MetricsRepository metricsRepository, String storeName, String clusterName) {
       throw new VeniceException("Should not be called.");
     }
 
@@ -52,6 +52,7 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
     public HostLevelIngestionStats get(
         MetricsRepository metricsRepository,
         String storeName,
+        String clusterName,
         HostLevelIngestionStats totalStats) {
       return new HostLevelIngestionStats(
           metricsRepository,

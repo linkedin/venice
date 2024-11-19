@@ -10,39 +10,35 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   protected T totalStats;
   protected final Map<String, T> storeStats = new VeniceConcurrentHashMap<>();
 
-  private StatsSupplierMetricsRepository<T> statsFactoryMetricsRepository;
-  private StatsSupplierVeniceMetricsRepository<T> statsFactoryVeniceMetricsRepository;
+  private StatsSupplier<T> statsFactory;
 
   private final MetricsRepository metricsRepository;
   private String clusterName = null;
 
-  private AbstractVeniceAggStats(
-      MetricsRepository metricsRepository,
-      StatsSupplierMetricsRepository<T> statsSupplier,
-      T totalStats) {
+  private AbstractVeniceAggStats(MetricsRepository metricsRepository, StatsSupplier<T> statsSupplier, T totalStats) {
     this.metricsRepository = metricsRepository;
-    this.statsFactoryMetricsRepository = statsSupplier;
+    this.statsFactory = statsSupplier;
     this.totalStats = totalStats;
   }
 
   private AbstractVeniceAggStats(
       VeniceMetricsRepository metricsRepository,
-      StatsSupplierVeniceMetricsRepository<T> statsSupplier,
+      StatsSupplier<T> statsSupplier,
       String clusterName,
       T totalStats) {
     this.metricsRepository = metricsRepository;
-    this.statsFactoryVeniceMetricsRepository = statsSupplier;
+    this.statsFactory = statsSupplier;
     this.clusterName = clusterName;
     this.totalStats = totalStats;
   }
 
-  public AbstractVeniceAggStats(MetricsRepository metricsRepository, StatsSupplierMetricsRepository<T> statsSupplier) {
-    this(metricsRepository, statsSupplier, statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, null));
+  public AbstractVeniceAggStats(MetricsRepository metricsRepository, StatsSupplier<T> statsSupplier) {
+    this(metricsRepository, statsSupplier, statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, null, null));
   }
 
   public AbstractVeniceAggStats(
-      StatsSupplierVeniceMetricsRepository<T> statsSupplier,
       VeniceMetricsRepository metricsRepository,
+      StatsSupplier<T> statsSupplier,
       String clusterName) {
     this(
         metricsRepository,
@@ -56,35 +52,25 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     this.clusterName = clusterName;
   }
 
-  public void setStatsSupplier(StatsSupplierVeniceMetricsRepository<T> statsSupplier) {
-    this.statsFactoryVeniceMetricsRepository = statsSupplier;
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      this.totalStats =
-          statsSupplier.get((VeniceMetricsRepository) metricsRepository, STORE_NAME_FOR_TOTAL_STAT, clusterName, null);
-    }
+  public void setStatsSupplier(StatsSupplier<T> statsSupplier) {
+    this.statsFactory = statsSupplier;
+    this.totalStats = statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, clusterName, null);
   }
 
   public AbstractVeniceAggStats(
-      String clusterName,
       MetricsRepository metricsRepository,
-      StatsSupplierMetricsRepository<T> statsSupplier) {
+      StatsSupplier<T> statsSupplier,
+      String clusterName) {
     this(
         metricsRepository,
         statsSupplier,
-        statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT + "." + clusterName, null));
+        statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT + "." + clusterName, clusterName, null));
     this.clusterName = clusterName;
   }
 
   public T getStoreStats(String storeName) {
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      return storeStats.computeIfAbsent(
-          storeName,
-          k -> statsFactoryVeniceMetricsRepository
-              .get((VeniceMetricsRepository) metricsRepository, storeName, clusterName, totalStats));
-    } else {
-      return storeStats
-          .computeIfAbsent(storeName, k -> statsFactoryMetricsRepository.get(metricsRepository, storeName, totalStats));
-    }
+    return storeStats
+        .computeIfAbsent(storeName, k -> statsFactory.get(metricsRepository, storeName, clusterName, totalStats));
   }
 
   public T getNullableStoreStats(String storeName) {

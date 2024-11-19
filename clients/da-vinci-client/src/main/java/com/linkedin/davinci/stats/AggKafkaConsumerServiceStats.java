@@ -3,7 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
+import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.LongSupplier;
@@ -99,7 +99,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     totalStats.recordLatestOffsetIsPresent();
   }
 
-  static class KafkaConsumerServiceStatsSupplier implements StatsSupplierMetricsRepository<KafkaConsumerServiceStats> {
+  static class KafkaConsumerServiceStatsSupplier implements StatsSupplier<KafkaConsumerServiceStats> {
     private final LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool;
 
     KafkaConsumerServiceStatsSupplier(LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
@@ -107,7 +107,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     }
 
     @Override
-    public KafkaConsumerServiceStats get(MetricsRepository metricsRepository, String storeName) {
+    public KafkaConsumerServiceStats get(MetricsRepository metricsRepository, String storeName, String clusterName) {
       throw new VeniceException("Should not be called.");
     }
 
@@ -115,6 +115,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     public KafkaConsumerServiceStats get(
         MetricsRepository metricsRepository,
         String storeName,
+        String clusterName,
         KafkaConsumerServiceStats totalStats) {
       return new KafkaConsumerServiceStats(
           metricsRepository,

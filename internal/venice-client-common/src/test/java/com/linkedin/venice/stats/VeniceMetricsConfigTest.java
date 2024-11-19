@@ -1,5 +1,15 @@
 package com.linkedin.venice.stats;
 
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_ENABLED;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_EXPORT_TO_ENDPOINT;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_EXPORT_TO_LOG;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_NAMING_FORMAT;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -12,18 +22,17 @@ import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.tehuti.metrics.MetricConfig;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.cli.MissingArgumentException;
 import org.testng.annotations.Test;
 
 
 public class VeniceMetricsConfigTest {
-  @Test(expectedExceptions = MissingArgumentException.class)
-  public void testDefaultValuesThrowsException() throws MissingArgumentException {
+  @Test
+  public void testDefaultValues() {
     new Builder().build();
   }
 
   @Test
-  public void testDefaultValuesWithBasicConfig() throws MissingArgumentException {
+  public void testDefaultValuesWithBasicConfig() {
     VeniceMetricsConfig config = new Builder().setServiceName("noop_service").setMetricPrefix("service").build();
     assertEquals(config.getServiceName(), "noop_service");
     assertEquals(config.getMetricPrefix(), "service");
@@ -40,10 +49,10 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test
-  public void testCustomValues() throws MissingArgumentException {
+  public void testCustomValues() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.export.to.log", "true");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_LOG, "true");
 
     MetricConfig metricConfig = new MetricConfig();
 
@@ -60,11 +69,11 @@ public class VeniceMetricsConfigTest {
     assertEquals(config.getTehutiMetricConfig(), metricConfig);
   }
 
-  @Test(expectedExceptions = MissingArgumentException.class)
-  public void testOtelMissingConfigs() throws MissingArgumentException {
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testOtelMissingConfigs() {
     Map<String, String> invalidOtelConfigs = new HashMap<>();
-    invalidOtelConfigs.put("otel.venice.enabled", "true");
-    invalidOtelConfigs.put("otel.venice.export.to.endpoint", "true");
+    invalidOtelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    invalidOtelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
 
     new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
@@ -73,18 +82,18 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testOtelConfigWithInvalidMetricFormat() throws MissingArgumentException {
+  public void testOtelConfigWithInvalidMetricFormat() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.metrics.format", "INVALID_FORMAT");
+    otelConfigs.put(OTEL_VENICE_METRICS_NAMING_FORMAT, "INVALID_FORMAT");
 
     new Builder().extractAndSetOtelConfigs(otelConfigs).build();
   }
 
   @Test
-  public void testOtelConfigWithValidMetricFormat() throws MissingArgumentException {
+  public void testOtelConfigWithValidMetricFormat() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.metrics.format", "CAMEL_CASE");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_METRICS_NAMING_FORMAT, "CAMEL_CASE");
 
     VeniceMetricsConfig config = new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
@@ -95,12 +104,12 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test
-  public void testEnableHttpGrpcEndpointConfigWithRequiredFields() throws MissingArgumentException {
+  public void testEnableHttpGrpcEndpointConfigWithRequiredFields() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.export.to.endpoint", "true");
-    otelConfigs.put("otel.exporter.otlp.metrics.protocol", OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
-    otelConfigs.put("otel.exporter.otlp.metrics.endpoint", "http://localhost");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost");
 
     VeniceMetricsConfig config = new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
@@ -113,13 +122,13 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test
-  public void testSetAggregationTemporalitySelector() throws MissingArgumentException {
+  public void testSetAggregationTemporalitySelector() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.export.to.endpoint", "true");
-    otelConfigs.put("otel.exporter.otlp.metrics.protocol", OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
-    otelConfigs.put("otel.exporter.otlp.metrics.endpoint", "http://localhost");
-    otelConfigs.put("otel.exporter.otlp.metrics.temporality.preference", "delta");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "delta");
 
     VeniceMetricsConfig config = new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
@@ -129,13 +138,13 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testSetAggregationTemporalitySelectorInvalidConfig() throws MissingArgumentException {
+  public void testSetAggregationTemporalitySelectorInvalidConfig() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.export.to.endpoint", "true");
-    otelConfigs.put("otel.exporter.otlp.metrics.protocol", OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
-    otelConfigs.put("otel.exporter.otlp.metrics.endpoint", "http://localhost");
-    otelConfigs.put("otel.exporter.otlp.metrics.temporality.preference", "invalid");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "invalid");
 
     VeniceMetricsConfig config = new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
@@ -145,15 +154,15 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test
-  public void testSetHistogramAggregationSelector() throws MissingArgumentException {
+  public void testSetHistogramAggregationSelector() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.export.to.endpoint", "true");
-    otelConfigs.put("otel.exporter.otlp.metrics.protocol", OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
-    otelConfigs.put("otel.exporter.otlp.metrics.endpoint", "http://localhost");
-    otelConfigs.put("otel.exporter.otlp.metrics.default.histogram.aggregation", "base2_exponential_bucket_histogram");
-    otelConfigs.put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale", "10");
-    otelConfigs.put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets", "50");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, "10");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, "50");
 
     VeniceMetricsConfig config = new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
@@ -165,15 +174,15 @@ public class VeniceMetricsConfigTest {
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testSetHistogramAggregationSelectorInvalidConfig() throws MissingArgumentException {
+  public void testSetHistogramAggregationSelectorInvalidConfig() {
     Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.venice.enabled", "true");
-    otelConfigs.put("otel.venice.export.to.endpoint", "true");
-    otelConfigs.put("otel.exporter.otlp.metrics.protocol", OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
-    otelConfigs.put("otel.exporter.otlp.metrics.endpoint", "http://localhost");
-    otelConfigs.put("otel.exporter.otlp.metrics.default.histogram.aggregation", "invalid");
-    otelConfigs.put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale", "10");
-    otelConfigs.put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets", "50");
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "invalid");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, "10");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, "50");
 
     new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")

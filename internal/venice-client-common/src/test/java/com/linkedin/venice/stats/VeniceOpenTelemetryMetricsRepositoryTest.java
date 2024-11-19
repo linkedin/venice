@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 import static org.testng.Assert.assertEquals;
@@ -64,7 +65,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testGetOtlpHttpMetricExporterWithValidConfig() {
     HashMap<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put("otel.exporter.otlp.endpoint", "http://localhost:4318");
+    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost:4318");
 
     MetricExporter exporter = metricsRepository.getOtlpHttpMetricExporter(mockMetricsConfig);
 

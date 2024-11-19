@@ -29,7 +29,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.apache.commons.cli.MissingArgumentException;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -40,23 +39,19 @@ public class TestVeniceMultiGetPath {
   private final RetryManager disabledRetryManager =
       new RetryManager(new VeniceMetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
 
-  public TestVeniceMultiGetPath() throws MissingArgumentException {
+  public TestVeniceMultiGetPath() {
   }
 
   @BeforeClass
   public void setUp() {
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>(requestType -> {
-      try {
-        return new AggRouterHttpRequestStats(
-            new VeniceMetricsRepository(),
-            "test-cluster",
-            requestType,
-            mock(ReadOnlyStoreRepository.class),
-            true);
-      } catch (MissingArgumentException e) {
-        throw new RuntimeException(e);
-      }
-    }));
+    RouterExceptionAndTrackingUtils.setRouterStats(
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new VeniceMetricsRepository(),
+                "test-cluster",
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)));
   }
 
   @AfterClass

@@ -10,7 +10,6 @@ import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
-import org.apache.commons.cli.MissingArgumentException;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -22,7 +21,7 @@ public class RouteHttpRequestStatsTest {
   private RouterHttpRequestStats routerHttpRequestStats;
 
   @BeforeSuite
-  public void setUp() throws MissingArgumentException {
+  public void setUp() {
     VeniceMetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);

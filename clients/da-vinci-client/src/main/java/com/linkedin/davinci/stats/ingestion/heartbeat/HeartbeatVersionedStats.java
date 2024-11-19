@@ -3,7 +3,7 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
+import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -17,7 +17,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Supplier<HeartbeatStat> statsInitiator,
-      StatsSupplierMetricsRepository<HeartbeatStatReporter> reporterSupplier,
+      StatsSupplier<HeartbeatStatReporter> reporterSupplier,
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors,
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors) {
     super(metricsRepository, metadataRepository, statsInitiator, reporterSupplier, true);

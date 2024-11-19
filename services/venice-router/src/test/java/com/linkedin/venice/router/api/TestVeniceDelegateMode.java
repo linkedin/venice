@@ -53,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nonnull;
-import org.apache.commons.cli.MissingArgumentException;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -223,18 +222,14 @@ public class TestVeniceDelegateMode {
 
   @BeforeClass
   public void setUp() {
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>(requestType -> {
-      try {
-        return new AggRouterHttpRequestStats(
-            new VeniceMetricsRepository(),
-            "test-cluster",
-            requestType,
-            mock(ReadOnlyStoreRepository.class),
-            true);
-      } catch (MissingArgumentException e) {
-        throw new RuntimeException(e);
-      }
-    }));
+    RouterExceptionAndTrackingUtils.setRouterStats(
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new VeniceMetricsRepository(),
+                "test-cluster",
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)));
   }
 
   @AfterClass
@@ -380,18 +375,16 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(config, new RouterStats<>(requestType -> {
-      try {
-        return new AggRouterHttpRequestStats(
-            new VeniceMetricsRepository(),
-            "test-cluster",
-            requestType,
-            mock(ReadOnlyStoreRepository.class),
-            true);
-      } catch (MissingArgumentException e) {
-        throw new RuntimeException(e);
-      }
-    }), mock(RouteHttpRequestStats.class));
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        config,
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new VeniceMetricsRepository(),
+                "test-cluster",
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)),
+        mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
@@ -620,7 +613,7 @@ public class TestVeniceDelegateMode {
   }
 
   @Test
-  public void testScatterForMultiGetWithHelixAssistedRouting() throws RouterException, MissingArgumentException {
+  public void testScatterForMultiGetWithHelixAssistedRouting() throws RouterException {
     String storeName = Utils.getUniqueString("test_store");
     int version = 1;
     String resourceName = storeName + "_v" + version;

@@ -52,7 +52,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
-import org.apache.commons.cli.MissingArgumentException;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -98,18 +97,14 @@ public class TestVenicePathParser {
 
   @BeforeClass
   public void setUp() {
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>(requestType -> {
-      try {
-        return new AggRouterHttpRequestStats(
-            new VeniceMetricsRepository(),
-            CLUSTER,
-            requestType,
-            mock(ReadOnlyStoreRepository.class),
-            true);
-      } catch (MissingArgumentException e) {
-        throw new RuntimeException(e);
-      }
-    }));
+    RouterExceptionAndTrackingUtils.setRouterStats(
+        new RouterStats<>(
+            requestType -> new AggRouterHttpRequestStats(
+                new VeniceMetricsRepository(),
+                CLUSTER,
+                requestType,
+                mock(ReadOnlyStoreRepository.class),
+                true)));
   }
 
   @AfterClass

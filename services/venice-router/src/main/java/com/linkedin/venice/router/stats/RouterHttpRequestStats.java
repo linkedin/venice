@@ -46,24 +46,15 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.commons.cli.MissingArgumentException;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(10, TimeUnit.SECONDS);
-  private static final VeniceMetricsRepository localMetricRepo;
-
-  static {
-    try {
-      localMetricRepo = new VeniceMetricsRepository(
-          new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
-              .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
-              .setTehutiMetricConfig(METRIC_CONFIG)
-              .build());
-    } catch (MissingArgumentException e) {
-      throw new RuntimeException(e);
-    }
-  }
+  private static final VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
+      new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
+          .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
+          .setTehutiMetricConfig(METRIC_CONFIG)
+          .build());
 
   private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
   static {

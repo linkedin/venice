@@ -25,7 +25,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
         unregisterMetricForDeletedStoreEnabled);
   }
 
-  static class ServerHttpRequestStatsSupplier implements StatsSupplierMetricsRepository<ServerHttpRequestStats> {
+  static class ServerHttpRequestStatsSupplier implements StatsSupplier<ServerHttpRequestStats> {
     private final RequestType requestType;
     private final boolean isKeyValueProfilingEnabled;
 
@@ -41,7 +41,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     }
 
     @Override
-    public ServerHttpRequestStats get(MetricsRepository metricsRepository, String storeName) {
+    public ServerHttpRequestStats get(MetricsRepository metricsRepository, String storeName, String clusterName) {
       throw new VeniceException("Should not be called.");
     }
 
@@ -49,6 +49,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     public ServerHttpRequestStats get(
         MetricsRepository metricsRepository,
         String storeName,
+        String clusterName,
         ServerHttpRequestStats totalStats) {
       return new ServerHttpRequestStats(
           metricsRepository,

@@ -83,7 +83,7 @@ public class AggVersionedStorageEngineStats extends
   }
 
   static class StorageEngineStatsReporter extends AbstractVeniceStatsReporter<StorageEngineStats> {
-    public StorageEngineStatsReporter(MetricsRepository metricsRepository, String storeName) {
+    public StorageEngineStatsReporter(MetricsRepository metricsRepository, String storeName, String clusterName) {
       super(metricsRepository, storeName);
     }
 

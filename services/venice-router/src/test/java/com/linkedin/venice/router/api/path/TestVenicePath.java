@@ -21,7 +21,6 @@ import java.util.Collection;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
-import org.apache.commons.cli.MissingArgumentException;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -89,7 +88,7 @@ public class TestVenicePath {
   private final ScheduledExecutorService retryManagerScheduler = Executors.newScheduledThreadPool(1);
 
   @BeforeMethod
-  public void setUp() throws MissingArgumentException {
+  public void setUp() {
     metricsRepository = new VeniceMetricsRepository();
     // retry manager is disabled by default
     disabledRetryManager =

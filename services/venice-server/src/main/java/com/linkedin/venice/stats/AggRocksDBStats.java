@@ -9,7 +9,7 @@ import org.rocksdb.Statistics;
  */
 public class AggRocksDBStats extends AbstractVeniceAggStats<RocksDBStats> {
   public AggRocksDBStats(MetricsRepository metricsRepository, Statistics aggStat) {
-    super(metricsRepository, (metricsRepo, storeName) -> new RocksDBStats(metricsRepository, storeName));
+    super(metricsRepository, (metricsRepo, storeName, clusterName) -> new RocksDBStats(metricsRepository, storeName));
     totalStats.setRocksDBStat(aggStat);
   }
 }

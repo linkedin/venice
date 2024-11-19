@@ -10,13 +10,28 @@ import io.tehuti.metrics.MetricConfig;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import org.apache.commons.cli.MissingArgumentException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class VeniceMetricsConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceMetricsConfig.class);
+  // create constants for all the configs
+  public static final String OTEL_VENICE_ENABLED = "otel.venice.enabled";
+  public static final String OTEL_VENICE_METRICS_NAMING_FORMAT = "otel.venice.metrics.naming.format";
+  public static final String OTEL_VENICE_EXPORT_TO_LOG = "otel.venice.export.to.log";
+  public static final String OTEL_VENICE_EXPORT_TO_ENDPOINT = "otel.venice.export.to.endpoint";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_PROTOCOL = "otel.exporter.otlp.metrics.protocol";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = "otel.exporter.otlp.metrics.endpoint";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_HEADERS = "otel.exporter.otlp.metrics.headers";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE =
+      "otel.exporter.otlp.metrics.temporality.preference";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION =
+      "otel.exporter.otlp.metrics.default.histogram.aggregation";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE =
+      "otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale";
+  public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS =
+      "otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets";
   private final String serviceName;
   private final String metricPrefix;
   /** reusing tehuti's MetricConfig */
@@ -73,7 +88,7 @@ public class VeniceMetricsConfig {
   }
 
   public static class Builder {
-    private String serviceName = null;
+    private String serviceName = "default_service";
     private String metricPrefix = null;
     private boolean emitOtelMetrics = false;
     private boolean exportOtelMetricsToEndpoint = false;
@@ -143,27 +158,27 @@ public class VeniceMetricsConfig {
      */
     public Builder extractAndSetOtelConfigs(Map<String, String> configs) {
       String configValue;
-      if ((configValue = configs.get("otel.venice.enabled")) != null) {
-        setEmitOtelMetrics(configValue.toLowerCase(Locale.ROOT).equals("true"));
+      if ((configValue = configs.get(OTEL_VENICE_ENABLED)) != null) {
+        setEmitOtelMetrics(Boolean.parseBoolean(configValue));
       }
 
-      if ((configValue = configs.get("otel.venice.export.to.log")) != null) {
-        setExportOtelMetricsToLog(configValue.toLowerCase(Locale.ROOT).equals("true"));
+      if ((configValue = configs.get(OTEL_VENICE_EXPORT_TO_LOG)) != null) {
+        setExportOtelMetricsToLog(Boolean.parseBoolean(configValue));
       }
 
-      if ((configValue = configs.get("otel.venice.export.to.endpoint")) != null) {
-        setExportOtelMetricsToEndpoint(configValue.toLowerCase(Locale.ROOT).equals("true"));
+      if ((configValue = configs.get(OTEL_VENICE_EXPORT_TO_ENDPOINT)) != null) {
+        setExportOtelMetricsToEndpoint(Boolean.parseBoolean(configValue));
       }
 
-      if ((configValue = configs.get("otel.exporter.otlp.metrics.protocol")) != null) {
+      if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL)) != null) {
         setOtelExportProtocol(configValue);
       }
 
-      if ((configValue = configs.get("otel.venice.metrics.format")) != null) {
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_NAMING_FORMAT)) != null) {
         setMetricNamingFormat(VeniceOpenTelemetryMetricNamingFormat.valueOf(configValue.toUpperCase(Locale.ROOT)));
       }
 
-      if ((configValue = configs.get("otel.exporter.otlp.metrics.endpoint")) != null) {
+      if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT)) != null) {
         // validate endpoint: TODO
         setOtelEndpoint(configValue);
       }
@@ -174,12 +189,12 @@ public class VeniceMetricsConfig {
        *
        * Currently supporting 1 header
        */
-      if ((configValue = configs.get("otel.exporter.otlp.metrics.headers")) != null) {
+      if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_HEADERS)) != null) {
         String[] headers = configValue.split("=");
         otelHeaders.put(headers[0], headers[1]);
       }
 
-      if ((configValue = configs.get("otel.exporter.otlp.metrics.temporality.preference")) != null) {
+      if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE)) != null) {
         switch (configValue.toLowerCase(Locale.ROOT)) {
           case "cumulative":
             setOtelAggregationTemporalitySelector(AggregationTemporalitySelector.alwaysCumulative());
@@ -195,11 +210,11 @@ public class VeniceMetricsConfig {
         }
       }
 
-      if ((configValue = configs.get("otel.exporter.otlp.metrics.default.histogram.aggregation")) != null) {
+      if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION)) != null) {
         switch (configValue.toLowerCase(Locale.ROOT)) {
           case "base2_exponential_bucket_histogram":
-            String maxScaleValue = configs.get("otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale");
-            String maxBucketValue = configs.get("otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets");
+            String maxScaleValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE);
+            String maxBucketValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS);
             if (maxScaleValue != null && maxBucketValue != null) {
               int maxScale = Integer.parseInt(maxScaleValue);
               int maxBuckets = Integer.parseInt(maxBucketValue);
@@ -238,13 +253,9 @@ public class VeniceMetricsConfig {
     }
 
     // Validate required fields before building
-    private void checkAndSetDefaults() throws MissingArgumentException {
+    private void checkAndSetDefaults() {
       if (tehutiMetricConfig == null) {
         setTehutiMetricConfig(new MetricConfig());
-      }
-
-      if (serviceName == null) {
-        throw new MissingArgumentException("serviceName is required to configure OpenTelemetry");
       }
 
       if (metricPrefix == null) {
@@ -255,7 +266,7 @@ public class VeniceMetricsConfig {
       if (emitOtelMetrics) {
         if (exportOtelMetricsToEndpoint) {
           if (otelEndpoint == null) {
-            throw new MissingArgumentException("endpoint is required to configure OpenTelemetry metrics export");
+            throw new IllegalArgumentException("endpoint is required to configure OpenTelemetry metrics export");
           }
 
         } else {
@@ -266,7 +277,7 @@ public class VeniceMetricsConfig {
       }
     }
 
-    public VeniceMetricsConfig build() throws MissingArgumentException {
+    public VeniceMetricsConfig build() {
       checkAndSetDefaults();
       return new VeniceMetricsConfig(this);
     }

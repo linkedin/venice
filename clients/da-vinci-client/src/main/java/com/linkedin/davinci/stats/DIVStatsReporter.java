@@ -14,7 +14,7 @@ import java.util.function.Function;
  * collection/visualization system.
  */
 public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
-  public DIVStatsReporter(MetricsRepository metricsRepository, String storeName) {
+  public DIVStatsReporter(MetricsRepository metricsRepository, String storeName, String clusterName) {
     super(metricsRepository, storeName);
   }
 

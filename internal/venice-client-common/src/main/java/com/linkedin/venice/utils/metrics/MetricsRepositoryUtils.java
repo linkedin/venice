@@ -6,7 +6,6 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.cli.MissingArgumentException;
 
 
 /**
@@ -23,7 +22,7 @@ public class MetricsRepositoryUtils {
     return createSingleThreadedMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100);
   }
 
-  public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository() throws MissingArgumentException {
+  public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository() {
     return createSingleThreadedVeniceMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100);
   }
 
@@ -41,7 +40,7 @@ public class MetricsRepositoryUtils {
 
   public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository(
       long maxMetricsMeasurementTimeoutMs,
-      long initialMetricsMeasurementTimeoutMs) throws MissingArgumentException {
+      long initialMetricsMeasurementTimeoutMs) {
     MetricConfig tehutiMetricsConfig = new MetricConfig(
         new AsyncGauge.AsyncGaugeExecutor.Builder().setMetricMeasurementThreadCount(1)
             .setSlowMetricMeasurementThreadCount(1)

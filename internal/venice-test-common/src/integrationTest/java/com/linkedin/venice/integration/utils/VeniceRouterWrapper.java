@@ -22,6 +22,15 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_ENABLED;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_EXPORT_TO_ENDPOINT;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_EXPORT_TO_LOG;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -48,7 +57,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.cli.MissingArgumentException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -154,15 +162,15 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
-          .put("otel.venice.enabled", Boolean.TRUE.toString())
-          .put("otel.venice.export.to.log", Boolean.TRUE.toString())
-          .put("otel.venice.export.to.endpoint", Boolean.TRUE.toString())
-          .put("otel.exporter.otlp.metrics.protocol", "http/protobuf")
-          .put("otel.exporter.otlp.metrics.endpoint", "http://localhost:4318/v1/metrics")
-          .put("otel.exporter.otlp.metrics.temporality.preference", "delta")
-          .put("otel.exporter.otlp.metrics.default.histogram.aggregation", "base2_exponential_bucket_histogram")
-          .put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.scale", 3)
-          .put("otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets", 250)
+          .put(OTEL_VENICE_ENABLED, Boolean.TRUE.toString())
+          .put(OTEL_VENICE_EXPORT_TO_LOG, Boolean.TRUE.toString())
+          .put(OTEL_VENICE_EXPORT_TO_ENDPOINT, Boolean.TRUE.toString())
+          .put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, "http/protobuf")
+          .put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost:4318/v1/metrics")
+          .put(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "delta")
+          .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram")
+          .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, 3)
+          .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, 250)
           .put(properties);
 
       // setup d2 config first
@@ -238,7 +246,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  protected void newProcess() throws MissingArgumentException {
+  protected void newProcess() {
     String httpURI = "http://" + getHost() + ":" + getPort();
     String httpsURI = "https://" + getHost() + ":" + getSslPort();
 

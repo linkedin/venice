@@ -18,17 +18,17 @@ public class AbstractVeniceAggStoreStats<T extends AbstractVeniceStats> extends 
   public AbstractVeniceAggStoreStats(
       String clusterName,
       MetricsRepository metricsRepository,
-      StatsSupplierMetricsRepository<T> statsSupplier,
+      StatsSupplier<T> statsSupplier,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
-    super(clusterName, metricsRepository, statsSupplier);
+    super(metricsRepository, statsSupplier, clusterName);
     this.isUnregisterMetricForDeletedStoreEnabled = isUnregisterMetricForDeletedStoreEnabled;
     registerStoreDataChangedListenerIfRequired(metadataRepository);
   }
 
   public AbstractVeniceAggStoreStats(
       MetricsRepository metricsRepository,
-      StatsSupplierMetricsRepository<T> statsSupplier,
+      StatsSupplier<T> statsSupplier,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
     super(metricsRepository, statsSupplier);

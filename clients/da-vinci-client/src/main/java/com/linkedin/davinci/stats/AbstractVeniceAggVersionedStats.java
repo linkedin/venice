@@ -7,7 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.stats.StatsSupplierMetricsRepository;
+import com.linkedin.venice.stats.StatsSupplier;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -25,7 +25,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceAggVersionedStats.class);
 
   private final Supplier<STATS> statsInitiator;
-  private final StatsSupplierMetricsRepository<STATS_REPORTER> reporterSupplier;
+  private final StatsSupplier<STATS_REPORTER> reporterSupplier;
 
   protected final ReadOnlyStoreRepository metadataRepository;
   private final MetricsRepository metricsRepository;
@@ -37,7 +37,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Supplier<STATS> statsInitiator,
-      StatsSupplierMetricsRepository<STATS_REPORTER> reporterSupplier,
+      StatsSupplier<STATS_REPORTER> reporterSupplier,
       boolean unregisterMetricForDeletedStoreEnabled) {
     this.metadataRepository = metadataRepository;
     this.metricsRepository = metricsRepository;

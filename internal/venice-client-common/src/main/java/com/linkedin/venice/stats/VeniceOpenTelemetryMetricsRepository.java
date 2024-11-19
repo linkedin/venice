@@ -2,7 +2,6 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
-import static io.opentelemetry.sdk.metrics.data.AggregationTemporality.DELTA;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -16,6 +15,7 @@ import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.metrics.Aggregation;
 import io.opentelemetry.sdk.metrics.InstrumentType;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
@@ -86,7 +86,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       }
       if (metricsConfig.exportOtelMetricsToLog()) {
         // internal to test: Disabled by default
-        builder.registerMetricReader(PeriodicMetricReader.builder(new LogBasedMetricExporter()).build());
+        builder.registerMetricReader(PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig)).build());
       }
 
       builder.setResource(Resource.empty());
@@ -156,14 +156,27 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public void close() {
     LOGGER.info("OpenTelemetry close");
-    sdkMeterProvider.shutdown();
-    sdkMeterProvider = null;
+    if (sdkMeterProvider != null) {
+      sdkMeterProvider.shutdown();
+      sdkMeterProvider = null;
+    }
   }
 
-  static class LogBasedMetricExporter implements MetricExporter {
+  class LogBasedMetricExporter implements MetricExporter {
+    VeniceMetricsConfig metricsConfig;
+
+    LogBasedMetricExporter(VeniceMetricsConfig metricsConfig) {
+      this.metricsConfig = metricsConfig;
+    }
+
     @Override
     public AggregationTemporality getAggregationTemporality(InstrumentType instrumentType) {
-      return DELTA;
+      return metricsConfig.getOtelAggregationTemporalitySelector().getAggregationTemporality(instrumentType);
+    }
+
+    @Override
+    public Aggregation getDefaultAggregation(InstrumentType instrumentType) {
+      return metricsConfig.getOtelHistogramAggregationSelector().getDefaultAggregation(instrumentType);
     }
 
     @Override

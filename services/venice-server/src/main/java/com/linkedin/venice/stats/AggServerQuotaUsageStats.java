@@ -11,7 +11,7 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerReadQ
   private static final int SINGLE_VERSION_FOR_TOTAL_STATS = 1;
 
   public AggServerQuotaUsageStats(MetricsRepository metricsRepository) {
-    super(metricsRepository, (metrics, storeName) -> new ServerReadQuotaUsageStats(metrics, storeName));
+    super(metricsRepository, (metrics, storeName, clusterName) -> new ServerReadQuotaUsageStats(metrics, storeName));
     totalStats.setCurrentVersion(SINGLE_VERSION_FOR_TOTAL_STATS);
   }
 
