@@ -1779,6 +1779,9 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
   // this is a config to decide max file transfer timeout time in minutes
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
+  // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
+  public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
+      "blob.transfer.disabled.offset.lag.threshold";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";

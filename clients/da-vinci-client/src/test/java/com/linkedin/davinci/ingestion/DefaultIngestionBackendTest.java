@@ -119,7 +119,7 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION))).thenReturn(errorFuture);
 
     CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION).toCompletableFuture();
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, 100L).toCompletableFuture();
     assertTrue(future.isDone());
   }
 

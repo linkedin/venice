@@ -1,7 +1,5 @@
 package com.linkedin.davinci.ingestion;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
-
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -84,8 +82,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
       runnable.run();
     } else {
       storageService.openStore(storeConfig, svsSupplier);
-      CompletionStage<Void> bootstrapFuture =
-          bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
+      CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
+          storeAndVersion.getFirst(),
+          storeAndVersion.getSecond().getNumber(),
+          partition,
+          serverConfig.getBlobTransferDisabledOffsetLagThreshold());
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();
@@ -98,14 +99,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs.
    */
-  CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
+  CompletionStage<Void> bootstrapFromBlobs(
+      Store store,
+      int versionNumber,
+      int partitionId,
+      long blobTransferDisabledOffsetLagThreshold) {
     if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
 
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
-    if (!isOffsetLagged(store.getName(), versionNumber, partitionId, BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD)) {
+    if (!isOffsetLagged(store.getName(), versionNumber, partitionId, blobTransferDisabledOffsetLagThreshold)) {
       return CompletableFuture.completedFuture(null);
     }
 

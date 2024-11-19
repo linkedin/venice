@@ -13,7 +13,6 @@ public class BlobTransferUtils {
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
-  public static final long BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD = 100000L;
 
   public enum BlobTransferType {
     FILE, METADATA
