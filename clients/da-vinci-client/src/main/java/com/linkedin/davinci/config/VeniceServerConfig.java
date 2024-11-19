@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
@@ -538,6 +539,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean blobTransferManagerEnabled;
   private final int snapshotRetentionTimeInMin;
   private final int maxConcurrentSnapshotUser;
+  private final int blobTransferMaxTimeoutInMin;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
@@ -580,6 +582,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     blobTransferManagerEnabled = serverProperties.getBoolean(BLOB_TRANSFER_MANAGER_ENABLED, false);
     snapshotRetentionTimeInMin = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 60);
     maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 5);
+    blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 60);
     dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);
     dvcP2pBlobTransferClientPort =
         serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, dvcP2pBlobTransferServerPort);
@@ -1044,6 +1047,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getSnapshotRetentionTimeInMin() {
     return snapshotRetentionTimeInMin;
+  }
+
+  public int getBlobTransferMaxTimeoutInMin() {
+    return blobTransferMaxTimeoutInMin;
   }
 
   /**

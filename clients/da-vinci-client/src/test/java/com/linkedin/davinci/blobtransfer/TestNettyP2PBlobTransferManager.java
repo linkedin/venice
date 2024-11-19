@@ -66,6 +66,7 @@ public class TestNettyP2PBlobTransferManager {
   @BeforeMethod
   public void setUp() throws Exception {
     int port = TestUtils.getFreePort();
+    int blobTransferMaxTimeoutInMin = 30;
     tmpSnapshotDir = Files.createTempDirectory(TMP_SNAPSHOT_DIR);
     tmpPartitionDir = Files.createTempDirectory(TMP_PARTITION_DIR);
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
@@ -76,7 +77,8 @@ public class TestNettyP2PBlobTransferManager {
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
-    server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobSnapshotManager);
+    server =
+        new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
     finder = mock(BlobFinder.class);
 

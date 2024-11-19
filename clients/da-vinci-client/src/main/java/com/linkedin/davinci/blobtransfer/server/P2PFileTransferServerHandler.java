@@ -53,16 +53,19 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
-  // Maximum timeout for blob transfer in minutes per partition
-  // TODO: make this configurable in store level
-  private static final int MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN = 30;
   private static final String TRANSFER_TIMEOUT_ERROR_MSG_FORMAT = "Timeout for transferring blob %s file %s";
   private boolean useZeroCopy = false;
   private final String baseDir;
+  // Maximum timeout for blob transfer in minutes per partition
+  private final int blobTransferMaxTimeoutInMin;
   private BlobSnapshotManager blobSnapshotManager;
 
-  public P2PFileTransferServerHandler(String baseDir, BlobSnapshotManager blobSnapshotManager) {
+  public P2PFileTransferServerHandler(
+      String baseDir,
+      int blobTransferMaxTimeoutInMin,
+      BlobSnapshotManager blobSnapshotManager) {
     this.baseDir = baseDir;
+    this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
   }
 
@@ -142,7 +145,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       // transfer files
       for (File file: files) {
         // check if the transfer for all files is timed out for this partition
-        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN)) {
+        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
           String errMessage = String
               .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
           LOGGER.error(errMessage);

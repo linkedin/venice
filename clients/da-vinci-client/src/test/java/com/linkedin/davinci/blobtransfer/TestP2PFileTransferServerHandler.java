@@ -48,6 +48,7 @@ import org.testng.annotations.Test;
 public class TestP2PFileTransferServerHandler {
   EmbeddedChannel ch;
   Path baseDir;
+  int blobTransferMaxTimeoutInMin;
   StorageMetadataService storageMetadataService;
   P2PFileTransferServerHandler serverHandler;
   BlobSnapshotManager blobSnapshotManager;
@@ -57,13 +58,15 @@ public class TestP2PFileTransferServerHandler {
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
+    blobTransferMaxTimeoutInMin = 30;
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
     readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
     blobSnapshotManager =
         new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
-    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), blobSnapshotManager);
+    serverHandler =
+        new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
   }
 
