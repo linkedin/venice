@@ -252,7 +252,7 @@ public class DaVinciBackend implements Closeable {
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
       ingestionService = new KafkaStoreIngestionService(
-          storageService.getStorageEngineRepository(),
+          storageService,
           configLoader,
           storageMetadataService,
           clusterInfoProvider,

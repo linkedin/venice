@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.DROP_PARTITION;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
@@ -34,6 +35,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -189,6 +191,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
 
   /** storage destination for consumption */
+  protected final StorageService storageService;
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
 
@@ -344,6 +347,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   public StoreIngestionTask(
+      StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
@@ -361,6 +365,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
     this.kafkaProps = kafkaConsumerProperties;
+    this.storageService = storageService;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
@@ -630,6 +635,41 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     consumerActionsQueue.add(consumerAction);
     return consumerAction.getFuture();
+  }
+
+  /**
+   * Drops a storage partition gracefully.
+   * This is always a Helix triggered action.
+   */
+  public void dropStoragePartitionGracefully(PubSubTopicPartition topicPartition) {
+    int partitionId = topicPartition.getPartitionNumber();
+    synchronized (this) {
+      if (isRunning()) {
+        LOGGER.info(
+            "Ingestion task is still running for Topic {}. Dropping partition {} asynchronously",
+            topicPartition.getTopicName(),
+            partitionId);
+        ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
+        consumerActionsQueue.add(consumerAction);
+        return;
+      }
+    }
+
+    LOGGER.info(
+        "Ingestion task isn't running for Topic {}. Dropping partition {} synchronously",
+        topicPartition.getTopicName(),
+        partitionId);
+    dropPartitionSynchronously(topicPartition);
+  }
+
+  /**
+   * Drops a partition synchrnously. This is invoked when processing a DROP_PARTITION message.
+   */
+  private void dropPartitionSynchronously(PubSubTopicPartition topicPartition) {
+    LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
+    int partition = topicPartition.getPartitionNumber();
+    this.storageService.dropStorePartition(storeConfig, partition, true);
+    LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
   }
 
   public boolean hasAnySubscription() {
@@ -1732,9 +1772,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void internalClose(boolean doFlush) {
+    // Set isRunning to false to prevent messages being added after we've already looped through consumerActionsQueue.
+    // Wrapping in synchronized to prevent a race condition on methods reading the value of isRunning.
+    synchronized (this) {
+      getIsRunning().set(false);
+    }
+
     this.missingSOPCheckExecutor.shutdownNow();
 
-    // Only reset Offset Messages are important, subscribe/unsubscribe will be handled
+    // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     try {
       this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
@@ -1746,12 +1792,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (opType == ConsumerActionType.RESET_OFFSET) {
           LOGGER.info("Cleanup Reset OffSet. Replica: {}", replica);
           storageMetadataService.clearOffset(topic, partition);
+        } else if (opType == DROP_PARTITION) {
+          PubSubTopicPartition topicPartition = message.getTopicPartition();
+          LOGGER.info("Processing DROP_PARTITION message for {} in internalClose", topicPartition);
+          dropPartitionSynchronously(topicPartition);
         } else {
           LOGGER.info("Cleanup ignoring the Message: {} Replica: {}", message, replica);
         }
       }
     } catch (Exception e) {
-      LOGGER.error("{} Error while resetting offset.", ingestionTaskName, e);
+      LOGGER.error("{} Error while handling message in internalClose", ingestionTaskName, e);
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
     aggKafkaConsumerService.unsubscribeAll(versionTopic);
@@ -2137,6 +2187,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
+      case DROP_PARTITION:
+        dropPartitionSynchronously(topicPartition);
+        break;
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }

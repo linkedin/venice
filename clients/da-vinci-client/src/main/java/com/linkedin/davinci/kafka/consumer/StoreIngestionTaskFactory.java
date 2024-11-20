@@ -11,6 +11,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -43,6 +44,7 @@ public class StoreIngestionTaskFactory {
   }
 
   public StoreIngestionTask getNewIngestionTask(
+      StorageService storageService,
       Store store,
       Version version,
       Properties kafkaConsumerProperties,
@@ -54,6 +56,7 @@ public class StoreIngestionTaskFactory {
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
+          storageService,
           builder,
           store,
           version,
@@ -66,6 +69,7 @@ public class StoreIngestionTaskFactory {
           recordTransformerFunction);
     }
     return new LeaderFollowerStoreIngestionTask(
+        storageService,
         builder,
         store,
         version,

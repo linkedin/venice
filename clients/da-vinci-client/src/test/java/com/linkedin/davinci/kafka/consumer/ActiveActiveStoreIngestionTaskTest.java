@@ -28,6 +28,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -231,6 +232,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     mockVersion.setHybridStoreConfig(hybridStoreConfig);
 
+    StorageService storageService = mock(StorageService.class);
     Store store = new ZKStore(
         STORE_NAME,
         "Felix",
@@ -250,6 +252,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     VeniceStoreVersionConfig storeVersionConfig =
         new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
     ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
+        storageService,
         builder,
         store,
         mockVersion,
