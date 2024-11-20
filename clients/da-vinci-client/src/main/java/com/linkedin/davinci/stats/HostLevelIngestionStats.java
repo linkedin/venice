@@ -145,6 +145,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
 
   private final Sensor leaderProduceLatencySensor;
+  private final Sensor leaderCompressLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestSensor;
   private final Sensor batchProcessingRequestSizeSensor;
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
@@ -454,6 +455,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderProduceLatencySensor,
         avgAndMax());
+    this.leaderCompressLatencySensor = registerPerStoreAndTotalSensor(
+        "leader_compress_latency",
+        totalStats,
+        () -> totalStats.leaderCompressLatencySensor,
+        avgAndMax());
     this.batchProcessingRequestSensor = registerOnlyTotalRate(
         BATCH_PROCESSING_REQUEST,
         totalStats,
@@ -661,6 +667,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordLeaderProduceLatency(double latency) {
     leaderProduceLatencySensor.record(latency);
+  }
+
+  public void recordLeaderCompressLatency(double latency) {
+    leaderCompressLatencySensor.record(latency);
   }
 
   public void recordBatchProcessingRequest(int size) {
