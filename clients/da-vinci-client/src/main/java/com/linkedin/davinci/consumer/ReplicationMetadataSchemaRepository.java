@@ -27,9 +27,9 @@ public class ReplicationMetadataSchemaRepository {
       }
 
       for (MultiSchemaResponse.Schema schema: multiReplicationSchemaResponse.getSchemas()) {
-        cachedReplicationMetadataSchemas.putIfAbsent(
+        cachedReplicationMetadataSchemas.computeIfAbsent(
             schema.getRmdValueSchemaId(),
-            new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
+            key -> new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
       }
       if (!cachedReplicationMetadataSchemas.containsKey(replicationMetadataSchemaId)) {
         throw new VeniceException("No available store replication metadata schema for store: " + storeName);
