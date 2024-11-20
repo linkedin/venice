@@ -9,7 +9,6 @@ dependencies {
     exclude group: 'org.scala-lang'
   }
   implementation project(':clients:venice-thin-client')
-  
   // TODO: clean this... Pulsar should not depend on Samza
   implementation project(':integrations:venice-samza')
 
