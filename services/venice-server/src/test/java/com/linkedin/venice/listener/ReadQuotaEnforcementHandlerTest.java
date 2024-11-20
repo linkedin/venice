@@ -85,6 +85,7 @@ public class ReadQuotaEnforcementHandlerTest {
   private MetricsRepository metricsRepository;
   private RouterRequest routerRequest;
   private VeniceServerGrpcHandler mockNextHandler;
+  private VeniceServerConfig serverConfig;
 
   @BeforeMethod
   public void setUp() {
@@ -97,7 +98,7 @@ public class ReadQuotaEnforcementHandlerTest {
     customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
     metricsRepository = new MetricsRepository();
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    serverConfig = mock(VeniceServerConfig.class);
     when(serverConfig.getQuotaEnforcementIntervalInMs()).thenReturn(10000);
     when(serverConfig.getQuotaEnforcementCapacityMultiple()).thenReturn(5);
     doReturn(nodeCapacity).when(serverConfig).getNodeCapacityInRcu();
@@ -366,6 +367,15 @@ public class ReadQuotaEnforcementHandlerTest {
 
   @Test
   public void testInitWithPreExistingResource() {
+    // Do initialize the quota enforcement handler with a real stats for this test
+    quotaEnforcementHandler = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        storeRepository,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        thisNodeId,
+        new AggServerQuotaUsageStats(metricsRepository),
+        metricsRepository,
+        clock);
     String storeName = "testStore";
     String topic = Version.composeKafkaTopic(storeName, 1);
     Version version = mock(Version.class);
@@ -373,11 +383,18 @@ public class ReadQuotaEnforcementHandlerTest {
     Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
     doReturn(store).when(storeRepository).getStore(storeName);
     doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
-
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    doReturn(0).when(partition).getId();
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
     quotaEnforcementHandler.init();
 
     verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(any());
     verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(eq(topic), any());
+    Assert.assertEquals(quotaEnforcementHandler.getStats().getStoreStats(storeName).getCurrentVersion(), 1);
+    Assert.assertEquals(quotaEnforcementHandler.getStats().getStoreStats(storeName).getBackupVersion(), 0);
   }
 
   /**

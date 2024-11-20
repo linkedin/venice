@@ -34,11 +34,14 @@ import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
 
 public class ControllerRoutes extends AbstractRoute {
+  private static final Logger LOGGER = LogManager.getLogger(ControllerRoutes.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -194,6 +197,7 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
 
       try {
+        LOGGER.info("[AggregatedHealthStatus] Received request: {}", request.body());
         AggregatedHealthStatusRequest statusRequest =
             OBJECT_MAPPER.readValue(request.body(), AggregatedHealthStatusRequest.class);
         String cluster = statusRequest.getClusterId();
@@ -210,10 +214,10 @@ public class ControllerRoutes extends AbstractRoute {
 
         InstanceRemovableStatuses statuses =
             admin.getAggregatedHealthStatus(cluster, instanceList, toBeStoppedInstanceList, isSslEnabled());
-        if (statuses.getRedirectUrl() != null) {
-          response.redirect(
-              statuses.getRedirectUrl() + AGGREGATED_HEALTH_STATUS.getPath(),
-              HttpStatus.SC_MOVED_TEMPORARILY);
+        String redirectUrl = statuses.getRedirectUrl();
+        if (redirectUrl != null) {
+          LOGGER.info("[AggregatedHealthStatus] Redirecting to: {}", redirectUrl);
+          response.redirect(redirectUrl + AGGREGATED_HEALTH_STATUS.getPath(), HttpStatus.SC_MOVED_TEMPORARILY);
           return null;
         } else {
           responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstancesWithReasons());
@@ -223,7 +227,9 @@ public class ControllerRoutes extends AbstractRoute {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+      String responseContent = AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+      LOGGER.info("[AggregatedHealthStatus] Response: {}", responseContent);
+      return responseContent;
     };
   }
 

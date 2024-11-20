@@ -118,6 +118,11 @@ public class ConfigKeys {
   public static final String PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE =
       "pubsub.topic.manager.metadata.fetcher.thread.pool.size";
 
+  /**
+   * How long to wait for the next poll request after unsubscribing, indicating that old messages were processed.
+   */
+  public static final String SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = "server.wait.after.unsubscribe.timeout.ms";
+
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
 
@@ -2321,4 +2326,6 @@ public class ConfigKeys {
    */
   public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
       "server.nearline.workload.producer.throughput.optimization.enabled";
+
+  public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
 }

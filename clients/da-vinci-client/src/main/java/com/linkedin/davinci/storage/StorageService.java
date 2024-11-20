@@ -17,6 +17,8 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
@@ -42,6 +44,8 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDBException;
@@ -369,6 +373,47 @@ public class StorageService extends AbstractVeniceService {
         topicName,
         LatencyUtils.getElapsedTimeFromNSToMS(startTimeInBuildingNewEngine));
     return engine;
+  }
+
+  public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
+    if (manager == null) {
+      return;
+    }
+    for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
+      String storeName = storageEngine.getStoreVersionName();
+      Set<Integer> storageEnginePartitionIds = new HashSet<>(storageEngine.getPartitionIds());
+      String instanceHostName = manager.getInstanceName();
+      PropertyKey.Builder propertyKeyBuilder =
+          new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
+      SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
+      IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
+
+      if (idealState != null) {
+        Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
+        for (Integer partitionId: storageEnginePartitionIds) {
+          if (storageEngine.isMetadataPartition(partitionId)) {
+            continue;
+          }
+          String partitionDbName = storeName + "_" + partitionId;
+          if (!mapFields.containsKey(partitionDbName)
+              || !mapFields.get(partitionDbName).containsKey(instanceHostName)) {
+            LOGGER.info(
+                "the following partition is not assigned to the current host {} and is being dropped from storage engine {}: {}",
+                instanceHostName,
+                storeName,
+                String.valueOf(partitionId));
+            storageEngine.dropPartition(partitionId);
+          }
+        }
+        if (storageEngine.getPartitionIds().isEmpty()) {
+          LOGGER.info("removing the storage engine {}, which has no partitions", storeName);
+          removeStorageEngine(storeName);
+        }
+      } else {
+        LOGGER.info("removing the storage engine {} as the ideal state is null", storeName);
+        removeStorageEngine(storeName);
+      }
+    }
   }
 
   /**

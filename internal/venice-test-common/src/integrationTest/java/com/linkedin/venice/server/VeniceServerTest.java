@@ -9,6 +9,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
@@ -49,6 +50,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
@@ -71,6 +73,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceServerTest {
+  static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 70 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerTest.class);
 
   @Test
@@ -118,16 +121,10 @@ public class VeniceServerTest {
           .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
-      String storeName = Version.composeKafkaTopic(Utils.getUniqueString("testCheckBeforeJoinCluster"), 1);
-      server.getVeniceServer()
-          .getStorageService()
-          .openStoreForNewPartition(
-              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
-              1,
-              () -> null);
-      Assert.assertEquals(
+      String storeName = cluster.createStore(10);
+      Assert.assertNotEquals(
           repository.getAllLocalStorageEngines().size(),
-          1,
+          0,
           "We have created one storage engine for store: " + storeName);
 
       // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be
@@ -136,7 +133,8 @@ public class VeniceServerTest {
       cluster.stopVeniceServer(server.getPort());
       cluster.restartVeniceServer(server.getPort());
       repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
-      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We should not cleanup the local storage");
+      Assert
+          .assertNotEquals(repository.getAllLocalStorageEngines().size(), 0, "We should not cleanup the local storage");
 
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
       // the server join again.
@@ -179,6 +177,43 @@ public class VeniceServerTest {
       Assert.assertTrue(cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
     } finally {
       TestUtils.shutdownThread(serverAddingThread);
+    }
+  }
+
+  @Test
+  public void testStartServerAndShutdownWithPartitionAssignmentVerification() {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
+      Properties featureProperties = new Properties();
+      featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
+      featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
+      cluster.addVeniceServer(featureProperties, new Properties());
+      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      Assert.assertTrue(server.getVeniceServer().isStarted());
+      StorageService storageService = server.getVeniceServer().getStorageService();
+      StorageEngineRepository repository = storageService.getStorageEngineRepository();
+      Assert
+          .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
+
+      // Create a storage engine.
+      String storeName = Version.composeKafkaTopic(cluster.createStore(1), 1);
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
+      Assert.assertTrue(server.getVeniceServer().getHelixParticipationService().isRunning());
+      Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
+
+      cluster.stopVeniceServer(server.getPort());
+
+      // Create new servers so partition assignment is removed for the offline participant
+      cluster.addVeniceServer(featureProperties, new Properties());
+      cluster.addVeniceServer(featureProperties, new Properties());
+
+      cluster.restartVeniceServer(server.getPort());
+      StorageEngineRepository storageEngineRepository =
+          server.getVeniceServer().getStorageService().getStorageEngineRepository();
+
+      TestUtils.waitForNonDeterministicAssertion(
+          3,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(storageEngineRepository.getAllLocalStorageEngines().size(), 0));
     }
   }
 
@@ -335,6 +370,74 @@ public class VeniceServerTest {
         MultiSchemaResponse schemaResponse = controllerClient.getAllValueAndDerivedSchema(storeName);
         Assert.assertNotNull(schemaResponse.getSchemas());
         Assert.assertEquals(schemaResponse.getSchemas().length, currentProtocolVersion * 2);
+      });
+    }
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testDropStorePartitionAsynchronously() {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+      Properties featureProperties = new Properties();
+      featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
+      featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
+      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      Assert.assertTrue(server.getVeniceServer().isStarted());
+
+      StorageService storageService = server.getVeniceServer().getStorageService();
+      Assert.assertTrue(server.getVeniceServer().isStarted());
+      final StorageEngineRepository repository = storageService.getStorageEngineRepository();
+      Assert
+          .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
+
+      // Create a new store
+      String storeName = cluster.createStore(1);
+      String storeVersionName = Version.composeKafkaTopic(storeName, 1);
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
+      Assert.assertTrue(server.getVeniceServer().getHelixParticipationService().isRunning());
+      Assert.assertEquals(storageService.getStorageEngine(storeVersionName).getPartitionIds().size(), 3);
+
+      // Add servers to trigger a rebalance, which will redistribute and drop partitions for the current participant
+      cluster.addVeniceServer(featureProperties, new Properties());
+      cluster.addVeniceServer(featureProperties, new Properties());
+
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        // Partitions should have been dropped asynchronously due to rebalancing
+        Assert.assertTrue(storageService.getStorageEngine(storeVersionName).getPartitionIds().size() < 3);
+      });
+    }
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testDropStorePartitionSynchronously() {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+      Properties featureProperties = new Properties();
+      featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
+      featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
+      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      Assert.assertTrue(server.getVeniceServer().isStarted());
+
+      StorageService storageService = server.getVeniceServer().getStorageService();
+      Assert.assertTrue(server.getVeniceServer().isStarted());
+      final StorageEngineRepository repository = storageService.getStorageEngineRepository();
+      Assert
+          .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
+
+      // Create a new store
+      String storeName = cluster.createStore(1);
+      String storeVersionName = Version.composeKafkaTopic(storeName, 1);
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
+      Assert.assertTrue(server.getVeniceServer().getHelixParticipationService().isRunning());
+      Assert.assertEquals(storageService.getStorageEngine(storeVersionName).getPartitionIds().size(), 3);
+
+      cluster.useControllerClient(controllerClient -> {
+        controllerClient.disableAndDeleteStore(storeName);
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        // All partitions should have been dropped synchronously
+        Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
       });
     }
   }
