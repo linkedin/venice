@@ -153,7 +153,7 @@ public class VeniceServerTest {
       cluster.getLeaderVeniceController()
           .getVeniceHelixAdmin()
           .getHelixAdminClient()
-          .manuallyEnableMaintenanceMode(cluster.getClusterName(), false, "Prevent nodes from re-joining", null);
+          .manuallyEnableMaintenanceMode(cluster.getClusterName(), true, "Prevent nodes from re-joining", null);
 
       cluster.restartVeniceServer(server.getPort());
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isRunning()));
