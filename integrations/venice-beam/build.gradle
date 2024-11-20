@@ -10,7 +10,7 @@ dependencies {
   implementation project(':clients:da-vinci-client')
   implementation project(':clients:venice-thin-client')
   implementation project(':clients:venice-client')
-  
+
   implementation libraries.log4j2api
   implementation libraries.log4j2core
 
@@ -19,6 +19,6 @@ dependencies {
 }
 
 ext {
-  // tested in integration test
+  // to be tested in integration test
   jacocoCoverageThreshold = 0.00
 }

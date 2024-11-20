@@ -49,6 +49,6 @@ test.dependsOn(nar)
 assemble.dependsOn(nar)
 
 ext {
-  // to be tested in integration test
+  // tested in integration test
   jacocoCoverageThreshold = 0.00
 }
