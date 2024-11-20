@@ -10,9 +10,7 @@ dependencies {
   implementation project(':clients:da-vinci-client')
   implementation project(':clients:venice-thin-client')
   implementation project(':clients:venice-client')
-
-  implementation libraries.samzaApi
-
+  
   implementation libraries.log4j2api
   implementation libraries.log4j2core
 
