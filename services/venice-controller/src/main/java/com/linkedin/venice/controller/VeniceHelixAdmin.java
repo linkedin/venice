@@ -4264,14 +4264,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * would only change the number of partition for the following pushes. Current version would not be changed.
    */
   @Override
-  public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
+  public void setStorePartitionCount(
+      String clusterName,
+      String storeName,
+      int partitionCount,
+      Optional<Boolean> updateRealTimeTopic) {
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     storeMetadataUpdate(clusterName, storeName, store -> {
-      preCheckStorePartitionCountUpdate(clusterName, store, partitionCount);
+      preCheckStorePartitionCountUpdate(clusterName, store, partitionCount, updateRealTimeTopic);
       // Do not update the partitionCount on the store.version as version config is immutable. The
       // version.getPartitionCount()
       // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have
       // any effect.
+      if (store.isHybrid() && partitionCount != store.getPartitionCount()) {
+        updateRealTimeTopicName(store);
+      }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
       } else {
@@ -4282,10 +4289,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  void preCheckStorePartitionCountUpdate(String clusterName, Store store, int newPartitionCount) {
+  void preCheckStorePartitionCountUpdate(
+      String clusterName,
+      Store store,
+      int newPartitionCount,
+      Optional<Boolean> updateRealTimeTopic) {
     String errorMessagePrefix = "Store update error for " + store.getName() + " in cluster: " + clusterName + ": ";
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
+
     if (store.isHybrid() && store.getPartitionCount() != newPartitionCount) {
+      if (updateRealTimeTopic.isPresent() && updateRealTimeTopic.get() && newPartitionCount <= maxPartitionNum
+          && newPartitionCount >= 0) {
+        LOGGER.info(
+            "Allow updating store " + store.getName() + " partition count to " + newPartitionCount
+                + " because `updateRealTimeTopic` is true.");
+        return;
+      }
       // Allow the update if partition count is not configured and the new partition count matches RT partition count
       if (store.getPartitionCount() == 0) {
         TopicManager topicManager;
@@ -4308,7 +4328,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
 
-    int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
     if (newPartitionCount > maxPartitionNum) {
       String errorMessage =
           errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
@@ -4320,6 +4339,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.error(errorMessage);
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
+  }
+
+  private void updateRealTimeTopicName(Store store) {
+    String storeName = store.getName();
+    String oldRealTimeTopicName = Utils.getRealTimeTopicName(store);
+    String newRealTimeTopicName;
+    PubSubTopic newRealTimeTopic;
+
+    do {
+      newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
+      newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
+      oldRealTimeTopicName = newRealTimeTopicName;
+    } while (getTopicManager().containsTopic(newRealTimeTopic));
+
+    store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -4799,7 +4833,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
+    Optional<String> realTimeTopicName = Optional.empty(); // real time topic name should only be changed during
+                                                           // partition count update
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -4842,6 +4877,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
+    Optional<Boolean> updateRealTimeTopic = params.getUpdateRealTimeTopic();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4873,7 +4909,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (partitionCount.isPresent()) {
-        setStorePartitionCount(clusterName, storeName, partitionCount.get());
+        setStorePartitionCount(clusterName, storeName, partitionCount.get(), updateRealTimeTopic);
       }
 
       /**
@@ -6447,7 +6483,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     throw new VeniceStoreAlreadyExistsException(storeName, clusterName);
   }
 
-  private void throwStoreDoesNotExist(String clusterName, String storeName) {
+  private static void throwStoreDoesNotExist(String clusterName, String storeName) {
     String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
     LOGGER.error(errorMessage);
     throw new VeniceNoStoreException(storeName, clusterName);

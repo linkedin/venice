@@ -129,6 +129,7 @@ import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.Arg.TO_BE_STOPPED_NODES;
 import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
+import static com.linkedin.venice.Arg.UPDATE_REAL_TIME_TOPIC;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
@@ -279,7 +280,7 @@ public enum Command {
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
           UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
           NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
-          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION }
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, UPDATE_REAL_TIME_TOPIC }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

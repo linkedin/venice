@@ -12,11 +12,14 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -28,6 +31,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -325,5 +329,61 @@ public class AdminToolE2ETest {
         assertFalse(storeInfo.isMigrating(), "Store::isMigrating should be false in " + region);
       }
     });
+  }
+
+  @Test // (timeOut = TEST_TIMEOUT)
+  public void testUpdateStoreRealTimeTopicName() throws Exception {
+    String storeName = Utils.getUniqueString("testUpdateStoreRealTimeTopicName");
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = clusterNames[0];
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(2)
+        .setHybridRewindSeconds(1000)
+        .setHybridOffsetLagThreshold(1000);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      TestUtils.assertCommand(
+          parentControllerClient
+              .retryableRequest(5, c -> c.createNewStore(storeName, "test", "\"string\"", "\"string\"")));
+
+      TestUtils
+          .assertCommand(parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams)));
+
+      multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName)
+          .getVeniceAdmin()
+          .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+
+      // Update update-real-time-topic to true
+      String[] adminToolArgs =
+          new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster", clusterName, "--store",
+              storeName, "--update-store", "--partition-count", "2", "--update-real-time-topic", "true" };
+      AdminTool.main(adminToolArgs);
+      validateRealTimeTopic(parentControllerClient, storeName);
+      validateRealTimeTopicAcrossChildRegions(storeName, clusterName);
+    }
+  }
+
+  private void validateRealTimeTopic(ControllerClient controllerClient, String storeName) {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo);
+      String expectedRealTimeTopicNameInStoreConfig = Utils.createNewRealTimeTopicName(realTimeTopicNameInVersion);
+      String actualRealTimeTopicNameInStoreConfig = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
+      Assert.assertNotEquals(expectedRealTimeTopicNameInStoreConfig, realTimeTopicNameInVersion);
+      Assert.assertEquals(expectedRealTimeTopicNameInStoreConfig, actualRealTimeTopicNameInStoreConfig);
+    });
+  }
+
+  private void validateRealTimeTopicAcrossChildRegions(String storeName, String clusterName) {
+    for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
+      try (ControllerClient childControllerClient =
+          new ControllerClient(clusterName, childRegion.getControllerConnectString())) {
+        validateRealTimeTopic(childControllerClient, storeName);
+      }
+    }
   }
 }

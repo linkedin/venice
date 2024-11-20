@@ -68,6 +68,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SW
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATE_REAL_TIME_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
@@ -770,6 +771,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getIsDavinciHeartbeatReported() {
     return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
+  }
+
+  public UpdateStoreQueryParams setUpdateRealTimeTopic(boolean updateRealTimeTopic) {
+    return putBoolean(UPDATE_REAL_TIME_TOPIC, updateRealTimeTopic);
+  }
+
+  public Optional<Boolean> getUpdateRealTimeTopic() {
+    return getBoolean(UPDATE_REAL_TIME_TOPIC);
   }
 
   // ***************** above this line are getters and setters *****************

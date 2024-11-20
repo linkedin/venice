@@ -1176,6 +1176,7 @@ public class AdminTool {
     genericParam(cmd, Arg.TARGET_SWAP_REGION, s -> s, p -> params.setTargetRegionSwap(p), argSet);
     integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
+    booleanParam(cmd, Arg.UPDATE_REAL_TIME_TOPIC, p -> params.setUpdateRealTimeTopic(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -3395,5 +3396,4 @@ public class AdminTool {
     return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
-
 }
