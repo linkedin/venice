@@ -163,6 +163,7 @@ import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.UPDATE_REAL_TIME_TOPIC;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
@@ -534,6 +535,7 @@ public class VeniceControllerClusterConfig {
   private final long serviceDiscoveryRegistrationRetryMS;
 
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private boolean updateRealTimeTopic;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -978,6 +980,7 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
+    this.updateRealTimeTopic = props.getBoolean(UPDATE_REAL_TIME_TOPIC, false);
   }
 
   public VeniceProperties getProps() {
@@ -1765,6 +1768,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDanglingTopicOccurrenceThresholdForCleanup() {
     return danglingTopicOccurrenceThresholdForCleanup;
+  }
+
+  public boolean getUpdateRealTimeTopic() {
+    return updateRealTimeTopic;
   }
 
   /**

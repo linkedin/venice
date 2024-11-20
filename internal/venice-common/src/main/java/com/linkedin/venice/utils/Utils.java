@@ -632,6 +632,29 @@ public class Utils {
     return Strings.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
   }
 
+  public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
+    if (oldRealTimeTopicName == null || !oldRealTimeTopicName.endsWith(Version.REAL_TIME_TOPIC_SUFFIX)) {
+      throw new IllegalArgumentException("Invalid old name format");
+    }
+
+    // Extract the base name and current version
+    String base =
+        oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - Version.REAL_TIME_TOPIC_SUFFIX.length());
+    String[] parts = base.split("_v");
+
+    String newBase;
+    if (parts.length == 2) {
+      // Increment the version
+      int version = Integer.parseInt(parts[1]) + 1;
+      newBase = parts[0] + "_v" + version;
+    } else {
+      // Start with version 2
+      newBase = base + "_v2";
+    }
+
+    return newBase + Version.REAL_TIME_TOPIC_SUFFIX;
+  }
+
   private static class TimeUnitInfo {
     String suffix;
     int multiplier;

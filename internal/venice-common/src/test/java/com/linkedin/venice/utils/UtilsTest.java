@@ -393,4 +393,47 @@ public class UtilsTest {
         Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, separateRealTimeTopic),
         realTimeTopic);
   }
+
+  @Test
+  void testValidOldNameWithVersionIncrement() {
+    String oldName = "storeName_v1_rt";
+    String expectedNewName = "storeName_v2_rt";
+
+    String result = Utils.createNewRealTimeTopicName(oldName);
+
+    assertEquals(expectedNewName, result);
+  }
+
+  @Test
+  void testValidOldNameStartingNewVersion() {
+    String oldName = "storeName_rt";
+    String expectedNewName = "storeName_v2_rt";
+
+    String result = Utils.createNewRealTimeTopicName(oldName);
+
+    assertEquals(expectedNewName, result);
+  }
+
+  @Test
+  void testInvalidOldNameNull() {
+    assertThrows(IllegalArgumentException.class, () -> Utils.createNewRealTimeTopicName(null));
+  }
+
+  @Test
+  void testInvalidOldNameWithoutSuffix() {
+    String oldName = "storeName_v1";
+    assertThrows(IllegalArgumentException.class, () -> Utils.createNewRealTimeTopicName(oldName));
+  }
+
+  @Test
+  void testInvalidOldNameIncorrectFormat() {
+    String oldName = "storeName_v1_rt_extra";
+    assertThrows(IllegalArgumentException.class, () -> Utils.createNewRealTimeTopicName(oldName));
+  }
+
+  @Test
+  void testInvalidOldNameWithNonNumericVersion() {
+    String oldName = "storeName_vX_rt";
+    assertThrows(NumberFormatException.class, () -> Utils.createNewRealTimeTopicName(oldName));
+  }
 }
