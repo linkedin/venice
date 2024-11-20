@@ -18,6 +18,10 @@ jobs:
         jdk: [ 8, 11, 17 ]
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
