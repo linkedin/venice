@@ -17,7 +17,7 @@ public class ReplicationMetadataSchemaRepository {
   }
 
   public RmdSchemaEntry getReplicationMetadataSchemaById(String storeName, int replicationMetadataSchemaId) {
-    if (cachedReplicationMetadataSchemas.get(replicationMetadataSchemaId) != null) {
+    if (cachedReplicationMetadataSchemas.get(replicationMetadataSchemaId) == null) {
       MultiSchemaResponse multiReplicationSchemaResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
       if (multiReplicationSchemaResponse.isError()) {
         throw new VeniceException(
