@@ -135,6 +135,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -342,6 +343,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean batchReportIncPushStatusEnabled;
 
   protected final ExecutorService parallelProcessingThreadPool;
+
+  protected final CountDownLatch gracefulShutdownLatch = new CountDownLatch(1);
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -1605,6 +1608,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to avoid infinite wait in case there is some regression.
          */
         CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
+        getGracefulShutdownLatch().countDown();
       }
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", ingestionTaskName);
@@ -3916,14 +3920,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long startTimeInMs = System.currentTimeMillis();
     close();
     try {
-      wait(waitTime);
+      if (!getGracefulShutdownLatch().await(waitTime, SECONDS)) {
+        LOGGER.info(
+            "Unable to shutdown ingestion task of topic: {} gracefully in {}ms",
+            kafkaVersionTopic,
+            SECONDS.toMillis(waitTime));
+      } else {
+        LOGGER.info(
+            "Ingestion task of topic: {} is shutdown in {}ms",
+            kafkaVersionTopic,
+            LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
+      }
     } catch (Exception e) {
       LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
     }
-    LOGGER.info(
-        "Ingestion task of topic: {} is shutdown in {}ms",
-        kafkaVersionTopic,
-        LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
   }
 
   /**
@@ -4379,6 +4389,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     return true;
+  }
+
+  public CountDownLatch getGracefulShutdownLatch() {
+    return gracefulShutdownLatch;
   }
 
   // For unit test purpose.
