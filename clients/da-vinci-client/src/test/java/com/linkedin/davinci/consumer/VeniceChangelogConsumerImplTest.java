@@ -272,6 +272,8 @@ public class VeniceChangelogConsumerImplTest {
     doReturn(storeResponse).when(d2ControllerClient).getStore(storeName);
     MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
+    doReturn(1).when(rmdSchemaFromMultiSchemaResponse).getRmdValueSchemaId();
+    doReturn(1).when(rmdSchemaFromMultiSchemaResponse).getId();
     doReturn(rmdSchema.toString()).when(rmdSchemaFromMultiSchemaResponse).getSchemaStr();
     doReturn(new MultiSchemaResponse.Schema[] { rmdSchemaFromMultiSchemaResponse }).when(multiRMDSchemaResponse)
         .getSchemas();
@@ -343,6 +345,8 @@ public class VeniceChangelogConsumerImplTest {
     doReturn(storeResponse).when(d2ControllerClient).getStore(storeName);
     MultiSchemaResponse multiRMDSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema rmdSchemaFromMultiSchemaResponse = mock(MultiSchemaResponse.Schema.class);
+    doReturn(1).when(rmdSchemaFromMultiSchemaResponse).getRmdValueSchemaId();
+    doReturn(1).when(rmdSchemaFromMultiSchemaResponse).getId();
     doReturn(rmdSchema.toString()).when(rmdSchemaFromMultiSchemaResponse).getSchemaStr();
     doReturn(new MultiSchemaResponse.Schema[] { rmdSchemaFromMultiSchemaResponse }).when(multiRMDSchemaResponse)
         .getSchemas();
