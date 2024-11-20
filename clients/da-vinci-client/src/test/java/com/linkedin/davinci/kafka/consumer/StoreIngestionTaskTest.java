@@ -1722,6 +1722,7 @@ public abstract class StoreIngestionTaskTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
     offsetRecord.endOfPushReceived(2L);
+    offsetRecord.setPreviousStatusesEntry("previouslyReadyToServe", "true");
     testConfig.setOffsetRecord(offsetRecord);
     runTest(testConfig);
   }

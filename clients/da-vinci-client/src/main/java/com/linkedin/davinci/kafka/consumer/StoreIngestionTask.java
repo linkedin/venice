@@ -2031,8 +2031,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 offsetLag,
                 previousOffsetLag,
                 offsetLagThreshold);
-            if ((offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold)
-                && newPartitionConsumptionState.getReadyToServeInOffsetRecord()) {
+            if (newPartitionConsumptionState.getReadyToServeInOffsetRecord()
+                && (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold)) {
               newPartitionConsumptionState.lagHasCaughtUp();
               reportCompleted(newPartitionConsumptionState, true);
               isCompletedReport = true;
