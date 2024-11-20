@@ -45,6 +45,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATE_ALL_CONFIGS;
@@ -727,6 +728,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getNearlineProducerCountPerWriter() {
     return getInteger(NEARLINE_PRODUCER_COUNT_PER_WRITER);
+  }
+
+  public UpdateStoreQueryParams setRealTimeTopicName(String realTimeTopicName) {
+    return putString(REAL_TIME_TOPIC_NAME, realTimeTopicName);
+  }
+
+  public Optional<String> getRealTimeTopicName() {
+    return getInteger(REAL_TIME_TOPIC_NAME);
   }
 
   // ***************** above this line are getters and setters *****************

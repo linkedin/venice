@@ -1167,6 +1167,7 @@ public class AdminTool {
         p -> params.setNearlineProducerCompressionEnabled(p),
         argSet);
     integerParam(cmd, Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER, p -> params.setNearlineProducerCountPerWriter(p), argSet);
+    genericParam(cmd, Arg.REAL_TIME_TOPIC_NAME, s -> s, params::setRealTimeTopicName, argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
