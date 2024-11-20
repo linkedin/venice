@@ -584,6 +584,9 @@ public class AdminTool {
         case DUMP_HOST_HEARTBEAT:
           dumpHostHeartbeat(cmd);
           break;
+        case CREATE_REAL_TIME_TOPIC:
+          createRealTimeTopic(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -1176,6 +1179,7 @@ public class AdminTool {
     genericParam(cmd, Arg.TARGET_SWAP_REGION, s -> s, p -> params.setTargetRegionSwap(p), argSet);
     integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
+    genericParam(cmd, Arg.REAL_TIME_TOPIC_NAME, s -> s, params::setRealTimeTopicName, argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -3396,4 +3400,10 @@ public class AdminTool {
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 
+  private static void createRealTimeTopic(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.CREATE_REAL_TIME_TOPIC);
+    String partitionNum = getOptionalArgument(cmd, Arg.PARTITION_COUNT);
+    PartitionResponse response = controllerClient.createRealTimeTopic(storeName, partitionNum);
+    printSuccess(response);
+  }
 }

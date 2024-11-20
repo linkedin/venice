@@ -16,6 +16,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_REAL_TIME_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DATA_RECOVERY;
@@ -649,6 +650,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.cleanupInstanceCustomizedStates(admin)));
+
+    httpService.post(
+        CREATE_REAL_TIME_TOPIC.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.createRealTimeTopic(admin)));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();

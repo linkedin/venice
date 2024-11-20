@@ -936,6 +936,11 @@ public class ControllerClient implements Closeable {
         requestString.getBytes());
   }
 
+  public PartitionResponse createRealTimeTopic(String storeName, String partitionNum) {
+    QueryParams params = newParams().add(NAME, storeName).add(PARTITION_COUNT, partitionNum);
+    return request(ControllerRoute.CREATE_REAL_TIME_TOPIC, params, PartitionResponse.class);
+  }
+
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {
     QueryParams params = newParams();
     if (enableReplicas) {

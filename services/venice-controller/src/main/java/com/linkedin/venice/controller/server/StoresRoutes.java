@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.VeniceHelixAdmin.logAndThrow;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.throwStoreDoesNotExist;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
@@ -11,6 +13,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRITE_OPERATION;
@@ -29,6 +32,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_REAL_TIME_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
@@ -59,6 +63,8 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.HelixVeniceClusterResources;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -87,6 +93,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
@@ -100,6 +107,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistExceptio
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -1095,6 +1103,67 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route createRealTimeTopic(Admin admin) {
+    return new VeniceRouteHandler<>(StoreResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreResponse veniceResponse) {
+        if (!isAllowListUser(request)) {
+          veniceResponse.setError("Access Denied!! Only admins can change topic compaction policy!");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+          return;
+        }
+        AdminSparkServer.validateParams(request, CREATE_REAL_TIME_TOPIC.getParams(), admin);
+        try {
+          String clusterName = request.queryParams(CLUSTER);
+          String storeName = request.queryParams(NAME);
+          int partitionCount = Integer.parseInt(request.queryParams(PARTITION_COUNT));
+          String oldRealTimeTopicName = admin.getRealTimeTopic(clusterName, storeName);
+          String newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
+          PubSubTopic newRealTimeTopic = admin.getPubSubTopicRepository().getTopic(newRealTimeTopicName);
+
+          HelixVeniceClusterResources resources = admin.getHelixVeniceClusterResources(clusterName);
+          try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+            // The topic might be created by another thread already. Check before creating.
+            if (admin.getTopicManager().containsTopic(newRealTimeTopic)) {
+              return;
+            }
+            ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+            Store store = repository.getStore(storeName);
+            if (store == null) {
+              throwStoreDoesNotExist(clusterName, storeName);
+            }
+            if (!store.isHybrid() && !store.isWriteComputationEnabled() && !store.isSystemStore()) {
+              logAndThrow("Store " + storeName + " is not hybrid, refusing to return a realtime topic");
+            }
+
+            VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
+            admin.getTopicManager()
+                .createTopic(
+                    newRealTimeTopic,
+                    partitionCount,
+                    clusterConfig.getKafkaReplicationFactorRTTopics(),
+                    store.getRetentionTime(),
+                    false,
+                    // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+                    clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+                    false);
+            // TODO: if there is an online version from a batch push before this store was hybrid then we won't start
+            // replicating to it. A new version must be created.
+            LOGGER.warn(
+                "Creating real time topic per topic request for store: {}. "
+                    + "Buffer replay won't start for any existing versions",
+                storeName);
+            store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+            repository.updateStore(store);
+          }
+
+        } catch (PubSubTopicDoesNotExistException e) {
+          veniceResponse.setError("Topic does not exist!! Message: " + e.getMessage());
+        }
+      }
     };
   }
 }

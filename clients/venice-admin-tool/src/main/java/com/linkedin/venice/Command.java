@@ -562,6 +562,10 @@ public enum Command {
       "dump-host-heartbeat",
       "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
       new Arg[] { SERVER_URL, KAFKA_TOPIC_NAME }, new Arg[] { PARTITION, LAG_FILTER_ENABLED }
+  ),
+  CREATE_REAL_TIME_TOPIC(
+      "create-real-time-topic", "Create a real time topic for an existing store", new Arg[] { URL, STORE },
+      new Arg[] { CLUSTER, PARTITION_COUNT }
   );
 
   private final String commandName;
