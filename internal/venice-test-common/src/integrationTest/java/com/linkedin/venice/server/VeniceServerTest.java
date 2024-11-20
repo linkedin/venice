@@ -13,7 +13,6 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -142,15 +141,19 @@ public class VeniceServerTest {
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertFalse(server.isRunning()));
 
-      try (ControllerClient client = ControllerClient
-          .constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
-        client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
+      cluster.useControllerClient(controllerClient -> {
+        controllerClient.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
 
         TestUtils.waitForNonDeterministicAssertion(
             10,
             TimeUnit.SECONDS,
-            () -> Assert.assertEquals(client.listStorageNodes().getNodes().length, 0));
-      }
+            () -> Assert.assertEquals(controllerClient.listStorageNodes().getNodes().length, 0));
+      });
+
+      cluster.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixAdminClient()
+          .manuallyEnableMaintenanceMode(cluster.getClusterName(), false, "Prevent nodes from re-joining", null);
 
       cluster.restartVeniceServer(server.getPort());
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isRunning()));
