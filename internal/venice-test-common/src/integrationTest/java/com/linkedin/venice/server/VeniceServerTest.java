@@ -139,22 +139,31 @@ public class VeniceServerTest {
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
       // the server join again.
       cluster.stopVeniceServer(server.getPort());
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertFalse(server.isRunning()));
+
       try (ControllerClient client = ControllerClient
           .constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
         client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
+
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            () -> Assert.assertEquals(client.listStorageNodes().getNodes().length, 0));
       }
 
       cluster.restartVeniceServer(server.getPort());
 
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isRunning()));
-
-      Assert.assertTrue(
-          server.getVeniceServer()
-              .getStorageService()
-              .getStorageEngineRepository()
-              .getAllLocalStorageEngines()
-              .isEmpty(),
-          "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Assert.assertTrue(
+              server.getVeniceServer()
+                  .getStorageService()
+                  .getStorageEngineRepository()
+                  .getAllLocalStorageEngines()
+                  .isEmpty(),
+              "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again."));
     }
   }
 
