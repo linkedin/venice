@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
@@ -121,6 +122,25 @@ public class DefaultIngestionBackendTest {
     CompletableFuture<Void> future =
         ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, 100L).toCompletableFuture();
     assertTrue(future.isDone());
+  }
+
+  @Test
+  public void testNotStartBootstrapFromBlobTransferWhenNotLagging() {
+    long laggingThreshold = 1000L;
+    when(offsetRecord.getOffsetLag()).thenReturn(-10L);
+    when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(10L);
+    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
+        .thenReturn(offsetRecord);
+
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(false);
+    CompletableFuture<InputStream> future = new CompletableFuture<>();
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION))).thenReturn(future);
+
+    CompletableFuture<Void> result =
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, laggingThreshold).toCompletableFuture();
+    assertTrue(result.isDone());
+    verify(blobTransferManager, never()).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
   }
 
   @Test
