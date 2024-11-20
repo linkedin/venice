@@ -28,7 +28,7 @@ public class ReplicationMetadataSchemaRepository {
 
       for (MultiSchemaResponse.Schema schema: multiReplicationSchemaResponse.getSchemas()) {
         cachedReplicationMetadataSchemas.putIfAbsent(
-            schema.getId(),
+            schema.getRmdValueSchemaId(),
             new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
       }
       if (!cachedReplicationMetadataSchemas.containsKey(replicationMetadataSchemaId)) {
