@@ -773,7 +773,7 @@ public class TestChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 1000, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testSpecificRecordVeniceChangelogConsumer() throws Exception {
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
