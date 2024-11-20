@@ -153,6 +153,7 @@ public class VeniceServerTest {
       }
 
       cluster.restartVeniceServer(server.getPort());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isRunning()));
 
       TestUtils.waitForNonDeterministicAssertion(
           30,
