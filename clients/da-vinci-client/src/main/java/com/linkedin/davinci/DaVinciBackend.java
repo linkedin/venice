@@ -207,6 +207,7 @@ public class DaVinciBackend implements Closeable {
       String pid = Utils.getPid();
       String instanceSuffix =
           configLoader.getCombinedProperties().getString(PUSH_STATUS_INSTANCE_NAME_SUFFIX, (pid == null ? "NA" : pid));
+      // Current instance name.
       String instanceName = Utils.getHostName() + "_" + instanceSuffix;
 
       // Fetch latest update schema's protocol ID for Push Status Store from Router.
