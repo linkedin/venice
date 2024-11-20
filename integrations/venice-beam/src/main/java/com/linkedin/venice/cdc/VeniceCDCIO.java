@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -248,7 +249,7 @@ public final class VeniceCDCIO {
       private static final long serialVersionUID = 1L;
 
       @Override
-      public PCollection<KV<K, ChangeEvent<V>>> expand(PBegin pBegin) {
+      public @Nonnull PCollection<KV<K, ChangeEvent<V>>> expand(PBegin pBegin) {
         PCollection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> input = pBegin.apply(Read.this);
         return input.apply(
             MapElements.via(
@@ -271,7 +272,7 @@ public final class VeniceCDCIO {
       }
 
       @Override
-      public PCollection<KV<K, GenericRecord>> expand(PBegin pBegin) {
+      public @Nonnull PCollection<KV<K, GenericRecord>> expand(PBegin pBegin) {
         PCollection<KV<K, ChangeEvent<V>>> pCollection = pBegin.apply(new RemoveMetadata());
         return pCollection.apply(MapElements.via(new SimpleFunction<KV<K, ChangeEvent<V>>, KV<K, GenericRecord>>() {
           @Override
@@ -294,7 +295,8 @@ public final class VeniceCDCIO {
     }
 
     @Override
-    public List<? extends Source<K, V>> split(int desiredNumSplits, PipelineOptions options) throws Exception {
+    public @Nonnull List<? extends Source<K, V>> split(int desiredNumSplits, @Nonnull PipelineOptions options)
+        throws Exception {
       Set<Integer> partitions = this.read.getPartitions();
       if (partitions.isEmpty()) {
         partitions =
@@ -330,20 +332,20 @@ public final class VeniceCDCIO {
     }
 
     @Override
-    public UnboundedReader<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> createReader(
-        PipelineOptions options,
+    public @Nonnull UnboundedReader<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> createReader(
+        @Nonnull PipelineOptions options,
         VeniceCheckpointMark checkpointMark) {
       LOG.debug("Creating reader for store {} and partitions {}", this.read.getStore(), this.read.getPartitions());
       return new PubSubMessageReader<>(this.read, checkpointMark);
     }
 
     @Override
-    public Coder<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> getOutputCoder() {
+    public @Nonnull Coder<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> getOutputCoder() {
       return PubSubMessageCoder.of();
     }
 
     @Override
-    public Coder<VeniceCheckpointMark> getCheckpointMarkCoder() {
+    public @Nonnull Coder<VeniceCheckpointMark> getCheckpointMarkCoder() {
       return new VeniceCheckpointMark.Coder();
     }
   }
