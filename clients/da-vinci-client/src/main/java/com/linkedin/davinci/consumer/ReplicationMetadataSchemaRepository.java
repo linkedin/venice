@@ -10,14 +10,14 @@ import com.linkedin.venice.utils.SparseConcurrentList;
 public class ReplicationMetadataSchemaRepository {
   private final ControllerClient controllerClient;
 
-  private SparseConcurrentList<RmdSchemaEntry> cachedReplicationMetadataSchemas = new SparseConcurrentList<>();
+  private final SparseConcurrentList<RmdSchemaEntry> cachedReplicationMetadataSchemas = new SparseConcurrentList<>();
 
   public ReplicationMetadataSchemaRepository(ControllerClient controllerClient) {
     this.controllerClient = controllerClient;
   }
 
   public RmdSchemaEntry getReplicationMetadataSchemaById(String storeName, int replicationMetadataSchemaId) {
-    if (!cachedReplicationMetadataSchemas.contains(replicationMetadataSchemaId)) {
+    if (cachedReplicationMetadataSchemas.get(replicationMetadataSchemaId) != null) {
       MultiSchemaResponse multiReplicationSchemaResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
       if (multiReplicationSchemaResponse.isError()) {
         throw new VeniceException(
@@ -30,7 +30,7 @@ public class ReplicationMetadataSchemaRepository {
             schema.getRmdValueSchemaId(),
             key -> new RmdSchemaEntry(schema.getRmdValueSchemaId(), schema.getId(), schema.getSchemaStr()));
       }
-      if (!cachedReplicationMetadataSchemas.contains(replicationMetadataSchemaId)) {
+      if (cachedReplicationMetadataSchemas.get(replicationMetadataSchemaId) == null) {
         throw new VeniceException("No available store replication metadata schema for store: " + storeName);
       }
     }
