@@ -1608,8 +1608,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to avoid infinite wait in case there is some regression.
          */
         CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
-        getGracefulShutdownLatch().countDown();
       }
+      // Release the latch after all the shutdown completes in DVC/Server.
+      getGracefulShutdownLatch().countDown();
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", ingestionTaskName);
       ingestionNotificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), e);

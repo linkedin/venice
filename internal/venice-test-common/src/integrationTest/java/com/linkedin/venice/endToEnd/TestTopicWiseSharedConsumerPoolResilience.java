@@ -102,7 +102,7 @@ public class TestTopicWiseSharedConsumerPoolResilience {
           // resource when participant store task is not working.
           String resourceNameForBackupVersion = Version.composeKafkaTopic(storeName, (cur - 2));
           TestUtils.waitForNonDeterministicCompletion(
-              30,
+              10,
               TimeUnit.SECONDS,
               () -> !admin.isResourceStillAlive(resourceNameForBackupVersion));
         }
