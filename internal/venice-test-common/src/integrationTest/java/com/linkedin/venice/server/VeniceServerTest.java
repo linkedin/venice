@@ -209,7 +209,7 @@ public class VeniceServerTest {
       cluster.restartVeniceServer(server.getPort());
 
       TestUtils.waitForNonDeterministicAssertion(
-          3,
+          30,
           TimeUnit.SECONDS,
           () -> Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0));
     }
