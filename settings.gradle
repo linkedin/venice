@@ -71,6 +71,7 @@ include 'internal:alpini:router:alpini-router-impl'
 // 3rd-party system integration modules
 include 'integrations:venice-pulsar'
 include 'integrations:venice-samza'
+include 'integrations:venice-beam'
 
 // integration tests
 include 'tests:venice-pulsar-test'

@@ -12,9 +12,6 @@ import org.apache.beam.sdk.coders.VarIntCoder;
 import org.apache.beam.sdk.io.UnboundedSource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.checkerframework.checker.initialization.qual.Initialized;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.UnknownKeyFor;
 
 
 public class VeniceCheckpointMark implements UnboundedSource.CheckpointMark {
@@ -41,8 +38,7 @@ public class VeniceCheckpointMark implements UnboundedSource.CheckpointMark {
     private final StringUtf8Coder _stringUtf8Coder = StringUtf8Coder.of();
 
     @Override
-    public void encode(VeniceCheckpointMark value, @UnknownKeyFor @NonNull @Initialized OutputStream outStream)
-        throws @UnknownKeyFor @NonNull @Initialized IOException {
+    public void encode(VeniceCheckpointMark value, OutputStream outStream) throws IOException {
       LOG.debug("Encoding {} veniceChangeCoordinates", value.getVeniceChangeCoordinates().size());
       _sizeCoder.encode(value.getVeniceChangeCoordinates().size(), outStream);
       value.getVeniceChangeCoordinates().forEach(veniceChangeCoordinate -> {
@@ -57,8 +53,7 @@ public class VeniceCheckpointMark implements UnboundedSource.CheckpointMark {
     }
 
     @Override
-    public VeniceCheckpointMark decode(@UnknownKeyFor @NonNull @Initialized InputStream inStream)
-        throws @UnknownKeyFor @NonNull @Initialized IOException {
+    public VeniceCheckpointMark decode(InputStream inStream) throws IOException {
       int listSize = _sizeCoder.decode(inStream);
       LOG.info("Decoding {} veniceChangeCoordinates", listSize);
       List<VeniceChangeCoordinate> veniceChangeCoordinates = new ArrayList<>(listSize);

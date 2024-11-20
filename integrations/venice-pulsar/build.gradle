@@ -8,7 +8,6 @@ dependencies {
     exclude module: 'kafka_2.10'
     exclude group: 'org.scala-lang'
   }
-  implementation project(':clients:venice-thin-client')
 
   // TODO: clean this... Pulsar should not depend on Samza
   implementation project(':integrations:venice-samza')

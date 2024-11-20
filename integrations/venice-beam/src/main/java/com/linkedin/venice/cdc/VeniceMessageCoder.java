@@ -14,9 +14,6 @@ import org.apache.beam.sdk.coders.StructuredCoder;
 import org.apache.beam.sdk.extensions.avro.coders.AvroCoder;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.TypeDescriptor;
-import org.checkerframework.checker.initialization.qual.Initialized;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.UnknownKeyFor;
 
 
 /**
@@ -41,8 +38,7 @@ public final class VeniceMessageCoder<K, V> extends StructuredCoder<KV<K, Change
   }
 
   @Override
-  public void encode(KV<K, ChangeEvent<V>> value, @UnknownKeyFor @NonNull @Initialized OutputStream outStream)
-      throws @UnknownKeyFor @NonNull @Initialized IOException {
+  public void encode(KV<K, ChangeEvent<V>> value, OutputStream outStream) throws IOException {
     ChangeEvent<V> changeEvent = value.getValue();
     List<V> values = new ArrayList<>();
     values.add(changeEvent.getCurrentValue());
@@ -51,14 +47,13 @@ public final class VeniceMessageCoder<K, V> extends StructuredCoder<KV<K, Change
   }
 
   @Override
-  public KV<K, ChangeEvent<V>> decode(@UnknownKeyFor @NonNull @Initialized InputStream inStream)
-      throws @UnknownKeyFor @NonNull @Initialized IOException {
+  public KV<K, ChangeEvent<V>> decode(InputStream inStream) throws IOException {
     KV<K, List<V>> kv = _kvCoder.decode(inStream);
     return KV.of(kv.getKey(), new ChangeEvent<>(kv.getValue().get(1), kv.getValue().get(0)));
   }
 
   @Override
-  public @UnknownKeyFor @NonNull @Initialized List<? extends @UnknownKeyFor @NonNull @Initialized Coder<@UnknownKeyFor @NonNull @Initialized ?>> getCoderArguments() {
+  public List<? extends Coder<?>> getCoderArguments() {
     return Collections.singletonList(_kvCoder);
   }
 
