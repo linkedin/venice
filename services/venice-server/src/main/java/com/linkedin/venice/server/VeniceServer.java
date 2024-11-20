@@ -356,6 +356,11 @@ public class VeniceServer {
       return helixData;
     });
 
+    managerFuture.thenApply(manager -> {
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+      return true;
+    });
+
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
@@ -365,7 +370,7 @@ public class VeniceServer {
 
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        storageService.getStorageEngineRepository(),
+        storageService,
         veniceConfigLoader,
         storageMetadataService,
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),

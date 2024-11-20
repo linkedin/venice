@@ -58,20 +58,20 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  ClientsModule:
+  Clients:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: clients
     arg: :clients:da-vinci-client:jacocoTestCoverageVerification :clients:da-vinci-client:diffCoverage
       :clients:venice-admin-tool:jacocoTestCoverageVerification :clients:venice-admin-tool:diffCoverage
       :clients:venice-producer:jacocoTestCoverageVerification :clients:venice-producer:diffCoverage
-      :clients:venice-pulsar:jacocoTestCoverageVerification :clients:venice-pulsar:diffCoverage
+      :integrations:venice-pulsar:jacocoTestCoverageVerification :integrations:venice-pulsar:diffCoverage
       :clients:venice-client:jacocoTestCoverageVerification :clients:venice-client:diffCoverage
       :clients:venice-push-job:jacocoTestCoverageVerification :clients:venice-push-job:diffCoverage
-      :clients:venice-samza:jacocoTestCoverageVerification :clients:venice-samza:diffCoverage
+      :integrations:venice-samza:jacocoTestCoverageVerification :integrations:venice-samza:diffCoverage
       :clients:venice-thin-client:jacocoTestCoverageVerification :clients:venice-thin-client:diffCoverage --continue
 
-  InternalModule:
+  Internal:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: internal
@@ -81,7 +81,7 @@ jobs:
      :internal:venice-test-common:jacocoTestCoverageVerification :internal:venice-test-common:diffCoverage --continue
 
 
-  ServicesModule:
+  Services:
     uses: ./.github/workflows/UnitTests-core.yml
     with:
       artifact_suffix: services
@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, ClientsModule, InternalModule, ServicesModule]
+    needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Internal, Services]
     timeout-minutes: 120
     if: success() || failure()  # Always run this job, regardless of previous job status
     steps:
@@ -107,16 +107,16 @@ jobs:
            echo "StaticAnalysis failed."
            exit 1
          fi
-         if [ "${{ needs.ClientsModule.result }}" != "success" ]; then
-           echo "ClientsModule failed."
+         if [ "${{ needs.Clients.result }}" != "success" ]; then
+           echo "Clients module unit tests failed."
            exit 1
          fi
-         if [ "${{ needs.InternalModule.result }}" != "success" ]; then
-           echo "InternalModule failed."
+         if [ "${{ needs.Internal.result }}" != "success" ]; then
+           echo "Internal module unit tests failed."
            exit 1
          fi
-         if [ "${{ needs.ServicesModule.result }}" != "success" ]; then
-           echo "ServicesModule failed."
+         if [ "${{ needs.Services.result }}" != "success" ]; then
+           echo "Services module unit tests failed."
            exit 1
          fi
       # If all previous jobs were successful, proceed

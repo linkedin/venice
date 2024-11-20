@@ -23,6 +23,7 @@ import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -204,6 +205,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Version version;
 
   public LeaderFollowerStoreIngestionTask(
+      StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
@@ -215,6 +217,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
     super(
+        storageService,
         builder,
         store,
         version,
@@ -3111,8 +3114,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (shouldCompressData(partitionConsumptionState)) {
       try {
+        long startTimeInNS = System.nanoTime();
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
-        return compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
+        ByteBuffer result = compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
+        hostLevelIngestionStats.recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+        return result;
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
         throw new RuntimeException(

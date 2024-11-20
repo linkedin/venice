@@ -145,8 +145,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
-    // Drops corresponding data partition from storage.
-    this.storageService.dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
+    getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
   }
 
   @Override
