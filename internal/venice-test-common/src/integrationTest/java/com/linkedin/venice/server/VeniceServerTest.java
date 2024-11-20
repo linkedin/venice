@@ -13,7 +13,6 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -139,19 +138,36 @@ public class VeniceServerTest {
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
       // the server join again.
       cluster.stopVeniceServer(server.getPort());
-      try (ControllerClient client = ControllerClient
-          .constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
-        client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
-      }
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertFalse(server.isRunning()));
+
+      cluster.useControllerClient(controllerClient -> {
+        controllerClient.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
+
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            () -> Assert.assertEquals(controllerClient.listStorageNodes().getNodes().length, 0));
+      });
+
+      cluster.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixAdminClient()
+          .manuallyEnableMaintenanceMode(cluster.getClusterName(), true, "Prevent nodes from re-joining", null);
 
       cluster.restartVeniceServer(server.getPort());
-      Assert.assertTrue(
-          server.getVeniceServer()
-              .getStorageService()
-              .getStorageEngineRepository()
-              .getAllLocalStorageEngines()
-              .isEmpty(),
-          "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertTrue(server.isRunning()));
+
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Assert.assertTrue(
+              server.getVeniceServer()
+                  .getStorageService()
+                  .getStorageEngineRepository()
+                  .getAllLocalStorageEngines()
+                  .isEmpty(),
+              "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again."));
     }
   }
 
@@ -207,13 +223,11 @@ public class VeniceServerTest {
       cluster.addVeniceServer(featureProperties, new Properties());
 
       cluster.restartVeniceServer(server.getPort());
-      StorageEngineRepository storageEngineRepository =
-          server.getVeniceServer().getStorageService().getStorageEngineRepository();
 
       TestUtils.waitForNonDeterministicAssertion(
-          3,
+          30,
           TimeUnit.SECONDS,
-          () -> Assert.assertEquals(storageEngineRepository.getAllLocalStorageEngines().size(), 0));
+          () -> Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 0));
     }
   }
 

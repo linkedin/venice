@@ -133,4 +133,14 @@ public interface HelixAdminClient {
    * Release resources.
    */
   void close();
+
+  /**
+   * Manually enable maintenance mode. To be called by the REST client that accepts KV mappings as
+   * the payload.
+   */
+  void manuallyEnableMaintenanceMode(
+      String clusterName,
+      boolean enabled,
+      String reason,
+      Map<String, String> customFields);
 }
