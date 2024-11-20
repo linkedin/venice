@@ -1,6 +1,7 @@
 package com.linkedin.davinci.blobtransfer.server;
 
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -35,7 +36,8 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       int port,
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
 
@@ -53,7 +55,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
     serverBootstrap.group(bossGroup, workerGroup)
         .channel(socketChannelClass)
         .childHandler(
-            new BlobTransferNettyChannelInitializer(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager))
+            new BlobTransferNettyChannelInitializer(
+                baseDir,
+                blobTransferMaxTimeoutInMin,
+                blobSnapshotManager,
+                aggVersionedBlobTransferStats))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)

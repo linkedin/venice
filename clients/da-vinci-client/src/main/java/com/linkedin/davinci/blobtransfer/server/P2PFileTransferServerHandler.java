@@ -14,6 +14,8 @@ import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.Unpooled;
@@ -59,14 +61,17 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   // Maximum timeout for blob transfer in minutes per partition
   private final int blobTransferMaxTimeoutInMin;
   private BlobSnapshotManager blobSnapshotManager;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
 
   public P2PFileTransferServerHandler(
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
+    this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
   }
 
   @Override
@@ -105,32 +110,43 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     try {
       final File snapshotDir;
       BlobTransferPartitionMetadata transferPartitionMetadata;
+      String storeName = "";
+      int version = 0;
 
       try {
         blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
+        storeName = blobTransferRequest.getStoreName();
+        version = Version.parseVersionFromKafkaTopicName(blobTransferRequest.getTopicName());
         snapshotDir = new File(blobTransferRequest.getSnapshotDir());
         try {
           transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
+          // Record request in metrics
+          aggVersionedBlobTransferStats.recordBlobTransferRequestsCount(storeName, version);
         } catch (Exception e) {
+          updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.NOT_FOUND);
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
           return;
         }
 
         if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
           byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
+          updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.NOT_FOUND);
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
           return;
         }
       } catch (IllegalArgumentException e) {
+        updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.BAD_REQUEST);
         setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
         return;
       } catch (SecurityException e) {
+        updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.FORBIDDEN);
         setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
         return;
       }
 
       File[] files = snapshotDir.listFiles();
       if (files == null || files.length == 0) {
+        updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.INTERNAL_SERVER_ERROR);
         setupResponseAndFlush(
             HttpResponseStatus.INTERNAL_SERVER_ERROR,
             ("Failed to access files at " + snapshotDir).getBytes(),
@@ -149,6 +165,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           String errMessage = String
               .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
           LOGGER.error(errMessage);
+          updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.REQUEST_TIMEOUT);
           setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
           return;
         }
@@ -162,8 +179,11 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
       endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
       String fullResourceName = blobTransferRequest.getFullResourceName();
+      String finalStoreName = storeName;
+      int finalVersion = version;
       ctx.writeAndFlush(endOfTransfer).addListener(future -> {
         if (future.isSuccess()) {
+          updateBlobTransferStatsForSuccessTransfer(finalStoreName, finalVersion);
           LOGGER.debug("All files sent successfully for {}", fullResourceName);
         } else {
           LOGGER.error("Failed to send all files for {}", fullResourceName, future.cause());
@@ -287,6 +307,54 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           Integer.parseInt(requestParts[3]));
     } else {
       throw new IllegalArgumentException("Invalid request for fetching blob at " + uri.getPath());
+    }
+  }
+
+  /**
+   * Update blob transfer stats based on the error type
+   * @param httpResponseStatus
+   */
+  private void updateBlobTransferStatsBasedOnErrorType(
+      String storeName,
+      int version,
+      HttpResponseStatus httpResponseStatus) {
+    try {
+      if (httpResponseStatus.equals(HttpResponseStatus.BAD_REQUEST)
+          || httpResponseStatus.equals(HttpResponseStatus.NOT_FOUND)
+          || httpResponseStatus.equals(HttpResponseStatus.FORBIDDEN)
+          || httpResponseStatus.equals(HttpResponseStatus.METHOD_NOT_ALLOWED)) {
+        aggVersionedBlobTransferStats
+            .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.REJECTED);
+      } else if (httpResponseStatus.equals(HttpResponseStatus.INTERNAL_SERVER_ERROR)
+          || httpResponseStatus.equals(HttpResponseStatus.REQUEST_TIMEOUT)) {
+        aggVersionedBlobTransferStats
+            .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.FAILED);
+      } else {
+        aggVersionedBlobTransferStats
+            .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.FAILED);
+      }
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to update blob transfer request stats based on error type for store {} version {}",
+          storeName,
+          version,
+          e);
+    }
+  }
+
+  /**
+   * Update blob transfer stats when having success transfer
+   */
+  private void updateBlobTransferStatsForSuccessTransfer(String storeName, int version) {
+    try {
+      aggVersionedBlobTransferStats
+          .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.SUCCESS);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to update blob transfer request stats based on success transfer for store {} version {}",
+          storeName,
+          version,
+          e);
     }
   }
 }

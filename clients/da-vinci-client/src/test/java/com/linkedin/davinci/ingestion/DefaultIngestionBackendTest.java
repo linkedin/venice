@@ -17,6 +17,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -45,6 +46,8 @@ public class DefaultIngestionBackendTest {
   private StorageService storageService;
   @Mock
   private BlobTransferManager blobTransferManager;
+  @Mock
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   @Mock
   private DefaultIngestionBackend ingestionBackend;
   @Mock
@@ -89,6 +92,8 @@ public class DefaultIngestionBackendTest {
     when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
         .thenReturn(offsetRecord);
 
+    when(blobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(aggVersionedBlobTransferStats);
+
     // Create the DefaultIngestionBackend instance with mocked dependencies
     ingestionBackend = new DefaultIngestionBackend(
         storageMetadataService,
@@ -98,11 +103,11 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
   }
 
-  // verify that blobTransferManager was called given it is a hybrid & blob enabled
+  // verify that blobTransferManager was called given it is blob enabled
   @Test
   public void testStartConsumptionWithBlobTransfer() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
-    when(store.isHybrid()).thenReturn(false);
+    when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
