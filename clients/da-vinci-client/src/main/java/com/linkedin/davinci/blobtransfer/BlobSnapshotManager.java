@@ -279,7 +279,7 @@ public class BlobSnapshotManager {
 
     Version version = store.getVersion(versionNum);
     if (version == null) {
-      return store.isHybrid();
+      throw new VeniceException("Version not found for store: " + storeName);
     }
 
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(
