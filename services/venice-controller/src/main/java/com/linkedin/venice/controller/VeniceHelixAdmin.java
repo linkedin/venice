@@ -2638,10 +2638,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            * it will guarantee the rewind will recover the state for both store properties and replica statuses.
            */
           VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE) && !isParent()) {
             setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
-          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)
+              && !isParent()) {
             setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
 
@@ -3274,7 +3275,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Version hybridVersion = null;
       versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
       for (Version version: versions) {
-        if (version.getHybridStoreConfig() != null && (isParent() || version.getStatus() == ONLINE)) {
+        if (version.getHybridStoreConfig() != null && version.getStatus() == ONLINE) {
           hybridVersion = version;
           break;
         }
@@ -3298,9 +3299,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       int partitionCount = hybridVersion.getPartitionCount();
       boolean hasSeparateRt = hybridVersion.isSeparateRealTimeTopicEnabled();
-      getRealTimeTopic(clusterName, storeName, partitionCount);
-      if (hasSeparateRt) {
-        getSeparateRealTimeTopic(clusterName, storeName, partitionCount);
+      if (isParent()) {
+        getRealTimeTopic(clusterName, storeName, partitionCount);
+        if (hasSeparateRt) {
+          getSeparateRealTimeTopic(clusterName, storeName, partitionCount);
+        }
       }
 
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
@@ -8146,6 +8149,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * Set up the meta store and produce snapshot to meta store RT. Should be called in the child controllers.
+   * @param clusterName The cluster name.
+   * @param regularStoreName The regular user store name.
+   */
   void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
