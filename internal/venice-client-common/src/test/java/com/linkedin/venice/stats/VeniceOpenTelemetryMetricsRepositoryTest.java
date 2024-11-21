@@ -8,6 +8,9 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
@@ -59,9 +62,9 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNull(metricsRepository.getSdkMeterProvider());
     assertNull(metricsRepository.getMeter());
     assertNull(
-        metricsRepository.getInstrument(new MetricEntity("test", MetricEntity.MetricType.HISTOGRAM, "unit", "desc")));
+        metricsRepository.getInstrument(new MetricEntity("test", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc")));
     assertNull(
-        metricsRepository.getInstrument(new MetricEntity("test", MetricEntity.MetricType.COUNTER, "unit", "desc")));
+        metricsRepository.getInstrument(new MetricEntity("test", MetricType.COUNTER, MetricUnit.NUMBER, "desc")));
   }
 
   @Test
@@ -107,9 +110,9 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testCreateTwoHistograms() {
     DoubleHistogram histogram1 = (DoubleHistogram) metricsRepository
-        .getInstrument(new MetricEntity("test_histogram", MetricEntity.MetricType.HISTOGRAM, "unit", "desc"));
+        .getInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc"));
     DoubleHistogram histogram2 = (DoubleHistogram) metricsRepository
-        .getInstrument(new MetricEntity("test_histogram", MetricEntity.MetricType.HISTOGRAM, "unit", "desc"));
+        .getInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc"));
 
     assertNotNull(histogram1);
     assertSame(histogram1, histogram2, "Should return the same instance for the same histogram name.");
@@ -118,9 +121,9 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testCreateTwoCounters() {
     LongCounter counter1 = (LongCounter) metricsRepository
-        .getInstrument(new MetricEntity("test_counter", MetricEntity.MetricType.COUNTER, "unit", "desc"));
+        .getInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc"));
     LongCounter counter2 = (LongCounter) metricsRepository
-        .getInstrument(new MetricEntity("test_counter", MetricEntity.MetricType.COUNTER, "unit", "desc"));
+        .getInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc"));
 
     assertNotNull(counter1);
     assertSame(counter1, counter2, "Should return the same instance for the same counter name.");

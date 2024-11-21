@@ -1,10 +1,7 @@
 package com.linkedin.venice.stats;
 
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
-import io.opentelemetry.sdk.metrics.Aggregation;
-import io.opentelemetry.sdk.metrics.InstrumentType;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
-import io.opentelemetry.sdk.metrics.export.DefaultAggregationSelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.tehuti.metrics.MetricConfig;
 import java.util.HashMap;
@@ -120,8 +117,10 @@ public class VeniceMetricsConfig {
   /** Aggregation Temporality selector to export only the delta or cumulate or different */
   private final AggregationTemporalitySelector otelAggregationTemporalitySelector;
 
-  /** Default histogram aggregation to be used for all histograms: Select exponential or explicit bucket histogram */
-  private final DefaultAggregationSelector otelHistogramAggregationSelector;
+  /** Default histogram aggregation to be used for all histograms: exponential or explicit bucket histogram */
+  private final boolean useOtelExponentialHistogram;
+  private final int otelExponentialHistogramMaxScale;
+  private final int otelExponentialHistogramMaxBuckets;
 
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
@@ -134,7 +133,9 @@ public class VeniceMetricsConfig {
     this.exportOtelMetricsToLog = builder.exportOtelMetricsToLog;
     this.metricNamingFormat = builder.metricNamingFormat;
     this.otelAggregationTemporalitySelector = builder.otelAggregationTemporalitySelector;
-    this.otelHistogramAggregationSelector = builder.otelHistogramAggregationSelector;
+    this.useOtelExponentialHistogram = builder.useOtelExponentialHistogram;
+    this.otelExponentialHistogramMaxScale = builder.otelExponentialHistogramMaxScale;
+    this.otelExponentialHistogramMaxBuckets = builder.otelExponentialHistogramMaxBuckets;
     this.tehutiMetricConfig = builder.tehutiMetricConfig;
   }
 
@@ -150,7 +151,10 @@ public class VeniceMetricsConfig {
     private VeniceOpenTelemetryMetricNamingFormat metricNamingFormat = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
     private AggregationTemporalitySelector otelAggregationTemporalitySelector =
         AggregationTemporalitySelector.deltaPreferred();
-    DefaultAggregationSelector otelHistogramAggregationSelector = null;
+    private boolean useOtelExponentialHistogram = true;
+    private int otelExponentialHistogramMaxScale = 3;
+    private int otelExponentialHistogramMaxBuckets = 250;
+
     private MetricConfig tehutiMetricConfig = null;
 
     public Builder setServiceName(String serviceName) {
@@ -199,8 +203,18 @@ public class VeniceMetricsConfig {
       return this;
     }
 
-    public Builder setOtelHistogramAggregationSelector(DefaultAggregationSelector otelHistogramAggregationSelector) {
-      this.otelHistogramAggregationSelector = otelHistogramAggregationSelector;
+    public Builder setUseOtelExponentialHistogram(boolean useOtelExponentialHistogram) {
+      this.useOtelExponentialHistogram = useOtelExponentialHistogram;
+      return this;
+    }
+
+    public Builder setOtelExponentialHistogramMaxScale(int otelExponentialHistogramMaxScale) {
+      this.otelExponentialHistogramMaxScale = otelExponentialHistogramMaxScale;
+      return this;
+    }
+
+    public Builder setOtelExponentialHistogramMaxBuckets(int otelExponentialHistogramMaxBuckets) {
+      this.otelExponentialHistogramMaxBuckets = otelExponentialHistogramMaxBuckets;
       return this;
     }
 
@@ -264,27 +278,15 @@ public class VeniceMetricsConfig {
       if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION)) != null) {
         switch (configValue.toLowerCase(Locale.ROOT)) {
           case "base2_exponential_bucket_histogram":
+            setUseOtelExponentialHistogram(true);
             String maxScaleValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE);
+            setOtelExponentialHistogramMaxScale(Integer.parseInt(maxScaleValue));
             String maxBucketValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS);
-            if (maxScaleValue != null && maxBucketValue != null) {
-              int maxScale = Integer.parseInt(maxScaleValue);
-              int maxBuckets = Integer.parseInt(maxBucketValue);
-              setOtelHistogramAggregationSelector(
-                  DefaultAggregationSelector.getDefault()
-                      .with(
-                          InstrumentType.HISTOGRAM,
-                          Aggregation.base2ExponentialBucketHistogram(maxBuckets, maxScale)));
-            } else {
-              setOtelHistogramAggregationSelector(
-                  DefaultAggregationSelector.getDefault()
-                      .with(InstrumentType.HISTOGRAM, Aggregation.base2ExponentialBucketHistogram()));
-            }
+            setOtelExponentialHistogramMaxBuckets(Integer.parseInt(maxBucketValue));
             break;
 
           case "explicit_bucket_histogram":
-            setOtelHistogramAggregationSelector(
-                DefaultAggregationSelector.getDefault()
-                    .with(InstrumentType.HISTOGRAM, Aggregation.explicitBucketHistogram()));
+            setUseOtelExponentialHistogram(false);
             break;
 
           default:
@@ -375,8 +377,16 @@ public class VeniceMetricsConfig {
     return otelAggregationTemporalitySelector;
   }
 
-  public DefaultAggregationSelector getOtelHistogramAggregationSelector() {
-    return otelHistogramAggregationSelector;
+  public boolean useOtelExponentialHistogram() {
+    return useOtelExponentialHistogram;
+  }
+
+  public int getOtelExponentialHistogramMaxScale() {
+    return otelExponentialHistogramMaxScale;
+  }
+
+  public int getOtelExponentialHistogramMaxBuckets() {
+    return otelExponentialHistogramMaxBuckets;
   }
 
   public MetricConfig getTehutiMetricConfig() {
@@ -390,7 +400,9 @@ public class VeniceMetricsConfig {
         + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='" + otelEndpoint + '\''
         + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
         + ", metricNamingFormat=" + metricNamingFormat + ", otelAggregationTemporalitySelector="
-        + otelAggregationTemporalitySelector + ", otelHistogramAggregationSelector=" + otelHistogramAggregationSelector
-        + ", tehutiMetricConfig=" + tehutiMetricConfig + '}';
+        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
+        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
+        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig="
+        + tehutiMetricConfig + '}';
   }
 }

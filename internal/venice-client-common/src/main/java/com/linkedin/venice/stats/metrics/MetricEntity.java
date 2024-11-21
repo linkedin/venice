@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Set;
@@ -11,20 +11,16 @@ import org.apache.commons.lang.Validate;
  * Metric entity class to define a metric with all its properties
  */
 public class MetricEntity {
-  public enum MetricType {
-    HISTOGRAM, HISTOGRAM_WITHOUT_BUCKETS, COUNTER
-  };
-
   private final String metricName;
   private final MetricType metricType;
-  private final String unit;
+  private final MetricUnit unit;
   private final String description;
   private final Set<VeniceMetricsDimensions> dimensionsList;
 
   public MetricEntity(
       @Nonnull String metricName,
       @Nonnull MetricType metricType,
-      @Nonnull String unit,
+      @Nonnull MetricUnit unit,
       @Nonnull String description) {
     this(metricName, metricType, unit, description, null);
   }
@@ -32,7 +28,7 @@ public class MetricEntity {
   public MetricEntity(
       @Nonnull String metricName,
       @Nonnull MetricType metricType,
-      @Nonnull String unit,
+      @Nonnull MetricUnit unit,
       @Nonnull String description,
       @Nullable Set<VeniceMetricsDimensions> dimensionsList) {
     Validate.notEmpty(metricName, "Metric name cannot be null or empty");
@@ -54,7 +50,7 @@ public class MetricEntity {
   }
 
   @Nonnull
-  public String getUnit() {
+  public MetricUnit getUnit() {
     return unit;
   }
 

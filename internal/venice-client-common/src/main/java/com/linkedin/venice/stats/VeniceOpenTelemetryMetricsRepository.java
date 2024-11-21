@@ -4,6 +4,10 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.stats.metrics.AllMetricEntities;
+import com.linkedin.venice.stats.metrics.MetricEntities;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.metrics.DoubleHistogram;
@@ -16,9 +20,12 @@ import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.metrics.Aggregation;
+import io.opentelemetry.sdk.metrics.InstrumentSelector;
+import io.opentelemetry.sdk.metrics.InstrumentSelectorBuilder;
 import io.opentelemetry.sdk.metrics.InstrumentType;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
+import io.opentelemetry.sdk.metrics.View;
 import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
@@ -27,6 +34,7 @@ import io.opentelemetry.sdk.resources.Resource;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -59,10 +67,53 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (metricsConfig.getOtelAggregationTemporalitySelector() != null) {
       exporterBuilder.setAggregationTemporalitySelector(metricsConfig.getOtelAggregationTemporalitySelector());
     }
-    if (metricsConfig.getOtelHistogramAggregationSelector() != null) {
-      exporterBuilder.setDefaultAggregationSelector(metricsConfig.getOtelHistogramAggregationSelector());
-    }
     return exporterBuilder.build();
+  }
+
+  /**
+   * Setting Exponential Histogram aggregation for {@link MetricType#HISTOGRAM} by looping through all
+   * the metric entities for this service and registering the views with exponential histogram aggregation for
+   * the Histogram type.
+   *
+   * {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector} to enable exponential histogram aggregation
+   * is not used here to set the aggregation: to not convert the histograms of type
+   * {@link MetricType#HISTOGRAM_WITHOUT_BUCKETS} to exponential histograms to follow explict boundaries.
+   */
+  private void setExponentialHistogramAggregation(SdkMeterProviderBuilder builder, VeniceMetricsConfig metricsConfig) {
+    List<String> metricNames = new ArrayList<>();
+
+    // Loop through this module's metric entities and collect metric names
+    Class<? extends Enum<?>> moduleMetricEntityEnum = AllMetricEntities.getModuleMetricEntityEnum(getMetricPrefix());
+    if (moduleMetricEntityEnum == null) {
+      LOGGER.warn("No metric entities found for module: {}", getMetricPrefix());
+      return;
+    }
+    Enum<?>[] constants = moduleMetricEntityEnum.getEnumConstants();
+    if (constants != null) {
+      for (Enum<?> constant: constants) {
+        if (constant instanceof MetricEntities) {
+          MetricEntities metricEntities = (MetricEntities) constant;
+          MetricEntity metricEntity = metricEntities.getMetricEntity();
+          if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
+            metricNames.add(getFullMetricName(getMetricPrefix(), metricEntity.getMetricName()));
+          }
+        }
+      }
+    }
+
+    // Build an InstrumentSelector with multiple setName calls for all Exponential Histogram metrics
+    InstrumentSelectorBuilder selectorBuilder = InstrumentSelector.builder().setType(InstrumentType.HISTOGRAM);
+    metricNames.forEach(selectorBuilder::setName);
+
+    // Register a single view with all metric names included in the InstrumentSelector
+    builder.registerView(
+        selectorBuilder.build(),
+        View.builder()
+            .setAggregation(
+                Aggregation.base2ExponentialBucketHistogram(
+                    metricsConfig.getOtelExponentialHistogramMaxBuckets(),
+                    metricsConfig.getOtelExponentialHistogramMaxScale()))
+            .build());
   }
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
@@ -76,8 +127,8 @@ public class VeniceOpenTelemetryMetricsRepository {
         "OpenTelemetry initialization for {} started with config: {}",
         metricsConfig.getServiceName(),
         metricsConfig.toString());
-    this.metricPrefix = transformMetricName("venice." + metricsConfig.getMetricPrefix(), metricFormat);
-
+    this.metricPrefix = "venice." + metricsConfig.getMetricPrefix();
+    validateMetricName(this.metricPrefix);
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
       if (metricsConfig.exportOtelMetricsToEndpoint()) {
@@ -89,13 +140,17 @@ public class VeniceOpenTelemetryMetricsRepository {
         builder.registerMetricReader(PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig)).build());
       }
 
+      if (metricsConfig.useOtelExponentialHistogram()) {
+        setExponentialHistogramAggregation(builder, metricsConfig);
+      }
+
       builder.setResource(Resource.empty());
       sdkMeterProvider = builder.build();
 
       // Register MeterProvider with the OpenTelemetry instance
       OpenTelemetry openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
 
-      this.meter = openTelemetry.getMeter(getMetricPrefix());
+      this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
       LOGGER.info(
           "OpenTelemetry initialization for {} completed with config: {}",
           metricsConfig.getServiceName(),
@@ -125,9 +180,9 @@ public class VeniceOpenTelemetryMetricsRepository {
     return histogramMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
       String fullMetricName = getFullMetricName(getMetricPrefix(), metricEntity.getMetricName());
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
-          .setUnit(metricEntity.getUnit())
+          .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
-      if (metricEntity.getMetricType() == MetricEntity.MetricType.HISTOGRAM_WITHOUT_BUCKETS) {
+      if (metricEntity.getMetricType() == MetricType.HISTOGRAM_WITHOUT_BUCKETS) {
         builder.setExplicitBucketBoundariesAdvice(new ArrayList<>());
       }
       return builder.build();
@@ -141,7 +196,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     return counterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
       String fullMetricName = getFullMetricName(getMetricPrefix(), metricEntity.getMetricName());
       LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
-          .setUnit(metricEntity.getUnit())
+          .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
       return builder.build();
     });
@@ -178,11 +233,6 @@ public class VeniceOpenTelemetryMetricsRepository {
     @Override
     public AggregationTemporality getAggregationTemporality(InstrumentType instrumentType) {
       return metricsConfig.getOtelAggregationTemporalitySelector().getAggregationTemporality(instrumentType);
-    }
-
-    @Override
-    public Aggregation getDefaultAggregation(InstrumentType instrumentType) {
-      return metricsConfig.getOtelHistogramAggregationSelector().getDefaultAggregation(instrumentType);
     }
 
     @Override

@@ -33,7 +33,7 @@ public enum VeniceOpenTelemetryMetricNamingFormat implements VeniceEnumValue {
   }
 
   /**
-   * validate whether the metric name is a valid {@link VeniceOpenTelemetryMetricNamingFormat#SNAKE_CASE}
+   * validate whether the input name is defined as a valid {@link VeniceOpenTelemetryMetricNamingFormat#SNAKE_CASE}
    */
   public static void validateMetricName(String name) {
     if (name == null || name.isEmpty()) {

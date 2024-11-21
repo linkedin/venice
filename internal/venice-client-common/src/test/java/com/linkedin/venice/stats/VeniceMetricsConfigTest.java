@@ -17,7 +17,6 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig.Builder;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
-import io.opentelemetry.sdk.metrics.InstrumentType;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.tehuti.metrics.MetricConfig;
 import java.util.HashMap;
@@ -44,7 +43,9 @@ public class VeniceMetricsConfigTest {
     assertFalse(config.exportOtelMetricsToLog());
     assertEquals(config.getMetricNamingFormat(), VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
     assertEquals(config.getOtelAggregationTemporalitySelector(), AggregationTemporalitySelector.deltaPreferred());
-    assertEquals(config.getOtelHistogramAggregationSelector(), null);
+    assertEquals(config.useOtelExponentialHistogram(), true);
+    assertEquals(config.getOtelExponentialHistogramMaxScale(), 3);
+    assertEquals(config.getOtelExponentialHistogramMaxBuckets(), 250);
     assertNotNull(config.getTehutiMetricConfig());
   }
 
@@ -151,26 +152,6 @@ public class VeniceMetricsConfigTest {
         .extractAndSetOtelConfigs(otelConfigs)
         .build();
     assertEquals(config.getOtelAggregationTemporalitySelector(), AggregationTemporalitySelector.deltaPreferred());
-  }
-
-  @Test
-  public void testSetHistogramAggregationSelector() {
-    Map<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
-    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "true");
-    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
-    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost");
-    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram");
-    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, "10");
-    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, "50");
-
-    VeniceMetricsConfig config = new Builder().setServiceName("TestService")
-        .setMetricPrefix("TestPrefix")
-        .extractAndSetOtelConfigs(otelConfigs)
-        .build();
-    assertEquals(
-        config.getOtelHistogramAggregationSelector().getDefaultAggregation(InstrumentType.HISTOGRAM).toString(),
-        "Base2ExponentialHistogramAggregation{maxBuckets=50,maxScale=10}");
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
