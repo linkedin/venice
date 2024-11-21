@@ -151,6 +151,30 @@ public class TestP2PFileTransferClientHandler {
     }
   }
 
+  @Test
+  public void testFileChecksumMismatchTransfer() {
+    // response
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    // Intentionally not set the checksum
+
+    // content 1
+    // length 1
+    HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+
+    ch.writeInbound(response);
+    ch.writeInbound(chunk1);
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(e.getCause().getMessage().contains("File checksum mismatch"));
+    }
+  }
+
   // Technically, it shouldn't happen as the response and content are supposed to arrive in order but just in case
   @Test
   public void testOutOfOrderResponseTransfer() {
@@ -173,6 +197,8 @@ public class TestP2PFileTransferClientHandler {
     response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
     response.headers().add("Content-Length", "5");
     response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
     // content 1
     HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
 
@@ -207,11 +233,14 @@ public class TestP2PFileTransferClientHandler {
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
     response1.headers().add("Content-Length", "5");
     response1.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response1.headers().add("Content-MD5", checksumGenerateHelper("12345"));
     // response 2
     DefaultHttpResponse response2 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
     response2.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response2.headers().add("Content-MD5", checksumGenerateHelper("6789013579"));
+
     // content
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
     HttpContent chunk2 = new DefaultHttpContent(Unpooled.copiedBuffer("67890", CharsetUtil.UTF_8));
@@ -294,12 +323,14 @@ public class TestP2PFileTransferClientHandler {
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
     response1.headers().add("Content-Length", "5");
     response1.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response1.headers().add("Content-MD5", checksumGenerateHelper("12345"));
 
     // File 2 response
     DefaultHttpResponse response2 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
     response2.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response2.headers().add("Content-MD5", checksumGenerateHelper("6789013579"));
 
     // File content chunks
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
@@ -374,5 +405,16 @@ public class TestP2PFileTransferClientHandler {
 
     // Ensure the future is completed
     Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+  }
+
+  /**
+   * Generate checksum via string content
+   */
+  private String checksumGenerateHelper(String content) throws IOException {
+    Path tempFile = baseDir.resolve("temporaryFile.txt");
+    Files.write(tempFile.toAbsolutePath(), content.getBytes());
+    String checksum = BlobTransferUtils.generateFileChecksum(tempFile);
+    Files.delete(tempFile);
+    return checksum;
   }
 }

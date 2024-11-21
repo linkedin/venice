@@ -463,7 +463,8 @@ public class VeniceServer {
           metadataRepo,
           storageService.getStorageEngineRepository(),
           serverConfig.getMaxConcurrentSnapshotUser(),
-          serverConfig.getSnapshotRetentionTimeInMin());
+          serverConfig.getSnapshotRetentionTimeInMin(),
+          serverConfig.getBlobTransferMaxTimeoutInMin());
     } else {
       blobTransferManager = null;
     }

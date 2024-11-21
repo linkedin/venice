@@ -48,6 +48,7 @@ import org.testng.annotations.Test;
 public class TestP2PFileTransferServerHandler {
   EmbeddedChannel ch;
   Path baseDir;
+  int blobTransferMaxTimeoutInMin;
   StorageMetadataService storageMetadataService;
   P2PFileTransferServerHandler serverHandler;
   BlobSnapshotManager blobSnapshotManager;
@@ -57,13 +58,15 @@ public class TestP2PFileTransferServerHandler {
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
+    blobTransferMaxTimeoutInMin = 30;
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
     readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
     blobSnapshotManager =
         new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
-    serverHandler = new P2PFileTransferServerHandler(baseDir.toString(), blobSnapshotManager);
+    serverHandler =
+        new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
   }
 
@@ -110,7 +113,7 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 404);
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   @Test
@@ -132,7 +135,7 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 500);
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   @Test
@@ -160,6 +163,7 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
 
     ch.writeInbound(request);
@@ -171,6 +175,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(
         httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
         "attachment; filename=\"file1\"");
+    Assert.assertEquals(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5), file1ChecksumHeader);
     Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
     // send the content in one chunk
     response = ch.readOutbound();
@@ -194,7 +199,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   @Test
@@ -211,31 +216,43 @@ public class TestP2PFileTransferServerHandler {
 
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);
+
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
+
     Path file2 = snapshotDir.resolve("file2");
     Files.write(file2.toAbsolutePath(), "world".getBytes());
+    String file2ChecksumHeader = BlobTransferUtils.generateFileChecksum(file2);
+
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
     Set<String> fileNames = new HashSet<>();
+    Set<String> fileChecksums = new HashSet<>();
     // the order of file transfer is not guaranteed so put them into a set and remove them one by one
     Collections.addAll(fileNames, "attachment; filename=\"file1\"", "attachment; filename=\"file2\"");
+    Collections.addAll(fileChecksums, file1ChecksumHeader, file2ChecksumHeader);
+
     ch.writeInbound(request);
     // start of file1
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
+    Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
     fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
+    fileChecksums.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5));
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof LastHttpContent);
     // end of file1
+
     // start of file2
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
+    Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
     response = ch.readOutbound();
@@ -272,7 +289,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   /**
@@ -295,6 +312,6 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.NOT_FOUND);
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 }

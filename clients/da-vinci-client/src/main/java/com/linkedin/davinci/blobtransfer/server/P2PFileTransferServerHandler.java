@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.Unpooled;
@@ -52,16 +53,19 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
-  // Maximum timeout for blob transfer in minutes per partition
-  // TODO: make this configurable in store level
-  private static final int MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN = 30;
   private static final String TRANSFER_TIMEOUT_ERROR_MSG_FORMAT = "Timeout for transferring blob %s file %s";
   private boolean useZeroCopy = false;
   private final String baseDir;
+  // Maximum timeout for blob transfer in minutes per partition
+  private final int blobTransferMaxTimeoutInMin;
   private BlobSnapshotManager blobSnapshotManager;
 
-  public P2PFileTransferServerHandler(String baseDir, BlobSnapshotManager blobSnapshotManager) {
+  public P2PFileTransferServerHandler(
+      String baseDir,
+      int blobTransferMaxTimeoutInMin,
+      BlobSnapshotManager blobSnapshotManager) {
     this.baseDir = baseDir;
+    this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
   }
 
@@ -140,14 +144,15 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
       // transfer files
       for (File file: files) {
-        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(MAX_TIMEOUT_FOR_BLOB_TRANSFER_IN_MIN)) {
+        // check if the transfer for all files is timed out for this partition
+        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
           String errMessage = String
               .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
           LOGGER.error(errMessage);
           setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
           return;
         }
-
+        // send file
         sendFile(file, ctx);
       }
 
@@ -201,10 +206,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ChannelFuture sendFileFuture;
     ChannelFuture lastContentFuture;
     long length = raf.length();
+    String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
+
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_OCTET_STREAM);
     response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"");
+    response.headers().set(HttpHeaderNames.CONTENT_MD5, fileChecksum);
     response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     ctx.write(response);

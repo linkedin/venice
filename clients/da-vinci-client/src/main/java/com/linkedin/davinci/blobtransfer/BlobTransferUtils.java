@@ -1,6 +1,12 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
+
 import io.netty.handler.codec.http.HttpResponse;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 
 public class BlobTransferUtils {
@@ -23,5 +29,21 @@ public class BlobTransferUtils {
       return false;
     }
     return metadataHeader.equals(BlobTransferUtils.BlobTransferType.METADATA.name());
+  }
+
+  /**
+   * Generate MD5 checksum for a file
+   * @param filePath the path to the file
+   * @return a hex string
+   * @throws IOException if an I/O error occurs
+   */
+  public static String generateFileChecksum(Path filePath) throws IOException {
+    String md5Digest;
+    try (InputStream inputStream = Files.newInputStream(filePath)) {
+      md5Digest = md5Hex(inputStream);
+    } catch (IOException e) {
+      throw new IOException("Failed to generate checksum for file: " + filePath.toAbsolutePath(), e);
+    }
+    return md5Digest;
   }
 }

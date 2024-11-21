@@ -47,6 +47,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   // mutable states for a single file transfer. It will be updated for each file transfer.
   private FileChannel outputFileChannel;
   private String fileName;
+  private String fileChecksum;
+  private Path file;
   private long fileContentLength;
 
   public P2PFileTransferClientHandler(
@@ -88,11 +90,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         return;
       }
 
-      // Parse the file name
+      // Parse the file name and checksum from the response
       this.fileName = getFileNameFromHeader(response);
+      this.fileChecksum = response.headers().get(HttpHeaderNames.CONTENT_MD5);
+
       if (this.fileName == null) {
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
+
       LOGGER.debug("Starting blob transfer for file: {}", fileName);
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
@@ -109,7 +114,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
             payload.getPartition());
       }
 
-      Path file = Files.createFile(partitionDir.resolve(fileName));
+      this.file = Files.createFile(partitionDir.resolve(fileName));
 
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
 
@@ -153,6 +158,15 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
               "File size mismatch for " + fileName + ". Expected: " + fileContentLength + ", Actual: "
                   + outputFileChannel.size());
         }
+
+        // Checksum validation
+        String receivedFileChecksum = BlobTransferUtils.generateFileChecksum(file);
+        if (!receivedFileChecksum.equals(fileChecksum)) {
+          throw new VeniceException(
+              "File checksum mismatch for " + fileName + ". Expected: " + fileChecksum + ", Actual: "
+                  + receivedFileChecksum);
+        }
+
         resetState();
       }
     } else {
