@@ -17,8 +17,10 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -65,8 +67,11 @@ public class BlobSnapshotManagerTest {
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
     Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -83,9 +88,11 @@ public class BlobSnapshotManagerTest {
   @Test(timeOut = TIMEOUT)
   public void testSameSnapshotWhenConcurrentUsersNotExceedMaxAllowedUsers() {
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -112,9 +119,11 @@ public class BlobSnapshotManagerTest {
   @Test(timeOut = TIMEOUT)
   public void testSameSnapshotWhenConcurrentUsersExceedsMaxAllowedUsers() {
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -153,9 +162,11 @@ public class BlobSnapshotManagerTest {
   public void testTwoRequestUsingSameOffset() {
     // Prepare
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -191,8 +202,11 @@ public class BlobSnapshotManagerTest {
     final CountDownLatch latch = new CountDownLatch(numberOfThreads);
 
     Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -299,9 +313,11 @@ public class BlobSnapshotManagerTest {
   public void testNotAllowRecreateSnapshotWhenHavingConcurrentUsers() {
     // Prepare
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
