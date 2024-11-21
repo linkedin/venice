@@ -89,6 +89,7 @@ public enum RouterMetricEntities implements MetricEntities {
     return metricEntity;
   }
 
+  @SafeVarargs
   public static <T> Set<T> setOf(T... objs) {
     return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));
   }

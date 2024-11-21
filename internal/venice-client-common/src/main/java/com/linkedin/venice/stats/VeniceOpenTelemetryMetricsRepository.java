@@ -173,7 +173,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     return metricPrefix;
   }
 
-  public DoubleHistogram getHistogram(MetricEntity metricEntity) {
+  public DoubleHistogram createHistogram(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics) {
       return null;
     }
@@ -189,7 +189,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public LongCounter getCounter(MetricEntity metricEntity) {
+  public LongCounter createCounter(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics) {
       return null;
     }
@@ -202,17 +202,21 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public Object getInstrument(MetricEntity metricEntity) {
+  public Object createInstrument(MetricEntity metricEntity) {
     switch (metricEntity.getMetricType()) {
       case HISTOGRAM:
       case HISTOGRAM_WITHOUT_BUCKETS:
-        return getHistogram(metricEntity);
+        metricEntity.setOtelMetric(createHistogram(metricEntity));
+        break;
 
       case COUNTER:
-        return getCounter(metricEntity);
+        metricEntity.setOtelMetric(createCounter(metricEntity));
+        break;
+
       default:
         throw new VeniceException("Unknown metric type: " + metricEntity.getMetricType());
     }
+    return metricEntity.getOtelMetric();
   }
 
   public void close() {

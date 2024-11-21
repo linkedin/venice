@@ -16,7 +16,7 @@ public enum MetricType {
   /**
    * For Histogram without percentiles: Explicit bucket histogram.
    * Provides multiple aggregations like min, max, count and sum without the memory overhead of percentiles.
-   * check {@link VeniceOpenTelemetryMetricsRepository#getHistogram} and
+   * check {@link VeniceOpenTelemetryMetricsRepository#createHistogram} and
    * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation} for more details
    */
   HISTOGRAM_WITHOUT_BUCKETS,
