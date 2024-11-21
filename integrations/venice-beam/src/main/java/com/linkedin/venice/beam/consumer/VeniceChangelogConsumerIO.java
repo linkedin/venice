@@ -1,4 +1,4 @@
-package com.linkedin.venice.cdc;
+package com.linkedin.venice.beam.consumer;
 
 import com.google.common.collect.Iterators;
 import com.google.common.collect.PeekingIterator;
@@ -57,10 +57,10 @@ import org.joda.time.Instant;
  * Beam Connector for Venice Change data capture IO. Uses {@link VeniceChangelogConsumer} underneath
  * to pull messages from configured venice store.
  */
-public final class VeniceCDCIO {
-  private static final Logger LOG = LogManager.getLogger(VeniceCDCIO.class);
+public final class VeniceChangelogConsumerIO {
+  private static final Logger LOG = LogManager.getLogger(VeniceChangelogConsumerIO.class);
 
-  private VeniceCDCIO() {
+  private VeniceChangelogConsumerIO() {
   }
 
   public static <K, V> Read<K, V> read() {
@@ -379,12 +379,14 @@ public final class VeniceCDCIO {
             .forEach(c -> _partitionToVeniceChangeCoordinates.put(c.getPartition(), c));
       }
       final String metricPrefix = String.join("_", this.read.store, this.read.partitions.toString());
-      this.checkpointPubsubTimestamp = Metrics.gauge(VeniceCDCIO.class, metricPrefix + "_CheckpointPubsubTimestamp");
-      this.checkpointPubsubLag = Metrics.gauge(VeniceCDCIO.class, metricPrefix + "_CheckpointPubsubLag");
-      this.revisedCheckpoints = Metrics.counter(VeniceCDCIO.class, metricPrefix + "_RevisedCheckpoints");
-      this.sampledPayloadSize = Metrics.distribution(VeniceCDCIO.class, metricPrefix + "_SampledPayloadSize");
-      this.consumerPollCount = Metrics.counter(VeniceCDCIO.class, metricPrefix + "_ConsumerPollCount");
-      this.queuePollCount = Metrics.counter(VeniceCDCIO.class, metricPrefix + "_QueuePollCount");
+      this.checkpointPubsubTimestamp =
+          Metrics.gauge(VeniceChangelogConsumerIO.class, metricPrefix + "_CheckpointPubsubTimestamp");
+      this.checkpointPubsubLag = Metrics.gauge(VeniceChangelogConsumerIO.class, metricPrefix + "_CheckpointPubsubLag");
+      this.revisedCheckpoints = Metrics.counter(VeniceChangelogConsumerIO.class, metricPrefix + "_RevisedCheckpoints");
+      this.sampledPayloadSize =
+          Metrics.distribution(VeniceChangelogConsumerIO.class, metricPrefix + "_SampledPayloadSize");
+      this.consumerPollCount = Metrics.counter(VeniceChangelogConsumerIO.class, metricPrefix + "_ConsumerPollCount");
+      this.queuePollCount = Metrics.counter(VeniceChangelogConsumerIO.class, metricPrefix + "_QueuePollCount");
     }
 
     /**

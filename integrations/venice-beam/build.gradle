@@ -1,7 +1,3 @@
-plugins {
-  id 'io.github.lhotari.gradle-nar-plugin'
-}
-
 dependencies {
   implementation(project(':internal:venice-common')) {
     exclude module: 'kafka_2.10'

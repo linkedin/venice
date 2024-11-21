@@ -1,4 +1,4 @@
-package com.linkedin.venice.cdc;
+package com.linkedin.venice.beam.consumer;
 
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import java.util.Objects;
