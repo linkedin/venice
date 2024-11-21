@@ -177,6 +177,20 @@ public class StorageServiceTest {
     mapFields.put("test_store_v1_0", testPartitionZero);
     mapFields.put("test_store_v1_1", testPartitionOne);
     record.setMapFields(mapFields);
+
+    Map<String, List<String>> listFields = new HashMap<>();
+    List<String> testPartitionZeroHostList = new ArrayList<>();
+    testPartitionZeroHostList.add("host_1430");
+    testPartitionZeroHostList.add("host_1435");
+    testPartitionZeroHostList.add("host_1440");
+    List<String> testPartitionOneHostList = new ArrayList<>();
+    testPartitionOneHostList.add("host_1520");
+    testPartitionOneHostList.add("host_1525");
+    testPartitionOneHostList.add("host_1530");
+    listFields.put("test_store_v1_0", testPartitionZeroHostList);
+    listFields.put("test_store_v1_1", testPartitionOneHostList);
+    record.setListFields(listFields);
+
     when(idealState.getRecord()).thenReturn(record);
     when(manager.getInstanceName()).thenReturn("host_1520");
 

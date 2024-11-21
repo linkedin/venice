@@ -222,8 +222,11 @@ public class VeniceServerTest {
       cluster.addVeniceServer(featureProperties, new Properties());
       cluster.addVeniceServer(featureProperties, new Properties());
 
+      cluster.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixAdminClient()
+          .manuallyEnableMaintenanceMode(cluster.getClusterName(), true, "Prevent nodes from re-joining", null);
       cluster.restartVeniceServer(server.getPort());
-
       TestUtils.waitForNonDeterministicAssertion(
           30,
           TimeUnit.SECONDS,
