@@ -146,7 +146,6 @@ public class StorageServiceTest {
     mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
 
     String resourceName = "test_store_v1";
-    String storeName = "test_store";
 
     when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
     abstractStorageEngine.addStoragePartition(0);

@@ -389,13 +389,13 @@ public class StorageService extends AbstractVeniceService {
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
 
       if (idealState != null) {
-        Map<String, List<String>> mapFields = idealState.getRecord().getListFields();
+        Map<String, List<String>> listFields = idealState.getRecord().getListFields();
         for (Integer partitionId: storageEnginePartitionIds) {
           if (storageEngine.isMetadataPartition(partitionId)) {
             continue;
           }
           String partitionDbName = storeName + "_" + partitionId;
-          if (!mapFields.containsKey(partitionDbName) || !mapFields.get(partitionDbName).contains(instanceHostName)) {
+          if (!listFields.containsKey(partitionDbName) || !listFields.get(partitionDbName).contains(instanceHostName)) {
             LOGGER.info(
                 "the following partition is not assigned to the current host {} and is being dropped from storage engine {}: {}",
                 instanceHostName,
