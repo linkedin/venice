@@ -2638,11 +2638,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            * it will guarantee the rewind will recover the state for both store properties and replica statuses.
            */
           VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE) && !isParent()) {
+          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
             setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
-          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)
-              && !isParent()) {
+          if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
             setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
 
@@ -8140,7 +8139,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreDoesNotExist(clusterName, storeName);
     }
     String daVinciPushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-    getRealTimeTopic(clusterName, daVinciPushStatusStoreName, null);
+
+    if (!isParent()) {
+      // We do not materialize PS3 for parent region. Hence, skip RT topic creation.
+      getRealTimeTopic(clusterName, daVinciPushStatusStoreName, null);
+    }
     if (!store.isDaVinciPushStatusStoreEnabled()) {
       storeMetadataUpdate(clusterName, storeName, (s) -> {
         s.setDaVinciPushStatusStoreEnabled(true);
@@ -8164,7 +8167,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
     // the RT topic to be consistent in case it was not auto-materialized
-    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName), null);
+    if (!isParent()) {
+      // We do not materialize PS3 for parent region. Hence, skip RT topic creation.
+      getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName), null);
+    }
 
     // Update the store flag to enable meta system store.
     if (!store.isStoreMetaSystemStoreEnabled()) {
