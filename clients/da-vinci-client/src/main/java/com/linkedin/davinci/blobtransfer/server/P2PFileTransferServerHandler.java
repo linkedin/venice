@@ -212,7 +212,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_OCTET_STREAM);
     response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"");
-    response.headers().set(HttpHeaderNames.CONTENT_MD5, "attachment; checksum=\"" + fileChecksum + "\"");
+    response.headers().set(HttpHeaderNames.CONTENT_MD5, fileChecksum);
     response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     ctx.write(response);

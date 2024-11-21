@@ -197,7 +197,7 @@ public class TestP2PFileTransferClientHandler {
     response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
     response.headers().add("Content-Length", "5");
     response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
-    response.headers().add("Content-MD5", "checksum=\"" + checksumGenerateHelper("12345") + "\"");
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
 
     // content 1
     HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
@@ -233,13 +233,13 @@ public class TestP2PFileTransferClientHandler {
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
     response1.headers().add("Content-Length", "5");
     response1.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
-    response1.headers().add("Content-MD5", "checksum=\"" + checksumGenerateHelper("12345") + "\"");
+    response1.headers().add("Content-MD5", checksumGenerateHelper("12345"));
     // response 2
     DefaultHttpResponse response2 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
     response2.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
-    response2.headers().add("Content-MD5", "checksum=\"" + checksumGenerateHelper("6789013579") + "\"");
+    response2.headers().add("Content-MD5", checksumGenerateHelper("6789013579"));
 
     // content
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
@@ -323,14 +323,14 @@ public class TestP2PFileTransferClientHandler {
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
     response1.headers().add("Content-Length", "5");
     response1.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
-    response1.headers().add("Content-MD5", "checksum=\"" + checksumGenerateHelper("12345") + "\"");
+    response1.headers().add("Content-MD5", checksumGenerateHelper("12345"));
 
     // File 2 response
     DefaultHttpResponse response2 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
     response2.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
-    response2.headers().add("Content-MD5", "checksum=\"" + checksumGenerateHelper("6789013579") + "\"");
+    response2.headers().add("Content-MD5", checksumGenerateHelper("6789013579"));
 
     // File content chunks
     HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));

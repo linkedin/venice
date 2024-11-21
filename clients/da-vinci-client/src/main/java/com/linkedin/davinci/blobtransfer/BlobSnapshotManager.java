@@ -7,8 +7,10 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -19,8 +21,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.commons.io.FileUtils;
@@ -45,15 +48,15 @@ public class BlobSnapshotManager {
   // A map to keep track of the number of hosts using a snapshot for a particular topic and partition, use to restrict
   // concurrent user count
   // Example: <topicName, <partitionId, concurrentUsersAmount>>
-  private Map<String, Map<Integer, AtomicLong>> concurrentSnapshotUsers;
+  private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, AtomicInteger>> concurrentSnapshotUsers;
   // A map to keep track of the snapshot timestamps for a particular topic and partition, use to track snapshot
   // staleness
   // Example: <topicName, <partitionId, timestamp>>
-  private Map<String, Map<Integer, Long>> snapshotTimestamps;
+  private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, Long>> snapshotTimestamps;
   // A map to keep track the snapshot respective offset record for a particular topic and partition, use to keep
   // snapshot/offset consistency
   // Example: <topicName, <partitionId, offset>>
-  private Map<String, Map<Integer, BlobTransferPartitionMetadata>> snapshotMetadataRecords;
+  private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, BlobTransferPartitionMetadata>> snapshotMetadataRecords;
 
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private final StorageEngineRepository storageEngineRepository;
@@ -114,11 +117,12 @@ public class BlobSnapshotManager {
   public BlobTransferPartitionMetadata getTransferMetadata(BlobTransferPayload payload) throws VeniceException {
     String topicName = payload.getTopicName();
     int partitionId = payload.getPartition();
+    int versionNum = Version.parseVersionFromKafkaTopicName(topicName);
 
     // check if the concurrent user count exceeds the limit
     checkIfConcurrentUserExceedsLimit(topicName, partitionId);
 
-    boolean isHybrid = isStoreHybrid(payload.getStoreName());
+    boolean isHybrid = isStoreHybrid(payload.getStoreName(), versionNum);
     if (!isHybrid) {
       increaseConcurrentUserCount(topicName, partitionId);
       return prepareMetadata(payload);
@@ -149,9 +153,9 @@ public class BlobSnapshotManager {
    * @param blobTransferRequest the blob transfer request
    */
   private void recreateSnapshotAndMetadata(BlobTransferPayload blobTransferRequest) {
-    // Only create a new snapshot if there is no concurrent user.
+    // Only create a new snapshot if there is no active user.
     // Otherwise, the snapshot is still in use and being transferred, and should not be recreated.
-    if (getConcurrentSnapshotUsers(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) != 0L) {
+    if (getConcurrentSnapshotUsers(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) != 0) {
       String errorMessage = String.format(
           "Snapshot for topic %s partition %d is still in use by others, can not recreate snapshot for new transfer request.",
           blobTransferRequest.getTopicName(),
@@ -219,7 +223,7 @@ public class BlobSnapshotManager {
    */
   void increaseConcurrentUserCount(String topicName, int partitionId) {
     concurrentSnapshotUsers.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partitionId, k -> new AtomicLong(0))
+        .computeIfAbsent(partitionId, k -> new AtomicInteger(0))
         .incrementAndGet();
   }
 
@@ -229,12 +233,12 @@ public class BlobSnapshotManager {
   public void decreaseConcurrentUserCount(BlobTransferPayload blobTransferRequest) {
     String topicName = blobTransferRequest.getTopicName();
     int partitionId = blobTransferRequest.getPartition();
-    Map<Integer, AtomicLong> concurrentPartitionUsers = concurrentSnapshotUsers.get(topicName);
+    Map<Integer, AtomicInteger> concurrentPartitionUsers = concurrentSnapshotUsers.get(topicName);
     if (concurrentPartitionUsers == null) {
       throw new VeniceException("No topic found: " + topicName);
     }
 
-    AtomicLong concurrentUsers = concurrentPartitionUsers.get(partitionId);
+    AtomicInteger concurrentUsers = concurrentPartitionUsers.get(partitionId);
     if (concurrentUsers == null) {
       throw new VeniceException(String.format("%d partition not found on topic %s", partitionId, topicName));
     }
@@ -246,28 +250,42 @@ public class BlobSnapshotManager {
     LOGGER.info("Concurrent user count for topic {} partition {} decreased to {}", topicName, partitionId, result);
   }
 
-  protected long getConcurrentSnapshotUsers(String topicName, int partitionId) {
+  protected int getConcurrentSnapshotUsers(String topicName, int partitionId) {
     if (topicName == null) {
       throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
     }
-    if (!concurrentSnapshotUsers.containsKey(topicName)
-        || !concurrentSnapshotUsers.get(topicName).containsKey(partitionId)) {
+    Map<Integer, AtomicInteger> partitionUsageMap = concurrentSnapshotUsers.get(topicName);
+    if (partitionUsageMap == null) {
       return 0;
     }
-    return concurrentSnapshotUsers.get(topicName).get(partitionId).get();
+    AtomicInteger usage = partitionUsageMap.get(partitionId);
+    if (usage == null) {
+      return 0;
+    }
+    return usage.get();
   }
 
   /**
    * Check if the store is hybrid
    * @param storeName the name of the store
+   * @param versionNum the version number
    * @return true if the store is hybrid, false otherwise
    */
-  public boolean isStoreHybrid(String storeName) {
+  public synchronized boolean isStoreHybrid(String storeName, int versionNum) {
     Store store = readOnlyStoreRepository.getStore(storeName);
-    if (store != null) {
+    if (store == null) {
+      return false;
+    }
+
+    Version version = store.getVersion(versionNum);
+    if (version == null) {
       return store.isHybrid();
     }
-    return false;
+
+    Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(
+        version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
+
+    return hybridStoreConfig.isPresent();
   }
 
   /**

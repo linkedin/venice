@@ -41,7 +41,6 @@ import org.apache.logging.log4j.Logger;
 public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<HttpObject> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferClientHandler.class);
   private static final Pattern FILENAME_PATTERN = Pattern.compile("filename=\"(.+?)\"");
-  private static final Pattern CHECKSUM_PATTERN = Pattern.compile("checksum=\"(.+?)\"");
   private final CompletionStage<InputStream> inputStreamFuture;
   private final BlobTransferPayload payload;
 
@@ -93,7 +92,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       // Parse the file name and checksum from the response
       this.fileName = getFileNameFromHeader(response);
-      this.fileChecksum = getChecksumFromHeader(response);
+      this.fileChecksum = response.headers().get(HttpHeaderNames.CONTENT_MD5);
 
       if (this.fileName == null) {
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
@@ -199,17 +198,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     String contentDisposition = response.headers().get(HttpHeaderNames.CONTENT_DISPOSITION);
     if (contentDisposition != null) {
       Matcher matcher = FILENAME_PATTERN.matcher(contentDisposition);
-      if (matcher.find()) {
-        return matcher.group(1);
-      }
-    }
-    return null;
-  }
-
-  private String getChecksumFromHeader(HttpResponse response) {
-    String contentMd5 = response.headers().get(HttpHeaderNames.CONTENT_MD5);
-    if (contentMd5 != null) {
-      Matcher matcher = CHECKSUM_PATTERN.matcher(contentMd5);
       if (matcher.find()) {
         return matcher.group(1);
       }

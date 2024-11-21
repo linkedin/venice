@@ -113,7 +113,7 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 404);
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   @Test
@@ -135,7 +135,7 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 500);
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   @Test
@@ -163,7 +163,7 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
-    String file1ChecksumHeader = "attachment; checksum=\"" + BlobTransferUtils.generateFileChecksum(file1) + "\"";
+    String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
 
     ch.writeInbound(request);
@@ -199,7 +199,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   @Test
@@ -219,11 +219,11 @@ public class TestP2PFileTransferServerHandler {
 
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
-    String file1ChecksumHeader = "attachment; checksum=\"" + BlobTransferUtils.generateFileChecksum(file1) + "\"";
+    String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
 
     Path file2 = snapshotDir.resolve("file2");
     Files.write(file2.toAbsolutePath(), "world".getBytes());
-    String file2ChecksumHeader = "attachment; checksum=\"" + BlobTransferUtils.generateFileChecksum(file2) + "\"";
+    String file2ChecksumHeader = BlobTransferUtils.generateFileChecksum(file2);
 
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
     Set<String> fileNames = new HashSet<>();
@@ -289,7 +289,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
   /**
@@ -312,6 +312,6 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.NOT_FOUND);
 
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0L);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 }
