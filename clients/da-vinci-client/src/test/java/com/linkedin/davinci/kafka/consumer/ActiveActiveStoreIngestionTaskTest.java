@@ -727,15 +727,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getConsumerPoolStrategyType())
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);
+    when(serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()).thenReturn(10);
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader()).thenReturn(20);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader()).thenReturn(30);
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader()).thenReturn(40);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 91);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 121);
 
     // Test with parallel compute is enabled
     when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
     when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 721);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 961);
   }
 
   @Test

@@ -519,12 +519,6 @@ public class IntegrationTestPushUtils {
             }
             // To ensure exactly one consumer from specific pool is allocated for each region.
             Assert.assertEquals(regionCount, expectedSourceRegionNumOnServer);
-            LOGGER.info(
-                "DEBUGGING SERVER: {}, REGION: {}, TP: {}, result: {}",
-                serverWrapper.getHost(),
-                veniceMultiClusterWrapper.getRegionName(),
-                pubSubTopicPartition,
-                topicPartitionIngestionContexts);
             replicaPerRegionCount += 1;
           }
         } catch (IOException e) {

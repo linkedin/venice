@@ -2207,6 +2207,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
       "server.consumer.pool.size.for.current.version.aa.wc.leader";
+
+  /**
+   * Consumer Pool for separate realtime leader of current version, the traffic we need to isolate due to
+   * it is more costly than normal leader processing and current version should be allocated more resources to prioritize.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.consumer.pool.size.for.current.version.separate.rt.leader";
+
   /**
    * Consumer Pool for active-active or write computer leader of future or backup version, the traffic we need to isolate
    * due to it is still more costly than normal leader processing and it has less priority than current version.
@@ -2314,6 +2322,8 @@ public class ConfigKeys {
    */
   public static final String SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.current.version.separate.rt.leader.quota.records.per.second";
   public static final String SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.non.aa.wc.leader.quota.records.per.second";
   public static final String SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =

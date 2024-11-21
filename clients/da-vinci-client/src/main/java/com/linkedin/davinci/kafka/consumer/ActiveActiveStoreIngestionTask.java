@@ -178,6 +178,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     } else if (serverConfig.getConsumerPoolStrategyType()
         .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
       consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
+          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
           + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
     } else {
       consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();

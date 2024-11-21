@@ -305,6 +305,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   public class CurrentVersionConsumerPoolStrategy extends ConsumerPoolStrategy {
     private final KafkaConsumerService consumerServiceForCurrentVersionAAWCLeader;
+    private final KafkaConsumerService consumerServiceForCurrentVersionSepRTLeader;
     private final KafkaConsumerService consumerServiceForCurrentVersionNonAAWCLeader;
     private final KafkaConsumerService consumerServiceForNonCurrentVersionAAWCLeader;
     private final KafkaConsumerService consumerServiceNonCurrentNonAAWCLeader;
@@ -314,6 +315,10 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
           serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader(),
           ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForCurrentVersionAAWCLeader);
+      this.consumerServiceForCurrentVersionSepRTLeader = consumerServiceConstructor.apply(
+          serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader(),
+          ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL);
+      consumerServices.add(consumerServiceForCurrentVersionSepRTLeader);
       this.consumerServiceForCurrentVersionNonAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader(),
           ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL);
@@ -342,20 +347,38 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
        */
       if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
-            && pubSubTopic.isRealTime() && !pubSubTopic.isSeparateRealTimeTopic()) {
-          LOGGER.info("DEBUGGING CURRENT LEADER {}", pubSubTopicPartition);
-          return consumerServiceForCurrentVersionAAWCLeader;
+            && pubSubTopic.isRealTime()) {
+          LOGGER.info(
+              "DEBUGGING ASSIGNMENT: VersionRole: {}, WorkloadType: {}, TP: {}, ASSIGNMENT: A",
+              versionRole,
+              workloadType,
+              pubSubTopicPartition);
+          return pubSubTopic.isSeparateRealTimeTopic()
+              ? consumerServiceForCurrentVersionSepRTLeader
+              : consumerServiceForCurrentVersionAAWCLeader;
         } else {
-          LOGGER.info("DEBUGGING CURRENT NON_LEADER {}", pubSubTopicPartition);
+          LOGGER.info(
+              "DEBUGGING ASSIGNMENT: VersionRole: {}, WorkloadType: {}, TP: {}, ASSIGNMENT: B",
+              versionRole,
+              workloadType,
+              pubSubTopicPartition);
           return consumerServiceForCurrentVersionNonAAWCLeader;
         }
       } else {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
-            && pubSubTopic.isRealTime() && !pubSubTopic.isSeparateRealTimeTopic()) {
-          LOGGER.info("DEBUGGING NON_CURRENT LEADER {}", pubSubTopicPartition);
+            && pubSubTopic.isRealTime()) {
+          LOGGER.info(
+              "DEBUGGING ASSIGNMENT: VersionRole: {}, WorkloadType: {}, TP: {}, ASSIGNMENT: C",
+              versionRole,
+              workloadType,
+              pubSubTopicPartition);
           return consumerServiceForNonCurrentVersionAAWCLeader;
         } else {
-          LOGGER.info("DEBUGGING NON_CURRENT NON_LEADER {}", pubSubTopicPartition);
+          LOGGER.info(
+              "DEBUGGING ASSIGNMENT: VersionRole: {}, WorkloadType: {}, TP: {}, ASSIGNMENT: D",
+              versionRole,
+              workloadType,
+              pubSubTopicPartition);
           return consumerServiceNonCurrentNonAAWCLeader;
         }
       }

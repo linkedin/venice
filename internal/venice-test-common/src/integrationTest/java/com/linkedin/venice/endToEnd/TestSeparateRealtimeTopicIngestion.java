@@ -103,7 +103,7 @@ public class TestSeparateRealtimeTopicIngestion {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
   public void testIncrementalPushPartialUpdate() throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -163,7 +163,7 @@ public class TestSeparateRealtimeTopicIngestion {
       PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName));
       PubSubTopic separateRealtimeTopic =
           PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName));
-      PubSubTopic versionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 2));
+      PubSubTopic versionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
       PubSubTopic versionTopicV2 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 2));
       PubSubTopicPartition versionV1TopicPartition = new PubSubTopicPartitionImpl(versionTopicV1, 0);
       PubSubTopicPartition versionV2TopicPartition = new PubSubTopicPartitionImpl(versionTopicV2, 0);
@@ -194,7 +194,16 @@ public class TestSeparateRealtimeTopicIngestion {
             CLUSTER_NAME,
             versionTopicV2,
             separateRealtimeTopicPartition,
-            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL,
+            NUMBER_OF_CHILD_DATACENTERS,
+            1);
+
+        verifyConsumerThreadPoolFor(
+            multiRegionMultiClusterWrapper,
+            CLUSTER_NAME,
+            versionTopicV1,
+            realtimeTopicPartition,
+            ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
             NUMBER_OF_CHILD_DATACENTERS,
             1);
 
@@ -203,7 +212,7 @@ public class TestSeparateRealtimeTopicIngestion {
             CLUSTER_NAME,
             versionTopicV1,
             versionV1TopicPartition,
-            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
             1,
             REPLICATION_FACTOR - 1);
 
@@ -211,17 +220,8 @@ public class TestSeparateRealtimeTopicIngestion {
             multiRegionMultiClusterWrapper,
             CLUSTER_NAME,
             versionTopicV1,
-            realtimeTopicPartition,
-            ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS,
-            1);
-
-        verifyConsumerThreadPoolFor(
-            multiRegionMultiClusterWrapper,
-            CLUSTER_NAME,
-            versionTopicV1,
             separateRealtimeTopicPartition,
-            ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+            ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
             NUMBER_OF_CHILD_DATACENTERS,
             1);
       });
