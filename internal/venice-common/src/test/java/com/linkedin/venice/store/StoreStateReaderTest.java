@@ -90,7 +90,7 @@ public class StoreStateReaderTest {
         partitionerConfig,
         3);
     store.setPartitionCount(partitionCount);
-    Version version = new VersionImpl(storeName, 1, "test-job-id", store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, "test-job-id");
     version.setPartitionCount(partitionCount);
     store.setVersions(Collections.singletonList(version));
 

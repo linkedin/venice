@@ -977,13 +977,13 @@ public class TestMetaDataHandler {
     HelixReadOnlyStoreRepository mockStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     Store testStore = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     String pushId = "test-push-job-id";
-    testStore.addVersion(new VersionImpl(storeName, 1, pushId, testStore.getRealTimeTopicName()));
+    testStore.addVersion(new VersionImpl(storeName, 1, pushId));
     testStore.setCurrentVersion(1);
     testStore.setEtlStoreConfig(new ETLStoreConfigImpl());
     SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
     systemStoreAttributes.setCurrentVersion(2);
     List<Version> versions = new ArrayList<>();
-    versions.add(new VersionImpl(metaSystemStoreName, 2, pushId, ""));
+    versions.add(new VersionImpl(metaSystemStoreName, 2, pushId));
     systemStoreAttributes.setVersions(versions);
     testStore.putSystemStore(VeniceSystemStoreType.META_STORE, systemStoreAttributes);
     Store zkSharedStore = TestUtils.createTestStore(

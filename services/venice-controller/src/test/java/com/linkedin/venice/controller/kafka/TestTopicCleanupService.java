@@ -1,17 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -104,8 +94,9 @@ public class TestTopicCleanupService {
 
     when(admin.getStore(any(), anyString())).thenAnswer(invocation -> {
       String requestedStoreName = invocation.getArgument(1); // Capture the storeName argument
-      Store mockStore = mock(Store.class);
-      when(mockStore.getRealTimeTopicName()).thenReturn(requestedStoreName + Version.REAL_TIME_TOPIC_SUFFIX);
+      Store mockStore = mock(Store.class, RETURNS_DEEP_STUBS);
+      when(mockStore.getHybridStoreConfig().getRealTimeTopicName())
+          .thenReturn(requestedStoreName + Version.REAL_TIME_TOPIC_SUFFIX);
       return mockStore;
     });
   }

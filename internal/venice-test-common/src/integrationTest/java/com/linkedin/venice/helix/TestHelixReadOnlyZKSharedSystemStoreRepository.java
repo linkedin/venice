@@ -73,8 +73,7 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
-    s1.addVersion(
-        new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId", s1.getRealTimeTopicName()));
+    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
     s1.setReadQuotaInCU(100);
     writeRepo.addStore(s1);
   }

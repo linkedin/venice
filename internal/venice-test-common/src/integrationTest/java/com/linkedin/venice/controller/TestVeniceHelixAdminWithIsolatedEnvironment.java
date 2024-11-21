@@ -112,13 +112,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Thread.sleep(1000l);
     // New leader controller create resource and trigger state transition on participant.
     newLeader.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    String realTimeTopicName;
-    try {
-      realTimeTopicName = veniceAdmin.getRealTimeTopic(clusterName, storeName);
-    } catch (VeniceException e) {
-      realTimeTopicName = "";
-    }
-    Version newVersion = new VersionImpl(storeName, 2, realTimeTopicName);
+    Version newVersion = new VersionImpl(storeName, 2);
     Assert.assertEquals(
         newLeader.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
         ExecutionStatus.STARTED,

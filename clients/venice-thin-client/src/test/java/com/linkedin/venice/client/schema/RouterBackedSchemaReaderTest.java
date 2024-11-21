@@ -494,6 +494,8 @@ public class RouterBackedSchemaReaderTest {
       throws IOException, ExecutionException, InterruptedException {
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    Version version = new VersionImpl(storeName, 1, "test-job-id");
+    version.setPartitionCount(partitionCount);
 
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
         1000,
@@ -517,8 +519,6 @@ public class RouterBackedSchemaReaderTest {
         partitionerConfig,
         3);
     store.setPartitionCount(partitionCount);
-    Version version = new VersionImpl(storeName, 1, "test-job-id", store.getRealTimeTopicName());
-    version.setPartitionCount(partitionCount);
     store.setVersions(Collections.singletonList(version));
     store.setWriteComputationEnabled(updateEnabled);
 

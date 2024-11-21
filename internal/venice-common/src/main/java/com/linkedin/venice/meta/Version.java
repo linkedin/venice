@@ -174,6 +174,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
 
+  boolean isHybrid();
+
   HybridStoreConfig getHybridStoreConfig();
 
   void setHybridStoreConfig(HybridStoreConfig hybridConfig);
@@ -227,10 +229,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   @JsonIgnore
   void setRmdVersionId(int replicationMetadataVersionId);
-
-  String getRealTimeTopicName();
-
-  void setRealTimeTopicName(String realTimeTopicName);
 
   /**
    * Kafka topic name is composed by store name and version.

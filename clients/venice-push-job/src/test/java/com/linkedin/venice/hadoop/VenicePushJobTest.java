@@ -222,7 +222,7 @@ public class VenicePushJobTest {
   @Test
   public void testPushJobSettingWithD2Routing() {
     ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH, storeInfo.getRealTimeTopicName());
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
       storeInfo.setVersions(Collections.singletonList(version));
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
@@ -247,7 +247,7 @@ public class VenicePushJobTest {
     Properties vpjProps = new Properties();
     vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
     ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH, storeInfo.getRealTimeTopicName());
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
       storeInfo.setVersions(Collections.singletonList(version));
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
@@ -452,7 +452,7 @@ public class VenicePushJobTest {
     if (applyFirst) {
       info.accept(storeInfo);
     }
-    Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH, storeInfo.getRealTimeTopicName());
+    Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
     version.setHybridStoreConfig(storeInfo.getHybridStoreConfig());
     storeInfo.setVersions(Collections.singletonList(version));
     if (!applyFirst) {

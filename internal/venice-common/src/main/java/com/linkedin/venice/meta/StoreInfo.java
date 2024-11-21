@@ -326,7 +326,6 @@ public class StoreInfo {
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;
-  private String realTimeTopicName;
 
   public StoreInfo() {
   }
@@ -831,13 +830,5 @@ public class StoreInfo {
 
   public void setNearlineProducerCountPerWriter(int nearlineProducerCountPerWriter) {
     this.nearlineProducerCountPerWriter = nearlineProducerCountPerWriter;
-  }
-
-  public String getRealTimeTopicName() {
-    return realTimeTopicName;
-  }
-
-  public void setRealTimeTopicName(String realTimeTopicName) {
-    this.realTimeTopicName = realTimeTopicName;
   }
 }

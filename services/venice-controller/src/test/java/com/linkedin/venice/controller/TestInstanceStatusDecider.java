@@ -292,7 +292,7 @@ public class TestInstanceStatusDecider {
       boolean isCurrentVersion,
       int replicationFactor) {
     Store store = TestUtils.createTestStore(storeName, "t", 0);
-    Version version1 = new VersionImpl(storeName, version, store.getRealTimeTopicName());
+    Version version1 = new VersionImpl(storeName, version);
     version1.setReplicationFactor(replicationFactor);
     store.addVersion(version1);
 

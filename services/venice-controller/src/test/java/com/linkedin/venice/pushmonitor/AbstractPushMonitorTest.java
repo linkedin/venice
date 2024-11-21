@@ -1085,7 +1085,7 @@ public abstract class AbstractPushMonitorTest {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    Version version = new VersionImpl(storeName, versionNumber, store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, versionNumber);
     version.setStatus(status);
     store.addVersion(version);
     doReturn(store).when(mockStoreRepo).getStore(storeName);

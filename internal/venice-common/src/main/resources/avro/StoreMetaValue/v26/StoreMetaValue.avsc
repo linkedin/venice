@@ -51,7 +51,8 @@
                       "type": "int",
                       "doc": "Policy that will be used during buffer replay. rewindTimeInSeconds defines the delta. 0 => REWIND_FROM_EOP (replay from 'EOP - rewindTimeInSeconds'), 1 => REWIND_FROM_SOP (replay from 'SOP - rewindTimeInSeconds')",
                       "default": 0
-                    }
+                    },
+                    {"name": "realTimeTopicName", "type": "string", "default": "", "doc": "Name of the real time topic this store/version uses"}
                   ]
                 }
               ],
@@ -243,8 +244,7 @@
                       },
                       "default": {}
                     },
-                    {"name": "repushSourceVersion", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the source store version its created from."},
-                    {"name": "realTimeTopicName", "type": "string", "default": "", "doc": "Name of the real time topic this version uses"}
+                    {"name": "repushSourceVersion", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the source store version its created from."}
                   ]
                 }
               },
@@ -272,8 +272,7 @@
             {"name": "storageNodeReadQuotaEnabled", "type": "boolean", "default": false, "doc": "Controls the storage node read quota enforcement for the given Venice store"},
             {"name": "blobTransferEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate if the blob transfer is allowed or not"},
             {"name": "nearlineProducerCompressionEnabled", "type":  "boolean", "default": true, "doc":  "Flag to control whether the producer in Server for near-line workload will enable compression or not"},
-            {"name": "nearlineProducerCountPerWriter", "type": "int", "default":  1, "doc":  "How many producers will be used for the nearline producer in Server to improve producing throughput"},
-            {"name": "realTimeTopicName", "type": "string", "default": "", "doc": "Name of the real time topic this version uses"}
+            {"name": "nearlineProducerCountPerWriter", "type": "int", "default":  1, "doc":  "How many producers will be used for the nearline producer in Server to improve producing throughput"}
           ]
         }
       ],

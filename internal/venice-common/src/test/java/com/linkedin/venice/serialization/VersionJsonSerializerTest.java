@@ -20,7 +20,7 @@ public class VersionJsonSerializerTest {
   @Test
   public void testSerializeAndDeserializeVersion() throws IOException {
     VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
-    Version version = new VersionImpl("test", 1, "test-push-job-id", "test" + Version.REAL_TIME_TOPIC_SUFFIX);
+    Version version = new VersionImpl("test", 1, "test-push-job-id");
     // Set all the record type fields to make sure we can serialize and deserialize them properly.
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(100, 1, 10, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);

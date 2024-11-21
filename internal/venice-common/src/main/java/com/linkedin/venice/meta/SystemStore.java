@@ -700,16 +700,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public String getRealTimeTopicName() {
-    return zkSharedStore.getRealTimeTopicName();
-  }
-
-  @Override
-  public void setRealTimeTopicName(String realTimeTopicName) {
-    throwUnsupportedOperationException("setRealTimeTopicName");
-  }
-
-  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }

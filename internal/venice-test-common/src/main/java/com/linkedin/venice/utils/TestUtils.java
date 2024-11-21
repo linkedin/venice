@@ -699,7 +699,7 @@ public class TestUtils {
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
 
-    Version version = new VersionImpl(storeName, 1, "1", partitionCount, mockStore.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, "1", partitionCount);
 
     version.setPartitionerConfig(partitionerConfig);
     doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();

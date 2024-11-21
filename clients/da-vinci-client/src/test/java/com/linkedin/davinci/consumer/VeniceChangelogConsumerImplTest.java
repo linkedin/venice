@@ -134,7 +134,7 @@ public class VeniceChangelogConsumerImplTest {
 
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(storeName, 1, "foo", store.getRealTimeTopicName());
+    Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
@@ -217,7 +217,7 @@ public class VeniceChangelogConsumerImplTest {
 
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(storeName, 1, "foo", store.getRealTimeTopicName());
+    Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
@@ -292,7 +292,7 @@ public class VeniceChangelogConsumerImplTest {
 
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(storeName, 1, "foo", store.getRealTimeTopicName());
+    Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
@@ -371,7 +371,7 @@ public class VeniceChangelogConsumerImplTest {
 
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(storeName, 1, "foo", store.getRealTimeTopicName());
+    Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);

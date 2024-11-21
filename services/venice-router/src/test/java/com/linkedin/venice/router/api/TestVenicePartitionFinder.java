@@ -43,7 +43,7 @@ public class TestVenicePartitionFinder {
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     for (int i = 1; i <= NUM_VERSIONS; i++) {
-      store.addVersion(new VersionImpl(storeName, i, String.valueOf(i), NUM_PARTITIONS, store.getRealTimeTopicName()));
+      store.addVersion(new VersionImpl(storeName, i, String.valueOf(i), NUM_PARTITIONS));
     }
     VenicePartitioner partitioner = new DefaultVenicePartitioner();
     doReturn(store).when(mockMetadataRepo).getStore(storeName);

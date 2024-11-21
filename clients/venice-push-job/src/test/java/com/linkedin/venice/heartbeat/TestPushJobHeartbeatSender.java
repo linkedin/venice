@@ -32,9 +32,10 @@ public class TestPushJobHeartbeatSender {
     // Prepare controller client.
     ControllerClient controllerClient = mock(ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
+    StoreInfo storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    doReturn(Utils.composeRealTimeTopic(heartbeatStoreName)).when(storeInfo).getRealTimeTopicName();
+    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
+        .thenReturn(Utils.composeRealTimeTopic(heartbeatStoreName));
     doReturn(1).when(storeInfo).getPartitionCount();
     doReturn(partitionerConfig).when(storeInfo).getPartitionerConfig();
     doReturn(storeInfo).when(storeResponse).getStore();

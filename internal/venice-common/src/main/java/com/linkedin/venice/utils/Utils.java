@@ -13,6 +13,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -539,16 +540,85 @@ public class Utils {
     return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
+  /**
+   * It follows the following order to search for real time topic name,
+   * i) store config, ii) current store-version config, iii) other store-config versions, iv) default name
+   */
   public static String getRealTimeTopicName(Store store) {
-    return getRealTimeTopicNameIfEmpty(store.getRealTimeTopicName(), store.getName());
+    return getRealTimeTopicName(
+        store.getName(),
+        store.getVersions(),
+        store.getCurrentVersion(),
+        store.getHybridStoreConfig());
   }
 
   public static String getRealTimeTopicName(StoreInfo storeInfo) {
-    return getRealTimeTopicNameIfEmpty(storeInfo.getRealTimeTopicName(), storeInfo.getName());
+    return getRealTimeTopicName(
+        storeInfo.getName(),
+        storeInfo.getVersions(),
+        storeInfo.getCurrentVersion(),
+        storeInfo.getHybridStoreConfig());
+  }
+
+  public static String getRealTimeTopicName(
+      String storeName,
+      List<Version> versions,
+      int currentVersionNumber,
+      HybridStoreConfig hybridStoreConfig) {
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    }
+
+    if (currentVersionNumber < 1) {
+      return composeRealTimeTopic(storeName);
+    }
+
+    Optional<Version> currentVersion =
+        versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
+    if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
+      String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
+      if (Strings.isNotBlank(realTimeTopicName)) {
+        return realTimeTopicName;
+      }
+    }
+
+    Set<String> realTimeTopicNames = new HashSet<>();
+
+    for (Version version: versions) {
+      try {
+        if (version.isHybrid()) {
+          String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
+          if (Strings.isNotBlank(realTimeTopicName)) {
+            realTimeTopicNames.add(realTimeTopicName);
+          }
+        }
+      } catch (VeniceException e) {
+        // just try another version
+      }
+    }
+
+    if (realTimeTopicNames.size() > 1) {
+      LOGGER.warn(
+          "Store " + storeName + " and current version are not hybrid, yet " + realTimeTopicNames.size()
+              + " older versions are using real time topics. Will return one of them.");
+    }
+
+    if (!realTimeTopicNames.isEmpty()) {
+      return realTimeTopicNames.iterator().next();
+    }
+
+    return composeRealTimeTopic(storeName);
   }
 
   public static String getRealTimeTopicName(Version version) {
-    return getRealTimeTopicNameIfEmpty(version.getRealTimeTopicName(), version.getStoreName());
+    HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName());
+    } else {
+      throw new VeniceException("Version is not hybrid, so cannot return real time topic name.");
+    }
   }
 
   private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {

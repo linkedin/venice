@@ -74,8 +74,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
-    s1.addVersion(
-        new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId", s1.getRealTimeTopicName()));
+    s1.addVersion(new VersionImpl(s1.getName(), s1.getLargestUsedVersionNumber() + 1, "pushJobId"));
     s1.setReadQuotaInCU(100);
     s1.setBatchGetLimit(100);
     s1.setReadComputationEnabled(true);
@@ -158,8 +157,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
 
     // Test to update a system store
     Store systemStore = writeRepoAdapter.getStore(systemStoreType.getSystemStoreName(anotherRegularStoreName));
-    systemStore
-        .addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1", systemStore.getRealTimeTopicName()));
+    systemStore.addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1"));
     writeRepoAdapter.updateStore(systemStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       Map<String, SystemStoreAttributes> systemStores =

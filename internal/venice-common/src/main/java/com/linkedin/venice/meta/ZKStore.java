@@ -925,16 +925,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.nearlineProducerCountPerWriter = producerCnt;
   }
 
-  @Override
-  public String getRealTimeTopicName() {
-    return this.storeProperties.realTimeTopicName.toString();
-  }
-
-  @Override
-  public void setRealTimeTopicName(String realTimeTopicName) {
-    this.storeProperties.realTimeTopicName = realTimeTopicName;
-  }
-
   /**
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */

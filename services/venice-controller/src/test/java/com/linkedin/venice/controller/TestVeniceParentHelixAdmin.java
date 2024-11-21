@@ -249,7 +249,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot add version to store " + storeName + " because it's missing.");
       }
-      Version version = new VersionImpl(storeName, 1, "test-id", systemStores.get(storeName).getRealTimeTopicName());
+      Version version = new VersionImpl(storeName, 1, "test-id");
       version.setReplicationFactor(replicationFactor);
       List<Version> versions = new ArrayList<>();
       versions.add(version);
@@ -734,8 +734,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testIdempotentIncrementVersionWhenNoPreviousTopics() {
     String pushJobId = Utils.getUniqueString("push_job_id");
-    doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId, storeName + Version.REAL_TIME_TOPIC_SUFFIX)))
-        .when(internalAdmin)
+    doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
             storeName,
@@ -846,7 +845,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         1);
     String pushJobId = "test_push_id";
     String pushJobId2 = "test_push_id2";
-    store.addVersion(new VersionImpl(storeName, 1, pushJobId, store.getRealTimeTopicName()));
+    store.addVersion(new VersionImpl(storeName, 1, pushJobId));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, store.getVersion(1))).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
@@ -880,7 +879,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             ReadStrategy.ANY_OF_ONLINE,
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
             1));
-    Version version = new VersionImpl(storeName, 1, pushJobId, store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(version).when(store).getVersion(1);
@@ -952,12 +951,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-    Version version = new VersionImpl(storeName, 1, pushJobId + "_different", store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, pushJobId + "_different");
     store.addVersion(version);
     doReturn(true).when(internalAdmin).isTopicTruncated(previousPubSubTopic.getName());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId, Utils.getRealTimeTopicName(store))))
-        .when(internalAdmin)
+    doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
             storeName,
@@ -1044,7 +1042,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-    Version version = new VersionImpl(storeName, 1, Version.guidBasedDummyPushId(), store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, Version.guidBasedDummyPushId());
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, version)).when(internalAdmin)
@@ -1075,7 +1073,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-    Version version = new VersionImpl(storeName, 1, pushJobId, store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(false, version)).when(internalAdmin)
@@ -1148,8 +1146,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
 
-    Version version =
-        new VersionImpl(storeName, 1, Version.generateRePushId("test_push_id"), store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, Version.generateRePushId("test_push_id"));
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
@@ -1189,7 +1186,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1);
 
-    Version version2 = new VersionImpl(storeName, 2, incomingPushId, Utils.getRealTimeTopicName(store));
+    Version version2 = new VersionImpl(storeName, 2, incomingPushId);
     doReturn(new Pair(true, version2)).when(mockInternalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -1252,8 +1249,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
 
-    Version version =
-        new VersionImpl(storeName, 1, Version.generateRePushId("test_push_id"), store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, Version.generateRePushId("test_push_id"));
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
@@ -1293,7 +1289,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1);
 
-    Version version2 = new VersionImpl(storeName, 2, incomingPushId, Utils.getRealTimeTopicName(store));
+    Version version2 = new VersionImpl(storeName, 2, incomingPushId);
     doReturn(new Pair(true, version2)).when(mockInternalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -1360,8 +1356,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
 
-    Version version =
-        new VersionImpl(storeName, 1, Version.generateRePushId("test_push_id"), store.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, Version.generateRePushId("test_push_id"));
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
@@ -1438,8 +1433,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    testStore.addVersion(new VersionImpl(storeName, 1, testStore.getRealTimeTopicName()));
-    testStore.addVersion(new VersionImpl(storeName, 2, testStore.getRealTimeTopicName()));
+    testStore.addVersion(new VersionImpl(storeName, 1));
+    testStore.addVersion(new VersionImpl(storeName, 2));
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
@@ -1461,7 +1456,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     for (int i = 1; i <= 10; ++i) {
-      testStore.addVersion(new VersionImpl(storeName, i, testStore.getRealTimeTopicName()));
+      testStore.addVersion(new VersionImpl(storeName, i));
     }
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
@@ -2274,7 +2269,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
 
-    store.addVersion(new VersionImpl(storeName, 1, "test_push_id", store.getRealTimeTopicName()));
+    store.addVersion(new VersionImpl(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
     StoreResponse response = mock(StoreResponse.class);
     StoreInfo info = mock(StoreInfo.class);
@@ -2453,10 +2448,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       String storeName = "test_store";
       String existingTopicName = storeName + "_v1";
       Store store = mock(Store.class);
-      Version version = new VersionImpl(storeName, 1, "test-push", store.getRealTimeTopicName());
+      Version version = new VersionImpl(storeName, 1, "test-push");
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
       String newPushJobId = "new-test-push";
-      Version newVersion = new VersionImpl(storeName, 2, newPushJobId, Utils.getRealTimeTopicName(store));
+      Version newVersion = new VersionImpl(storeName, 2, newPushJobId);
 
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(-1).when(store).getRmdVersion();
@@ -2559,8 +2554,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAdminMessageIsolation() {
     String storeA = "test_store_A";
     String storeB = "test_store_B";
-    Version storeAVersion = new VersionImpl(storeA, 1, "", storeA + Version.REAL_TIME_TOPIC_SUFFIX);
-    Version storeBVersion = new VersionImpl(storeB, 1, "", storeA + Version.REAL_TIME_TOPIC_SUFFIX);
+    Version storeAVersion = new VersionImpl(storeA, 1, "");
+    Version storeBVersion = new VersionImpl(storeB, 1, "");
 
     doReturn(new Pair<>(true, storeAVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
@@ -2752,7 +2747,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(status).when(internalAdmin).retrievePushStatus(anyString(), any());
 
     Store s = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
-    s.addVersion(new VersionImpl(s.getName(), 1, "pushJobId", s.getRealTimeTopicName()));
+    s.addVersion(new VersionImpl(s.getName(), 1, "pushJobId"));
     s.setCurrentVersion(1);
     when(internalAdmin.getRegionPushDetails(anyString(), anyString(), anyBoolean())).thenCallRealMethod();
     doReturn(s).when(internalAdmin).getStore(anyString(), anyString());

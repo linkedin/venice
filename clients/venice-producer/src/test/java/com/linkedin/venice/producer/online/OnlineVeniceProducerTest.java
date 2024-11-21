@@ -874,7 +874,7 @@ public class OnlineVeniceProducerTest {
 
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    Version version = new VersionImpl(storeName, 1, "test-job-id", storeName + Version.REAL_TIME_TOPIC_SUFFIX);
+    Version version = new VersionImpl(storeName, 1, "test-job-id");
     version.setPartitionCount(partitionCount);
 
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(

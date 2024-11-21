@@ -147,7 +147,7 @@ public class TestAdminTool {
   private StoreInfo createStore(String storeName, boolean hasOnlineVersion) {
     StoreInfo storeInfo = new StoreInfo();
     if (hasOnlineVersion) {
-      Version version = new VersionImpl(storeName, 1, "pushJobId", storeInfo.getRealTimeTopicName());
+      Version version = new VersionImpl(storeName, 1, "pushJobId");
       version.setStatus(VersionStatus.ONLINE);
       storeInfo.setVersions(Collections.singletonList(version));
     } else {

@@ -2,8 +2,7 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -118,12 +117,13 @@ public class TestAdminToolConsumption {
     when(schemaResponse.getSchemaStr()).thenReturn(SCHEMA_STRING);
     when(controllerClient.getKeySchema(STORE_NAME)).thenReturn(schemaResponse);
     StoreResponse storeResponse = mock(StoreResponse.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
+    StoreInfo storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
     when(storeInfo.getPartitionCount()).thenReturn(2);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
-    when(storeInfo.getRealTimeTopicName()).thenReturn(STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX);
-    String topic = storeInfo.getRealTimeTopicName();
+    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
+        .thenReturn(STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX);
+    String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;
     long startOffset = 0;

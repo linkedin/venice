@@ -241,7 +241,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setHybridStoreConfig(hybridStoreConfig);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID, store.getRealTimeTopicName());
+    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     mockVersion.setHybridStoreConfig(hybridStoreConfig);
     store.setVersions(Collections.singletonList(mockVersion));
 

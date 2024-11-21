@@ -156,7 +156,7 @@ public class CreateVersionTest {
     store.setIncrementalPushEnabled(true);
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
-    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID, store.getRealTimeTopicName());
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
     version.setSeparateRealTimeTopicEnabled(isSeparateTopicEnabled);
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
@@ -215,7 +215,7 @@ public class CreateVersionTest {
     store.setIncrementalPushEnabled(true);
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
-    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID, store.getRealTimeTopicName());
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
             CLUSTER_NAME,
@@ -257,7 +257,7 @@ public class CreateVersionTest {
     Store store = getHybridTestStore();
     store.setIncrementalPushEnabled(true);
     store.setActiveActiveReplicationEnabled(true);
-    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID, store.getRealTimeTopicName());
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
     Optional<String> emergencySrcRegion = Optional.of("dc-1");
 
     doReturn("dc-0").when(admin).getRegionName();

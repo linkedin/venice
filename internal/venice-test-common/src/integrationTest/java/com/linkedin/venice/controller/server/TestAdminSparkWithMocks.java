@@ -228,7 +228,7 @@ public class TestAdminSparkWithMocks {
       optionalemergencySourceRegion = Optional.of(emergencySourceRegion);
     }
 
-    Version version = new VersionImpl(storeName, 1, pushJobId1, mockStore.getRealTimeTopicName());
+    Version version = new VersionImpl(storeName, 1, pushJobId1);
 
     // build request
     List<NameValuePair> params = new ArrayList<>();

@@ -276,7 +276,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
 
   private Store getStoreWithCurrentVersion() {
     Store store = TestUtils.getRandomStore();
-    store.addVersion(new VersionImpl(store.getName(), 1, "", 3, store.getRealTimeTopicName()));
+    store.addVersion(new VersionImpl(store.getName(), 1, "", 3));
     store.setCurrentVersion(1);
     return store;
   }

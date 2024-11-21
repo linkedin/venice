@@ -54,22 +54,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.longThat;
-import static org.mockito.Mockito.after;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.atMost;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -502,8 +487,9 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter = getVeniceWriter(new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
 
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    storeInfo = mock(StoreInfo.class);
-    doReturn(storeNameWithoutVersionInfo + Version.REAL_TIME_TOPIC_SUFFIX).when(storeInfo).getRealTimeTopicName();
+    storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
+    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
+        .thenReturn(storeNameWithoutVersionInfo + Version.REAL_TIME_TOPIC_SUFFIX);
 
     mockLogNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
@@ -929,9 +915,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig storeConfig = getDefaultMockVeniceStoreVersionConfig(storeVersionConfigOverride);
 
     Store mockStore = mock(Store.class);
-    doReturn(storeNameWithoutVersionInfo + Version.REAL_TIME_TOPIC_SUFFIX).when(mockStore).getRealTimeTopicName();
-    Version version =
-        new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitionCount, mockStore.getRealTimeTopicName());
+    Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitionCount);
 
     doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
 
@@ -1628,19 +1612,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
-<<<<<<< HEAD
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-=======
-    runTest(Utils.setOf(PARTITION_FOO), () -> {
-      Store mockStore = mock(Store.class);
-      String storeName = "storeName";
-      doReturn(storeName + Version.REAL_TIME_TOPIC_SUFFIX).when(mockStore).getRealTimeTopicName();
-      doReturn(true).when(mockStore).isHybrid();
-      doReturn(new VersionImpl("storeName", 1, mockStore.getRealTimeTopicName())).when(mockStore).getVersion(1);
-      doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
-      doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
-    }, () -> {
->>>>>>> 9c3931336 (add rt topic name in store config)
       ArgumentCaptor<StoragePartitionConfig> storagePartitionConfigArgumentCaptor =
           ArgumentCaptor.forClass(StoragePartitionConfig.class);
       TestUtils.waitForNonDeterministicAssertion(
@@ -2125,20 +2097,7 @@ public abstract class StoreIngestionTaskTest {
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
 
-<<<<<<< HEAD
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-=======
-    runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {
-      Store mockStore = mock(Store.class);
-      doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
-      doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1), mockStore.getRealTimeTopicName()))
-          .when(mockStore)
-          .getVersion(1);
-      doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
-      doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
-    }, () -> {
->>>>>>> 9c3931336 (add rt topic name in store config)
       verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset, "STANDBY");
       verify(aggKafkaConsumerService, timeout(LONG_TEST_TIMEOUT))
           .batchUnsubscribeConsumerFor(pubSubTopic, Collections.singleton(fooTopicPartition));
@@ -2172,13 +2131,8 @@ public abstract class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(
-          new VersionImpl(
-              storeNameWithoutVersionInfo,
-              1,
-              Version.numberBasedDummyPushId(1),
-              Utils.getRealTimeTopicName(mockStore)),
-          mockStore.getRealTimeTopicName()).when(mockStore).getVersion(1);
+      doReturn(new VersionImpl(storeNameWithoutVersionInfo, 1, Version.numberBasedDummyPushId(1))).when(mockStore)
+          .getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     });
@@ -2759,37 +2713,14 @@ public abstract class StoreIngestionTaskTest {
         aaConfig);
     config.setBeforeStartingConsumption(() -> {
       Store mockStore = mock(Store.class);
-      String storeName = "storeName";
-      doReturn(storeName + Version.REAL_TIME_TOPIC_SUFFIX).when(mockStore).getRealTimeTopicName();
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(true).when(mockStore).isReadComputationEnabled();
       doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
-<<<<<<< HEAD
       doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
     }).setExtraServerProperties(Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1));
     runTest(config);
-=======
-      doReturn(new VersionImpl(storeName, 1, mockStore.getRealTimeTopicName())).when(mockStore).getVersion(1);
-    }, () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-      // since notifier reporting happens before offset update, it actually reports previous offsets
-      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-      // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for
-      // batch push job.
-      verify(mockLogNotifier).completed(
-          eq(topic),
-          eq(PARTITION_FOO),
-          longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
-          eq("STANDBY"));
-    }),
-        Optional.empty(),
-        false,
-        Optional.empty(),
-        aaConfig,
-        Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1));
->>>>>>> 9c3931336 (add rt topic name in store config)
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4086,27 +4017,15 @@ public abstract class StoreIngestionTaskTest {
           verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum))
               .put(eq(PARTITION_BAR), any(), (ByteBuffer) any());
 
-<<<<<<< HEAD
           vtWriter.broadcastEndOfPush(new HashMap<>());
           vtWriter.broadcastTopicSwitch(
               kafkaBootstrapServers,
-              Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
+              Utils.composeRealTimeTopic(storeNameWithoutVersionInfo),
               System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
               new HashMap<>());
           storeIngestionTaskUnderTest.promoteToLeader(
               fooTopicPartition,
               new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
-=======
-      vtWriter.broadcastEndOfPush(new HashMap<>());
-      vtWriter.broadcastTopicSwitch(
-          kafkaBootstrapServers,
-          realTimeTopicName,
-          System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
-          new HashMap<>());
-      storeIngestionTaskUnderTest.promoteToLeader(
-          fooTopicPartition,
-          new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
->>>>>>> 9c3931336 (add rt topic name in store config)
 
           // Both Colo RT ingestion, avoid DCR collision intentionally. Each rt will be produced batchMessagesNum
           // messages.

@@ -181,13 +181,13 @@ public class TestHybridQuota {
 
       Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
       store.setPartitionCount(3);
-      Version version = new VersionImpl(storeName, 1, "pushId", store.getRealTimeTopicName());
+      Version version = new VersionImpl(storeName, 1, "pushId");
       version.setPartitionCount(3);
       store.addVersion(version);
-      version = new VersionImpl(storeName, 2, "pushId", store.getRealTimeTopicName());
+      version = new VersionImpl(storeName, 2, "pushId");
       version.setPartitionCount(3);
       store.addVersion(version);
-      version = new VersionImpl(storeName, 3, "pushId", store.getRealTimeTopicName());
+      version = new VersionImpl(storeName, 3, "pushId");
       version.setPartitionCount(3);
       store.addVersion(version);
       writeStoreRepository.addStore(store);

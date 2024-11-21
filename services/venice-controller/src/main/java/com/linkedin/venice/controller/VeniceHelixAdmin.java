@@ -2229,8 +2229,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    Version version =
-        new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions, Utils.getRealTimeTopicName(store));
+    Version version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
     if (versionNumber < store.getLargestUsedVersionNumber() || store.containsVersion(versionNumber)) {
       LOGGER.info(
           "Ignoring the add version message since version {} is less than the largestUsedVersionNumber of {} for "
@@ -2692,22 +2691,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
               // controller or local Samza jobs.
-              version = new VersionImpl(
-                  storeName,
-                  store.peekNextVersion().getNumber(),
-                  pushJobId,
-                  numberOfPartitions,
-                  Utils.getRealTimeTopicName(store));
+              version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
             } else {
               if (store.containsVersion(versionNumber)) {
                 throwVersionAlreadyExists(storeName, versionNumber);
               }
-              version = new VersionImpl(
-                  storeName,
-                  versionNumber,
-                  pushJobId,
-                  numberOfPartitions,
-                  store.getRealTimeTopicName());
+              version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
 
             topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
