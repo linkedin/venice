@@ -5179,6 +5179,7 @@ public abstract class StoreIngestionTaskTest {
     Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     doCallRealMethod().when(storeIngestionTask).resolveTopicPartitionWithKafkaURL(any(), any(), anyString());
+    doCallRealMethod().when(storeIngestionTask).resolveTopicWithKafkaURL(any(), anyString());
     doReturn(pubSubTopicRepository).when(storeIngestionTask).getPubSubTopicRepository();
     doReturn(resolver).when(storeIngestionTask).getKafkaClusterUrlResolver();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
