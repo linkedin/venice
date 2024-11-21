@@ -4494,16 +4494,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic topic,
       PartitionConsumptionState partitionConsumptionState,
       String kafkaURL) {
-    PubSubTopicPartition pubSubTopicPartition = partitionConsumptionState.getSourceTopicPartition(topic);
-    if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
-        && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
-      PubSubTopic separateRealTimeTopic =
-          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
-      pubSubTopicPartition =
-          new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionConsumptionState.getPartition());
-    }
+    PubSubTopic resolvedTopic = resolveTopicWithKafkaURL(topic, kafkaURL);
+    PubSubTopicPartition pubSubTopicPartition = partitionConsumptionState.getSourceTopicPartition(resolvedTopic);
     LOGGER.info("Resolved topic-partition: {} from kafkaURL: {}", pubSubTopicPartition, kafkaURL);
     return pubSubTopicPartition;
+  }
+
+  PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
+    if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
+        && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
+      return getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
+    }
+    return topic;
   }
 
   PubSubTopicRepository getPubSubTopicRepository() {

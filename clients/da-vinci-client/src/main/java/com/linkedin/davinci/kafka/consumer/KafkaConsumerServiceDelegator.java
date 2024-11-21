@@ -343,15 +343,19 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime() && !pubSubTopic.isSeparateRealTimeTopic()) {
+          LOGGER.info("DEBUGGING CURRENT LEADER {}", pubSubTopicPartition);
           return consumerServiceForCurrentVersionAAWCLeader;
         } else {
+          LOGGER.info("DEBUGGING CURRENT NON_LEADER {}", pubSubTopicPartition);
           return consumerServiceForCurrentVersionNonAAWCLeader;
         }
       } else {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime() && !pubSubTopic.isSeparateRealTimeTopic()) {
+          LOGGER.info("DEBUGGING NON_CURRENT LEADER {}", pubSubTopicPartition);
           return consumerServiceForNonCurrentVersionAAWCLeader;
         } else {
+          LOGGER.info("DEBUGGING NON_CURRENT NON_LEADER {}", pubSubTopicPartition);
           return consumerServiceNonCurrentNonAAWCLeader;
         }
       }

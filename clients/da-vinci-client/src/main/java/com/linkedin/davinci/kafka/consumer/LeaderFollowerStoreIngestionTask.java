@@ -3571,7 +3571,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     latestLeaderOffset =
         getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL);
     PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    long lastOffsetInRealTimeTopic = getTopicPartitionEndOffSet(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
+    long lastOffsetInRealTimeTopic = getTopicPartitionEndOffSet(
+        sourceRealTimeTopicKafkaURL,
+        resolveTopicWithKafkaURL(leaderTopic, sourceRealTimeTopicKafkaURL),
+        partition);
 
     if (lastOffsetInRealTimeTopic < 0) {
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Got a negative lastOffsetInRealTimeTopic")) {

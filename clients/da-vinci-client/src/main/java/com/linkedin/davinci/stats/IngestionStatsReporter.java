@@ -346,7 +346,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
           .getKafkaClusterIdToAliasMap()
           .int2ObjectEntrySet()) {
         // We will only register sensor for SIT with separate RT topic enabled to avoid unnecessary metrics.
-        if (getStats().getIngestionTask().isSeparatedRealtimeTopicEnabled()
+        if (!getStats().getIngestionTask().isSeparatedRealtimeTopicEnabled()
             && Utils.isSeparateTopicRegion(entry.getValue())) {
           continue;
         }

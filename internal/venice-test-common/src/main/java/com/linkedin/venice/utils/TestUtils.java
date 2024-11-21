@@ -875,12 +875,12 @@ public class TestUtils {
   public static List<String> searchForFileExtension(File directory, String fileExtension) {
     List<String> result = new ArrayList<>();
     if (!directory.canRead()) {
-      LOGGER.error("Cannot read directory: ", directory.getAbsolutePath());
+      LOGGER.error("Cannot read directory: {}", directory.getAbsolutePath());
       return result;
     }
     File[] files = directory.listFiles();
     if (files == null) {
-      LOGGER.error("Error reading directory ", directory.getAbsolutePath());
+      LOGGER.error("Error reading directory: {}", directory.getAbsolutePath());
       return result;
     }
     for (File file: files) {
