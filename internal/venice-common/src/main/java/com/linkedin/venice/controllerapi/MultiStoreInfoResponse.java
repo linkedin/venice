@@ -12,7 +12,7 @@ public class MultiStoreInfoResponse extends ControllerResponse {
     return storeInfoList;
   }
 
-  public void setStoreInfoList(ArrayList<StoreInfo> newList) {
+  public void setStoreInfoList(List<StoreInfo> newList) {
     if (storeInfoList == null)
       storeInfoList = new ArrayList<StoreInfo>();
     storeInfoList.clear();

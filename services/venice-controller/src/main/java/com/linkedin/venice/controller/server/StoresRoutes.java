@@ -947,7 +947,7 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, MultiStoreInfoResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_STORES_FOR_COMPACTION.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-        ArrayList<StoreInfo> response = admin.getStoresForCompaction(cluster);
+        List<StoreInfo> response = admin.getStoresForCompaction(cluster);
         veniceResponse.setStoreInfoList(response);
         veniceResponse.setCluster(cluster);
       }
