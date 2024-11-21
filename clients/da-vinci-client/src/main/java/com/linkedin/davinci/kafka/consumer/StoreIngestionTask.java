@@ -2031,7 +2031,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 offsetLag,
                 previousOffsetLag,
                 offsetLagThreshold);
-            if (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold) {
+            if (newPartitionConsumptionState.getReadyToServeInOffsetRecord()
+                && (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold)) {
               newPartitionConsumptionState.lagHasCaughtUp();
               reportCompleted(newPartitionConsumptionState, true);
               isCompletedReport = true;
@@ -4089,6 +4090,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             }
             unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
           }
+          partitionConsumptionState.recordReadyToServeInOffsetRecord();
         } else {
           ingestionNotificationDispatcher.reportProgress(partitionConsumptionState);
         }

@@ -333,4 +333,15 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   public void close() {
     helixAdmin.close();
   }
+
+  /**
+   * @see HelixAdminClient#manuallyEnableMaintenanceMode(String, boolean, String, Map<String, String>)
+   */
+  public void manuallyEnableMaintenanceMode(
+      String clusterName,
+      boolean enabled,
+      String reason,
+      Map<String, String> customFields) {
+    helixAdmin.manuallyEnableMaintenanceMode(clusterName, enabled, reason, customFields);
+  }
 }

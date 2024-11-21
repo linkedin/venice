@@ -100,6 +100,18 @@ public class TestWriteUtils {
   public static final Schema NAME_RECORD_V6_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV6.avsc"));
 
+  public static final Schema NAME_RECORD_V7_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV7.avsc"));
+  public static final Schema NAME_RECORD_V8_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV8.avsc"));
+  public static final Schema NAME_RECORD_V9_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV9.avsc"));
+  public static final Schema NAME_RECORD_V10_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV10.avsc"));
+
+  public static final Schema NAME_RECORD_V11_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV11.avsc"));
+
   public static final Schema UNION_RECORD_V1_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UnionV1.avsc"));
   public static final Schema UNION_RECORD_V2_SCHEMA =
