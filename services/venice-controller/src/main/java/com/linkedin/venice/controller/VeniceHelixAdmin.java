@@ -3643,7 +3643,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
           cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
-        if (store.isDaVinciPushStatusStoreEnabled()) {
+        if (store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
           ExecutorService executor = Executors.newSingleThreadExecutor();
           Future<?> future = executor.submit(
               () -> getPushStatusStoreWriter().deletePushStatus(
@@ -6276,7 +6276,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
     if (incrementalPushVersion.isPresent()
         && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
-        && store.isDaVinciPushStatusStoreEnabled()) {
+        && store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
       getPushStatusStoreWriter().removeFromSupposedlyOngoingIncrementalPushVersions(
           store.getName(),
           versionNumber,
@@ -8549,6 +8549,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public void sendHeartbeatToSystemStore(String clusterName, String storeName, long heartbeatTimeStamp) {
+    if (isParent()) {
+      return;
+    }
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     String userStoreName = systemStoreType.extractRegularStoreName(storeName);
     long currentTimestamp = System.currentTimeMillis();
