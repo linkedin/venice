@@ -41,7 +41,7 @@ public class InstanceStatusDecider {
       String resourceName) {
     PartitionAssignment assignment = partitionAssignment;
     for (String lockedNodeId: lockedNodes) {
-      assignment = getPartitionAssignmentAfterRemoving(lockedNodeId, assignment, resourceName, false);
+      assignment = getPartitionAssignmentAfterRemoving(lockedNodeId, assignment, resourceName, true);
     }
     return assignment;
   }
@@ -108,7 +108,7 @@ public class InstanceStatusDecider {
 
               // Get partition assignments that if we removed the given instance from cluster.
               PartitionAssignment partitionAssignmentAfterRemoving =
-                  getPartitionAssignmentAfterRemoving(instanceId, partitionAssignment, resourceName, true);
+                  getPartitionAssignmentAfterRemoving(instanceId, partitionAssignment, resourceName, false);
 
               partitionAssignmentAfterRemoving =
                   removeLockedResources(partitionAssignmentAfterRemoving, toBeStoppedNodes, resourceName);
@@ -225,14 +225,18 @@ public class InstanceStatusDecider {
       String instanceId,
       PartitionAssignment partitionAssignment,
       String resourceName,
-      boolean instanceView) {
+      boolean lockedInstance) {
     PartitionAssignment partitionAssignmentAfterRemoving =
         new PartitionAssignment(resourceName, partitionAssignment.getExpectedNumberOfPartitions());
     for (Partition partition: partitionAssignment.getAllPartitions()) {
-      if (instanceView) {
+      if (!lockedInstance) {
         /*
-         * If the instance does not hold any replica of this partition, skip it. We only care about the partitions that
-         * have been assigned to this instance.
+         * If an instance is locked, we need to assume that the instance will eventually be removed. So, we need to
+         * remove all partitions hosted by that instance.
+         *
+         * For instances that are not locked, we only need to ensure that the removal of those instances does not lead
+         * to unsafe conditions. Hence, if there are no replicas of a partition, skip it. We only care about the
+         * partitions that have been assigned to this instance.
          */
         if (partition.getHelixStateByInstanceId(instanceId) == null
             && partition.getExecutionStatusByInstanceId(instanceId) == null) {
