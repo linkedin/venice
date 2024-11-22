@@ -402,7 +402,7 @@ public class StorageService extends AbstractVeniceService {
           }
           String partitionDbName = storeName + "_" + partitionId;
           List<String> hostNames = listFields.get(partitionDbName);
-          if (hostNames != null || !listFields.get(partitionDbName).contains(instanceHostName)) {
+          if (hostNames == null || !hostNames.contains(instanceHostName)) {
             LOGGER.info(
                 "the following partition is not assigned to the current host {} and is being dropped from storage engine {}: {}",
                 instanceHostName,
