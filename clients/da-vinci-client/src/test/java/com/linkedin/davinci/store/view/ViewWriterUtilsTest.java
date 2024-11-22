@@ -49,7 +49,7 @@ public class ViewWriterUtilsTest {
     VeniceView veniceView = ViewUtils.getVeniceView(
         ChangeCaptureView.class.getCanonicalName(),
         mockVeniceConfigLoader.getCombinedProperties().toProperties(),
-        mockStore,
+        "test-store",
         Collections.EMPTY_MAP);
     VeniceViewWriter viewWriter = ViewWriterUtils.getVeniceViewWriter(
         ChangeCaptureView.class.getCanonicalName(),

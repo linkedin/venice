@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -31,14 +32,18 @@ import java.util.Properties;
 public abstract class VeniceView {
   public static final String VIEW_TOPIC_SEPARATOR = "_";
   protected final Properties props;
-  protected final Store store;
+  protected final String storeName;
   protected final Map<String, String> viewParameters;
 
-  public VeniceView(Properties props, Store store, Map<String, String> viewParameters) {
+  public VeniceView(Properties props, String storeName, Map<String, String> viewParameters) {
     this.props = props;
-    this.store = store;
+    this.storeName = storeName;
     this.viewParameters = viewParameters;
     this.props.putAll(viewParameters);
+  }
+
+  public VeniceWriterOptions.Builder getWriterOptionsBuilder(String viewTopicName, Version version) {
+    throw new VeniceException("Cannot get VeniceWriterOptions.Builder with VeniceView base class!");
   }
 
   /**
@@ -67,7 +72,7 @@ public abstract class VeniceView {
    * Validate that the configs set up for this view for this store are valid.  If not, throw an exception. Implementors
    * should override this function to add their own validation logic.
    */
-  public void validateConfigs() {
+  public void validateConfigs(Store store) {
     // validation based on view implementation
   }
 

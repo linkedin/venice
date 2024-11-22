@@ -2498,8 +2498,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
              */
           case END_OF_PUSH:
-            // CMs that may be produced with DIV pass-through mode can break DIV without synchronization with view
-            // writers
+            // CMs that are produced with DIV pass-through mode can break DIV without synchronization with view writers
             checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
             /**
              * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
@@ -2567,6 +2566,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+                // We also want to synchronize with view writers for heartbeat CMs, so we can detect hanging VWs
+                checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
                 propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                     partitionConsumptionState,
                     consumerRecord,
@@ -3353,7 +3354,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Write to views
     if (!viewWriters.isEmpty()) {
       long preprocessingTime = System.currentTimeMillis();
-      CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
+      CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
       CompletableFuture[] viewWriterFutures =
           processViewWriters(partitionConsumptionState, keyBytes, null, writeComputeResultWrapper);
       CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {

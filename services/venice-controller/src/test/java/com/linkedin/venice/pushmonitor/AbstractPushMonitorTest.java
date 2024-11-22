@@ -1115,8 +1115,11 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     Store store = prepareMockStore(topic, VersionStatus.STARTED, viewConfigMap);
-    VeniceView veniceView =
-        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
+    VeniceView veniceView = ViewUtils.getVeniceView(
+        viewConfig.getViewClassName(),
+        new Properties(),
+        store.getName(),
+        viewConfig.getViewParameters());
     assertTrue(veniceView instanceof MaterializedView);
     MaterializedView materializedView = (MaterializedView) veniceView;
     String viewTopicName =

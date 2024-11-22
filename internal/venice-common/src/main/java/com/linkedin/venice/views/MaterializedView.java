@@ -11,6 +11,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -25,8 +26,8 @@ public class MaterializedView extends VeniceView {
 
   private Lazy<VenicePartitioner> viewPartitioner;
 
-  public MaterializedView(Properties props, Store store, Map<String, String> viewParameters) {
-    super(props, store, viewParameters);
+  public MaterializedView(Properties props, String storeName, Map<String, String> viewParameters) {
+    super(props, storeName, viewParameters);
     // Override topic partition count config
     viewPartitionCount = Integer.parseInt(viewParameters.get(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()));
     this.props.put(PARTITION_COUNT, viewPartitionCount);
@@ -39,11 +40,21 @@ public class MaterializedView extends VeniceView {
   }
 
   @Override
+  public VeniceWriterOptions.Builder getWriterOptionsBuilder(String viewTopicName, Version version) {
+    VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(viewTopicName);
+    configBuilder.setPartitionCount(getViewPartitionCount())
+        .setPartitioner(getViewPartitioner())
+        .setChunkingEnabled(version.isChunkingEnabled())
+        .setRmdChunkingEnabled(version.isRmdChunkingEnabled());
+    return configBuilder;
+  }
+
+  @Override
   public Map<String, VeniceProperties> getTopicNamesAndConfigsForVersion(int version) {
     VeniceProperties properties = new VeniceProperties(props);
     String viewName = viewParameters.get(ViewParameters.MATERIALIZED_VIEW_NAME.name());
     return Collections.singletonMap(
-        Version.composeKafkaTopic(store.getName(), version) + VIEW_TOPIC_SEPARATOR + viewName
+        Version.composeKafkaTopic(storeName, version) + VIEW_TOPIC_SEPARATOR + viewName
             + MATERIALIZED_VIEW_TOPIC_SUFFIX,
         properties);
   }
@@ -55,7 +66,7 @@ public class MaterializedView extends VeniceView {
    * {@link ViewParameters#MATERIALIZED_VIEW_PARTITIONER_PARAMS} is optional.
    */
   @Override
-  public void validateConfigs() {
+  public void validateConfigs(Store store) {
     String viewName = viewParameters.get(ViewParameters.MATERIALIZED_VIEW_NAME.name());
     if (viewName == null) {
       throw new VeniceException(String.format(MISSING_PARAMETER_MESSAGE, ViewParameters.MATERIALIZED_VIEW_NAME.name()));

@@ -25,36 +25,39 @@ public class TestMaterializedView {
   public void testValidateConfigs() {
     Properties properties = new Properties();
     Map<String, String> viewParams = new HashMap<>();
+    String storeName = "test-store";
     Store testStore = getMockStore("test-store", 12);
     // Fail due to missing view name
-    assertThrows(() -> new MaterializedView(properties, testStore, viewParams).validateConfigs());
+    assertThrows(() -> new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore));
     viewParams.put(ViewParameters.MATERIALIZED_VIEW_NAME.name(), "test-view");
     // Fail due to missing partition count
-    assertThrows(() -> new MaterializedView(properties, testStore, viewParams).validateConfigs());
+    assertThrows(() -> new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore));
     viewParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "12");
     // Fail due to same partitioner and partition count
-    assertThrows(() -> new MaterializedView(properties, testStore, viewParams).validateConfigs());
+    assertThrows(() -> new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore));
     viewParams
         .put(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(), ConstantVenicePartitioner.class.getCanonicalName());
     // Pass, same partition count but different partitioner
-    new MaterializedView(properties, testStore, viewParams).validateConfigs();
+    new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore);
     viewParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "24");
     // Pass, same partitioner but different partition count
-    new MaterializedView(properties, testStore, viewParams).validateConfigs();
+    new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore);
     viewParams.put(
         ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(),
         ConstantVenicePartitioner.class.getCanonicalName() + "DNE");
     // Fail due to invalid partitioner class
-    assertThrows(() -> new MaterializedView(properties, testStore, viewParams).validateConfigs());
+    assertThrows(() -> new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore));
 
     viewParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "12");
     viewParams
         .put(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(), ConstantVenicePartitioner.class.getCanonicalName());
-    Store storeWithExistingViews = getMockStore("test-store-existing-config", 12);
+    String newStoreName = "test-store-existing-config";
+    Store storeWithExistingViews = getMockStore(newStoreName, 12);
     ViewConfig viewConfig = mock(ViewConfig.class);
     doReturn(Collections.singletonMap("test-view", viewConfig)).when(storeWithExistingViews).getViewConfigs();
     // Fail due to same view name
-    assertThrows(() -> new MaterializedView(properties, storeWithExistingViews, viewParams).validateConfigs());
+    assertThrows(
+        () -> new MaterializedView(properties, newStoreName, viewParams).validateConfigs(storeWithExistingViews));
     Map<String, String> existingViewConfigParams = new HashMap<>();
     existingViewConfigParams
         .put(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(), ConstantVenicePartitioner.class.getCanonicalName());
@@ -63,10 +66,11 @@ public class TestMaterializedView {
     doReturn(MaterializedView.class.getCanonicalName()).when(viewConfig).getViewClassName();
     doReturn(Collections.singletonMap("old-view", viewConfig)).when(storeWithExistingViews).getViewConfigs();
     // Fail due to existing identical view config
-    assertThrows(() -> new MaterializedView(properties, storeWithExistingViews, viewParams).validateConfigs());
+    assertThrows(
+        () -> new MaterializedView(properties, newStoreName, viewParams).validateConfigs(storeWithExistingViews));
     existingViewConfigParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(36));
     // Pass, same partitioner but different partition count
-    new MaterializedView(properties, testStore, viewParams).validateConfigs();
+    new MaterializedView(properties, storeName, viewParams).validateConfigs(testStore);
   }
 
   @Test
@@ -74,11 +78,10 @@ public class TestMaterializedView {
     String storeName = "test-store";
     Map<String, String> viewParams = new HashMap<>();
     int version = 8;
-    Store testStore = getMockStore(storeName, 6);
     String rePartitionViewName = "test-view";
     viewParams.put(ViewParameters.MATERIALIZED_VIEW_NAME.name(), rePartitionViewName);
     viewParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "24");
-    MaterializedView materializedView = new MaterializedView(new Properties(), testStore, viewParams);
+    MaterializedView materializedView = new MaterializedView(new Properties(), storeName, viewParams);
     Map<String, VeniceProperties> rePartitionViewTopicMap = materializedView.getTopicNamesAndConfigsForVersion(version);
     assertEquals(rePartitionViewTopicMap.size(), 1);
     for (Map.Entry<String, VeniceProperties> entry: rePartitionViewTopicMap.entrySet()) {

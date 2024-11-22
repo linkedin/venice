@@ -86,7 +86,7 @@ public class ChangeCaptureViewWriterTest {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = versionSwapMessage;
 
-    Store mockStore = mock(Store.class);
+    Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     // Add ID's to the region's to name the sort order of the RMD
@@ -111,7 +111,7 @@ public class ChangeCaptureViewWriterTest {
 
     // Build the change capture writer and set the mock writer
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, 1, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Verify that we never produce the version swap from a follower replica
@@ -202,9 +202,9 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, 1, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
 
-    VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions(1);
+    VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions();
 
     Assert
         .assertEquals(writerOptions.getTopicName(), STORE_NAME + "_v1" + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
@@ -217,7 +217,7 @@ public class ChangeCaptureViewWriterTest {
   @Test
   public void testProcessRecord() throws ExecutionException, InterruptedException {
     // Set up mocks
-    Store mockStore = mock(Store.class);
+    Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     CompletableFuture<PubSubProduceResult> mockFuture = mock(CompletableFuture.class);
@@ -237,7 +237,7 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, 1, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
 
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(SCHEMA, 1);
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);

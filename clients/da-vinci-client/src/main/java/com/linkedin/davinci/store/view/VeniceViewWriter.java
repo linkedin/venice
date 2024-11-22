@@ -6,11 +6,13 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -28,16 +30,19 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
-  protected final int version;
+  protected final Version version;
+  protected final int versionNumber;
+  protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
+  protected Optional<Integer> nearlineProducerCountPerWriter = Optional.empty();
 
   public VeniceViewWriter(
       VeniceConfigLoader props,
-      Store store,
-      int version,
+      Version version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    super(props.getCombinedProperties().toProperties(), store, extraViewParameters);
+    super(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     this.version = version;
+    this.versionNumber = version.getNumber();
   }
 
   /**
@@ -98,6 +103,15 @@ public abstract class VeniceViewWriter extends VeniceView {
   }
 
   /**
+   * Configure view writer options based on the configs of the provided Store
+   * @param store to extract the relevant configs from
+   */
+  public void configureWriterOptions(Store store) {
+    isNearlineProducerCompressionEnabled = Optional.of(store.isNearlineProducerCompressionEnabled());
+    nearlineProducerCountPerWriter = Optional.of(store.getNearlineProducerCountPerWriter());
+  }
+
+  /**
    * A store could have many views and to reduce the impact to write throughput we want to check and enable producer
    * optimizations that can be configured at the store level. To change the producer optimization configs the ingestion
    * task needs to be re-initialized. Meaning either a new version push or server restart after the store level config
@@ -106,7 +120,8 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @return
    */
   protected VeniceWriterOptions.Builder setProducerOptimizations(VeniceWriterOptions.Builder configBuilder) {
-    return configBuilder.setProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled())
-        .setProducerCount(store.getNearlineProducerCountPerWriter());
+    isNearlineProducerCompressionEnabled.ifPresent(configBuilder::setProducerCompressionEnabled);
+    nearlineProducerCountPerWriter.ifPresent(configBuilder::setProducerCount);
+    return configBuilder;
   }
 }

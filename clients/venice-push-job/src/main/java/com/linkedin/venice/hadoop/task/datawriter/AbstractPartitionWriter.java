@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
@@ -21,6 +22,9 @@ import com.linkedin.venice.hadoop.InputStorageQuotaTracker;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.task.TaskTracker;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -31,17 +35,21 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import com.linkedin.venice.writer.update.CompositeVeniceWriter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -328,7 +336,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     dataWriterTaskTracker.trackRecordSentToPubSub();
   }
 
-  private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
+  private AbstractVeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
     Properties writerProps = props.toProperties();
     // Closing segments based on elapsed time should always be disabled in data writer compute jobs to prevent storage
     // nodes from consuming out of order keys when speculative execution is enabled.
@@ -348,18 +356,65 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         .getOrDefault(VeniceWriter.MAX_RECORD_SIZE_BYTES, String.valueOf(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE));
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
 
-    VeniceWriterOptions options =
-        new VeniceWriterOptions.Builder(props.getString(TOPIC_PROP)).setKeySerializer(new DefaultSerializer())
-            .setValueSerializer(new DefaultSerializer())
-            .setWriteComputeSerializer(new DefaultSerializer())
-            .setChunkingEnabled(chunkingEnabled)
-            .setRmdChunkingEnabled(rmdChunkingEnabled)
-            .setTime(SystemTime.INSTANCE)
-            .setPartitionCount(getPartitionCount())
-            .setPartitioner(partitioner)
-            .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
-            .build();
-    return veniceWriterFactoryFactory.createVeniceWriter(options);
+    String topicName = props.getString(TOPIC_PROP);
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setKeySerializer(new DefaultSerializer())
+        .setValueSerializer(new DefaultSerializer())
+        .setWriteComputeSerializer(new DefaultSerializer())
+        .setChunkingEnabled(chunkingEnabled)
+        .setRmdChunkingEnabled(rmdChunkingEnabled)
+        .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(getPartitionCount())
+        .setPartitioner(partitioner)
+        .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
+        .build();
+    String flatViewConfigMapString = props.getString(PUSH_JOB_VIEW_CONFIGS, "");
+    if (!flatViewConfigMapString.isEmpty()) {
+      return createCompositeVeniceWriter(
+          veniceWriterFactoryFactory,
+          veniceWriterFactoryFactory.createVeniceWriter(options),
+          flatViewConfigMapString,
+          topicName,
+          chunkingEnabled,
+          rmdChunkingEnabled);
+    } else {
+      return veniceWriterFactoryFactory.createVeniceWriter(options);
+    }
+  }
+
+  AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
+      VeniceWriterFactory factory,
+      VeniceWriter<byte[], byte[], byte[]> mainWriter,
+      String flatViewConfigMapString,
+      String topicName,
+      boolean chunkingEnabled,
+      boolean rmdChunkingEnabled) {
+    try {
+      Map<String, ViewConfig> viewConfigMap = ViewUtils.parseViewConfigMapString(flatViewConfigMapString);
+      VeniceWriter[] childWriters = new VeniceWriter[viewConfigMap.size()];
+      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+      int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
+      // TODO using a dummy Version to get venice writer options could be error prone. Alternatively we could change
+      // the abstract method, getWriterOptionsBuilder's signature.
+      Version version = new VersionImpl(storeName, versionNumber, "ignored");
+      version.setChunkingEnabled(chunkingEnabled);
+      version.setRmdChunkingEnabled(rmdChunkingEnabled);
+      int index = 0;
+      for (ViewConfig viewConfig: viewConfigMap.values()) {
+        VeniceView view = ViewUtils
+            .getVeniceView(viewConfig.getViewClassName(), new Properties(), storeName, viewConfig.getViewParameters());
+        String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
+        childWriters[index++] = factory.createVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build());
+      }
+      return new CompositeVeniceWriter<byte[], byte[], byte[]>(
+          topicName,
+          mainWriter,
+          childWriters,
+          new ChildWriterProducerCallback());
+    } catch (Exception e) {
+      String errorMessage = String.format("Failed to create composite writer for push to store version: %s", topicName);
+      LOGGER.error(errorMessage, e);
+      throw new VeniceException(errorMessage);
+    }
   }
 
   private void telemetry() {
@@ -606,6 +661,18 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         }
       }
 
+      // Report progress so compute framework won't kill current task when it finishes
+      // sending all the messages to PubSub system, but not yet flushed and closed.
+      dataWriterTaskTracker.heartbeat();
+    }
+  }
+
+  public class ChildWriterProducerCallback implements PubSubProducerCallback {
+    @Override
+    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+      if (exception != null) {
+        LOGGER.error("Exception thrown in composite writer's child send message callback", exception);
+      }
       // Report progress so compute framework won't kill current task when it finishes
       // sending all the messages to PubSub system, but not yet flushed and closed.
       dataWriterTaskTracker.heartbeat();
