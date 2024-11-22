@@ -9,17 +9,20 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
  */
 public enum MetricType {
   /**
-   * For Histogram with percentiles: can be configured to be exponential or explicit bucket
+   * Use Histogram to get percentiles/min/max/count/sum and other aggregates: can be configured to
+   * be exponential or explicit bucket <br>
    * check {@link VeniceMetricsConfig.Builder#extractAndSetOtelConfigs} for more details
    */
   HISTOGRAM,
+
   /**
-   * For Histogram without percentiles: Explicit bucket histogram.
-   * Provides multiple aggregations like min, max, count and sum without the memory overhead of percentiles.
+   * To get min/max/count/sum aggregation without the memory overhead to calculate percentiles, use
+   * Otel Explicit bucket Histogram but without buckets .
    * check {@link VeniceOpenTelemetryMetricsRepository#createHistogram} and
    * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation} for more details
    */
-  HISTOGRAM_WITHOUT_BUCKETS,
+  MIN_MAX_COUNT_SUM_AGGREGATIONS,
+
   /**
    * For Counter: A simple counter that can be added to.
    */

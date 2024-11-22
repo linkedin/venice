@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_M
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_CUSTOM_DIMENSIONS_MAP;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_ENABLED;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_EXPORT_TO_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_EXPORT_TO_LOG;
@@ -165,6 +166,33 @@ public class VeniceMetricsConfigTest {
     otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, "10");
     otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, "50");
 
+    new Builder().setServiceName("TestService")
+        .setMetricPrefix("TestPrefix")
+        .extractAndSetOtelConfigs(otelConfigs)
+        .build();
+  }
+
+  @Test
+  public void testSetOtelCustomDimensionsMap() {
+    Map<String, String> otelConfigs = new HashMap<>();
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "false");
+    otelConfigs.put(OTEL_VENICE_CUSTOM_DIMENSIONS_MAP, "key1=value1,key2=value2");
+    VeniceMetricsConfig config = new Builder().setServiceName("TestService")
+        .setMetricPrefix("TestPrefix")
+        .extractAndSetOtelConfigs(otelConfigs)
+        .build();
+    assertEquals(config.getOtelCustomDimensionsMap().size(), 2);
+    assertEquals(config.getOtelCustomDimensionsMap().get("key1"), "value1");
+    assertEquals(config.getOtelCustomDimensionsMap().get("key2"), "value2");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testSetOtelCustomDimensionsMapWithInvalidValue() {
+    Map<String, String> otelConfigs = new HashMap<>();
+    otelConfigs.put(OTEL_VENICE_ENABLED, "true");
+    otelConfigs.put(OTEL_VENICE_EXPORT_TO_ENDPOINT, "false");
+    otelConfigs.put(OTEL_VENICE_CUSTOM_DIMENSIONS_MAP, "key1=value1,key2=value2=3");
     new Builder().setServiceName("TestService")
         .setMetricPrefix("TestPrefix")
         .extractAndSetOtelConfigs(otelConfigs)

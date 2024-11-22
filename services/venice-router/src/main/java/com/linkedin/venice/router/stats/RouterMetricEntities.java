@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats.metrics.modules;
+package com.linkedin.venice.router.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
@@ -9,15 +9,13 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntities;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 
@@ -49,7 +47,8 @@ public enum RouterMetricEntities implements MetricEntities {
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
   CALL_KEY_COUNT(
-      "call_key_count", MetricType.HISTOGRAM_WITHOUT_BUCKETS, MetricUnit.NUMBER, "Count of keys in multi key requests",
+      "call_key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Count of keys in multi key requests",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_VALIDATION_OUTCOME)
   ),
   RETRY_COUNT(
@@ -65,7 +64,7 @@ public enum RouterMetricEntities implements MetricEntities {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
   RETRY_DELAY(
-      "retry_delay", MetricType.HISTOGRAM_WITHOUT_BUCKETS, MetricUnit.MILLISECONDS, "Retry delay time",
+      "retry_delay", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECONDS, "Retry delay time",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
   ABORTED_RETRY_COUNT(
@@ -87,10 +86,5 @@ public enum RouterMetricEntities implements MetricEntities {
   @Override
   public MetricEntity getMetricEntity() {
     return metricEntity;
-  }
-
-  @SafeVarargs
-  public static <T> Set<T> setOf(T... objs) {
-    return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));
   }
 }

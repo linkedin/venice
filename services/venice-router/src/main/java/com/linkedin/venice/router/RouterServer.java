@@ -68,6 +68,7 @@ import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterMetricEntities;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -79,12 +80,11 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.stats.metrics.MetricEntities;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -109,6 +109,8 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -197,7 +199,8 @@ public class RouterServer extends AbstractVeniceService {
 
   public static final String ROUTER_SERVICE_NAME = "venice-router";
   public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
-
+  public static final Collection<MetricEntities> ROUTER_SERVICE_METRIC_ENTITIES =
+      Arrays.asList(RouterMetricEntities.values());
   /**
    * Thread number used to monitor the listening port;
    */
@@ -275,8 +278,11 @@ public class RouterServer extends AbstractVeniceService {
         serviceDiscoveryAnnouncers,
         accessController,
         sslFactory,
-        TehutiUtils
-            .getVeniceMetricsRepository(ROUTER_SERVICE_NAME, ROUTER_SERVICE_METRIC_PREFIX, properties.getAsMap()),
+        VeniceMetricsRepository.getVeniceMetricsRepository(
+            ROUTER_SERVICE_NAME,
+            ROUTER_SERVICE_METRIC_PREFIX,
+            ROUTER_SERVICE_METRIC_ENTITIES,
+            properties.getAsMap()),
         null,
         "venice-discovery");
   }
@@ -419,10 +425,11 @@ public class RouterServer extends AbstractVeniceService {
         serviceDiscoveryAnnouncers,
         Optional.empty(),
         sslFactory,
-        new VeniceMetricsRepository(
-            new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
-                .extractAndSetOtelConfigs(properties.getAsMap())
-                .build()),
+        VeniceMetricsRepository.getVeniceMetricsRepository(
+            ROUTER_SERVICE_NAME,
+            ROUTER_SERVICE_METRIC_PREFIX,
+            ROUTER_SERVICE_METRIC_ENTITIES,
+            properties.getAsMap()),
         false);
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;

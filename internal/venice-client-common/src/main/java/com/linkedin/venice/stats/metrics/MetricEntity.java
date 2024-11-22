@@ -82,7 +82,7 @@ public class MetricEntity {
    */
   public void createMetric(VeniceOpenTelemetryMetricsRepository otelRepository) {
     if (otelRepository != null) {
-      otelRepository.createInstrument(this);
+      setOtelMetric(otelRepository.createInstrument(this));
     }
   }
 
@@ -93,7 +93,7 @@ public class MetricEntity {
     if (otelMetric != null) {
       switch (metricType) {
         case HISTOGRAM:
-        case HISTOGRAM_WITHOUT_BUCKETS:
+        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
           ((DoubleHistogram) otelMetric).record(value, otelDimensions);
           break;
         case COUNTER:

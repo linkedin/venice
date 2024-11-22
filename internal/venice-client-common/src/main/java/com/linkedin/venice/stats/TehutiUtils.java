@@ -9,7 +9,6 @@ import io.tehuti.metrics.stats.Percentile;
 import io.tehuti.metrics.stats.Percentiles;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
-import java.util.Map;
 
 
 /**
@@ -126,19 +125,6 @@ public class TehutiUtils {
    */
   public static MetricsRepository getMetricsRepository(String serviceName) {
     MetricsRepository metricsRepository = new MetricsRepository();
-    metricsRepository.addReporter(new JmxReporter(serviceName));
-    return metricsRepository;
-  }
-
-  public static VeniceMetricsRepository getVeniceMetricsRepository(
-      String serviceName,
-      String metricPrefix,
-      Map<String, String> configs) {
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
-            .setMetricPrefix(metricPrefix)
-            .extractAndSetOtelConfigs(configs)
-            .build());
     metricsRepository.addReporter(new JmxReporter(serviceName));
     return metricsRepository;
   }

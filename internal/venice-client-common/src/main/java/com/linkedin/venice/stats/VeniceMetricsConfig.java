@@ -1,9 +1,11 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.stats.metrics.MetricEntities;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.tehuti.metrics.MetricConfig;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -11,6 +13,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * Configuration for metrics emitted by Venice: Holds OpenTelemetry as well as Tehuti configs <br>
+ *
+ * Configs starting with "otel.venice." are venice specific configs for OpenTelemetry metrics <br>
+ * other configs starting with "otel.exporter." are generic OpenTelemetry exporter configs but
+ * are parsed in this class and used setters to configure otel exporter.
+ */
 public class VeniceMetricsConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceMetricsConfig.class);
 
@@ -18,6 +27,11 @@ public class VeniceMetricsConfig {
    * Config to enable OpenTelemetry metrics
    */
   public static final String OTEL_VENICE_ENABLED = "otel.venice.enabled";
+
+  /**
+   * Config to set the metric prefix for OpenTelemetry metrics
+   */
+  public static final String OTEL_VENICE_METRIC_PREFIX = "otel.venice.metric.prefix";
 
   /**
    * Config to set the naming format for OpenTelemetry metrics
@@ -36,6 +50,18 @@ public class VeniceMetricsConfig {
    * over {@link #OTEL_EXPORTER_OTLP_METRICS_PROTOCOL}
    */
   public static final String OTEL_VENICE_EXPORT_TO_ENDPOINT = "otel.venice.export.to.endpoint";
+
+  /**
+   * Config Map to add custom dimensions to the metrics: Can be used for system dimensions
+   * amongst other custom dimensions <br>
+   * These will be emitted along with all the metrics emitted.
+   *
+   *
+   * custom dimensions are passed as key=value pairs separated by '='
+   * Multiple headers are separated by ','
+   * For example: "custom_dimension_one=value1,custom_dimension_two=value2,custom_dimension_three=value3"
+   */
+  public static final String OTEL_VENICE_CUSTOM_DIMENSIONS_MAP = "otel.venice.custom.dimensions.map";
 
   /**
    * Protocol over which the metrics are exported to {@link #OTEL_EXPORTER_OTLP_METRICS_ENDPOINT} <br>
@@ -82,6 +108,7 @@ public class VeniceMetricsConfig {
 
   private final String serviceName;
   private final String metricPrefix;
+  private final Collection<MetricEntities> metricEntities;
   /** reusing tehuti's MetricConfig */
   private final MetricConfig tehutiMetricConfig;
 
@@ -97,6 +124,9 @@ public class VeniceMetricsConfig {
    */
   private final boolean exportOtelMetricsToEndpoint;
   private final boolean exportOtelMetricsToLog;
+
+  /** Custom dimensions */
+  private final Map<String, String> otelCustomDimensionsMap;
 
   /**
    * protocol for OpenTelemetry exporter. supports
@@ -125,8 +155,10 @@ public class VeniceMetricsConfig {
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
     this.metricPrefix = builder.metricPrefix;
+    this.metricEntities = builder.metricEntities;
     this.emitOTelMetrics = builder.emitOtelMetrics;
     this.exportOtelMetricsToEndpoint = builder.exportOtelMetricsToEndpoint;
+    this.otelCustomDimensionsMap = builder.otelCustomDimensionsMap;
     this.otelExportProtocol = builder.otelExportProtocol;
     this.otelEndpoint = builder.otelEndpoint;
     this.otelHeaders = builder.otelHeaders;
@@ -142,8 +174,10 @@ public class VeniceMetricsConfig {
   public static class Builder {
     private String serviceName = "default_service";
     private String metricPrefix = null;
+    private Collection<MetricEntities> metricEntities;
     private boolean emitOtelMetrics = false;
     private boolean exportOtelMetricsToEndpoint = false;
+    private Map<String, String> otelCustomDimensionsMap = new HashMap<>();
     private String otelExportProtocol = OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF;
     private String otelEndpoint = null;
     Map<String, String> otelHeaders = new HashMap<>();
@@ -154,7 +188,6 @@ public class VeniceMetricsConfig {
     private boolean useOtelExponentialHistogram = true;
     private int otelExponentialHistogramMaxScale = 3;
     private int otelExponentialHistogramMaxBuckets = 250;
-
     private MetricConfig tehutiMetricConfig = null;
 
     public Builder setServiceName(String serviceName) {
@@ -164,6 +197,11 @@ public class VeniceMetricsConfig {
 
     public Builder setMetricPrefix(String metricPrefix) {
       this.metricPrefix = metricPrefix;
+      return this;
+    }
+
+    public Builder setMetricEntities(Collection<MetricEntities> metricEntities) {
+      this.metricEntities = metricEntities;
       return this;
     }
 
@@ -227,12 +265,31 @@ public class VeniceMetricsConfig {
         setEmitOtelMetrics(Boolean.parseBoolean(configValue));
       }
 
+      if ((configValue = configs.get(OTEL_VENICE_METRIC_PREFIX)) != null) {
+        setMetricPrefix(configValue);
+      }
+
       if ((configValue = configs.get(OTEL_VENICE_EXPORT_TO_LOG)) != null) {
         setExportOtelMetricsToLog(Boolean.parseBoolean(configValue));
       }
 
       if ((configValue = configs.get(OTEL_VENICE_EXPORT_TO_ENDPOINT)) != null) {
         setExportOtelMetricsToEndpoint(Boolean.parseBoolean(configValue));
+      }
+
+      /**
+       * custom dimensions are passed as key=value pairs separated by '=' <br>
+       * Multiple dimensions are separated by ','
+       */
+      if ((configValue = configs.get(OTEL_VENICE_CUSTOM_DIMENSIONS_MAP)) != null) {
+        String[] dimensions = configValue.split(",");
+        for (String dimension: dimensions) {
+          String[] keyValue = dimension.split("=");
+          if (keyValue.length != 2) {
+            throw new IllegalArgumentException("Invalid custom dimensions: " + configValue);
+          }
+          otelCustomDimensionsMap.put(keyValue[0], keyValue[1]);
+        }
       }
 
       if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL)) != null) {
@@ -345,12 +402,20 @@ public class VeniceMetricsConfig {
     return this.metricPrefix;
   }
 
+  public Collection<MetricEntities> getMetricEntities() {
+    return this.metricEntities;
+  }
+
   public boolean emitOtelMetrics() {
     return emitOTelMetrics;
   }
 
   public boolean exportOtelMetricsToEndpoint() {
     return exportOtelMetricsToEndpoint;
+  }
+
+  public Map<String, String> getOtelCustomDimensionsMap() {
+    return otelCustomDimensionsMap;
   }
 
   public String getOtelExportProtocol() {

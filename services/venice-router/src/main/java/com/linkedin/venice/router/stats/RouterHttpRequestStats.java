@@ -2,6 +2,15 @@ package com.linkedin.venice.router.stats;
 
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.ABORTED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.ALLOWED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_KEY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_TIME;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.DISALLOWED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.INCOMING_CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntities.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 import static com.linkedin.venice.stats.dimensions.VeniceHttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
@@ -13,15 +22,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.ABORTED_RETRY_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.ALLOWED_RETRY_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.CALL_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.CALL_KEY_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.CALL_TIME;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.DISALLOWED_RETRY_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.INCOMING_CALL_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.RETRY_COUNT;
-import static com.linkedin.venice.stats.metrics.modules.RouterMetricEntities.RETRY_DELAY;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -40,6 +40,7 @@ import com.linkedin.venice.stats.dimensions.VeniceRequestValidationOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
@@ -53,6 +54,7 @@ import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -155,11 +157,17 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           ? veniceMetricsRepository.getVeniceMetricsConfig().getMetricNamingFormat()
           : VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
       otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-      commonMetricDimensions = Attributes.builder()
+      AttributesBuilder attributesBuilder = Attributes.builder()
           .put(getDimensionName(VENICE_STORE_NAME), storeName)
           .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
-          .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName)
-          .build();
+          .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName);
+      // add custom dimensions passed in by the user
+      for (Map.Entry<String, String> entry: veniceMetricsRepository.getVeniceMetricsConfig()
+          .getOtelCustomDimensionsMap()
+          .entrySet()) {
+        attributesBuilder.put(entry.getKey(), entry.getValue());
+      }
+      commonMetricDimensions = attributesBuilder.build();
     } else {
       emitOpenTelemetryMetrics = false;
       openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;

@@ -4,7 +4,6 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.stats.metrics.AllMetricEntities;
 import com.linkedin.venice.stats.metrics.MetricEntities;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -43,8 +42,8 @@ import org.apache.logging.log4j.Logger;
 public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
   private SdkMeterProvider sdkMeterProvider = null;
-  private boolean emitOpenTelemetryMetrics;
-  private VeniceOpenTelemetryMetricNamingFormat metricFormat;
+  private final boolean emitOpenTelemetryMetrics;
+  private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
 
   private String metricPrefix;
@@ -72,32 +71,26 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   /**
    * Setting Exponential Histogram aggregation for {@link MetricType#HISTOGRAM} by looping through all
-   * the metric entities for this service and registering the views with exponential histogram aggregation for
-   * the Histogram type.
+   * the metric entities set for this service to registering the view with exponential histogram aggregation for
+   * all the {@link MetricType#HISTOGRAM} metrics.
    *
-   * {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector} to enable exponential histogram aggregation
-   * is not used here to set the aggregation: to not convert the histograms of type
-   * {@link MetricType#HISTOGRAM_WITHOUT_BUCKETS} to exponential histograms to follow explict boundaries.
+   * There is a limitation in opentelemetry sdk to configure different histogram aggregation for different
+   * instruments, so {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector} to enable exponential
+   * histogram aggregation is not used here to not convert the histograms of type {@link MetricType#MIN_MAX_COUNT_SUM_AGGREGATIONS}
+   * to exponential histograms to be able to follow explict boundaries.
    */
   private void setExponentialHistogramAggregation(SdkMeterProviderBuilder builder, VeniceMetricsConfig metricsConfig) {
     List<String> metricNames = new ArrayList<>();
 
-    // Loop through this module's metric entities and collect metric names
-    Class<? extends Enum<?>> moduleMetricEntityEnum = AllMetricEntities.getModuleMetricEntityEnum(getMetricPrefix());
-    if (moduleMetricEntityEnum == null) {
-      LOGGER.warn("No metric entities found for module: {}", getMetricPrefix());
-      return;
+    if (metricsConfig.getMetricEntities().isEmpty()) {
+      LOGGER
+          .warn("No metric entities found in config: {} to configure exponential histogram", metricsConfig.toString());
     }
-    Enum<?>[] constants = moduleMetricEntityEnum.getEnumConstants();
-    if (constants != null) {
-      for (Enum<?> constant: constants) {
-        if (constant instanceof MetricEntities) {
-          MetricEntities metricEntities = (MetricEntities) constant;
-          MetricEntity metricEntity = metricEntities.getMetricEntity();
-          if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-            metricNames.add(getFullMetricName(getMetricPrefix(), metricEntity.getMetricName()));
-          }
-        }
+
+    for (MetricEntities metricEntities: metricsConfig.getMetricEntities()) {
+      MetricEntity metricEntity = metricEntities.getMetricEntity();
+      if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
+        metricNames.add(getFullMetricName(getMetricPrefix(), metricEntity.getMetricName()));
       }
     }
 
@@ -182,7 +175,8 @@ public class VeniceOpenTelemetryMetricsRepository {
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
-      if (metricEntity.getMetricType() == MetricType.HISTOGRAM_WITHOUT_BUCKETS) {
+      if (metricEntity.getMetricType() == MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS) {
+        // No buckets needed to get only min/max/count/sum aggregations
         builder.setExplicitBucketBoundariesAdvice(new ArrayList<>());
       }
       return builder.build();
@@ -205,18 +199,15 @@ public class VeniceOpenTelemetryMetricsRepository {
   public Object createInstrument(MetricEntity metricEntity) {
     switch (metricEntity.getMetricType()) {
       case HISTOGRAM:
-      case HISTOGRAM_WITHOUT_BUCKETS:
-        metricEntity.setOtelMetric(createHistogram(metricEntity));
-        break;
+      case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        return createHistogram(metricEntity);
 
       case COUNTER:
-        metricEntity.setOtelMetric(createCounter(metricEntity));
-        break;
+        return createCounter(metricEntity);
 
       default:
         throw new VeniceException("Unknown metric type: " + metricEntity.getMetricType());
     }
-    return metricEntity.getOtelMetric();
   }
 
   public void close() {

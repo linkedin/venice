@@ -1,7 +1,11 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.stats.metrics.MetricEntities;
+import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
+import java.util.Collection;
+import java.util.Map;
 
 
 /**
@@ -10,7 +14,7 @@ import java.io.Closeable;
  */
 public class VeniceMetricsRepository extends MetricsRepository implements Closeable {
   private VeniceMetricsConfig veniceMetricsConfig;
-  VeniceOpenTelemetryMetricsRepository openTelemetryMetricsRepository;
+  private VeniceOpenTelemetryMetricsRepository openTelemetryMetricsRepository;
 
   public VeniceMetricsRepository() {
     super();
@@ -44,5 +48,20 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
     if (openTelemetryMetricsRepository != null) {
       openTelemetryMetricsRepository.close();
     }
+  }
+
+  public static VeniceMetricsRepository getVeniceMetricsRepository(
+      String serviceName,
+      String metricPrefix,
+      Collection<MetricEntities> metricEntities,
+      Map<String, String> configs) {
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
+            .setMetricPrefix(metricPrefix)
+            .setMetricEntities(metricEntities)
+            .extractAndSetOtelConfigs(configs)
+            .build());
+    metricsRepository.addReporter(new JmxReporter(serviceName));
+    return metricsRepository;
   }
 }
