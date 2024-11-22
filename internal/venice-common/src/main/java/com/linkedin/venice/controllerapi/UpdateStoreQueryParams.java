@@ -1,6 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-<<<<<<< HEAD
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
@@ -62,14 +61,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
-=======
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
->>>>>>> 649a4cc9c (add store and verion config for target swap region and wait time)
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

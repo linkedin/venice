@@ -244,7 +244,10 @@
                       },
                       "default": {}
                     },
-                    {"name": "repushSourceVersion", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the source store version its created from."}
+                    {"name": "repushSourceVersion", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the source store version its created from."},
+                    {"name": "targetSwapRegion", "type": "string", "default": "", "doc": "Controls what region to swap in the current version during target colo push"},
+                    {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait in minutes before swapping the version on the regions"},
+                    {"name": "isDaVinciHeartBeatReported", "type": "boolean", "default": false, "doc": "Flag to indicate whether DVC is bootstrapping and sending heartbeats"}
                   ]
                 }
               },
@@ -272,7 +275,10 @@
             {"name": "storageNodeReadQuotaEnabled", "type": "boolean", "default": false, "doc": "Controls the storage node read quota enforcement for the given Venice store"},
             {"name": "blobTransferEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate if the blob transfer is allowed or not"},
             {"name": "nearlineProducerCompressionEnabled", "type":  "boolean", "default": true, "doc":  "Flag to control whether the producer in Server for near-line workload will enable compression or not"},
-            {"name": "nearlineProducerCountPerWriter", "type": "int", "default":  1, "doc":  "How many producers will be used for the nearline producer in Server to improve producing throughput"}
+            {"name": "nearlineProducerCountPerWriter", "type": "int", "default":  1, "doc":  "How many producers will be used for the nearline producer in Server to improve producing throughput"},
+            {"name": "targetSwapRegion", "type": "string", "default": "", "doc": "Controls what region to swap in the current version during target colo push"},
+            {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait in minutes before swapping the version on the regions"},
+            {"name": "isDaVinciHeartBeatReported", "type": "boolean", "default": false, "doc": "Flag to indicate whether DVC is bootstrapping and sending heartbeats"}
           ]
         }
       ],
