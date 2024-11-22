@@ -375,7 +375,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
-    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.partitionToPendingConsumerActionCountMap = new VeniceConcurrentHashMap<>();
