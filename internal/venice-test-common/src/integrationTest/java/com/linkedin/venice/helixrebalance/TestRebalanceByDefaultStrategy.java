@@ -94,7 +94,7 @@ public class TestRebalanceByDefaultStrategy {
         try {
           if (cluster.getLeaderVeniceController()
               .getVeniceAdmin()
-              .isInstanceRemovable(clusterName, instanceId, Collections.emptyList(), false)
+              .isInstanceRemovable(clusterName, instanceId, Collections.emptyList())
               .isRemovable()) {
             cluster.stopVeniceServer(port);
             Thread.sleep(UPGRADE_TIME_MS);
