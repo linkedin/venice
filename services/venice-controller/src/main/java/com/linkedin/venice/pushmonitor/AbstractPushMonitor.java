@@ -976,8 +976,11 @@ public abstract class AbstractPushMonitor
       if (isEOPReceivedInAllPartitions) {
         // Check whether to send EOP for materialized view topic(s)
         for (ViewConfig rawView: viewConfigMap.values()) {
-          VeniceView veniceView =
-              ViewUtils.getVeniceView(rawView.getViewClassName(), new Properties(), store, rawView.getViewParameters());
+          VeniceView veniceView = ViewUtils.getVeniceView(
+              rawView.getViewClassName(),
+              new Properties(),
+              store.getName(),
+              rawView.getViewParameters());
           if (veniceView instanceof MaterializedView) {
             MaterializedView materializedView = (MaterializedView) veniceView;
             for (String materializedViewTopicName: materializedView

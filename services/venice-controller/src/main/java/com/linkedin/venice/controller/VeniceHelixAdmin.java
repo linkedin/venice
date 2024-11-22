@@ -2459,7 +2459,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
     for (ViewConfig rawView: viewConfigs.values()) {
       VeniceView adminView =
-          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
+          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store.getName(), rawView.getViewParameters());
       topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version.getNumber()));
     }
     TopicManager topicManager = getTopicManager();
@@ -2510,7 +2510,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
     for (ViewConfig rawView: viewConfigs.values()) {
       VeniceView adminView =
-          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
+          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store.getName(), rawView.getViewParameters());
       topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
     }
     Set<String> versionTopicsToDelete = topicNamesAndConfigs.keySet()

@@ -2374,12 +2374,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
       "server.nearline.workload.producer.throughput.optimization.enabled";
-
   public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
 
   public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
       "server.delete.unassigned.partitions.on.startup";
-
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
+  public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
 }

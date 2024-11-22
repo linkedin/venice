@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -41,8 +40,8 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   private final ReentrantLock broadcastHBLock = new ReentrantLock();
   private final Map<Integer, Long> partitionToHeartbeatTimestampMap = new HashMap<>();
   private final Clock clock;
+  private final String materializedViewTopicName;
   private VeniceWriter veniceWriter;
-  private String materializedViewTopicName;
   private long lastHBBroadcastTimestamp;
 
   /**
@@ -57,24 +56,25 @@ public class MaterializedViewWriter extends VeniceViewWriter {
 
   public MaterializedViewWriter(
       VeniceConfigLoader props,
-      Store store,
-      int version,
+      Version version,
       Schema keySchema,
       Map<String, String> extraViewParameters,
       Clock clock) {
-    super(props, store, version, keySchema, extraViewParameters);
+    super(props, version, keySchema, extraViewParameters);
     pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
-    internalView = new MaterializedView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
+    internalView =
+        new MaterializedView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
+    materializedViewTopicName =
+        internalView.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
     this.clock = clock;
   }
 
   public MaterializedViewWriter(
       VeniceConfigLoader props,
-      Store store,
-      int version,
+      Version version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    this(props, store, version, keySchema, extraViewParameters, Clock.systemUTC());
+    this(props, version, keySchema, extraViewParameters, Clock.systemUTC());
   }
 
   /**
@@ -125,24 +125,15 @@ public class MaterializedViewWriter extends VeniceViewWriter {
     return internalView.getWriterClassName();
   }
 
-  // package private for testing purposes.
-  VeniceWriterOptions buildWriterOptions(int version) {
-    // We need to change this and have a map of writers if one materialized view will have many topics.
-    materializedViewTopicName =
-        internalView.getTopicNamesAndConfigsForVersion(version).keySet().stream().findAny().get();
-    VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(materializedViewTopicName);
-    Version storeVersionConfig = store.getVersionOrThrow(version);
-    configBuilder.setPartitionCount(internalView.getViewPartitionCount());
-    configBuilder.setChunkingEnabled(storeVersionConfig.isChunkingEnabled());
-    configBuilder.setRmdChunkingEnabled(storeVersionConfig.isRmdChunkingEnabled());
-    configBuilder.setPartitioner(internalView.getViewPartitioner());
-    return setProducerOptimizations(configBuilder).build();
+  // Package private for testing
+  VeniceWriterOptions buildWriterOptions() {
+    return setProducerOptimizations(internalView.getWriterOptionsBuilder(materializedViewTopicName, version)).build();
   }
 
   synchronized private void initializeVeniceWriter() {
     if (veniceWriter == null) {
-      veniceWriter = new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null)
-          .createVeniceWriter(buildWriterOptions(version));
+      veniceWriter =
+          new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null).createVeniceWriter(buildWriterOptions());
     }
   }
 

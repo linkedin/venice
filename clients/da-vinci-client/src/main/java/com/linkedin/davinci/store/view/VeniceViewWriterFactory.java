@@ -25,6 +25,7 @@ public class VeniceViewWriterFactory {
       Map<String, String> extraParams = viewConfig.getValue().getViewParameters();
       VeniceViewWriter viewWriter =
           ViewWriterUtils.getVeniceViewWriter(className, properties, store, version, keySchema, extraParams);
+      viewWriter.configureWriterOptions(store);
       storeViewWriters.put(viewConfig.getKey(), viewWriter);
     }
     return storeViewWriters;

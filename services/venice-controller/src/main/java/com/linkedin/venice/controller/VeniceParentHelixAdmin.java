@@ -75,7 +75,6 @@ import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -2854,11 +2853,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!viewParams.containsKey(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name())) {
         decoratedViewParamBuilder.setPartitioner(store.getPartitionerConfig().getPartitionerClass());
         if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
-          try {
-            decoratedViewParamBuilder.setPartitionerParams(store.getPartitionerConfig().getPartitionerParams());
-          } catch (JsonProcessingException e) {
-            throw new VeniceException("Failed to convert store partitioner params to string", e);
-          }
+          decoratedViewParamBuilder.setPartitionerParams(store.getPartitionerConfig().getPartitionerParams());
         }
       }
       if (!viewParams.containsKey(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
@@ -2866,9 +2861,12 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       viewConfig.setViewParameters(decoratedViewParamBuilder.build());
     }
-    VeniceView view =
-        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
-    view.validateConfigs();
+    VeniceView view = ViewUtils.getVeniceView(
+        viewConfig.getViewClassName(),
+        new Properties(),
+        store.getName(),
+        viewConfig.getViewParameters());
+    view.validateConfigs(store);
     return viewConfig;
   }
 

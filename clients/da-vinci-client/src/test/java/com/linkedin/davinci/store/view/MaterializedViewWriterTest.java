@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -27,12 +28,15 @@ import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.time.Clock;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -45,6 +49,27 @@ import org.testng.annotations.Test;
 
 public class MaterializedViewWriterTest {
   private static final Schema SCHEMA = AvroCompatibilityHelper.parse("\"string\"");
+
+  @Test
+  public void testViewParametersBuilder() throws JsonProcessingException {
+    String viewName = "testMaterializedView";
+    int partitionCount = 3;
+    ViewParameters.Builder viewParamsBuilder = new ViewParameters.Builder(viewName);
+    Map<String, String> viewParams = viewParamsBuilder.build();
+    Assert.assertEquals(viewParams.size(), 1);
+    Assert.assertEquals(viewParams.get(ViewParameters.MATERIALIZED_VIEW_NAME.name()), viewName);
+    viewParamsBuilder.setPartitionCount(partitionCount);
+    List<String> projectionFields = Arrays.asList("field1", "field2");
+    viewParamsBuilder.setProjectionFields(projectionFields);
+    viewParams = viewParamsBuilder.build();
+    Assert.assertEquals(viewParams.size(), 3);
+    Assert.assertEquals(
+        viewParams.get(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()),
+        String.valueOf(partitionCount));
+    Assert.assertEquals(
+        viewParams.get(ViewParameters.MATERIALIZED_VIEW_PROJECTION_FIELDS.name()),
+        ObjectMapperFactory.getInstance().writeValueAsString(projectionFields));
+  }
 
   @Test
   public void testBuildWriterOptions() {
@@ -61,8 +86,9 @@ public class MaterializedViewWriterTest {
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     Map<String, String> viewParamsMap = viewParamsBuilder.build();
     VeniceConfigLoader props = getMockProps();
-    MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, store, 1, SCHEMA, viewParamsMap);
-    VeniceWriterOptions writerOptions = materializedViewWriter.buildWriterOptions(1);
+    MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
+    materializedViewWriter.configureWriterOptions(store);
+    VeniceWriterOptions writerOptions = materializedViewWriter.buildWriterOptions();
     Assert.assertEquals(
         writerOptions.getTopicName(),
         Version.composeKafkaTopic(storeName, 1) + VeniceView.VIEW_TOPIC_SEPARATOR + viewName
@@ -80,7 +106,7 @@ public class MaterializedViewWriterTest {
     Version version = mock(Version.class);
     doReturn(true).when(version).isChunkingEnabled();
     doReturn(true).when(version).isRmdChunkingEnabled();
-    Store store = getMockStore(storeName, 1, version);
+    getMockStore(storeName, 1, version);
     ViewParameters.Builder viewParamsBuilder = new ViewParameters.Builder(viewName);
     viewParamsBuilder.setPartitionCount(6);
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
@@ -90,8 +116,7 @@ public class MaterializedViewWriterTest {
     long startTime = System.currentTimeMillis();
     doReturn(startTime).when(clock).millis();
     MaterializedViewWriter materializedViewWriter =
-        new MaterializedViewWriter(props, store, 1, SCHEMA, viewParamsMap, clock);
-    materializedViewWriter.buildWriterOptions(1);
+        new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap, clock);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     KafkaKey kafkaKey = mock(KafkaKey.class);
@@ -172,6 +197,8 @@ public class MaterializedViewWriterTest {
     Store store = mock(Store.class);
     doReturn(storeName).when(store).getName();
     doReturn(version).when(store).getVersionOrThrow(versionNumber);
+    doReturn(storeName).when(version).getStoreName();
+    doReturn(versionNumber).when(version).getNumber();
     return store;
   }
 }
