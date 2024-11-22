@@ -481,9 +481,11 @@
   <Match>
     <Bug pattern="SE_INNER_CLASS"/>
     <Or>
-      <Class name="com.linkedin.venice.beam.consumer.PubSubMessageCoder"/>
-      <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO"/>
-      <Class name="com.linkedin.venice.beam.consumer.VeniceMessageCoder"/>
+      <Class name="com.linkedin.venice.beam.consumer.PubSubMessageCoder$1"/>
+      <Class name="com.linkedin.venice.beam.consumer.VeniceMessageCoder$1"/>
+      <Class name="com.linkedin.venice.beam.consumer.VeniceMessageCoder$2"/>
+      <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO$Read$CurrentValueTransform"/>
+      <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO$Read$RemoveMetadata"/>
     </Or>
   </Match>
 </FindBugsFilter>
