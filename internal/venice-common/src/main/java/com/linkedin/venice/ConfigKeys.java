@@ -119,9 +119,10 @@ public class ConfigKeys {
       "pubsub.topic.manager.metadata.fetcher.thread.pool.size";
 
   /**
-   * How long to wait for the next poll request after unsubscribing, indicating that old messages were processed.
+   * During a state transition, it is unsafe to proceed without waiting for all inflight messages to be processed.
+   * This controls how long to wait for inflight messages after unsubscribing from a topic during a state transition.
    */
-  public static final String SERVER_WAIT_AFTER_UNSUBSCRIBE_TIMEOUT_MS = "server.wait.after.unsubscribe.timeout.ms";
+  public static final String SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS = "server.max.wait.after.unsubscribe.ms";
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
