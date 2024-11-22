@@ -943,6 +943,12 @@ public interface Admin extends AutoCloseable, Closeable {
   List<StoreInfo> getStoresForCompaction(String clusterName);
 
   /**
+   * @param storeName
+   * triggers repush for storeName
+   */
+  void triggerRepush(String storeName);
+
+  /**
    * @return the largest used version number for the given store from store graveyard.
    */
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);

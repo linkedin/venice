@@ -7492,6 +7492,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return compactionReadyStores;
   }
 
+  @Override
+  public void triggerRepush(String storeName) {
+    // TODO
+  }
+
   // package exclusive for testing
   void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
     for (StoreInfo storeInfo: storeInfoList) {

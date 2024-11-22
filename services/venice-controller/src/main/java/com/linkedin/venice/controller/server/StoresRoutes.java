@@ -23,38 +23,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
-import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
-import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -950,6 +919,21 @@ public class StoresRoutes extends AbstractRoute {
         List<StoreInfo> response = admin.getStoresForCompaction(cluster);
         veniceResponse.setStoreInfoList(response);
         veniceResponse.setCluster(cluster);
+      }
+    };
+  }
+
+  /**
+   * @see Admin#triggerRepush(String)
+   */
+  public Route triggerRepush(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, TRIGGER_REPUSH.getParams(), admin);
+        String storeName = request.queryParams(NAME);
+        admin.triggerRepush(storeName);
+        veniceResponse.setName(storeName);
       }
     };
   }

@@ -4813,6 +4813,11 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 
+  @Override
+  public void triggerRepush(String storeName) {
+    // TODO
+  }
+
   /**
    * @return the largest used version number for the given store from the store graveyard.
    */

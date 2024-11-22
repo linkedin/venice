@@ -1166,6 +1166,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORES_FOR_COMPACTION, params, MultiStoreInfoResponse.class);
   }
 
+  public ControllerResponse triggerRepush(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.TRIGGER_REPUSH, params, ControllerResponse.class);
+  }
+
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
     QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
