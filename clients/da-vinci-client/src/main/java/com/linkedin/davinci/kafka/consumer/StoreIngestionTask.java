@@ -351,7 +351,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected final CountDownLatch gracefulShutdownLatch = new CountDownLatch(1);
-  protected final ZKHelixAdmin zkHelixAdmin;
+  protected final Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
 
   public StoreIngestionTask(
@@ -535,7 +535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
-    this.zkHelixAdmin = new ZKHelixAdmin(zkAddress);
+    this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(zkAddress));
     this.hostName = Utils.getHostName() + "_" + port;
   }
 
@@ -4178,11 +4178,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     ingestionNotificationDispatcher.reportError(pcsList, message, e);
     // Set the replica state to ERROR so that the controller can attempt to reset the partition.
-    zkHelixAdmin.setPartitionsToError(
-        serverConfig.getClusterName(),
-        hostName,
-        storeName,
-        Collections.singletonList(HelixUtils.getPartitionName(storeName, userPartition)));
+    zkHelixAdmin.get()
+        .setPartitionsToError(
+            serverConfig.getClusterName(),
+            hostName,
+            storeName,
+            Collections.singletonList(HelixUtils.getPartitionName(storeName, userPartition)));
   }
 
   public boolean isActiveActiveReplicationEnabled() {
