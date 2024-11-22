@@ -478,4 +478,12 @@
     <Package name="com.linkedin.venice.protocols"/>
     <Bug pattern="MS_EXPOSE_REP"/>
   </Match>
+  <Match>
+    <Bug pattern="SE_INNER_CLASS"/>
+    <Or>
+      <Class name="com.linkedin.venice.beam.consumer.PubSubMessageCoder"/>
+      <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO"/>
+      <Class name="com.linkedin.venice.beam.consumer.VeniceMessageCoder"/>
+    </Or>
+  </Match>
 </FindBugsFilter>
