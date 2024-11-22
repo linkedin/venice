@@ -196,6 +196,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig);
 
+  void setTargetSwapRegion(String targetRegion);
+
+  String getTargetSwapRegion();
+
+  void setTargetSwapRegionWaitTime(int waitTime);
+
+  int getTargetSwapRegionWaitTime();
+
   /**
    * Get the replication metadata version id.
    * @deprecated

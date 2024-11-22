@@ -51,8 +51,12 @@
                       "type": "int",
                       "doc": "Policy that will be used during buffer replay. rewindTimeInSeconds defines the delta. 0 => REWIND_FROM_EOP (replay from 'EOP - rewindTimeInSeconds'), 1 => REWIND_FROM_SOP (replay from 'SOP - rewindTimeInSeconds')",
                       "default": 0
+<<<<<<< HEAD
                     },
                     {"name": "realTimeTopicName", "type": "string", "default": "", "doc": "Name of the real time topic this store/version uses"}
+=======
+                    }
+>>>>>>> 649a4cc9c (add store and verion config for target swap region and wait time)
                   ]
                 }
               ],
@@ -244,7 +248,13 @@
                       },
                       "default": {}
                     },
+<<<<<<< HEAD
                     {"name": "repushSourceVersion", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the source store version its created from."}
+=======
+                    {"name": "repushSourceVersion", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the source store version its created from."},
+                    {"name": "targetSwapRegion", "type": "string", "default": "", "doc": "Controls what region to start the target region push with deferred swap in"},
+                    {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait before swapping the version on the regions"}
+>>>>>>> 649a4cc9c (add store and verion config for target swap region and wait time)
                   ]
                 }
               },
@@ -272,7 +282,13 @@
             {"name": "storageNodeReadQuotaEnabled", "type": "boolean", "default": false, "doc": "Controls the storage node read quota enforcement for the given Venice store"},
             {"name": "blobTransferEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate if the blob transfer is allowed or not"},
             {"name": "nearlineProducerCompressionEnabled", "type":  "boolean", "default": true, "doc":  "Flag to control whether the producer in Server for near-line workload will enable compression or not"},
+<<<<<<< HEAD
             {"name": "nearlineProducerCountPerWriter", "type": "int", "default":  1, "doc":  "How many producers will be used for the nearline producer in Server to improve producing throughput"}
+=======
+            {"name": "nearlineProducerCountPerWriter", "type": "int", "default":  1, "doc":  "How many producers will be used for the nearline producer in Server to improve producing throughput"},
+            {"name": "targetSwapRegion", "type": "string", "default": "", "doc": "Controls what region to start the target region push with deferred swap in"},
+            {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait before swapping the version on the regions"}
+>>>>>>> 649a4cc9c (add store and verion config for target swap region and wait time)
           ]
         }
       ],

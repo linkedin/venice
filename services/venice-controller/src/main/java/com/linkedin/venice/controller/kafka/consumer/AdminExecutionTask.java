@@ -500,7 +500,9 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBlobTransferEnabled(message.blobTransferEnabled)
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
-        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter);
+        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
+        .setTargetRegionSwap(message.targetSwapRegion.toString())
+        .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -642,6 +644,8 @@ public class AdminExecutionTask implements Callable<Void> {
         storeName,
         clusterName,
         versionNumber);
+
+    // add check here to injest in all colo + version defer swap
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating

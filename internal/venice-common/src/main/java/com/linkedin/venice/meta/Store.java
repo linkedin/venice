@@ -329,4 +329,12 @@ public interface Store {
   int getNearlineProducerCountPerWriter();
 
   void setNearlineProducerCountPerWriter(int producerCnt);
+
+  String getTargetSwapRegion();
+
+  int getTargetSwapRegionWaitTime();
+
+  void setTargetSwapRegion(String targetRegion);
+
+  void setTargetSwapRegionWaitTime(int waitTime);
 }

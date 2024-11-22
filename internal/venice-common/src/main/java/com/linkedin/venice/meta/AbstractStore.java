@@ -158,6 +158,10 @@ public abstract class AbstractStore implements Store {
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
+      version.setTargetSwapRegion(getTargetSwapRegion());
+
+      version.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
+
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
         version.setHybridStoreConfig(hybridStoreConfig.clone());

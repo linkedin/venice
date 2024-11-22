@@ -595,6 +595,26 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getTargetSwapRegion() {
+      return delegate.getTargetSwapRegion();
+    }
+
+    @Override
+    public int getTargetSwapRegionWaitTime() {
+      return delegate.getTargetSwapRegionWaitTime();
+    }
+
+    @Override
+    public void setTargetSwapRegion(String targetRegion) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setTargetSwapRegionWaitTime(int waitTime) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
@@ -1434,6 +1454,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public String getTargetSwapRegion() {
+    return delegate.getTargetSwapRegion();
+  }
+
+  @Override
+  public int getTargetSwapRegionWaitTime() {
+    return delegate.getTargetSwapRegionWaitTime();
+  }
+
+  @Override
+  public void setTargetSwapRegion(String targetRegion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setTargetSwapRegionWaitTime(int waitTime) {
     throw new UnsupportedOperationException();
   }
 

@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
+<<<<<<< HEAD
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
@@ -61,6 +62,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+=======
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+>>>>>>> 649a4cc9c (add store and verion config for target swap region and wait time)
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
@@ -2272,6 +2276,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
+      Optional<String> targetRegionSwap = params.getTargetSwapRegion();
+      Optional<Integer> targetRegionSwapWaitTime = params.getTargetRegionSwapWaitTime();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2624,6 +2630,14 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter()
           .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
           .orElseGet(currStore::getNearlineProducerCountPerWriter);
+
+      setStore.targetSwapRegion = params.getTargetSwapRegion()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
+          .orElseGet(currStore::getTargetSwapRegion);
+
+      setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
+          .orElseGet((currStore::getTargetSwapRegionWaitTime));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {

@@ -76,6 +76,8 @@ public class StoreInfo {
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
+    storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
+    storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
     return storeInfo;
   }
 
@@ -326,6 +328,8 @@ public class StoreInfo {
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;
+  private String targetRegionSwap;
+  private int targetRegionSwapWaitTime;
 
   public StoreInfo() {
   }
@@ -830,5 +834,21 @@ public class StoreInfo {
 
   public void setNearlineProducerCountPerWriter(int nearlineProducerCountPerWriter) {
     this.nearlineProducerCountPerWriter = nearlineProducerCountPerWriter;
+  }
+
+  public String getTargetRegionSwap() {
+    return this.targetRegionSwap;
+  }
+
+  public void setTargetRegionSwap(String targetRegion) {
+    this.targetRegionSwap = targetRegion;
+  }
+
+  public int getTargetRegionSwapWaitTime() {
+    return this.targetRegionSwapWaitTime;
+  }
+
+  public void setTargetRegionSwapWaitTime(int waitTime) {
+    this.targetRegionSwapWaitTime = waitTime;
   }
 }

@@ -925,6 +925,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.nearlineProducerCountPerWriter = producerCnt;
   }
 
+  @Override
+  public int getTargetSwapRegionWaitTime() {
+    return this.storeProperties.targetSwapRegionWaitTime;
+  }
+
+  @Override
+  public String getTargetSwapRegion() {
+    return this.storeProperties.targetSwapRegion.toString();
+  }
+
+  @Override
+  public void setTargetSwapRegion(String targetRegion) {
+    this.storeProperties.targetSwapRegion = targetRegion;
+  }
+
+  @Override
+  public void setTargetSwapRegionWaitTime(int waitTime) {
+    this.storeProperties.targetSwapRegionWaitTime = waitTime;
+  }
+
   /**
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */
