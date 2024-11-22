@@ -1255,6 +1255,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushJobStatusStats.recordBatchPushSuccessSensor();
           }
         }
+        // Append job duration in minutes to log message
+        double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
+        logMessage.append(", duration: ").append(String.format("%.1f mins", jobDurationInMinutes));
         LOGGER.info(
             "{}. Incremental push: {}, push job id: {}, checkpoint: {}",
             logMessage.toString(),
