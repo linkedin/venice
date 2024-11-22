@@ -22,6 +22,7 @@ The Venice codebase is split across these directories:
   minimal Venice-specific logic, and be mostly just glue code to satisfy the contracts expected by the third-party 
   system. Also, these modules are intended to minimize the dependency burden of the other client libraries. Those 
   include:
+  - `venice-beam`, which implements the Beam Read API, enabling a Beam job to consume the Venice changelog.  
   - `venice-pulsar`, which contains an implementation of a Pulsar [Sink](https://pulsar.apache.org/docs/next/io-overview/#sink),
     in order to feed data from Pulsar topics to Venice.
   - `venice-samza`, which contains an implementation of a Samza [SystemProducer](https://samza.apache.org/learn/documentation/latest/api/javadocs/org/apache/samza/system/SystemProducer.html),
