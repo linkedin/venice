@@ -56,6 +56,7 @@ import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
@@ -394,9 +395,6 @@ public class VeniceServerTest {
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDropStorePartitionAsynchronously() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
-      Properties featureProperties = new Properties();
-      featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
-      featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
       Assert.assertTrue(server.getVeniceServer().isStarted());
 
@@ -413,15 +411,22 @@ public class VeniceServerTest {
       Assert.assertTrue(server.getVeniceServer().getHelixParticipationService().isRunning());
       Assert.assertEquals(storageService.getStorageEngine(storeVersionName).getPartitionIds().size(), 3);
 
-      // Add servers to trigger a rebalance, which will redistribute and drop partitions for the current participant
-      cluster.addVeniceServer(featureProperties, new Properties());
-      cluster.addVeniceServer(featureProperties, new Properties());
-
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1);
 
+      String helixInstanceName = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
+      String instanceOperationReason = "Disable instance to remove all partitions assigned to it";
+      cluster.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixAdminClient()
+          .setInstanceOperation(
+              cluster.getClusterName(),
+              helixInstanceName,
+              InstanceConstants.InstanceOperation.DISABLE,
+              instanceOperationReason);
+
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        // Partitions should have been dropped asynchronously due to rebalancing
-        Assert.assertTrue(storageService.getStorageEngine(storeVersionName).getPartitionIds().size() < 3);
+        // All partitions should have been dropped asynchronously due to instance being disabled
+        Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
       });
     }
   }
