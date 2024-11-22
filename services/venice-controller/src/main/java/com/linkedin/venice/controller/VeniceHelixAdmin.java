@@ -7493,7 +7493,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public void triggerRepush(String storeName) {
+  public void compactStore(String storeName) {
     // TODO
   }
 

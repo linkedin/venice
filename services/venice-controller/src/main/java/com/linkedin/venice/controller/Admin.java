@@ -946,7 +946,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * @param storeName
    * triggers repush for storeName
    */
-  void triggerRepush(String storeName);
+  void compactStore(String storeName);
 
   /**
    * @return the largest used version number for the given store from store graveyard.

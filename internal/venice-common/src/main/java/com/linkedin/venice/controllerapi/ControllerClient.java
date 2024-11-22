@@ -1168,7 +1168,7 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse triggerRepush(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
-    return request(ControllerRoute.TRIGGER_REPUSH, params, ControllerResponse.class);
+    return request(ControllerRoute.COMPACT_STORE, params, ControllerResponse.class);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {

@@ -4814,7 +4814,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void triggerRepush(String storeName) {
+  public void compactStore(String storeName) {
     // TODO
   }
 

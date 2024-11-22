@@ -924,15 +924,15 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#triggerRepush(String)
+   * @see Admin#compactStore(String)
    */
-  public Route triggerRepush(Admin admin) {
+  public Route compactStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, TRIGGER_REPUSH.getParams(), admin);
+        AdminSparkServer.validateParams(request, COMPACT_STORE.getParams(), admin);
         String storeName = request.queryParams(NAME);
-        admin.triggerRepush(storeName);
+        admin.compactStore(storeName);
         veniceResponse.setName(storeName);
       }
     };
