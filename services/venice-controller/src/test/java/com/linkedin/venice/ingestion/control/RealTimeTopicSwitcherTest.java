@@ -139,7 +139,6 @@ public class RealTimeTopicSwitcherTest {
 
     Store mockStore = mock(Store.class);
     when(mockStore.getName()).thenReturn(storeName);
-    String realTimeTopicName = Utils.getRealTimeTopicName(mockStore);
     Version version1 = new VersionImpl(storeName, 1, "push1");
     Version version2 = new VersionImpl(storeName, 2, "push2");
     version2.setViewConfigs(viewConfigs);

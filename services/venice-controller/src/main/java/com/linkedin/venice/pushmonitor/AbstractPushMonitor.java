@@ -933,7 +933,7 @@ public abstract class AbstractPushMonitor
         try {
           String newStatusDetails;
           realTimeTopicSwitcher.switchToRealTimeTopic(
-              Utils.getRealTimeTopicName(version),
+              Utils.getRealTimeTopicName(store),
               offlinePushStatus.getKafkaTopic(),
               store,
               aggregateRealTimeSourceKafkaUrl,
