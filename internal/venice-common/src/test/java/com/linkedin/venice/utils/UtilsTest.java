@@ -329,14 +329,15 @@ public class UtilsTest {
     assertEquals("RealTimeTopic", result);
   }
 
-  @Test(expectedExceptions = VeniceException.class)
+  @Test
   void testGetRealTimeTopicNameWithNonHybridVersion() {
     // Mocking the Version object
     Version mockVersion = mock(Version.class);
 
     // Mock setup to trigger the exception path
     when(mockVersion.getHybridStoreConfig()).thenReturn(null);
-
-    Utils.getRealTimeTopicName(mockVersion);
+    when(mockVersion.getStoreName()).thenReturn("TestStore");
+    String result = Utils.getRealTimeTopicName(mockVersion);
+    assertEquals("TestStore" + Version.REAL_TIME_TOPIC_SUFFIX, result);
   }
 }

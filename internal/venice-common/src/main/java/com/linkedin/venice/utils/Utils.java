@@ -617,7 +617,9 @@ public class Utils {
       String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
       return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName());
     } else {
-      throw new VeniceException("Version is not hybrid, so cannot return real time topic name.");
+      // if the version is not hybrid, caller should not ask for the real time topic,
+      // but unfortunately that happens, so instead of throwing exception, we just return a default name.
+      return composeRealTimeTopic(version.getStoreName());
     }
   }
 
