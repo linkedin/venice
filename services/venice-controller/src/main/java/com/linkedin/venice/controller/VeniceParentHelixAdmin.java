@@ -287,7 +287,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
-  public static final int COMPACTION_THRESHOLD_HOURS = 24;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -4811,68 +4810,8 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
-    ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
-    try {
-      Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-      ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
-
-      // iterate through child controllers
-      for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-
-        // add all store info to storeInfoList
-        MultiStoreInfoResponse response = controller.getValue().getClusterStores(clusterName);
-        storeInfoList.addAll(response.getStoreInfoList());
-      }
-
-      // filter out
-      filterStoresForCompaction(storeInfoList, compactionReadyStores);
-    } catch (Exception e) {
-      throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
-    }
-    return compactionReadyStores;
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
-
-  // package exclusive for testing
-  void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
-    for (StoreInfo storeInfo: storeInfoList) {
-      if (isCompactionReady(storeInfo)) {
-        compactionReadyStores.add(storeInfo);
-      }
-    }
-  }
-
-  // This function abstracts the criteria for a store to be ready for compaction
-  boolean isCompactionReady(StoreInfo storeInfo) {
-    boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(COMPACTION_THRESHOLD_HOURS, storeInfo);
-  }
-
-  // START isCompactionReady() helper methods: each method below encapsulates a log compaction readiness criterion
-  /**
-   * This function checks if the last compaction time is older than the threshold.
-   * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
-   * @param storeInfo, the store to check the last compaction time for
-   * @return true if the last compaction time is older than the threshold, false otherwise
-   */
-  private boolean isLastCompactionTimeOlderThanThresholdHours(int compactionThresholdHours, StoreInfo storeInfo) {
-    // get the last compaction time
-    int currentVersionNumber = storeInfo.getCurrentVersion();
-    Optional<Version> currentVersion = storeInfo.getVersion(currentVersionNumber);
-    if (!currentVersion.isPresent()) {
-      LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
-      return false; // invalid store because no current version, this store is not eligible for compaction
-    }
-
-    // calculate hours since last compaction
-    long lastCompactionTime = currentVersion.get().getCreatedTime();
-    long currentTime = System.currentTimeMillis();
-    long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-    long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
-
-    return hoursSinceLastCompaction > compactionThresholdHours;
-  }
-  // END isCompactionReady() helper methods
 
   /**
    * @return the largest used version number for the given store from the store graveyard.
