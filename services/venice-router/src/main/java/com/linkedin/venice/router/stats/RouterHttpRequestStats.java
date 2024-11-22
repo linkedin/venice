@@ -43,6 +43,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
+import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
@@ -137,21 +138,34 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   // QPS metrics
   public RouterHttpRequestStats(
-      VeniceMetricsRepository metricsRepository,
+      MetricsRepository metricsRepository,
       String storeName,
       String clusterName,
       RequestType requestType,
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-    emitOpenTelemetryMetrics = metricsRepository.getVeniceMetricsConfig().emitOtelMetrics();
-    openTelemetryMetricFormat = metricsRepository.getVeniceMetricsConfig().getMetricNamingFormat();
-    VeniceOpenTelemetryMetricsRepository otelRepository = metricsRepository.getOpenTelemetryMetricsRepository();
-    commonMetricDimensions = Attributes.builder()
-        .put(getDimensionName(VENICE_STORE_NAME), storeName)
-        .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
-        .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName)
-        .build();
+    VeniceOpenTelemetryMetricsRepository otelRepository;
+    if (metricsRepository instanceof VeniceMetricsRepository) {
+      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
+      emitOpenTelemetryMetrics = (veniceMetricsRepository != null)
+          ? veniceMetricsRepository.getVeniceMetricsConfig().emitOtelMetrics()
+          : false;
+      openTelemetryMetricFormat = (veniceMetricsRepository != null)
+          ? veniceMetricsRepository.getVeniceMetricsConfig().getMetricNamingFormat()
+          : VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+      otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
+      commonMetricDimensions = Attributes.builder()
+          .put(getDimensionName(VENICE_STORE_NAME), storeName)
+          .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
+          .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName)
+          .build();
+    } else {
+      emitOpenTelemetryMetrics = false;
+      openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+      commonMetricDimensions = null;
+      otelRepository = null;
+    }
 
     this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
     Rate requestRate = new OccurrenceRate();

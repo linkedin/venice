@@ -326,7 +326,8 @@ public class VeniceServer {
     services.add(storageService);
 
     // Create stats for RocksDB
-    storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
+    storageService.getRocksDBAggregatedStatistics()
+        .ifPresent(stat -> new AggRocksDBStats(serverConfig.getClusterName(), metricsRepository, stat));
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 

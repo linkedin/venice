@@ -28,7 +28,8 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
         metricsRepository,
         new KafkaConsumerServiceStatsSupplier(getMaxElapsedTimeSinceLastPollInConsumerPool),
         metadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        true);
   }
 
   public void recordTotalConsumerIdleTime(double idleTime) {

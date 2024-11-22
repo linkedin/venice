@@ -2,17 +2,16 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.StatsUtils;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
+import io.tehuti.metrics.MetricsRepository;
 
 
 public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> {
-  public AggHostHealthStats(VeniceMetricsRepository metricsRepository, String clusterName) {
+  public AggHostHealthStats(String clusterName, MetricsRepository metricsRepository) {
     super(
+        clusterName,
         metricsRepository,
-        (repo, hostName, cluster) -> new HostHealthStats(
-            (VeniceMetricsRepository) repo,
-            StatsUtils.convertHostnameToMetricName(hostName)),
-        clusterName);
+        (repo, hostName, cluster) -> new HostHealthStats(repo, StatsUtils.convertHostnameToMetricName(hostName)),
+        false);
   }
 
   private HostHealthStats getHostStats(String hostName) {

@@ -29,8 +29,8 @@ public class AggRouterHttpRequestStatsTest {
   @Test
   public void testAggRouterMetrics() {
     AggRouterHttpRequestStats stats = new AggRouterHttpRequestStats(
-        metricsRepository,
         "test-cluster",
+        metricsRepository,
         RequestType.SINGLE_GET,
         storeMetadataRepository,
         true);
@@ -66,8 +66,8 @@ public class AggRouterHttpRequestStatsTest {
   @Test
   public void testProfilingMetrics() {
     AggRouterHttpRequestStats stats = new AggRouterHttpRequestStats(
-        metricsRepository,
         "test-cluster",
+        metricsRepository,
         RequestType.COMPUTE,
         true,
         storeMetadataRepository,

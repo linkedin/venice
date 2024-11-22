@@ -5,9 +5,9 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -16,14 +16,14 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new VeniceConcurrentHashMap<>();
 
   public AggRouterHttpRequestStats(
-      VeniceMetricsRepository metricsRepository,
       String clusterName,
+      MetricsRepository metricsRepository,
       RequestType requestType,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
     this(
-        metricsRepository,
         clusterName,
+        metricsRepository,
         requestType,
         false,
         metadataRepository,
@@ -31,13 +31,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public AggRouterHttpRequestStats(
-      VeniceMetricsRepository metricsRepository,
       String cluster,
+      MetricsRepository metricsRepository,
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
-    super(metricsRepository, cluster, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
+    super(cluster, metricsRepository, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
     /**
      * Use a setter function to bypass the restriction that the supertype constructor could not
      * touch member fields of current object.
@@ -51,7 +51,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
       }
 
       return new RouterHttpRequestStats(
-          (VeniceMetricsRepository) metricsRepo,
+          metricsRepo,
           storeName,
           clusterName,
           requestType,

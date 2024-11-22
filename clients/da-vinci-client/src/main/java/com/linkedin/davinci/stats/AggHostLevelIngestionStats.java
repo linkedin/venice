@@ -23,10 +23,12 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
       boolean unregisterMetricForDeletedStoreEnabled,
       Time time) {
     super(
+        serverConfig.getClusterName(),
         metricsRepository,
         new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap, time),
         metadataRepository,
-        unregisterMetricForDeletedStoreEnabled);
+        unregisterMetricForDeletedStoreEnabled,
+        false);
   }
 
   static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {

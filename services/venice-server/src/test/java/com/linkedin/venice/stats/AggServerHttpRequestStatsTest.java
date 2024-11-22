@@ -30,6 +30,7 @@ public class AggServerHttpRequestStatsTest {
     this.reporter = new MockTehutiReporter();
     this.metricsRepository.addReporter(reporter);
     this.singleGetStats = new AggServerHttpRequestStats(
+        "test_cluster",
         metricsRepository,
         RequestType.SINGLE_GET,
         false,
@@ -37,6 +38,7 @@ public class AggServerHttpRequestStatsTest {
         true,
         false);
     this.batchGetStats = new AggServerHttpRequestStats(
+        "test_cluster",
         metricsRepository,
         RequestType.MULTI_GET,
         false,

@@ -20,28 +20,19 @@ public class AbstractVeniceAggStoreStats<T extends AbstractVeniceStats> extends 
       MetricsRepository metricsRepository,
       StatsSupplier<T> statsSupplier,
       ReadOnlyStoreRepository metadataRepository,
-      boolean isUnregisterMetricForDeletedStoreEnabled) {
-    super(metricsRepository, statsSupplier, clusterName);
+      boolean isUnregisterMetricForDeletedStoreEnabled,
+      boolean perClusterAggregate) {
+    super(clusterName, metricsRepository, statsSupplier, perClusterAggregate);
     this.isUnregisterMetricForDeletedStoreEnabled = isUnregisterMetricForDeletedStoreEnabled;
     registerStoreDataChangedListenerIfRequired(metadataRepository);
   }
 
   public AbstractVeniceAggStoreStats(
-      MetricsRepository metricsRepository,
-      StatsSupplier<T> statsSupplier,
-      ReadOnlyStoreRepository metadataRepository,
-      boolean isUnregisterMetricForDeletedStoreEnabled) {
-    super(metricsRepository, statsSupplier);
-    this.isUnregisterMetricForDeletedStoreEnabled = isUnregisterMetricForDeletedStoreEnabled;
-    registerStoreDataChangedListenerIfRequired(metadataRepository);
-  }
-
-  public AbstractVeniceAggStoreStats(
-      MetricsRepository metricsRepository,
       String clusterName,
+      MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled) {
-    super(metricsRepository, clusterName);
+    super(clusterName, metricsRepository);
     this.isUnregisterMetricForDeletedStoreEnabled = isUnregisterMetricForDeletedStoreEnabled;
     registerStoreDataChangedListenerIfRequired(metadataRepository);
   }

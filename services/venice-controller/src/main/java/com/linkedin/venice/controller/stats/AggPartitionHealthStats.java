@@ -37,7 +37,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
       String clusterName,
       ReadOnlyStoreRepository storeRepository,
       PushMonitor pushMonitor) {
-    super(null, (metricRepo, resourceName, cluster) -> new PartitionHealthStats(resourceName), clusterName);
+    super(clusterName, null, (metricRepo, resourceName, cluster) -> new PartitionHealthStats(resourceName), true);
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
   }
@@ -48,7 +48,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
       RoutingDataRepository routingDataRepository,
       ReadOnlyStoreRepository storeRepository,
       PushMonitor pushMonitor) {
-    super(metricsRepository, PartitionHealthStats::new, clusterName);
+    super(clusterName, metricsRepository, PartitionHealthStats::new, true);
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
 

@@ -2,7 +2,7 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
+import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
@@ -28,7 +28,7 @@ public class HostHealthStats extends AbstractVeniceStats {
   private Optional<Sensor> unhealthyHostCountCausedByPendingQueueSensor = Optional.empty();
   private Optional<Sensor> unhealthyHostCountCausedByHeartBeatSensor = Optional.empty();
 
-  public HostHealthStats(VeniceMetricsRepository metricsRepository, String name) {
+  public HostHealthStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
     this.unhealthyHostOfflineInstance = registerSensor("unhealthy_host_offline_instance", new Count());

@@ -47,8 +47,8 @@ public class TestVeniceMultiGetPath {
     RouterExceptionAndTrackingUtils.setRouterStats(
         new RouterStats<>(
             requestType -> new AggRouterHttpRequestStats(
-                new VeniceMetricsRepository(),
                 "test-cluster",
+                new VeniceMetricsRepository(),
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));

@@ -100,8 +100,8 @@ public class TestVenicePathParser {
     RouterExceptionAndTrackingUtils.setRouterStats(
         new RouterStats<>(
             requestType -> new AggRouterHttpRequestStats(
-                new VeniceMetricsRepository(),
                 CLUSTER,
+                new VeniceMetricsRepository(),
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));

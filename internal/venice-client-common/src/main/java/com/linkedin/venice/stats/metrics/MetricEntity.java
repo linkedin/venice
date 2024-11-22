@@ -81,7 +81,9 @@ public class MetricEntity {
    * create the metric
    */
   public void createMetric(VeniceOpenTelemetryMetricsRepository otelRepository) {
-    otelRepository.createInstrument(this);
+    if (otelRepository != null) {
+      otelRepository.createInstrument(this);
+    }
   }
 
   /**

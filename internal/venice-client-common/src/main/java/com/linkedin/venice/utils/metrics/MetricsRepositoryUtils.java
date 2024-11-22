@@ -22,32 +22,33 @@ public class MetricsRepositoryUtils {
     return createSingleThreadedMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100);
   }
 
-  public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository() {
+  public static MetricsRepository createSingleThreadedVeniceMetricsRepository() {
     return createSingleThreadedVeniceMetricsRepository(TimeUnit.MINUTES.toMillis(1), 100);
   }
 
-  public static MetricsRepository createSingleThreadedMetricsRepository(
+  public static MetricConfig getMetricConfig(
       long maxMetricsMeasurementTimeoutMs,
       long initialMetricsMeasurementTimeoutMs) {
-    return new MetricsRepository(
-        new MetricConfig(
-            new AsyncGauge.AsyncGaugeExecutor.Builder().setMetricMeasurementThreadCount(1)
-                .setSlowMetricMeasurementThreadCount(1)
-                .setInitialMetricsMeasurementTimeoutInMs(initialMetricsMeasurementTimeoutMs)
-                .setMaxMetricsMeasurementTimeoutInMs(maxMetricsMeasurementTimeoutMs)
-                .build()));
-  }
-
-  public static VeniceMetricsRepository createSingleThreadedVeniceMetricsRepository(
-      long maxMetricsMeasurementTimeoutMs,
-      long initialMetricsMeasurementTimeoutMs) {
-    MetricConfig tehutiMetricsConfig = new MetricConfig(
+    return new MetricConfig(
         new AsyncGauge.AsyncGaugeExecutor.Builder().setMetricMeasurementThreadCount(1)
             .setSlowMetricMeasurementThreadCount(1)
             .setInitialMetricsMeasurementTimeoutInMs(initialMetricsMeasurementTimeoutMs)
             .setMaxMetricsMeasurementTimeoutInMs(maxMetricsMeasurementTimeoutMs)
             .build());
+  }
+
+  public static MetricsRepository createSingleThreadedMetricsRepository(
+      long maxMetricsMeasurementTimeoutMs,
+      long initialMetricsMeasurementTimeoutMs) {
+    return new MetricsRepository(getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs));
+  }
+
+  public static MetricsRepository createSingleThreadedVeniceMetricsRepository(
+      long maxMetricsMeasurementTimeoutMs,
+      long initialMetricsMeasurementTimeoutMs) {
     return new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setTehutiMetricConfig(tehutiMetricsConfig).build());
+        new VeniceMetricsConfig.Builder()
+            .setTehutiMetricConfig(getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs))
+            .build());
   }
 }

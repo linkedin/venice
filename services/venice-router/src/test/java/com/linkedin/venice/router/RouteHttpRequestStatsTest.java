@@ -7,9 +7,9 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -22,7 +22,7 @@ public class RouteHttpRequestStatsTest {
 
   @BeforeSuite
   public void setUp() {
-    VeniceMetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
+    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 

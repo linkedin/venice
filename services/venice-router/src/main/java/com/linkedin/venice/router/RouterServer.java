@@ -137,7 +137,7 @@ public class RouterServer extends AbstractVeniceService {
   private static final String ROUTER_RETRY_MANAGER_THREAD_PREFIX = "Router-retry-manager-thread";
   // Immutable state
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
-  private final VeniceMetricsRepository metricsRepository;
+  private final MetricsRepository metricsRepository;
   private final Optional<SSLFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -291,7 +291,7 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
-      VeniceMetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository) {
     this(
         properties,
         serviceDiscoveryAnnouncers,
@@ -307,7 +307,7 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
-      VeniceMetricsRepository metricsRepository,
+      MetricsRepository metricsRepository,
       D2Client d2Client,
       String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
@@ -326,8 +326,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterName());
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
-            metricsRepository,
             config.getClusterName(),
+            metricsRepository,
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
@@ -371,7 +371,7 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
-      VeniceMetricsRepository metricsRepository,
+      MetricsRepository metricsRepository,
       boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
     zkClient =
@@ -386,7 +386,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = Optional.empty();
     this.metricsRepository = metricsRepository;
 
-    this.aggHostHealthStats = new AggHostHealthStats(metricsRepository, config.getClusterName());
+    this.aggHostHealthStats = new AggHostHealthStats(config.getClusterName(), metricsRepository);
 
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     this.accessController = accessController;
@@ -429,8 +429,8 @@ public class RouterServer extends AbstractVeniceService {
     this.metadataRepository = metadataRepository;
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
-            metricsRepository,
             config.getClusterName(),
+            metricsRepository,
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,

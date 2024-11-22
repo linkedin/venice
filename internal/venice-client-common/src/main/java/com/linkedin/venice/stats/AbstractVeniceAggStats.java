@@ -15,39 +15,18 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   private final MetricsRepository metricsRepository;
   private String clusterName = null;
 
-  private AbstractVeniceAggStats(MetricsRepository metricsRepository, StatsSupplier<T> statsSupplier, T totalStats) {
-    this.metricsRepository = metricsRepository;
-    this.statsFactory = statsSupplier;
-    this.totalStats = totalStats;
-  }
-
   private AbstractVeniceAggStats(
-      VeniceMetricsRepository metricsRepository,
-      StatsSupplier<T> statsSupplier,
       String clusterName,
+      MetricsRepository metricsRepository,
+      StatsSupplier<T> statsSupplier,
       T totalStats) {
+    this.clusterName = clusterName;
     this.metricsRepository = metricsRepository;
     this.statsFactory = statsSupplier;
-    this.clusterName = clusterName;
     this.totalStats = totalStats;
   }
 
-  public AbstractVeniceAggStats(MetricsRepository metricsRepository, StatsSupplier<T> statsSupplier) {
-    this(metricsRepository, statsSupplier, statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, null, null));
-  }
-
-  public AbstractVeniceAggStats(
-      VeniceMetricsRepository metricsRepository,
-      StatsSupplier<T> statsSupplier,
-      String clusterName) {
-    this(
-        metricsRepository,
-        statsSupplier,
-        clusterName,
-        statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT, clusterName, null));
-  }
-
-  public AbstractVeniceAggStats(MetricsRepository metricsRepository, String clusterName) {
+  public AbstractVeniceAggStats(String clusterName, MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
     this.clusterName = clusterName;
   }
@@ -58,14 +37,19 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   }
 
   public AbstractVeniceAggStats(
+      String clusterName,
       MetricsRepository metricsRepository,
       StatsSupplier<T> statsSupplier,
-      String clusterName) {
+      boolean perClusterAggregate) {
     this(
+        clusterName,
         metricsRepository,
         statsSupplier,
-        statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT + "." + clusterName, clusterName, null));
-    this.clusterName = clusterName;
+        statsSupplier.get(
+            metricsRepository,
+            perClusterAggregate ? STORE_NAME_FOR_TOTAL_STAT + "." + clusterName : STORE_NAME_FOR_TOTAL_STAT,
+            clusterName,
+            null));
   }
 
   public T getStoreStats(String storeName) {
