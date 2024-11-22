@@ -39,7 +39,7 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Run Unit Tests with Code Coverage
+      - name: Run Unit Tests & Code Coverage
         run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
       - name: Package Build Artifacts
         if: success() || failure()
@@ -52,9 +52,11 @@ jobs:
       - name: Publish Test Report
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
-        uses: mikepenz/action-junit-report@v3
-        if: always() # always run even if the previous step fails
+        uses: mikepenz/action-junit-report@v5
+        continue-on-error: true  # Make this step always pass
+        if:  failure() #  run  if the previous step fails
         with:
+          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
           report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
