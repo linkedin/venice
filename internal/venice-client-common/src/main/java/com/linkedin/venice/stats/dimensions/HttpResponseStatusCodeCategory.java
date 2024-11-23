@@ -8,7 +8,7 @@ import io.netty.handler.codec.http.HttpStatusClass;
  * Maps the provided HTTP response status {@link HttpResponseStatus} to one of
  * 1xx, 2xx, 3xx, 4xx, 5xx categories.
  */
-public class VeniceHttpResponseStatusCodeCategory {
+public class HttpResponseStatusCodeCategory {
   private static final String UNKNOWN_CATEGORY = "unknown";
 
   public static String getVeniceHttpResponseStatusCodeCategory(HttpResponseStatus statusCode) {

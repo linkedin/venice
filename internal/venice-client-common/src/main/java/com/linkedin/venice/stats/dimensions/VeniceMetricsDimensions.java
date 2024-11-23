@@ -18,19 +18,19 @@ public enum VeniceMetricsDimensions {
   /** {@link io.netty.handler.codec.http.HttpResponseStatus} ie. 200, 400, etc */
   HTTP_RESPONSE_STATUS_CODE("http.response.status_code"),
 
-  /** {@link VeniceHttpResponseStatusCodeCategory} ie. 1xx, 2xx, etc */
+  /** {@link HttpResponseStatusCodeCategory} ie. 1xx, 2xx, etc */
   HTTP_RESPONSE_STATUS_CODE_CATEGORY("http.response.status_code_category"),
 
-  /** {@link VeniceRequestValidationOutcome#outcome} */
+  /** {@link RequestValidationOutcome#outcome} */
   VENICE_REQUEST_VALIDATION_OUTCOME("venice.request.validation_outcome"),
 
   /** {@link VeniceResponseStatusCategory} */
   VENICE_RESPONSE_STATUS_CODE_CATEGORY("venice.response.status_code_category"),
 
-  /** {@link VeniceRequestRetryType} */
+  /** {@link RequestRetryType} */
   VENICE_REQUEST_RETRY_TYPE("venice.request.retry_type"),
 
-  /** {@link VeniceRequestRetryAbortReason} */
+  /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];

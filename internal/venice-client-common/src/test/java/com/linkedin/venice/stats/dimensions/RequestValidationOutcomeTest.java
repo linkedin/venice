@@ -5,10 +5,10 @@ import static org.testng.Assert.assertEquals;
 import org.testng.annotations.Test;
 
 
-public class VeniceRequestValidationOutcomeTest {
+public class RequestValidationOutcomeTest {
   @Test
   public void testVeniceRequestValidationOutcome() {
-    for (VeniceRequestValidationOutcome outcome: VeniceRequestValidationOutcome.values()) {
+    for (RequestValidationOutcome outcome: RequestValidationOutcome.values()) {
       switch (outcome) {
         case VALID:
           assertEquals(outcome.getOutcome(), "valid");

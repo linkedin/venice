@@ -68,7 +68,7 @@ import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
-import com.linkedin.venice.router.stats.RouterMetricEntities;
+import com.linkedin.venice.router.stats.RouterMetricEntity;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -84,7 +84,7 @@ import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.venice.stats.metrics.MetricEntities;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -125,6 +125,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -199,8 +200,8 @@ public class RouterServer extends AbstractVeniceService {
 
   public static final String ROUTER_SERVICE_NAME = "venice-router";
   public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
-  public static final Collection<MetricEntities> ROUTER_SERVICE_METRIC_ENTITIES =
-      Arrays.asList(RouterMetricEntities.values());
+  public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES = Collections.unmodifiableList(
+      Arrays.stream(RouterMetricEntity.values()).map(RouterMetricEntity::getMetricEntity).collect(Collectors.toList()));
   /**
    * Thread number used to monitor the listening port;
    */

@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.stats.metrics.MetricEntities;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
@@ -108,7 +108,7 @@ public class VeniceMetricsConfig {
 
   private final String serviceName;
   private final String metricPrefix;
-  private final Collection<MetricEntities> metricEntities;
+  private final Collection<MetricEntity> metricEntities;
   /** reusing tehuti's MetricConfig */
   private final MetricConfig tehutiMetricConfig;
 
@@ -174,7 +174,7 @@ public class VeniceMetricsConfig {
   public static class Builder {
     private String serviceName = "default_service";
     private String metricPrefix = null;
-    private Collection<MetricEntities> metricEntities;
+    private Collection<MetricEntity> metricEntities;
     private boolean emitOtelMetrics = false;
     private boolean exportOtelMetricsToEndpoint = false;
     private Map<String, String> otelCustomDimensionsMap = new HashMap<>();
@@ -200,7 +200,7 @@ public class VeniceMetricsConfig {
       return this;
     }
 
-    public Builder setMetricEntities(Collection<MetricEntities> metricEntities) {
+    public Builder setMetricEntities(Collection<MetricEntity> metricEntities) {
       this.metricEntities = metricEntities;
       return this;
     }
@@ -402,7 +402,7 @@ public class VeniceMetricsConfig {
     return this.metricPrefix;
   }
 
-  public Collection<MetricEntities> getMetricEntities() {
+  public Collection<MetricEntity> getMetricEntities() {
     return this.metricEntities;
   }
 
@@ -461,9 +461,10 @@ public class VeniceMetricsConfig {
   @Override
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
-        + ", emitOTelMetrics=" + emitOTelMetrics + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint
-        + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='" + otelEndpoint + '\''
-        + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
+        + ", metricEntities=" + metricEntities + ", emitOTelMetrics=" + emitOTelMetrics
+        + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", otelCustomDimensionsMap="
+        + otelCustomDimensionsMap + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='"
+        + otelEndpoint + '\'' + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
         + ", metricNamingFormat=" + metricNamingFormat + ", otelAggregationTemporalitySelector="
         + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
         + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale

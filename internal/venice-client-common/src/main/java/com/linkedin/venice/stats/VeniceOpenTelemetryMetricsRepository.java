@@ -4,7 +4,6 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.stats.metrics.MetricEntities;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -87,8 +86,7 @@ public class VeniceOpenTelemetryMetricsRepository {
           .warn("No metric entities found in config: {} to configure exponential histogram", metricsConfig.toString());
     }
 
-    for (MetricEntities metricEntities: metricsConfig.getMetricEntities()) {
-      MetricEntity metricEntity = metricEntities.getMetricEntity();
+    for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
         metricNames.add(getFullMetricName(getMetricPrefix(), metricEntity.getMetricName()));
       }
@@ -211,7 +209,6 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public void close() {
-    LOGGER.info("OpenTelemetry close");
     if (sdkMeterProvider != null) {
       sdkMeterProvider.shutdown();
       sdkMeterProvider = null;
@@ -248,11 +245,11 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   // for testing purpose
-  public SdkMeterProvider getSdkMeterProvider() {
+  SdkMeterProvider getSdkMeterProvider() {
     return sdkMeterProvider;
   }
 
-  public Meter getMeter() {
+  Meter getMeter() {
     return meter;
   }
 }

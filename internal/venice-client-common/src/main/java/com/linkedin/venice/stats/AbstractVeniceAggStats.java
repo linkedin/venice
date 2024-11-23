@@ -13,7 +13,7 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
   private StatsSupplier<T> statsFactory;
 
   private final MetricsRepository metricsRepository;
-  private String clusterName = null;
+  private final String clusterName;
 
   private AbstractVeniceAggStats(
       String clusterName,

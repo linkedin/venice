@@ -5,21 +5,21 @@ import static org.testng.Assert.assertEquals;
 import org.testng.annotations.Test;
 
 
-public class VeniceRequestRetryAbortReasonTest {
+public class RequestRetryAbortReasonTest {
   @Test
   public void testRetryRequestAbortReason() {
-    for (VeniceRequestRetryAbortReason reason: VeniceRequestRetryAbortReason.values()) {
+    for (RequestRetryAbortReason reason: RequestRetryAbortReason.values()) {
       switch (reason) {
-        case RETRY_ABORTED_BY_SLOW_ROUTE:
+        case SLOW_ROUTE:
           assertEquals(reason.getAbortReason(), "slow_route");
           break;
-        case RETRY_ABORTED_BY_DELAY_CONSTRAINT:
+        case DELAY_CONSTRAINT:
           assertEquals(reason.getAbortReason(), "delay_constraint");
           break;
-        case RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT:
+        case MAX_RETRY_ROUTE_LIMIT:
           assertEquals(reason.getAbortReason(), "max_retry_router_limit");
           break;
-        case RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA:
+        case NO_AVAILABLE_REPLICA:
           assertEquals(reason.getAbortReason(), "no_available_replica");
           break;
         default:

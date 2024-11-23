@@ -5,10 +5,10 @@ import static org.testng.Assert.assertEquals;
 import org.testng.annotations.Test;
 
 
-public class VeniceRequestRetryTypeTest {
+public class RequestRetryTypeTest {
   @Test
   public void testVeniceRequestRetryType() {
-    for (VeniceRequestRetryType retryType: VeniceRequestRetryType.values()) {
+    for (RequestRetryType retryType: RequestRetryType.values()) {
       switch (retryType) {
         case ERROR_RETRY:
           assertEquals(retryType.getRetryType(), "error_retry");

@@ -1,13 +1,13 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static com.linkedin.venice.stats.dimensions.VeniceHttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static org.testng.Assert.assertEquals;
 
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.testng.annotations.Test;
 
 
-public class VeniceHttpResponseStatusCodeCategoryTest {
+public class HttpResponseStatusCodeCategoryTest {
   @Test()
   public void testValues() {
     assertEquals(getVeniceHttpResponseStatusCodeCategory(HttpResponseStatus.PROCESSING), "1xx");

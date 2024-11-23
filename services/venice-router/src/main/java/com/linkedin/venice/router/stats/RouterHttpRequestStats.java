@@ -2,17 +2,17 @@ package com.linkedin.venice.router.stats;
 
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.ABORTED_RETRY_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.ALLOWED_RETRY_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_KEY_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.CALL_TIME;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.DISALLOWED_RETRY_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.INCOMING_CALL_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.RETRY_COUNT;
-import static com.linkedin.venice.router.stats.RouterMetricEntities.RETRY_DELAY;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.ABORTED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.ALLOWED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_KEY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_TIME;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.DISALLOWED_RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.INCOMING_CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
-import static com.linkedin.venice.stats.dimensions.VeniceHttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
@@ -33,11 +33,12 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.dimensions.RequestValidationOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.dimensions.VeniceRequestRetryAbortReason;
-import com.linkedin.venice.stats.dimensions.VeniceRequestRetryType;
-import com.linkedin.venice.stats.dimensions.VeniceRequestValidationOutcome;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntityState;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -54,6 +55,10 @@ import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -73,39 +78,28 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   /** metrics to track incoming requests */
-  private final Sensor incomingRequestSensor;
+  private final MetricEntityState incomingRequestMetric;
 
   /** metrics to track response handling */
-  private final Sensor healthySensor;
-  private final Sensor unhealthySensor;
-  private final Sensor tardySensor;
+  private final MetricEntityState requestMetric;
   private final Sensor healthyRequestRateSensor;
   private final Sensor tardyRequestRatioSensor;
-  private final Sensor throttleSensor;
-  private final Sensor badRequestSensor;
 
   /** latency metrics */
-  private final Sensor latencySensor;
-  private final Sensor healthyRequestLatencySensor;
-  private final Sensor unhealthyRequestLatencySensor;
-  private final Sensor tardyRequestLatencySensor;
-  private final Sensor throttledRequestLatencySensor;
+  private final Sensor latencyTehutiSensor; // This can be removed while removing tehuti
+  private final MetricEntityState latencyMetric;
 
   /** retry metrics */
-  private final Sensor errorRetryCountSensor;
-  private final Sensor allowedRetryRequestSensor;
-  private final Sensor disallowedRetryRequestSensor;
-  private final Sensor retryDelaySensor;
+  private final MetricEntityState retryCountMetric;
+  private final MetricEntityState allowedRetryCountMetric;
+  private final MetricEntityState disallowedRetryCountMetric;
+  private final MetricEntityState retryDelayMetric;
 
   /** retry aborted metrics */
-  private final Sensor delayConstraintAbortedRetryRequest;
-  private final Sensor slowRouteAbortedRetryRequest;
-  private final Sensor retryRouteLimitAbortedRetryRequest;
-  private final Sensor noAvailableReplicaAbortedRetryRequest;
+  private final MetricEntityState abortedRetryCountMetric;
 
   /** key count metrics */
-  private final Sensor keyNumSensor;
-  private final Sensor badRequestKeyCountSensor;
+  private final MetricEntityState keyCountMetric;
 
   /** OTel metrics yet to be added */
   private final Sensor requestSizeSensor;
@@ -150,21 +144,16 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     VeniceOpenTelemetryMetricsRepository otelRepository;
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      emitOpenTelemetryMetrics = (veniceMetricsRepository != null)
-          ? veniceMetricsRepository.getVeniceMetricsConfig().emitOtelMetrics()
-          : false;
-      openTelemetryMetricFormat = (veniceMetricsRepository != null)
-          ? veniceMetricsRepository.getVeniceMetricsConfig().getMetricNamingFormat()
-          : VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
+      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
+      openTelemetryMetricFormat = veniceMetricsConfig.getMetricNamingFormat();
       otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
       AttributesBuilder attributesBuilder = Attributes.builder()
           .put(getDimensionName(VENICE_STORE_NAME), storeName)
           .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
           .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName);
       // add custom dimensions passed in by the user
-      for (Map.Entry<String, String> entry: veniceMetricsRepository.getVeniceMetricsConfig()
-          .getOtelCustomDimensionsMap()
-          .entrySet()) {
+      for (Map.Entry<String, String> entry: veniceMetricsConfig.getOtelCustomDimensionsMap().entrySet()) {
         attributesBuilder.put(entry.getKey(), entry.getValue());
       }
       commonMetricDimensions = attributesBuilder.build();
@@ -180,48 +169,125 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     Rate healthyRequestRate = new OccurrenceRate();
     Rate tardyRequestRate = new OccurrenceRate();
 
-    incomingRequestSensor = registerSensor("request", new Count(), requestRate);
-    INCOMING_CALL_COUNT.getMetricEntity().createMetric(otelRepository);
+    incomingRequestMetric = new MetricEntityState(
+        INCOMING_CALL_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.INCOMING_REQUEST, Arrays.asList(new Count(), requestRate));
+          }
+        });
 
-    healthySensor = registerSensor("healthy_request", new Count(), healthyRequestRate);
-    unhealthySensor = registerSensor("unhealthy_request", new Count());
-    tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
-    throttleSensor = registerSensor("throttled_request", new Count());
     healthyRequestRateSensor =
         registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "healthy_request_ratio"));
     tardyRequestRatioSensor =
         registerSensor(new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate, "tardy_request_ratio"));
-    badRequestSensor = registerSensor("bad_request", new Count());
-    CALL_COUNT.getMetricEntity().createMetric(otelRepository);
+    requestMetric = new MetricEntityState(
+        CALL_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.HEALTHY_REQUEST, Arrays.asList(new Count(), healthyRequestRate));
+            put(MetricNamesInTehuti.UNHEALTHY_REQUEST, Collections.singletonList(new Count()));
+            put(MetricNamesInTehuti.TARDY_REQUEST, Arrays.asList(new Count(), tardyRequestRate));
+            put(MetricNamesInTehuti.THROTTLED_REQUEST, Collections.singletonList(new Count()));
+            put(MetricNamesInTehuti.BAD_REQUEST, Collections.singletonList(new Count()));
+          }
+        });
 
-    errorRetryCountSensor = registerSensor("error_retry", new Count());
-    RETRY_COUNT.getMetricEntity().createMetric(otelRepository);
-    allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
-    ALLOWED_RETRY_COUNT.getMetricEntity().createMetric(otelRepository);
-    disallowedRetryRequestSensor = registerSensor("disallowed_retry_request_count", new OccurrenceRate());
-    DISALLOWED_RETRY_COUNT.getMetricEntity().createMetric(otelRepository);
+    latencyTehutiSensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
+    latencyMetric = new MetricEntityState(
+        CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(
+                MetricNamesInTehuti.HEALTHY_REQUEST_LATENCY,
+                Arrays.asList(
+                    new Avg(),
+                    new Max(0),
+                    TehutiUtils.getPercentileStatForNetworkLatency(
+                        getName(),
+                        getFullMetricName(MetricNamesInTehuti.HEALTHY_REQUEST_LATENCY))));
+            put(MetricNamesInTehuti.UNHEALTHY_REQUEST_LATENCY, Arrays.asList(new Avg(), new Max(0)));
+            put(MetricNamesInTehuti.TARDY_REQUEST_LATENCY, Arrays.asList(new Avg(), new Max(0)));
+            put(MetricNamesInTehuti.THROTTLED_REQUEST_LATENCY, Arrays.asList(new Avg(), new Max(0)));
+          }
+        });
+
+    retryCountMetric = new MetricEntityState(
+        RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.ERROR_RETRY, Collections.singletonList(new Count()));
+          }
+        });
+
+    allowedRetryCountMetric = new MetricEntityState(
+        ALLOWED_RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.ALLOWED_RETRY_REQUEST, Collections.singletonList(new OccurrenceRate()));
+          }
+        });
+
+    disallowedRetryCountMetric = new MetricEntityState(
+        DISALLOWED_RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.DISALLOWED_RETRY_REQUEST, Collections.singletonList(new OccurrenceRate()));
+          }
+        });
+
+    retryDelayMetric = new MetricEntityState(
+        RETRY_DELAY.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.RETRY_DELAY, Arrays.asList(new Avg(), new Max()));
+          }
+        });
+
+    abortedRetryCountMetric = new MetricEntityState(
+        ABORTED_RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, Collections.singletonList(new Count()));
+            put(MetricNamesInTehuti.SLOW_ROUTE_ABORTED_RETRY_REQUEST, Collections.singletonList(new Count()));
+            put(MetricNamesInTehuti.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST, Collections.singletonList(new Count()));
+            put(MetricNamesInTehuti.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST, Collections.singletonList(new Count()));
+          }
+        });
+
+    keyCountMetric = new MetricEntityState(
+        CALL_KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        new HashMap<String, List<MeasurableStat>>() {
+          {
+            put(MetricNamesInTehuti.KEY_NUM, Arrays.asList(new OccurrenceRate(), new Avg(), new Max(0)));
+            put(MetricNamesInTehuti.BAD_REQUEST_KEY_COUNT, Arrays.asList(new OccurrenceRate(), new Avg(), new Max(0)));
+          }
+        });
+
     errorRetryAttemptTriggeredByPendingRequestCheckSensor =
         registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
-    retryDelaySensor = registerSensor("retry_delay", new Avg(), new Max());
-    RETRY_DELAY.getMetricEntity().createMetric(otelRepository);
-
-    delayConstraintAbortedRetryRequest = registerSensor("delay_constraint_aborted_retry_request", new Count());
-    slowRouteAbortedRetryRequest = registerSensor("slow_route_aborted_retry_request", new Count());
-    retryRouteLimitAbortedRetryRequest = registerSensor("retry_route_limit_aborted_retry_request", new Count());
-    noAvailableReplicaAbortedRetryRequest = registerSensor("no_available_replica_aborted_retry_request", new Count());
-    ABORTED_RETRY_COUNT.getMetricEntity().createMetric(otelRepository);
 
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     requestThrottledByRouterCapacitySensor = registerSensor("request_throttled_by_router_capacity", new Count());
     fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max(0));
-
-    latencySensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
-    healthyRequestLatencySensor =
-        registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg(), new Max(0));
-    unhealthyRequestLatencySensor = registerSensor("unhealthy_request_latency", new Avg(), new Max(0));
-    tardyRequestLatencySensor = registerSensor("tardy_request_latency", new Avg(), new Max(0));
-    throttledRequestLatencySensor = registerSensor("throttled_request_latency", new Avg(), new Max(0));
-    CALL_TIME.getMetricEntity().createMetric(otelRepository);
 
     routerResponseWaitingTimeSensor = registerSensor(
         "response_waiting_time",
@@ -255,10 +321,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         new LambdaStat(
             (ignored, ignored2) -> scatterGatherStats.getTotalRetriesWinner(),
             "retry_faster_than_original_count"));
-
-    keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
-    badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
-    CALL_KEY_COUNT.getMetricEntity().createMetric(otelRepository);
 
     /**
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
@@ -309,30 +371,31 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
    * types of requests also have their latencies logged at the same time.
    */
   public void recordIncomingRequest() {
-    incomingRequestSensor.record();
+    incomingRequestMetric.record(MetricNamesInTehuti.INCOMING_REQUEST, 1, commonMetricDimensions);
     inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
     totalInflightRequestSensor.record();
-    INCOMING_CALL_COUNT.getMetricEntity().record(1, commonMetricDimensions);
   }
 
   public void recordHealthyRequest(Double latency, HttpResponseStatus responseStatus) {
-    healthySensor.record();
-    recordRequestSensorOtel(responseStatus, VeniceResponseStatusCategory.HEALTHY);
+    String metricNameInTehuti = MetricNamesInTehuti.HEALTHY_REQUEST;
+    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.HEALTHY;
+    recordRequestMetric(metricNameInTehuti, responseStatus, veniceResponseStatusCategory);
     if (latency != null) {
-      healthyRequestLatencySensor.record(latency);
-      recordLatencySensorOtel(latency, responseStatus, VeniceResponseStatusCategory.HEALTHY);
+      recordLatencyMetric(metricNameInTehuti, latency, responseStatus, veniceResponseStatusCategory);
     }
   }
 
   public void recordUnhealthyRequest(HttpResponseStatus responseStatus) {
-    unhealthySensor.record();
-    recordRequestSensorOtel(responseStatus, VeniceResponseStatusCategory.UNHEALTHY);
+    recordRequestMetric(MetricNamesInTehuti.UNHEALTHY_REQUEST, responseStatus, VeniceResponseStatusCategory.UNHEALTHY);
   }
 
   public void recordUnhealthyRequest(double latency, HttpResponseStatus responseStatus) {
     recordUnhealthyRequest(responseStatus);
-    unhealthyRequestLatencySensor.record(latency);
-    recordLatencySensorOtel(latency, responseStatus, VeniceResponseStatusCategory.UNHEALTHY);
+    recordLatencyMetric(
+        MetricNamesInTehuti.UNHEALTHY_REQUEST_LATENCY,
+        latency,
+        responseStatus,
+        VeniceResponseStatusCategory.UNHEALTHY);
   }
 
   public void recordUnavailableReplicaStreamingRequest() {
@@ -348,16 +411,19 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordTardyRequest(double latency, HttpResponseStatus responseStatus) {
-    tardySensor.record();
-    recordRequestSensorOtel(responseStatus, VeniceResponseStatusCategory.TARDY);
-    tardyRequestLatencySensor.record(latency);
-    recordLatencySensorOtel(latency, responseStatus, VeniceResponseStatusCategory.TARDY);
+    String metricNameInTehuti = MetricNamesInTehuti.TARDY_REQUEST;
+    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.TARDY;
+    recordRequestMetric(metricNameInTehuti, responseStatus, veniceResponseStatusCategory);
+    recordLatencyMetric(metricNameInTehuti, latency, responseStatus, veniceResponseStatusCategory);
   }
 
   public void recordThrottledRequest(double latency, HttpResponseStatus responseStatus) {
     recordThrottledRequest(responseStatus);
-    throttledRequestLatencySensor.record(latency);
-    recordLatencySensorOtel(latency, responseStatus, VeniceResponseStatusCategory.THROTTLED);
+    recordLatencyMetric(
+        MetricNamesInTehuti.THROTTLED_REQUEST_LATENCY,
+        latency,
+        responseStatus,
+        VeniceResponseStatusCategory.THROTTLED);
   }
 
   /**
@@ -368,45 +434,41 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
    * TODO: Remove this overload after fixing the above.
    */
   public void recordThrottledRequest(HttpResponseStatus responseStatus) {
-    throttleSensor.record();
-    recordRequestSensorOtel(responseStatus, VeniceResponseStatusCategory.THROTTLED);
+    recordRequestMetric(MetricNamesInTehuti.THROTTLED_REQUEST, responseStatus, VeniceResponseStatusCategory.THROTTLED);
   }
 
   public void recordErrorRetryCount() {
-    errorRetryCountSensor.record();
-    recordRetryTriggeredSensorOtel(VeniceRequestRetryType.ERROR_RETRY);
+    recordRetryTriggeredSensorOtel(MetricNamesInTehuti.ERROR_RETRY, RequestRetryType.ERROR_RETRY);
   }
 
-  public void recordRetryTriggeredSensorOtel(VeniceRequestRetryType retryType) {
+  public void recordRetryTriggeredSensorOtel(String tetutiMetricName, RequestRetryType retryType) {
+    Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Attributes dimensions = Attributes.builder()
+      dimensions = Attributes.builder()
           .putAll(commonMetricDimensions)
           .put(getDimensionName(VENICE_REQUEST_RETRY_TYPE), retryType.getRetryType())
           .build();
-      RETRY_COUNT.getMetricEntity().record(1, dimensions);
     }
+    retryCountMetric.record(tetutiMetricName, 1, dimensions);
   }
 
-  public void recordAbortedRetrySensorOtel(VeniceRequestRetryAbortReason abortReason) {
+  public void recordAbortedRetrySensorOtel(String tetutiMetricName, RequestRetryAbortReason abortReason) {
+    Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Attributes dimensions = Attributes.builder()
+      dimensions = Attributes.builder()
           .putAll(commonMetricDimensions)
           .put(getDimensionName(VENICE_REQUEST_RETRY_ABORT_REASON), abortReason.getAbortReason())
           .build();
-      ABORTED_RETRY_COUNT.getMetricEntity().record(1, dimensions);
     }
+    abortedRetryCountMetric.record(tetutiMetricName, 1, dimensions);
   }
 
   public void recordBadRequest(HttpResponseStatus responseStatus) {
-    badRequestSensor.record();
-    recordRequestSensorOtel(responseStatus, VeniceResponseStatusCategory.BAD_REQUEST);
+    recordRequestMetric(MetricNamesInTehuti.BAD_REQUEST, responseStatus, VeniceResponseStatusCategory.BAD_REQUEST);
   }
 
   public void recordBadRequestKeyCount(int keyCount) {
-    badRequestKeyCountSensor.record(keyCount);
-    if (emitOpenTelemetryMetrics) {
-      recordKeyCountSensorOtel(keyCount, VeniceRequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED);
-    }
+    recordKeyCountMetric(keyCount, RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED);
   }
 
   public void recordRequestThrottledByRouterCapacity() {
@@ -420,15 +482,17 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordLatency(double latency) {
-    latencySensor.record(latency);
+    latencyTehutiSensor.record(latency);
   }
 
-  public void recordLatencySensorOtel(
+  public void recordLatencyMetric(
+      String tehutiMetricName,
       double latency,
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceResponseStatusCategory) {
+    Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Attributes dimensions = Attributes.builder()
+      dimensions = Attributes.builder()
           .putAll(commonMetricDimensions)
           // only add HTTP_RESPONSE_STATUS_CODE_CATEGORY to reduce the cardinality for histogram
           .put(
@@ -436,15 +500,17 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
               getVeniceHttpResponseStatusCodeCategory(responseStatus))
           .put(getDimensionName(VENICE_RESPONSE_STATUS_CODE_CATEGORY), veniceResponseStatusCategory.getCategory())
           .build();
-      CALL_TIME.getMetricEntity().record(latency, dimensions);
     }
+    latencyMetric.record(tehutiMetricName, latency, dimensions);
   }
 
-  public void recordRequestSensorOtel(
+  public void recordRequestMetric(
+      String tetutiMetricName,
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceResponseStatusCategory) {
+    Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Attributes dimensions = Attributes.builder()
+      dimensions = Attributes.builder()
           .putAll(commonMetricDimensions)
           .put(
               getDimensionName(HTTP_RESPONSE_STATUS_CODE_CATEGORY),
@@ -452,8 +518,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           .put(getDimensionName(VENICE_RESPONSE_STATUS_CODE_CATEGORY), veniceResponseStatusCategory.getCategory())
           .put(getDimensionName(HTTP_RESPONSE_STATUS_CODE), responseStatus.codeAsText().toString())
           .build();
-      CALL_COUNT.getMetricEntity().record(1, dimensions);
     }
+    requestMetric.record(tetutiMetricName, 1, dimensions);
   }
 
   public void recordResponseWaitingTime(double waitingTime) {
@@ -485,21 +551,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordKeyNum(int keyNum) {
-    keyNumSensor.record(keyNum);
-    if (emitOpenTelemetryMetrics) {
-      recordKeyCountSensorOtel(keyNum, VeniceRequestValidationOutcome.VALID);
-    }
+    recordKeyCountMetric(keyNum, RequestValidationOutcome.VALID);
   }
 
-  public void recordKeyCountSensorOtel(int keyNum, VeniceRequestValidationOutcome outcome) {
-    keyNumSensor.record(keyNum);
+  public void recordKeyCountMetric(int keyNum, RequestValidationOutcome outcome) {
+    Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Attributes dimensions = Attributes.builder()
+      dimensions = Attributes.builder()
           .putAll(commonMetricDimensions)
           .put(getDimensionName(VENICE_REQUEST_VALIDATION_OUTCOME), outcome.getOutcome())
           .build();
-      CALL_KEY_COUNT.getMetricEntity().record(keyNum, dimensions);
     }
+    keyCountMetric.record(MetricNamesInTehuti.KEY_NUM, keyNum, dimensions);
   }
 
   public void recordRequestUsage(int usage) {
@@ -523,23 +586,27 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordDelayConstraintAbortedRetryRequest() {
-    delayConstraintAbortedRetryRequest.record();
-    recordAbortedRetrySensorOtel(VeniceRequestRetryAbortReason.RETRY_ABORTED_BY_DELAY_CONSTRAINT);
+    recordAbortedRetrySensorOtel(
+        MetricNamesInTehuti.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST,
+        RequestRetryAbortReason.DELAY_CONSTRAINT);
   }
 
   public void recordSlowRouteAbortedRetryRequest() {
-    slowRouteAbortedRetryRequest.record();
-    recordAbortedRetrySensorOtel(VeniceRequestRetryAbortReason.RETRY_ABORTED_BY_SLOW_ROUTE);
+    recordAbortedRetrySensorOtel(
+        MetricNamesInTehuti.SLOW_ROUTE_ABORTED_RETRY_REQUEST,
+        RequestRetryAbortReason.SLOW_ROUTE);
   }
 
   public void recordRetryRouteLimitAbortedRetryRequest() {
-    retryRouteLimitAbortedRetryRequest.record();
-    recordAbortedRetrySensorOtel(VeniceRequestRetryAbortReason.RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT);
+    recordAbortedRetrySensorOtel(
+        MetricNamesInTehuti.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
+        RequestRetryAbortReason.MAX_RETRY_ROUTE_LIMIT);
   }
 
   public void recordNoAvailableReplicaAbortedRetryRequest() {
-    noAvailableReplicaAbortedRetryRequest.record();
-    recordAbortedRetrySensorOtel(VeniceRequestRetryAbortReason.RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA);
+    recordAbortedRetrySensorOtel(
+        MetricNamesInTehuti.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
+        RequestRetryAbortReason.NO_AVAILABLE_REPLICA);
   }
 
   public void recordKeySizeInByte(long keySize) {
@@ -558,13 +625,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordAllowedRetryRequest() {
-    allowedRetryRequestSensor.record();
-    ALLOWED_RETRY_COUNT.getMetricEntity().record(1, commonMetricDimensions);
+    allowedRetryCountMetric.record(MetricNamesInTehuti.ALLOWED_RETRY_REQUEST, 1, commonMetricDimensions);
   }
 
   public void recordDisallowedRetryRequest() {
-    disallowedRetryRequestSensor.record();
-    DISALLOWED_RETRY_COUNT.getMetricEntity().record(1, commonMetricDimensions);
+    disallowedRetryCountMetric.record(MetricNamesInTehuti.DISALLOWED_RETRY_REQUEST, 1, commonMetricDimensions);
   }
 
   public void recordErrorRetryAttemptTriggeredByPendingRequestCheck() {
@@ -572,8 +637,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRetryDelay(double delay) {
-    retryDelaySensor.record(delay);
-    RETRY_DELAY.getMetricEntity().record(delay, commonMetricDimensions);
+    retryDelayMetric.record(MetricNamesInTehuti.RETRY_DELAY, delay, commonMetricDimensions);
   }
 
   public void recordMetaStoreShadowRead() {
@@ -589,5 +653,49 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     Metric metric = localMetricRepo.getMetric("total_inflight_request_count");
     // max return -infinity when there are no samples. validate only against finite value
     return Double.isFinite(metric.value()) ? metric.value() > 0.0 : false;
+  }
+
+  /**
+   * Metric names for tehuti metrics used in this class
+   */
+  private static class MetricNamesInTehuti {
+    /** for {@link RouterMetricEntity#INCOMING_CALL_COUNT} */
+    private final static String INCOMING_REQUEST = "request";
+
+    /** for {@link RouterMetricEntity#CALL_COUNT} */
+    private final static String HEALTHY_REQUEST = "healthy_request";
+    private final static String UNHEALTHY_REQUEST = "unhealthy_request";
+    private final static String TARDY_REQUEST = "tardy_request";
+    private final static String THROTTLED_REQUEST = "throttled_request";
+    private final static String BAD_REQUEST = "bad_request";
+
+    /** for {@link RouterMetricEntity#CALL_TIME} */
+    private final static String HEALTHY_REQUEST_LATENCY = "healthy_request_latency";
+    private final static String UNHEALTHY_REQUEST_LATENCY = "unhealthy_request_latency";
+    private final static String TARDY_REQUEST_LATENCY = "tardy_request_latency";
+    private final static String THROTTLED_REQUEST_LATENCY = "throttled_request_latency";
+
+    /** for {@link RouterMetricEntity#RETRY_COUNT} */
+    private final static String ERROR_RETRY = "error_retry";
+
+    /** for {@link RouterMetricEntity#ALLOWED_RETRY_COUNT} */
+    private final static String ALLOWED_RETRY_REQUEST = "allowed_retry_request_count";
+
+    /** for {@link RouterMetricEntity#DISALLOWED_RETRY_COUNT} */
+    private final static String DISALLOWED_RETRY_REQUEST = "disallowed_retry_request_count";
+
+    /** for {@link RouterMetricEntity#RETRY_DELAY} */
+    private final static String RETRY_DELAY = "retry_delay";
+
+    /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
+    private final static String DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST = "delay_constraint_aborted_retry_request";
+    private final static String SLOW_ROUTE_ABORTED_RETRY_REQUEST = "slow_route_aborted_retry_request";
+    private final static String RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST = "retry_route_limit_aborted_retry_request";
+    private final static String NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST =
+        "no_available_replica_aborted_retry_request";
+
+    /** for {@link RouterMetricEntity#CALL_KEY_COUNT} */
+    private final static String KEY_NUM = "key_num";
+    private final static String BAD_REQUEST_KEY_COUNT = "bad_request_key_count";
   }
 }

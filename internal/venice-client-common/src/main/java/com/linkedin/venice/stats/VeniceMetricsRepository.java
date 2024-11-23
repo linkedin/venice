@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.stats.metrics.MetricEntities;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
@@ -53,7 +53,7 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
   public static VeniceMetricsRepository getVeniceMetricsRepository(
       String serviceName,
       String metricPrefix,
-      Collection<MetricEntities> metricEntities,
+      Collection<MetricEntity> metricEntities,
       Map<String, String> configs) {
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setServiceName(serviceName)
