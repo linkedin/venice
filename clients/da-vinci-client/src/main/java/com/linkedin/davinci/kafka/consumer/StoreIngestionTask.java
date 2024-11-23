@@ -4442,4 +4442,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
     this.versionRole = versionRole;
   }
+
+  protected boolean isDaVinciClient() {
+    return isDaVinciClient;
+  }
 }

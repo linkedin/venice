@@ -16,9 +16,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -72,9 +74,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -92,6 +92,8 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -114,6 +116,7 @@ import org.testng.annotations.Test;
 
 public class ActiveActiveStoreIngestionTaskTest {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTaskTest.class);
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
   String STORE_NAME = "Thvorusleikir_store";
   String PUSH_JOB_ID = "yule";
   String BOOTSTRAP_SERVER = "Stekkjastaur";
@@ -193,11 +196,6 @@ public class ActiveActiveStoreIngestionTaskTest {
 
   @Test
   public void testisReadyToServeAnnouncedWithRTLag() {
-    // Set up PubSubTopicRepository
-    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
-    PubSubTopic pubSubTopic = new TestPubSubTopic(STORE_NAME + "_v1", STORE_NAME, PubSubTopicType.VERSION_TOPIC);
-    when(pubSubTopicRepository.getTopic("Thvorusleikir_store_v1")).thenReturn(pubSubTopic);
-
     // Setup store/schema/storage repository
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
@@ -214,7 +212,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     // Set up IngestionTask Builder
     StoreIngestionTaskFactory.Builder builder = new StoreIngestionTaskFactory.Builder();
-    builder.setPubSubTopicRepository(pubSubTopicRepository);
+    builder.setPubSubTopicRepository(TOPIC_REPOSITORY);
     builder.setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class));
     builder.setAggKafkaConsumerService(mock(AggKafkaConsumerService.class));
     builder.setMetadataRepository(readOnlyStoreRepository);
@@ -614,8 +612,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
   @Test
   public void testGetUpstreamKafkaUrlFromKafkaValue() {
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("topic"), 0);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic"), 0);
     long offset = 100;
     long timestamp = System.currentTimeMillis();
     int payloadSize = 200;
@@ -739,5 +736,48 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
     when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
     assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 721);
+  }
+
+  @Test
+  public void testConsumerSubscribeValidatesPubSubAddress() {
+    // Case 1: AA store ingestion task with invalid pubsub address
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+
+    when(ingestionTask.getServerConfig()).thenReturn(mockServerConfig);
+    when(ingestionTask.isDaVinciClient()).thenReturn(false);
+    Object2IntMap<String> kafkaClusterUrlToIdMap = Object2IntMaps.singleton("validPubSubAddress", 1);
+    when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(kafkaClusterUrlToIdMap);
+
+    // Set up real method call
+    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), anyLong(), anyString());
+
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test"), 0);
+    VeniceException exception = expectThrows(
+        VeniceException.class,
+        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress"));
+    assertNotNull(exception.getMessage(), "Exception message should not be null");
+    assertTrue(
+        exception.getMessage().contains("is not in the pubsub cluster map"),
+        "Exception message should contain the expected message but found: " + exception.getMessage());
+
+    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress");
+
+    // Case 2: DaVinci client
+    ActiveActiveStoreIngestionTask dvcIngestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    when(dvcIngestionTask.getServerConfig()).thenReturn(mockServerConfig);
+    when(dvcIngestionTask.isDaVinciClient()).thenReturn(true);
+    when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.emptyMap());
+    try {
+      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+    } catch (Exception e) {
+      if (e.getMessage() != null) {
+        assertFalse(
+            e.getMessage().contains("is not in the pubsub cluster map"),
+            "Exception message should not contain the expected message but found: " + e.getMessage());
+      }
+    }
+    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
   }
 }

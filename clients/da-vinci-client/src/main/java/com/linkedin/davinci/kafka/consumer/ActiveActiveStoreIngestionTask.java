@@ -1103,6 +1103,28 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderOffsetByKafkaURL);
   }
 
+  /**
+   * Ensures the PubSub URL is present in the PubSub cluster URL-to-ID map before subscribing to a topic.
+   * Prevents subscription to unknown PubSub URLs, which can cause issues during message consumption.
+   */
+  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String pubSubAddress) {
+    VeniceServerConfig serverConfig = getServerConfig();
+    if (isDaVinciClient() || serverConfig.getKafkaClusterUrlToIdMap().containsKey(pubSubAddress)) {
+      super.consumerSubscribe(pubSubTopicPartition, startOffset, pubSubAddress);
+      return;
+    }
+    LOGGER.error(
+        "PubSub address: {} is not in the pubsub cluster map: {}. Cannot subscribe to topic-partition: {}",
+        pubSubAddress,
+        serverConfig.getKafkaClusterUrlToIdMap(),
+        pubSubTopicPartition);
+    throw new VeniceException(
+        String.format(
+            "PubSub address: %s is not in the pubsub cluster map. Cannot subscribe to topic-partition: %s",
+            pubSubAddress,
+            pubSubTopicPartition));
+  }
+
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
     long rewindStartTime = 0;
     long rewindTimeInMs = hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
