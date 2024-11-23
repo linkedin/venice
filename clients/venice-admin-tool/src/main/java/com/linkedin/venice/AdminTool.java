@@ -1661,6 +1661,7 @@ public class AdminTool {
     boolean logMetadata = cmd.hasOption(Arg.LOG_METADATA.toString());
     boolean logDataRecord = cmd.hasOption(Arg.LOG_DATA_RECORD.toString());
     boolean logRmdRecord = cmd.hasOption(Arg.LOG_RMD_RECORD.toString());
+    boolean logTsRecord = cmd.hasOption(Arg.LOG_TS_RECORD.toString());
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
@@ -1673,7 +1674,8 @@ public class AdminTool {
           maxConsumeAttempts,
           logMetadata,
           logDataRecord,
-          logRmdRecord)) {
+          logRmdRecord,
+          logTsRecord)) {
         ktd.fetchAndProcess();
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");

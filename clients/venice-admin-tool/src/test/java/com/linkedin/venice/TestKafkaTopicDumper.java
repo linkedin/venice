@@ -2,16 +2,26 @@ package com.linkedin.venice;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.StartOfSegment;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
@@ -23,9 +33,12 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -35,6 +48,8 @@ import org.testng.annotations.Test;
 
 
 public class TestKafkaTopicDumper {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testAdminToolConsumptionForChunkedData() throws IOException {
     String schemaStr = "\"string\"";
@@ -57,7 +72,6 @@ public class TestKafkaTopicDumper {
     when(controllerClient.getStore(storeName)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
 
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     int assignedPartition = 0;
     long startOffset = 0;
     long endOffset = 4;
@@ -83,6 +97,7 @@ public class TestKafkaTopicDumper {
         "",
         3,
         true,
+        false,
         false,
         false);
 
@@ -165,7 +180,6 @@ public class TestKafkaTopicDumper {
     when(controllerClient.getStore(storeName)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
 
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     int assignedPartition = 0;
     long startOffset = 0;
     long endOffset = 4;
@@ -192,6 +206,7 @@ public class TestKafkaTopicDumper {
         3,
         true,
         true,
+        false,
         false);
 
     // Test different message type.
@@ -235,5 +250,54 @@ public class TestKafkaTopicDumper {
     returnedLog = kafkaTopicDumper.buildDataRecordLog(deleteMessage, true);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d; RMD: %s", keyString, null, 1, rmdRecord);
     Assert.assertEquals(returnedLog, expectedLog);
+  }
+
+  @Test
+  public void testTopicSwitchMessageLogging() {
+    // Case 1: TopicSwitch message with non-null sourceKafkaServers
+    List<CharSequence> sourceKafkaServers = Arrays.asList("source1", "source2");
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageType = ControlMessageType.TOPIC_SWITCH.getValue();
+    TopicSwitch topicSwitch = new TopicSwitch();
+    topicSwitch.sourceKafkaServers = sourceKafkaServers;
+    topicSwitch.sourceTopicName = "test_topic_rt";
+    topicSwitch.rewindStartTimestamp = 123456789L;
+    controlMessage.controlMessageUnion = topicSwitch;
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, Utils.getUniqueString("key-").getBytes());
+    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
+    messageEnvelope.producerMetadata = new ProducerMetadata();
+    messageEnvelope.producerMetadata.messageTimestamp = 0;
+    messageEnvelope.producerMetadata.messageSequenceNumber = 0;
+    messageEnvelope.producerMetadata.segmentNumber = 0;
+    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    messageEnvelope.payloadUnion = controlMessage;
+
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test_topic_rt"), 0);
+
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
+        new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 120, 0, 0, null);
+
+    String actualLog = KafkaTopicDumper.constructTopicSwitchLog(message);
+    assertNotNull(actualLog);
+    assertTrue(actualLog.contains("[source1, source2]"));
+    assertTrue(actualLog.contains("test_topic_rt"));
+    assertTrue(actualLog.contains("123456789"));
+
+    // Case 2: Non TS Control message
+    controlMessage = new ControlMessage();
+    controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+    controlMessage.controlMessageUnion = new StartOfSegment();
+    messageEnvelope.payloadUnion = controlMessage;
+
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> nonTsCtrlMsg =
+        new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 120, 0, 0, null);
+    KafkaTopicDumper.logIfTopicSwitchMessage(nonTsCtrlMsg); // Should not throw any exception
+
+    // Case 3: Non-control message
+    KafkaKey regularMsgKey = new KafkaKey(MessageType.PUT, Utils.getUniqueString("key-").getBytes());
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> regularMessage =
+        new ImmutablePubSubMessage<>(regularMsgKey, null, pubSubTopicPartition, 120, 0, 0, null);
+    KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage); // Should not throw any exception
   }
 }
