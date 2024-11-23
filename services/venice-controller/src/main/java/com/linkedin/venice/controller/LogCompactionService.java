@@ -16,8 +16,6 @@ public class LogCompactionService extends AbstractVeniceService {
     this.multiClusterConfigs = multiClusterConfigs;
 
     executor = Executors.newScheduledThreadPool(multiClusterConfigs.getScheduledLogCompactionThreadCount());
-    // TODO: get schedulerThreadCount from MultiClusterConfigs
-    // if no config, set to 1
     // TODO: initialise scheduler
   }
 
