@@ -286,4 +286,8 @@ public class VeniceControllerMultiClusterConfig {
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
   }
+
+  public int getScheduledLogCompactionThreadCount() {
+    return getCommonConfig().getScheduledLogCompactionThreadCount();
+  }
 }

@@ -236,6 +236,11 @@ public class ConfigKeys {
       "fatal.data.validation.failure.topic.retention.ms";
 
   /**
+   * Number of threads to use for scheduled log compaction
+   */
+  public static final String SCHEDULED_LOG_COMPACTION_THREAD_COUNT = "scheduled.log.compaction.thread.count";
+
+  /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
    *
