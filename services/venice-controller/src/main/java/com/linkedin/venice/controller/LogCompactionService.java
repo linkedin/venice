@@ -1,18 +1,29 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 
 public class LogCompactionService extends AbstractVeniceService {
-  public LogCompactionService() {
-    // get schedulerThreadCount from MultiClusterConfigs
+  private final Admin admin;
+  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private final ScheduledExecutorService executor;
+
+  public LogCompactionService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
+    this.admin = admin;
+    this.multiClusterConfigs = multiClusterConfigs;
+
+    executor = Executors.newScheduledThreadPool(multiClusterConfigs.getScheduledLogCompactionThreadCount());
+    // TODO: get schedulerThreadCount from MultiClusterConfigs
     // if no config, set to 1
-    // initialise scheduler
+    // TODO: initialise scheduler
   }
 
   @Override
   public boolean startInner() throws Exception {
-    // TODO: schedule
+    // TODO: start schedule
     return false;
   }
 
@@ -22,14 +33,24 @@ public class LogCompactionService extends AbstractVeniceService {
   }
 
   // TODO: LogCompactionTask
-  private class TopicCleanupTask implements Runnable {
+  private class LogCompactionTask implements Runnable {
+    private final String triggerSource; // TODO: enums for this
+
+    private LogCompactionTask(String triggerSource) {
+      this.triggerSource = triggerSource;
+    }
+
+    //
+
     @Override
     public void run() {
-      // get cluster name
-      // get stores for compaction
-      // for each store,
-      // response = RepushOrchestratorProvider.repush(storeName)
-      // if response is not success, log error
+      // admin.triggerRepush()
+      for (String clusterName: multiClusterConfigs.getClusters()) {
+        for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
+          // TODO: response = RepushOrchestratorProvider.repush(storeInfo.getName();)
+          // TODO: if response is not success, log error
+        }
+      }
     }
   }
 }

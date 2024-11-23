@@ -203,7 +203,7 @@ public class VeniceController {
             "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
       }
 
-      logCompactionService = new LogCompactionService(/*TODO: pass in params*/);
+      logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
