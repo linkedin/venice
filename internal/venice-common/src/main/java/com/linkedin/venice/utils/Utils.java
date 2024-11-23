@@ -301,6 +301,12 @@ public class Utils {
    * any string that are not equal to 'true', We validate the string by our own.
    */
   public static boolean parseBooleanFromString(String value, String fieldName) {
+    if (value == null) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be a boolean, but value is null",
+          ErrorType.BAD_REQUEST);
+    }
     if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
       return Boolean.parseBoolean(value);
     } else {

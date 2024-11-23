@@ -6,6 +6,7 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -17,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import org.apache.http.HttpStatus;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -228,5 +231,35 @@ public class UtilsTest {
     Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
     Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
     Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+  }
+
+  @DataProvider(name = "booleanParsingData")
+  public Object[][] booleanParsingData() {
+    return new Object[][] {
+        // Valid cases
+        { "true", "testField", true }, // Valid "true"
+        { "false", "testField", false }, // Valid "false"
+        { "TRUE", "testField", true }, // Valid case-insensitive "TRUE"
+        { "FALSE", "testField", false }, // Valid case-insensitive "FALSE"
+
+        // Invalid cases
+        { "notABoolean", "testField", null }, // Invalid string
+        { "123", "testField", null }, // Non-boolean numeric string
+        { "", "testField", null }, // Empty string
+        { null, "testField", null }, // Null input
+    };
+  }
+
+  @Test(dataProvider = "booleanParsingData")
+  public void testParseBooleanFromString(String value, String fieldName, Boolean expectedResult) {
+    if (expectedResult != null) {
+      // For valid cases
+      boolean result = Utils.parseBooleanFromString(value, fieldName);
+      assertEquals((boolean) expectedResult, result, "Parsed boolean value does not match expected value.");
+      return;
+    }
+    VeniceHttpException e =
+        expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanFromString(value, fieldName));
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
   }
 }
