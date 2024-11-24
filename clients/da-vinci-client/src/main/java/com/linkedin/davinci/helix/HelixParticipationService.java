@@ -79,7 +79,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private final String clusterName;
   private final String participantName;
   private final String zkAddress;
-  private final StoreIngestionService ingestionService;
+  private StoreIngestionService ingestionService = null;
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
@@ -478,5 +478,9 @@ public class HelixParticipationService extends AbstractVeniceService
     } else {
       LOGGER.info("Ignore the kill message for topic: {}", message.getKafkaTopic());
     }
+  }
+
+  public KafkaStoreIngestionService getKafkaStoreIngestionService() {
+    return (KafkaStoreIngestionService) ingestionService;
   }
 }

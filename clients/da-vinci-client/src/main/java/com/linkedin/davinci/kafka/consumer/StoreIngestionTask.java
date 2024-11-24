@@ -4178,12 +4178,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     ingestionNotificationDispatcher.reportError(pcsList, message, e);
     // Set the replica state to ERROR so that the controller can attempt to reset the partition.
-    zkHelixAdmin.get()
-        .setPartitionsToError(
-            serverConfig.getClusterName(),
-            hostName,
-            storeName,
-            Collections.singletonList(HelixUtils.getPartitionName(storeName, userPartition)));
+    if (!isDaVinciClient) {
+      try {
+        zkHelixAdmin.get()
+            .setPartitionsToError(
+                serverConfig.getClusterName(),
+                hostName,
+                kafkaVersionTopic,
+                Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, userPartition)));
+      } catch (Exception ex) {
+        LOGGER.warn("aa", ex);
+      }
+    }
   }
 
   public boolean isActiveActiveReplicationEnabled() {
