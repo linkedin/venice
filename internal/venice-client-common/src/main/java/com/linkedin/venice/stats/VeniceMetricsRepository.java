@@ -13,8 +13,8 @@ import java.util.Map;
  * Next step would be to create a MetricsRepository inside rather than extending it
  */
 public class VeniceMetricsRepository extends MetricsRepository implements Closeable {
-  private VeniceMetricsConfig veniceMetricsConfig;
-  private VeniceOpenTelemetryMetricsRepository openTelemetryMetricsRepository;
+  private final VeniceMetricsConfig veniceMetricsConfig;
+  private final VeniceOpenTelemetryMetricsRepository openTelemetryMetricsRepository;
 
   public VeniceMetricsRepository() {
     super();

@@ -195,7 +195,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public Object createInstrument(MetricEntity metricEntity) {
-    switch (metricEntity.getMetricType()) {
+    MetricType metricType = metricEntity.getMetricType();
+    switch (metricType) {
       case HISTOGRAM:
       case MIN_MAX_COUNT_SUM_AGGREGATIONS:
         return createHistogram(metricEntity);
@@ -204,7 +205,7 @@ public class VeniceOpenTelemetryMetricsRepository {
         return createCounter(metricEntity);
 
       default:
-        throw new VeniceException("Unknown metric type: " + metricEntity.getMetricType());
+        throw new VeniceException("Unknown metric type: " + metricType);
     }
   }
 

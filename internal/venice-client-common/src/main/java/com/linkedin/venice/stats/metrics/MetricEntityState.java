@@ -6,20 +6,19 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Percentiles;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 
 /**
- * Holds {@link MetricEntity} and the operation state for the metric
+ * Holds {@link MetricEntity} and 1 Otel metric and its corresponding multiple tehuti Sensors
  */
 public class MetricEntityState {
   private MetricEntity metricEntity;
-  // otel metric
+  // Otel metric
   private Object otelMetric = null;
-  // Map of tehuti names and sensors: 1 otel metric can cover multiple tehuti sensors
+  // Map of tehuti names and sensors: 1 Otel metric can cover multiple Tehuti sensors
   private Map<String, Sensor> tehutiSensors = null;
 
   public MetricEntityState(MetricEntity metricEntity, VeniceOpenTelemetryMetricsRepository otelRepository) {
@@ -36,21 +35,12 @@ public class MetricEntityState {
     createMetric(otelRepository, tehutiMetricInput, registerTehutiSensor);
   }
 
-  // setters
-  public void setMetricEntity(MetricEntity metricEntity) {
-    this.metricEntity = metricEntity;
-  }
-
   public void setOtelMetric(Object otelMetric) {
     this.otelMetric = otelMetric;
   }
 
-  public void setTehutiSensors(Map<String, Sensor> tehutiSensors) {
-    this.tehutiSensors = tehutiSensors;
-  }
-
   /**
-   * Add tehuti sensor to tehutiSensors map and throw exception if sensor with same name already exists
+   * Add Tehuti {@link Sensor} to tehutiSensors map and throw exception if sensor with same name already exists
    */
   public void addTehutiSensors(String name, Sensor tehutiSensor) {
     if (tehutiSensors == null) {
@@ -73,30 +63,22 @@ public class MetricEntityState {
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<String, List<MeasurableStat>> tehutiMetricInput,
       TehutiSensorRegistrationFunction registerTehutiSensor) {
-    // Otel metric
+    // Otel metric: otelRepository will be null if otel is not enabled
     if (otelRepository != null) {
       setOtelMetric(otelRepository.createInstrument(this.metricEntity));
     }
     // tehuti metric
-    // loop through tehutiMetricInput and call registerTehutiSensor for each String, List<MeasurableStat> pair
     for (Map.Entry<String, List<MeasurableStat>> entry: tehutiMetricInput.entrySet()) {
-      if (entry.getValue().contains(Percentiles.class)) {
-        addTehutiSensors(
-            entry.getKey(),
-            registerTehutiSensor.register(entry.getKey(), entry.getValue().toArray(new MeasurableStat[0])));
-
-      } else {
-        addTehutiSensors(
-            entry.getKey(),
-            registerTehutiSensor.register(entry.getKey(), entry.getValue().toArray(new MeasurableStat[0])));
-      }
+      addTehutiSensors(
+          entry.getKey(),
+          registerTehutiSensor.register(entry.getKey(), entry.getValue().toArray(new MeasurableStat[0])));
     }
   }
 
   /**
    * Record otel metrics
    */
-  private void recordOtelMetric(double value, Attributes otelDimensions) {
+  void recordOtelMetric(double value, Attributes otelDimensions) {
     if (otelMetric != null) {
       MetricType metricType = this.metricEntity.getMetricType();
       switch (metricType) {
@@ -114,7 +96,7 @@ public class MetricEntityState {
     }
   }
 
-  private void recordTehutiMetric(String tehutiMetricName, double value) {
+  void recordTehutiMetric(String tehutiMetricName, double value) {
     if (tehutiSensors != null) {
       Sensor sensor = tehutiSensors.get(tehutiMetricName);
       if (sensor != null) {
@@ -131,5 +113,9 @@ public class MetricEntityState {
   public void record(String tehutiMetricName, double value, Attributes otelDimensions) {
     recordOtelMetric(value, otelDimensions);
     recordTehutiMetric(tehutiMetricName, value);
+  }
+
+  Map<String, Sensor> getTehutiSensors() {
+    return tehutiSensors;
   }
 }

@@ -172,7 +172,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     incomingRequestMetric = new MetricEntityState(
         INCOMING_CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.INCOMING_REQUEST, Arrays.asList(new Count(), requestRate));
@@ -186,7 +186,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestMetric = new MetricEntityState(
         CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.HEALTHY_REQUEST, Arrays.asList(new Count(), healthyRequestRate));
@@ -201,7 +201,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     latencyMetric = new MetricEntityState(
         CALL_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(
@@ -221,7 +221,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     retryCountMetric = new MetricEntityState(
         RETRY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.ERROR_RETRY, Collections.singletonList(new Count()));
@@ -231,7 +231,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     allowedRetryCountMetric = new MetricEntityState(
         ALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.ALLOWED_RETRY_REQUEST, Collections.singletonList(new OccurrenceRate()));
@@ -241,7 +241,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     disallowedRetryCountMetric = new MetricEntityState(
         DISALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.DISALLOWED_RETRY_REQUEST, Collections.singletonList(new OccurrenceRate()));
@@ -251,7 +251,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     retryDelayMetric = new MetricEntityState(
         RETRY_DELAY.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.RETRY_DELAY, Arrays.asList(new Avg(), new Max()));
@@ -261,7 +261,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     abortedRetryCountMetric = new MetricEntityState(
         ABORTED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, Collections.singletonList(new Count()));
@@ -274,7 +274,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     keyCountMetric = new MetricEntityState(
         CALL_KEY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorFinal,
         new HashMap<String, List<MeasurableStat>>() {
           {
             put(MetricNamesInTehuti.KEY_NUM, Arrays.asList(new OccurrenceRate(), new Avg(), new Max(0)));
@@ -647,6 +647,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   @Override
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
     return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
+  }
+
+  /**
+   * This method will be passed to the constructor of {@link MetricEntityState} to register tehuti sensor.
+   * Only private/static/final methods can be passed onto the constructor.
+   */
+  private Sensor registerSensorFinal(String sensorName, MeasurableStat... stats) {
+    return this.registerSensor(sensorName, stats);
   }
 
   static public boolean hasInFlightRequests() {

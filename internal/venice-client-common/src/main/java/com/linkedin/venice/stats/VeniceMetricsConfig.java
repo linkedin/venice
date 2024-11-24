@@ -5,6 +5,7 @@ import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.tehuti.metrics.MetricConfig;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Locale;
@@ -174,7 +175,7 @@ public class VeniceMetricsConfig {
   public static class Builder {
     private String serviceName = "default_service";
     private String metricPrefix = null;
-    private Collection<MetricEntity> metricEntities;
+    private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
     private boolean exportOtelMetricsToEndpoint = false;
     private Map<String, String> otelCustomDimensionsMap = new HashMap<>();

@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 import static org.testng.Assert.assertEquals;
@@ -14,7 +13,6 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
-import java.util.HashMap;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -69,12 +67,9 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
   @Test
   public void testGetOtlpHttpMetricExporterWithValidConfig() {
-    HashMap<String, String> otelConfigs = new HashMap<>();
-    otelConfigs.put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost:4318");
-
     MetricExporter exporter = metricsRepository.getOtlpHttpMetricExporter(mockMetricsConfig);
 
-    // Verify that the exporter is not null and is of the expected type
+    // Verify that the exporter is not null
     assertNotNull(exporter);
   }
 
