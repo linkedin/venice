@@ -863,8 +863,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             recordTransformerFunction,
-            null,
-            anyInt()));
+            ZOOKEEPER_ADDRESS,
+            123));
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -3093,8 +3093,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        anyInt());
+        ZOOKEEPER_ADDRESS,
+        123);
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
     TopicSwitch topicSwitchWithSourceRealTimeTopic = new TopicSwitch();
@@ -3314,8 +3314,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        anyInt());
+        ZOOKEEPER_ADDRESS,
+        123);
 
     if (hybridConfig.equals(HYBRID) && nodeType.equals(LEADER) && isAaWCParallelProcessingEnabled()) {
       assertTrue(storeIngestionTaskUnderTest instanceof ActiveActiveStoreIngestionTask);
@@ -3464,8 +3464,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        anyInt());
+        ZOOKEEPER_ADDRESS,
+        123);
 
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
@@ -3621,8 +3621,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
-            anyInt());
+            ZOOKEEPER_ADDRESS,
+            123);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     PartitionConsumptionState partitionConsumptionState =
@@ -4451,8 +4451,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        anyInt());
+        ZOOKEEPER_ADDRESS,
+        123);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
     PartitionConsumptionState partitionConsumptionState =
@@ -4570,8 +4570,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
-            anyInt());
+            ZOOKEEPER_ADDRESS,
+            123);
 
     ingestionTask.setPartitionConsumptionState(0, pcs);
     ingestionTask.maybeSendIngestionHeartbeat();
@@ -4661,8 +4661,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
-            anyInt());
+            ZOOKEEPER_ADDRESS,
+            123);
 
     ingestionTask.setPartitionConsumptionState(0, pcs0);
     ingestionTask.setPartitionConsumptionState(1, pcs1);
