@@ -337,7 +337,7 @@ public class ConfigKeys {
       "controller.storage.cluster.helix.cloud.enabled";
 
   /**
-   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider} Default is empty string.
+   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider}. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
 
@@ -352,7 +352,13 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";
 
   /**
-   * Name of the function that processes the fetching and parsing of cloud information. Default is empty string.
+   * Package name of the class that processes the fetching and parsing of cloud information. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE =
+      "controller.helix.cloud.info.processor.package";
+
+  /**
+   * Name of the class that processes the fetching and parsing of cloud information. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 

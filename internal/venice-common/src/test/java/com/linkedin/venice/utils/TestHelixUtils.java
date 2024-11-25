@@ -32,14 +32,19 @@ public class TestHelixUtils {
     List<String> cloudInfoSources = new ArrayList<>();
     cloudInfoSources.add("TestSource");
 
-    CloudConfig cloudConfig =
-        HelixUtils.getCloudConfig(CloudProvider.CUSTOMIZED, "NA", cloudInfoSources, "TestProcessor");
+    CloudConfig cloudConfig = HelixUtils.getCloudConfig(
+        CloudProvider.CUSTOMIZED,
+        "NA",
+        cloudInfoSources,
+        "com.linkedin.venice.controller.helix",
+        "TestProcessor");
 
     assertTrue(cloudConfig.isCloudEnabled());
     assertEquals(cloudConfig.getCloudProvider(), "CUSTOMIZED");
     assertEquals(cloudConfig.getCloudID(), "NA");
     assertEquals(cloudConfig.getCloudInfoSources().size(), 1);
     assertEquals(cloudConfig.getCloudInfoSources().get(0), "TestSource");
+    assertEquals(cloudConfig.getCloudInfoProcessorPackage(), "com.linkedin.venice.controller.helix");
     assertEquals(cloudConfig.getCloudInfoProcessorName(), "TestProcessor");
   }
 
@@ -47,7 +52,12 @@ public class TestHelixUtils {
   public void testGetCloudConfigWhenControllerCloudInfoSourcesNotSet() {
     assertThrows(
         HelixException.class,
-        () -> HelixUtils.getCloudConfig(CloudProvider.CUSTOMIZED, "NA", Collections.emptyList(), "TestProcessor"));
+        () -> HelixUtils.getCloudConfig(
+            CloudProvider.CUSTOMIZED,
+            "NA",
+            Collections.emptyList(),
+            "com.linkedin.venice.controller.helix",
+            "TestProcessor"));
   }
 
   @Test
@@ -57,6 +67,11 @@ public class TestHelixUtils {
 
     assertThrows(
         HelixException.class,
-        () -> HelixUtils.getCloudConfig(CloudProvider.CUSTOMIZED, "NA", cloudInfoSources, ""));
+        () -> HelixUtils.getCloudConfig(
+            CloudProvider.CUSTOMIZED,
+            "NA",
+            cloudInfoSources,
+            "com.linkedin.venice.controller.helix",
+            ""));
   }
 }
