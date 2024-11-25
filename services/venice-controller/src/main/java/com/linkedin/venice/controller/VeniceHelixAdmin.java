@@ -62,7 +62,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
@@ -342,7 +341,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
-  public static final int COMPACTION_THRESHOLD_HOURS = 24;
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -425,6 +423,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int defaultMaxRecordSizeBytes;
 
   private DataRecoveryManager dataRecoveryManager;
+  private final CompactionManager compactionManager;
   private ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
@@ -603,6 +602,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubTopicRepository);
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
+    compactionManager = new CompactionManager();
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
@@ -7474,18 +7474,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
-      ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
-
-      // iterate through child controllers
-      for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-
-        // add all store info to storeInfoList
-        MultiStoreInfoResponse response = controller.getValue().getClusterStores(clusterName);
-        storeInfoList.addAll(response.getStoreInfoList());
-      }
-
-      // filter out
-      filterStoresForCompaction(storeInfoList, compactionReadyStores);
+      compactionManager.getStoresForCompaction(clusterName, childControllers, compactionReadyStores);
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
     }
@@ -7496,48 +7485,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void compactStore(String storeName) {
     // TODO
   }
-
-  // package exclusive for testing
-  void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
-    for (StoreInfo storeInfo: storeInfoList) {
-      if (isCompactionReady(storeInfo)) {
-        compactionReadyStores.add(storeInfo);
-      }
-    }
-  }
-
-  // This function abstracts the criteria for a store to be ready for compaction
-  boolean isCompactionReady(StoreInfo storeInfo) {
-    boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(COMPACTION_THRESHOLD_HOURS, storeInfo);
-  }
-
-  // START isCompactionReady() helper methods: each method below encapsulates a log compaction readiness criterion
-  /**
-   * This function checks if the last compaction time is older than the threshold.
-   * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
-   * @param storeInfo, the store to check the last compaction time for
-   * @return true if the last compaction time is older than the threshold, false otherwise
-   */
-  private boolean isLastCompactionTimeOlderThanThresholdHours(int compactionThresholdHours, StoreInfo storeInfo) {
-    // get the last compaction time
-    int currentVersionNumber = storeInfo.getCurrentVersion();
-    Optional<Version> currentVersion = storeInfo.getVersion(currentVersionNumber);
-    if (!currentVersion.isPresent()) {
-      LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
-      return false; // invalid store because no current version, this store is not eligible for compaction
-    }
-
-    // calculate hours since last compaction
-    long lastCompactionTime = currentVersion.get().getCreatedTime();
-    long currentTime = System.currentTimeMillis();
-    long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-    long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
-
-    return hoursSinceLastCompaction > compactionThresholdHours;
-  }
-  // END isCompactionReady() helper methods
 
   @Override
   public Map<String, RegionPushDetails> listStorePushInfo(
