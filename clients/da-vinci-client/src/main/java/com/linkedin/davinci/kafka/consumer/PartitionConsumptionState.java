@@ -212,7 +212,8 @@ public class PartitionConsumptionState {
 
   private List<String> pendingReportIncPushVersionList;
 
-  private Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
+  // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
+  private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
 
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;

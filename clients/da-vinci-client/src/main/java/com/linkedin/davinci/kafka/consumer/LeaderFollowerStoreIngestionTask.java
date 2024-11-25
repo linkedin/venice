@@ -550,7 +550,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
          */
         // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
-        partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partition));
+        Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef =
+            partitionConsumptionState.getVeniceWriterLazyRef();
+        if (veniceWriterLazyRef != null) {
+          veniceWriterLazyRef.ifPresent(vw -> vw.closePartition(partition));
+        }
         break;
       default:
         processCommonConsumerAction(message);
