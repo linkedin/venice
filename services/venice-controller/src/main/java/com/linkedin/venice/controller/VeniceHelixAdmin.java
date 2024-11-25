@@ -4818,6 +4818,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
     Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
+    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5109,6 +5110,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       nearlineProducerCountPerWriter.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setNearlineProducerCountPerWriter(aInt);
         return store;
+      }));
+
+      realTimeTopicName.ifPresent(aString -> storeMetadataUpdate(clusterName, storeName, store -> {
+        ensureRealTimeTopicIsReady(clusterName, pubSubTopicRepository.getTopic(aString));
+        store.setRealTimeTopicName(aString);
       }));
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
