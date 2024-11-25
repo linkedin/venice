@@ -127,8 +127,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
-    if (pushJobSetting.viewConfigFlatMap != null) {
-      jobProps.put(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.viewConfigFlatMap);
+    if (pushJobSetting.materializedViewConfigFlatMap != null) {
+      jobProps.put(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
     }
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);

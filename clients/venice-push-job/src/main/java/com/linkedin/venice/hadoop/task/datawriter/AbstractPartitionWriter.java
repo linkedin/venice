@@ -38,12 +38,12 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.CompositeVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import com.linkedin.venice.writer.update.CompositeVeniceWriter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -381,7 +381,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
-  AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
+  // protected and package private for testing purposes
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
       VeniceWriterFactory factory,
       VeniceWriter<byte[], byte[], byte[]> mainWriter,
       String flatViewConfigMapString,

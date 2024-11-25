@@ -641,7 +641,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
       // Write to views
-      if (!this.viewWriters.isEmpty()) {
+      if (viewWriters != null && !this.viewWriters.isEmpty()) {
         /**
          * The ordering guarantees we want is the following:
          *

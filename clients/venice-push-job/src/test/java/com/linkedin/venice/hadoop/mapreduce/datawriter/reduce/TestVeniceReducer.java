@@ -18,6 +18,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -30,20 +31,31 @@ import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProv
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import org.apache.hadoop.conf.Configuration;
@@ -616,6 +628,51 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     OutputCollector mockCollector = mock(OutputCollector.class);
     reducer.reduce(keyWritable, values.iterator(), mockCollector, createZeroCountReporterMock());
     Assert.assertThrows(VeniceException.class, () -> reducer.close());
+  }
+
+  @Test
+  public void testCreateCompositeVeniceWriter() throws JsonProcessingException {
+    VeniceReducer reducer = new VeniceReducer();
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    VeniceWriter<byte[], byte[], byte[]> mainWriter = mock(VeniceWriter.class);
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    String view1Name = "view1";
+    ViewParameters.Builder builder = new ViewParameters.Builder(view1Name);
+    builder.setPartitionCount(6);
+    builder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    ViewConfigImpl viewConfig1 = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build());
+    viewConfigMap.put(view1Name, viewConfig1);
+    String view2Name = "view2";
+    builder = new ViewParameters.Builder(view2Name);
+    builder.setPartitionCount(12);
+    builder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    ViewConfigImpl viewConfig2 = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build());
+    viewConfigMap.put(view2Name, viewConfig2);
+    String flatViewConfigMapString = ViewUtils.flatViewConfigMapString(viewConfigMap);
+    String topicName = "test_v1";
+    reducer.createCompositeVeniceWriter(writerFactory, mainWriter, flatViewConfigMapString, topicName, true, true);
+    ArgumentCaptor<VeniceWriterOptions> vwOptionsCaptor = ArgumentCaptor.forClass(VeniceWriterOptions.class);
+    verify(writerFactory, times(2)).createVeniceWriter(vwOptionsCaptor.capture());
+    Map<Integer, VeniceView> verifyPartitionToViewsMap = new HashMap<>();
+    verifyPartitionToViewsMap.put(
+        6,
+        ViewUtils
+            .getVeniceView(viewConfig1.getViewClassName(), new Properties(), "test", viewConfig1.getViewParameters()));
+    verifyPartitionToViewsMap.put(
+        12,
+        ViewUtils
+            .getVeniceView(viewConfig2.getViewClassName(), new Properties(), "test", viewConfig2.getViewParameters()));
+    for (VeniceWriterOptions options: vwOptionsCaptor.getAllValues()) {
+      int partitionCount = options.getPartitionCount();
+      Assert.assertTrue(verifyPartitionToViewsMap.containsKey(partitionCount));
+      VeniceView veniceView = verifyPartitionToViewsMap.get(partitionCount);
+      Assert.assertTrue(veniceView instanceof MaterializedView);
+      MaterializedView materializedView = (MaterializedView) veniceView;
+      Assert.assertEquals(
+          options.getTopicName(),
+          materializedView.getTopicNamesAndConfigsForVersion(1).keySet().stream().findAny().get());
+      Assert.assertTrue(materializedView.getViewPartitioner() instanceof DefaultVenicePartitioner);
+    }
   }
 
   private Reporter createZeroCountReporterMock() {

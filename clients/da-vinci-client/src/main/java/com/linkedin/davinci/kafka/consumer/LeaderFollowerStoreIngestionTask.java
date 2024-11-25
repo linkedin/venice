@@ -3356,7 +3356,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
     // Write to views
-    if (!viewWriters.isEmpty()) {
+    if (viewWriters != null && !viewWriters.isEmpty()) {
       long preprocessingTime = System.currentTimeMillis();
       CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
       CompletableFuture[] viewWriterFutures =

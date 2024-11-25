@@ -1069,7 +1069,7 @@ public class VenicePushJob implements AutoCloseable {
           .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
       if (!viewConfigMap.isEmpty()) {
-        pushJobSetting.viewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
+        pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
       }
     } catch (Exception e) {
       throw new VeniceException("Failed to configure job properties with view configs");
