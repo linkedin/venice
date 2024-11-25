@@ -145,7 +145,7 @@ public class StoreBackend {
 
     } else if (bootstrapVersion.isPresent()) {
       if (!subscription.isEmpty()) {
-        subscription.removeAll(subscription);
+        unsubscribe(subscription);
         subscription.addAll(partitions);
       }
       throw new VeniceException(
