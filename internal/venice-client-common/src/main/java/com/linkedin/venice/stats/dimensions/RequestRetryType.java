@@ -1,12 +1,12 @@
 package com.linkedin.venice.stats.dimensions;
 
 public enum RequestRetryType {
-  ERROR_RETRY("error_retry"), LONG_TAIL_RETRY("long_tail_retry");
+  ERROR_RETRY, LONG_TAIL_RETRY;
 
   private final String retryType;
 
-  RequestRetryType(String retryType) {
-    this.retryType = retryType;
+  RequestRetryType() {
+    this.retryType = name().toLowerCase();
   }
 
   public String getRetryType() {

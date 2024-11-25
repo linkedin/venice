@@ -8,12 +8,12 @@ package com.linkedin.venice.stats.dimensions;
  * to account for all healthy requests. This dimensions makes it easier to make Venice specific aggregations.
  */
 public enum VeniceResponseStatusCategory {
-  HEALTHY("healthy"), UNHEALTHY("unhealthy"), TARDY("tardy"), THROTTLED("throttled"), BAD_REQUEST("bad_request");
+  HEALTHY, UNHEALTHY, TARDY, THROTTLED, BAD_REQUEST;
 
   private final String category;
 
-  VeniceResponseStatusCategory(String category) {
-    this.category = category;
+  VeniceResponseStatusCategory() {
+    this.category = name().toLowerCase();
   }
 
   public String getCategory() {

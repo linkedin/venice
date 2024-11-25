@@ -17,7 +17,7 @@ public class RequestRetryAbortReasonTest {
           assertEquals(reason.getAbortReason(), "delay_constraint");
           break;
         case MAX_RETRY_ROUTE_LIMIT:
-          assertEquals(reason.getAbortReason(), "max_retry_router_limit");
+          assertEquals(reason.getAbortReason(), "max_retry_route_limit");
           break;
         case NO_AVAILABLE_REPLICA:
           assertEquals(reason.getAbortReason(), "no_available_replica");

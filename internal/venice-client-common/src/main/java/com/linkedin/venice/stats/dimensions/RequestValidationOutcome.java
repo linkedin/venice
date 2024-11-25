@@ -1,12 +1,12 @@
 package com.linkedin.venice.stats.dimensions;
 
 public enum RequestValidationOutcome {
-  VALID("valid"), INVALID_KEY_COUNT_LIMIT_EXCEEDED("invalid_key_count_limit_exceeded");
+  VALID, INVALID_KEY_COUNT_LIMIT_EXCEEDED;
 
   private final String outcome;
 
-  RequestValidationOutcome(String outcome) {
-    this.outcome = outcome;
+  RequestValidationOutcome() {
+    this.outcome = name().toLowerCase();
   }
 
   public String getOutcome() {
