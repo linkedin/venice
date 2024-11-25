@@ -204,6 +204,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   int getTargetSwapRegionWaitTime();
 
+  void setIsDavinciHeartbeatReported(boolean isReported);
+
+  boolean getIsDavinciHeartbeatReported();
+
   /**
    * Get the replication metadata version id.
    * @deprecated

@@ -337,4 +337,8 @@ public interface Store {
   void setTargetSwapRegion(String targetRegion);
 
   void setTargetSwapRegionWaitTime(int waitTime);
+
+  void setIsDavinciHeartbeatReported(boolean isReported);
+
+  boolean getIsDavinciHeartbeatReported();
 }

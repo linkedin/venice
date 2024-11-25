@@ -291,6 +291,9 @@ public enum Arg {
   TARGET_SWAP_REGION_WAIT_TIME(
       "target-region-swap-wait-time", "trswt", true,
       "How long to wait before swapping to the new version in a target colo push"
+  ),
+  DAVINCI_HEARTBEAT_REPORTED(
+      "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is enabled and healthy"
   );
 
   private final String argName;

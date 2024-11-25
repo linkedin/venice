@@ -78,6 +78,7 @@ public class StoreInfo {
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
     storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
+    storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     return storeInfo;
   }
 
@@ -330,6 +331,7 @@ public class StoreInfo {
   private int nearlineProducerCountPerWriter;
   private String targetRegionSwap;
   private int targetRegionSwapWaitTime;
+  private boolean isDavinciHeartbeatReported;
 
   public StoreInfo() {
   }
@@ -850,5 +852,13 @@ public class StoreInfo {
 
   public void setTargetRegionSwapWaitTime(int waitTime) {
     this.targetRegionSwapWaitTime = waitTime;
+  }
+
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    this.isDavinciHeartbeatReported = isReported;
+  }
+
+  public boolean getIsDavinciHeartbeatReported() {
+    return this.isDavinciHeartbeatReported;
   }
 }

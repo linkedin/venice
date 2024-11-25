@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -756,6 +757,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getTargetRegionSwapWaitTime() {
     return getInteger(TARGET_SWAP_REGION_WAIT_TIME);
+  }
+
+  public UpdateStoreQueryParams setIsDavinciHeartbeatReported(boolean isReported) {
+    return putBoolean(IS_DAVINCI_HEARTBEAT_REPORTED, isReported);
+  }
+
+  public Optional<Boolean> getIsDavinciHeartbeatReported() {
+    return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
   }
 
   // ***************** above this line are getters and setters *****************

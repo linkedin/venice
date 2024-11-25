@@ -21,6 +21,7 @@ import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.Arg.DATETIME;
+import static com.linkedin.venice.Arg.DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
@@ -277,7 +278,7 @@ public enum Command {
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
           UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
           NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
-          TARGET_SWAP_REGION_WAIT_TIME }
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

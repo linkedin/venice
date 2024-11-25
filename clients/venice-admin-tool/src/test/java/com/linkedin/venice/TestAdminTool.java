@@ -89,6 +89,7 @@ public class TestAdminTool {
     Assert.assertEquals(partitionerParamsMap.get(K1), V1);
     Assert.assertEquals(partitionerParamsMap.get(K2), V2);
     Assert.assertEquals(partitionerParamsMap.get(K3), V3);
+    // TODO add test here for targetRegionSwap and wait time
   }
 
   @Test

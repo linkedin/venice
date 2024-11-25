@@ -615,6 +615,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setIsDavinciHeartbeatReported(boolean isReported) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean getIsDavinciHeartbeatReported() {
+      return delegate.getIsDavinciHeartbeatReported();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
@@ -1475,6 +1485,16 @@ public class ReadOnlyStore implements Store {
   @Override
   public void setTargetSwapRegionWaitTime(int waitTime) {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean getIsDavinciHeartbeatReported() {
+    return delegate.getIsDavinciHeartbeatReported();
   }
 
   @Override

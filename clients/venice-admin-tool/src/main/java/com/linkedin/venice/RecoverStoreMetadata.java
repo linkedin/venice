@@ -259,7 +259,8 @@ public class RecoverStoreMetadata {
             .setMaxNearlineRecordSizeBytes(deletedStore.getMaxNearlineRecordSizeBytes())
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
-            .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime());
+            .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
+            .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());

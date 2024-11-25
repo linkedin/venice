@@ -945,6 +945,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.targetSwapRegionWaitTime = waitTime;
   }
 
+  @Override
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    this.storeProperties.isDaVinciHeartBeatReported = isReported;
+  }
+
+  @Override
+  public boolean getIsDavinciHeartbeatReported() {
+    return this.storeProperties.isDaVinciHeartBeatReported;
+  }
+
   /**
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */

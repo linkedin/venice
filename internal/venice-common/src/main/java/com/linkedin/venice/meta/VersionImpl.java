@@ -416,6 +416,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    this.storeVersion.isDaVinciHeartBeatReported = isReported;
+  }
+
+  @Override
+  public boolean getIsDavinciHeartbeatReported() {
+    return this.storeVersion.isDaVinciHeartBeatReported;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }

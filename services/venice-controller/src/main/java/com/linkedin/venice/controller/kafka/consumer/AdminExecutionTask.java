@@ -502,7 +502,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwap(message.targetSwapRegion.toString())
-        .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime);
+        .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
+        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -645,7 +646,6 @@ public class AdminExecutionTask implements Callable<Void> {
         clusterName,
         versionNumber);
 
-    // add check here to injest in all colo + version defer swap
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating

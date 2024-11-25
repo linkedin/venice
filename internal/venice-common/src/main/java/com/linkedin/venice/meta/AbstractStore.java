@@ -162,6 +162,8 @@ public abstract class AbstractStore implements Store {
 
       version.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
 
+      version.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
+
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
         version.setHybridStoreConfig(hybridStoreConfig.clone());

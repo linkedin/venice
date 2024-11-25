@@ -26,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PRO
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -2275,8 +2276,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
-      Optional<String> targetRegionSwap = params.getTargetSwapRegion();
-      Optional<Integer> targetRegionSwapWaitTime = params.getTargetRegionSwapWaitTime();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2637,6 +2636,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
           .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
           .orElseGet((currStore::getTargetSwapRegionWaitTime));
+
+      setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
+          .map(addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
+          .orElseGet((currStore::getIsDavinciHeartbeatReported));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
