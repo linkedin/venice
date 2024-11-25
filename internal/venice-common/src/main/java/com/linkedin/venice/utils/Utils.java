@@ -542,7 +542,7 @@ public class Utils {
 
   /**
    * It follows the following order to search for real time topic name,
-   * i) store config, ii) current store-version config, iii) other store-config versions, iv) default name
+   * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name
    */
   public static String getRealTimeTopicName(Store store) {
     return getRealTimeTopicName(
@@ -565,11 +565,6 @@ public class Utils {
       List<Version> versions,
       int currentVersionNumber,
       HybridStoreConfig hybridStoreConfig) {
-    if (hybridStoreConfig != null) {
-      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
-    }
-
     if (currentVersionNumber < 1) {
       return composeRealTimeTopic(storeName);
     }
@@ -581,6 +576,11 @@ public class Utils {
       if (Strings.isNotBlank(realTimeTopicName)) {
         return realTimeTopicName;
       }
+    }
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
     }
 
     Set<String> realTimeTopicNames = new HashSet<>();
