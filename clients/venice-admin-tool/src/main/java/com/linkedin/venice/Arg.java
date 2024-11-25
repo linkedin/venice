@@ -181,6 +181,7 @@ public enum Arg {
   LOG_METADATA("log-metadata", "lm", false, "Log the metadata for each kafka message on console"),
   LOG_DATA_RECORD("log-data-record", "ldr", false, "Log the data record for each kafka message on console"),
   LOG_RMD_RECORD("log-rmd-record", "lrr", false, "Log the RMD record for each kafka message on console"),
+  LOG_TS_RECORD("log-ts-record", "lts", false, "Log the topic switch message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."

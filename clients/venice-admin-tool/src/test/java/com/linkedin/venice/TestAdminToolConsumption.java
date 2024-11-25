@@ -218,6 +218,7 @@ public class TestAdminToolConsumption {
         3,
         true,
         false,
+        false,
         false);
     Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(), consumedMessageCount);
   }
