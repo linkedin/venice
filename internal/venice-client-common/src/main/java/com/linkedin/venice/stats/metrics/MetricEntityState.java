@@ -19,7 +19,7 @@ public class MetricEntityState {
   // Otel metric
   private Object otelMetric = null;
   // Map of tehuti names and sensors: 1 Otel metric can cover multiple Tehuti sensors
-  private Map<String, Sensor> tehutiSensors = null;
+  private Map<TehutiMetricNameEnum, Sensor> tehutiSensors = null;
 
   public MetricEntityState(MetricEntity metricEntity, VeniceOpenTelemetryMetricsRepository otelRepository) {
     this.metricEntity = metricEntity;
@@ -30,7 +30,7 @@ public class MetricEntityState {
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiSensorRegistrationFunction registerTehutiSensor,
-      Map<String, List<MeasurableStat>> tehutiMetricInput) {
+      Map<TehutiMetricNameEnum, List<MeasurableStat>> tehutiMetricInput) {
     this.metricEntity = metricEntity;
     createMetric(otelRepository, tehutiMetricInput, registerTehutiSensor);
   }
@@ -42,7 +42,7 @@ public class MetricEntityState {
   /**
    * Add Tehuti {@link Sensor} to tehutiSensors map and throw exception if sensor with same name already exists
    */
-  public void addTehutiSensors(String name, Sensor tehutiSensor) {
+  public void addTehutiSensors(TehutiMetricNameEnum name, Sensor tehutiSensor) {
     if (tehutiSensors == null) {
       tehutiSensors = new HashMap<>();
     }
@@ -61,17 +61,18 @@ public class MetricEntityState {
 
   public void createMetric(
       VeniceOpenTelemetryMetricsRepository otelRepository,
-      Map<String, List<MeasurableStat>> tehutiMetricInput,
+      Map<TehutiMetricNameEnum, List<MeasurableStat>> tehutiMetricInput,
       TehutiSensorRegistrationFunction registerTehutiSensor) {
     // Otel metric: otelRepository will be null if otel is not enabled
     if (otelRepository != null) {
       setOtelMetric(otelRepository.createInstrument(this.metricEntity));
     }
     // tehuti metric
-    for (Map.Entry<String, List<MeasurableStat>> entry: tehutiMetricInput.entrySet()) {
+    for (Map.Entry<TehutiMetricNameEnum, List<MeasurableStat>> entry: tehutiMetricInput.entrySet()) {
       addTehutiSensors(
           entry.getKey(),
-          registerTehutiSensor.register(entry.getKey(), entry.getValue().toArray(new MeasurableStat[0])));
+          registerTehutiSensor
+              .register(entry.getKey().getMetricName(), entry.getValue().toArray(new MeasurableStat[0])));
     }
   }
 
@@ -96,26 +97,26 @@ public class MetricEntityState {
     }
   }
 
-  void recordTehutiMetric(String tehutiMetricName, double value) {
+  void recordTehutiMetric(TehutiMetricNameEnum tehutiMetricNameEnum, double value) {
     if (tehutiSensors != null) {
-      Sensor sensor = tehutiSensors.get(tehutiMetricName);
+      Sensor sensor = tehutiSensors.get(tehutiMetricNameEnum);
       if (sensor != null) {
         sensor.record(value);
       }
     }
   }
 
-  public void record(String tehutiMetricName, long value, Attributes otelDimensions) {
+  public void record(TehutiMetricNameEnum tehutiMetricNameEnum, long value, Attributes otelDimensions) {
     recordOtelMetric(value, otelDimensions);
-    recordTehutiMetric(tehutiMetricName, value);
+    recordTehutiMetric(tehutiMetricNameEnum, value);
   }
 
-  public void record(String tehutiMetricName, double value, Attributes otelDimensions) {
+  public void record(TehutiMetricNameEnum tehutiMetricNameEnum, double value, Attributes otelDimensions) {
     recordOtelMetric(value, otelDimensions);
-    recordTehutiMetric(tehutiMetricName, value);
+    recordTehutiMetric(tehutiMetricNameEnum, value);
   }
 
-  Map<String, Sensor> getTehutiSensors() {
+  Map<TehutiMetricNameEnum, Sensor> getTehutiSensors() {
     return tehutiSensors;
   }
 }

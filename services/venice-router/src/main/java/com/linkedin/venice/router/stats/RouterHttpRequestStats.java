@@ -674,7 +674,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   /**
    * Metric names for tehuti metrics used in this class
    */
-  private static enum RouterTehutiMetricNameEnum implements TehutiMetricNameEnum {
+  private enum RouterTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link RouterMetricEntity#INCOMING_CALL_COUNT} */
     REQUEST,
     /** for {@link RouterMetricEntity#CALL_COUNT} */
