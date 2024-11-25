@@ -1,4 +1,4 @@
-package com.linkedin.venice.writer.update;
+package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
@@ -6,10 +6,6 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.writer.AbstractVeniceWriter;
-import com.linkedin.venice.writer.DeleteMetadata;
-import com.linkedin.venice.writer.PutMetadata;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;

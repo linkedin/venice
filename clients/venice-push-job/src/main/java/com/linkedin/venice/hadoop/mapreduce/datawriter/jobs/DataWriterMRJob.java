@@ -306,8 +306,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       }
       jobConf.setPartitionerClass(partitionerClass);
     }
-    if (pushJobSetting.viewConfigFlatMap != null) {
-      jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.viewConfigFlatMap);
+    if (pushJobSetting.materializedViewConfigFlatMap != null) {
+      jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
     }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;
