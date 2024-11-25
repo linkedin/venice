@@ -144,6 +144,10 @@ public class StoreBackend {
       }), stats));
 
     } else if (bootstrapVersion.isPresent()) {
+      if (!subscription.isEmpty()) {
+        subscription.removeAll(subscription);
+        subscription.addAll(partitions);
+      }
       throw new VeniceException(
           "Bootstrap version is already selected, storeName=" + storeName + ", currentVersion=" + daVinciCurrentVersion
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
