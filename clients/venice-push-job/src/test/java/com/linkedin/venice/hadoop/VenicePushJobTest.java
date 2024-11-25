@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
@@ -250,7 +251,7 @@ public class VenicePushJobTest {
       Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
       storeInfo.setVersions(Collections.singletonList(version));
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null, DEFAULT_REAL_TIME_TOPIC_NAME));
     });
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();

@@ -16,6 +16,7 @@ import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.AGGREGATE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NONE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -416,14 +417,16 @@ public class CreateVersionTest {
     Store store3 = mock(Store.class);
     when(store3.isHybrid()).thenReturn(true);
     when(store3.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(store3.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NON_AGGREGATE, REWIND_FROM_EOP));
+    when(store3.getHybridStoreConfig())
+        .thenReturn(new HybridStoreConfigImpl(0, 1, 0, NON_AGGREGATE, REWIND_FROM_EOP, DEFAULT_REAL_TIME_TOPIC_NAME));
     createVersion.validatePushType(PushType.STREAM, store3);
 
     // push type is STREAM and store is not AA enabled hybrid but has AGGREGATE replication policy
     Store store4 = mock(Store.class);
     when(store4.isHybrid()).thenReturn(true);
     when(store4.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(store4.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, AGGREGATE, REWIND_FROM_EOP));
+    when(store4.getHybridStoreConfig())
+        .thenReturn(new HybridStoreConfigImpl(0, 1, 0, AGGREGATE, REWIND_FROM_EOP, DEFAULT_REAL_TIME_TOPIC_NAME));
     createVersion.validatePushType(PushType.STREAM, store4);
 
     // push type is STREAM and store is not AA enabled hybrid but has NONE replication policy

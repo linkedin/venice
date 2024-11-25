@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -220,7 +221,7 @@ public class TestDataRecoveryClient {
 
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null, null));
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null, null, DEFAULT_REAL_TIME_TOPIC_NAME));
     storeInfo.setCurrentVersion(1);
     doReturn(storeInfo).when(storeResponse).getStore();
     doReturn(storeResponse).when(controllerClient).getStore(anyString());

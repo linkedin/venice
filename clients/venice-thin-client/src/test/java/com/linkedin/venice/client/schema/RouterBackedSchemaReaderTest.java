@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.schema;
 
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -502,7 +503,8 @@ public class RouterBackedSchemaReaderTest {
         1000,
         -1,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
 
     ZKStore store = new ZKStore(
         storeName,

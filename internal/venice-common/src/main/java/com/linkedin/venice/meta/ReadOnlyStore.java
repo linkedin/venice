@@ -525,7 +525,7 @@ public class ReadOnlyStore implements Store {
 
     @Override
     public boolean isHybrid() {
-      return this.delegate.getHybridStoreConfig() != null;
+      return this.delegate.isHybrid();
     }
 
     @Override

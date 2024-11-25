@@ -1,5 +1,6 @@
 package com.linkedin.venice.store;
 
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -75,7 +76,8 @@ public class StoreStateReaderTest {
         1000,
         -1,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
 
     ZKStore store = new ZKStore(
         storeName,

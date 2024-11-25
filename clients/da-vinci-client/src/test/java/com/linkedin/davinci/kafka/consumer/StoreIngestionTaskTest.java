@@ -31,6 +31,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFI
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestUtils.getOffsetRecord;
@@ -2441,7 +2442,8 @@ public abstract class StoreIngestionTaskTest {
                   100,
                   HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
                   DataReplicationPolicy.NON_AGGREGATE,
-                  BufferReplayPolicy.REWIND_FROM_EOP)));
+                  BufferReplayPolicy.REWIND_FROM_EOP,
+                  DEFAULT_REAL_TIME_TOPIC_NAME)));
       runTest(config);
     } finally {
       databaseSyncBytesIntervalForTransactionalMode = 1;
@@ -2873,7 +2875,8 @@ public abstract class StoreIngestionTaskTest {
         100,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3238,7 +3241,8 @@ public abstract class StoreIngestionTaskTest {
           100,
           -1,
           DataReplicationPolicy.NON_AGGREGATE,
-          BufferReplayPolicy.REWIND_FROM_EOP);
+          BufferReplayPolicy.REWIND_FROM_EOP,
+          DEFAULT_REAL_TIME_TOPIC_NAME);
     }
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
@@ -3982,7 +3986,8 @@ public abstract class StoreIngestionTaskTest {
         100,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
         DataReplicationPolicy.ACTIVE_ACTIVE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
 
     final int batchMessagesNum = 100;
     final List<Long> resubscriptionOffsetForLocalVT = Arrays.asList(30L, 70L);
@@ -4909,7 +4914,8 @@ public abstract class StoreIngestionTaskTest {
         -1L,
         100L,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_SOP);
+        BufferReplayPolicy.REWIND_FROM_SOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
     assertEquals(
         StoreIngestionTask
             .getOffsetToOnlineLagThresholdPerPartition(Optional.of(hybridStoreConfig1), storeName, partitionCount),

@@ -6,6 +6,7 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS;
@@ -1179,7 +1180,8 @@ public class TestMetaDataHandler {
         1,
         TimeUnit.MINUTES.toSeconds(1),
         DataReplicationPolicy.AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
 
@@ -1220,7 +1222,8 @@ public class TestMetaDataHandler {
         1,
         TimeUnit.MINUTES.toSeconds(1),
         DataReplicationPolicy.AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+        BufferReplayPolicy.REWIND_FROM_EOP,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
 
