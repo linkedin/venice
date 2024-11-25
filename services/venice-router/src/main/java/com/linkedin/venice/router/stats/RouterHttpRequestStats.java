@@ -438,10 +438,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordErrorRetryCount() {
-    recordRetryTriggeredSensorOtel(MetricNamesInTehuti.ERROR_RETRY, RequestRetryType.ERROR_RETRY);
+    recordRetryTriggeredSensorOtel(RequestRetryType.ERROR_RETRY);
   }
 
-  public void recordRetryTriggeredSensorOtel(String tetutiMetricName, RequestRetryType retryType) {
+  public void recordRetryTriggeredSensorOtel(RequestRetryType retryType) {
     Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
       dimensions = Attributes.builder()
@@ -449,10 +449,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           .put(getDimensionName(VENICE_REQUEST_RETRY_TYPE), retryType.getRetryType())
           .build();
     }
-    retryCountMetric.record(tetutiMetricName, 1, dimensions);
+    retryCountMetric.record(MetricNamesInTehuti.ERROR_RETRY, 1, dimensions);
   }
 
-  public void recordAbortedRetrySensorOtel(String tetutiMetricName, RequestRetryAbortReason abortReason) {
+  public void recordAbortedRetrySensorOtel(String tehutiMetricName, RequestRetryAbortReason abortReason) {
     Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
       dimensions = Attributes.builder()
@@ -460,7 +460,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           .put(getDimensionName(VENICE_REQUEST_RETRY_ABORT_REASON), abortReason.getAbortReason())
           .build();
     }
-    abortedRetryCountMetric.record(tetutiMetricName, 1, dimensions);
+    abortedRetryCountMetric.record(tehutiMetricName, 1, dimensions);
   }
 
   public void recordBadRequest(HttpResponseStatus responseStatus) {
@@ -494,7 +494,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     if (emitOpenTelemetryMetrics) {
       dimensions = Attributes.builder()
           .putAll(commonMetricDimensions)
-          // only add HTTP_RESPONSE_STATUS_CODE_CATEGORY to reduce the cardinality for histogram
+          // Don't add HTTP_RESPONSE_STATUS_CODE to reduce the cardinality for histogram
           .put(
               getDimensionName(HTTP_RESPONSE_STATUS_CODE_CATEGORY),
               getVeniceHttpResponseStatusCodeCategory(responseStatus))
@@ -505,7 +505,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRequestMetric(
-      String tetutiMetricName,
+      String tehutiMetricName,
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceResponseStatusCategory) {
     Attributes dimensions = null;
@@ -519,7 +519,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           .put(getDimensionName(HTTP_RESPONSE_STATUS_CODE), responseStatus.codeAsText().toString())
           .build();
     }
-    requestMetric.record(tetutiMetricName, 1, dimensions);
+    requestMetric.record(tehutiMetricName, 1, dimensions);
   }
 
   public void recordResponseWaitingTime(double waitingTime) {

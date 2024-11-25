@@ -1,6 +1,9 @@
 package com.linkedin.venice.stats.metrics;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import io.opentelemetry.api.common.Attributes;
@@ -8,7 +11,9 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
