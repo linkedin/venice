@@ -252,7 +252,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     }
   }
 
-  private static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
+  public static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
       Optional<Properties> serverProperties,
       List<String> regionNames,
       List<PubSubBrokerWrapper> kafkaBrokers) {
