@@ -360,8 +360,8 @@ public class UpdateStoreQueryParams extends QueryParams {
     return Optional.ofNullable(params.get(BUFFER_REPLAY_POLICY)).map(BufferReplayPolicy::valueOf);
   }
 
-  public UpdateStoreQueryParams setRealTimeTopicName(boolean realTimeTopicName) {
-    return putBoolean(REAL_TIME_TOPIC_NAME, realTimeTopicName);
+  public UpdateStoreQueryParams setRealTimeTopicName(String realTimeTopicName) {
+    return putString(REAL_TIME_TOPIC_NAME, realTimeTopicName);
   }
 
   public Optional<String> getRealTimeTopicName() {

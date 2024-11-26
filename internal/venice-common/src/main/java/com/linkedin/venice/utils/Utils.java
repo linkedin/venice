@@ -572,7 +572,7 @@ public class Utils {
     }
   }
 
-  public static String getRealTimeTopicName(
+  static String getRealTimeTopicName(
       String storeName,
       List<Version> versions,
       int currentVersionNumber,
