@@ -20,11 +20,11 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,14 +37,18 @@ import org.testng.annotations.Test;
 
 public class TestVeniceMultiGetPath {
   private final RetryManager disabledRetryManager =
-      new RetryManager(new MetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
+      new RetryManager(new VeniceMetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
+
+  public TestVeniceMultiGetPath() {
+  }
 
   @BeforeClass
   public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(
         new RouterStats<>(
             requestType -> new AggRouterHttpRequestStats(
-                new MetricsRepository(),
+                "test-cluster",
+                new VeniceMetricsRepository(),
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));

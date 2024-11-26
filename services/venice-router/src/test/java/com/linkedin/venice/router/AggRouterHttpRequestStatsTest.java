@@ -1,10 +1,12 @@
 package com.linkedin.venice.router;
 
+import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
+
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
@@ -12,13 +14,13 @@ import org.testng.annotations.Test;
 
 
 public class AggRouterHttpRequestStatsTest {
-  MetricsRepository metricsRepository;
+  VeniceMetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
   private ReadOnlyStoreRepository storeMetadataRepository;
 
   @BeforeSuite
   public void setUp() {
-    this.metricsRepository = new MetricsRepository();
+    this.metricsRepository = new VeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     storeMetadataRepository = Mockito.mock(ReadOnlyStoreRepository.class);
@@ -26,8 +28,12 @@ public class AggRouterHttpRequestStatsTest {
 
   @Test
   public void testAggRouterMetrics() {
-    AggRouterHttpRequestStats stats =
-        new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET, storeMetadataRepository, true);
+    AggRouterHttpRequestStats stats = new AggRouterHttpRequestStats(
+        "test-cluster",
+        metricsRepository,
+        RequestType.SINGLE_GET,
+        storeMetadataRepository,
+        true);
 
     stats.recordRequest("store5");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 1d);
@@ -37,8 +43,8 @@ public class AggRouterHttpRequestStatsTest {
     Assert.assertNotNull(metricsRepository.getMetric(".store1--request.Count"));
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
 
-    stats.recordThrottledRequest("store1", 1.0);
-    stats.recordThrottledRequest("store2", 1.0);
+    stats.recordThrottledRequest("store1", 1.0, TOO_MANY_REQUESTS);
+    stats.recordThrottledRequest("store2", 1.0, TOO_MANY_REQUESTS);
     stats.recordErrorRetryCount("store1");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 2d);
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
@@ -59,8 +65,13 @@ public class AggRouterHttpRequestStatsTest {
 
   @Test
   public void testProfilingMetrics() {
-    AggRouterHttpRequestStats stats =
-        new AggRouterHttpRequestStats(metricsRepository, RequestType.COMPUTE, true, storeMetadataRepository, true);
+    AggRouterHttpRequestStats stats = new AggRouterHttpRequestStats(
+        "test-cluster",
+        metricsRepository,
+        RequestType.COMPUTE,
+        true,
+        storeMetadataRepository,
+        true);
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordKeySize("store1", i);

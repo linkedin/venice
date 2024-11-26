@@ -60,7 +60,7 @@ import org.apache.logging.log4j.Logger;
 public class IngestionStatsReporter extends AbstractVeniceStatsReporter<IngestionStats> {
   private static final Logger LOGGER = LogManager.getLogger(IngestionStatsReporter.class);
 
-  public IngestionStatsReporter(MetricsRepository metricsRepository, String storeName) {
+  public IngestionStatsReporter(MetricsRepository metricsRepository, String storeName, String clusterName) {
     super(metricsRepository, storeName);
   }
 

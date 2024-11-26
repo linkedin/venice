@@ -373,7 +373,7 @@ public class ReadQuotaEnforcementHandlerTest {
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
-        new AggServerQuotaUsageStats(metricsRepository),
+        new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository),
         metricsRepository,
         clock);
     String storeName = "testStore";

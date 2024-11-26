@@ -458,4 +458,8 @@ public class VeniceProperties implements Serializable {
   public boolean isEmpty() {
     return this.props.isEmpty();
   }
+
+  public Map<String, String> getAsMap() {
+    return props;
+  }
 }

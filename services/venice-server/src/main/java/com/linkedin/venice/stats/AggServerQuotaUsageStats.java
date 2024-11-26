@@ -10,8 +10,12 @@ import io.tehuti.metrics.MetricsRepository;
 public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerReadQuotaUsageStats> {
   private static final int SINGLE_VERSION_FOR_TOTAL_STATS = 1;
 
-  public AggServerQuotaUsageStats(MetricsRepository metricsRepository) {
-    super(metricsRepository, (metrics, storeName) -> new ServerReadQuotaUsageStats(metrics, storeName));
+  public AggServerQuotaUsageStats(String cluster, MetricsRepository metricsRepository) {
+    super(
+        cluster,
+        metricsRepository,
+        (metrics, storeName, clusterName) -> new ServerReadQuotaUsageStats(metrics, storeName),
+        false);
     totalStats.setCurrentVersion(SINGLE_VERSION_FOR_TOTAL_STATS);
   }
 

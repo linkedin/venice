@@ -154,7 +154,7 @@ public class RouterExceptionAndTrackingUtils {
     // If we don't know the actual store name, this error will only be aggregated in server level, but not
     // in store level
     if (responseStatus.equals(BAD_REQUEST) || responseStatus.equals(REQUEST_ENTITY_TOO_LARGE)) {
-      stats.recordBadRequest(storeName.orElse(null));
+      stats.recordBadRequest(storeName.orElse(null), responseStatus);
     } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
       if (storeName.isPresent()) {
         if (requestType.isPresent()) {
@@ -165,7 +165,7 @@ public class RouterExceptionAndTrackingUtils {
            *
            * TODO: Remove this metric after the above work is done...
            */
-          stats.recordThrottledRequest(storeName.get());
+          stats.recordThrottledRequest(storeName.get(), responseStatus);
         }
       } else {
         // not possible to have empty store name in this scenario
@@ -198,7 +198,7 @@ public class RouterExceptionAndTrackingUtils {
           return;
       }
 
-      stats.recordUnhealthyRequest(storeName.orElse(null));
+      stats.recordUnhealthyRequest(storeName.orElse(null), responseStatus);
 
       if (responseStatus.equals(SERVICE_UNAVAILABLE)) {
         if (storeName.isPresent()) {
