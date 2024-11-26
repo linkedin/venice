@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.utils.LatencyUtils.getElapsedTimeFromMsToMs;
+
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -10,7 +12,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -40,13 +41,9 @@ import org.apache.logging.log4j.Logger;
  * TODO: move this logic inside consumption task, this class does not need to be sub-class of {@link PubSubConsumerAdapter}
  */
 class SharedKafkaConsumer implements PubSubConsumerAdapter {
+  // StoreIngestionTask#consumerUnSubscribeForStateTransition() uses an increased max wait (30 mins by default) for
+  // safety
   public static final long DEFAULT_MAX_WAIT_MS = TimeUnit.SECONDS.toMillis(10);
-  /**
-   * Increase the max wait during state transitions to ensure that it waits for the messages to finish processing. A
-   * poll() indicates that all previous inflight messages under the previous state were processed, so there can't be a
-   * state mismatch. The consumer_records_producing_to_write_buffer_latency metric suggests how long the wait should be.
-   */
-  public static final long STATE_TRANSITION_MAX_WAIT_MS = TimeUnit.MINUTES.toMillis(30);
 
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
@@ -127,8 +124,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     currentAssignmentSize.set(newAssignment.size());
     currentAssignment = Collections.unmodifiableSet(newAssignment);
     assignmentChangeListener.run();
-    stats.recordTotalUpdateCurrentAssignmentLatency(
-        LatencyUtils.getElapsedTimeFromMsToMs(updateCurrentAssignmentStartTime));
+    stats.recordTotalUpdateCurrentAssignmentLatency(getElapsedTimeFromMsToMs(updateCurrentAssignmentStartTime));
   }
 
   @Override
@@ -151,7 +147,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
               + " versionTopic: " + versionTopic + ", previousVersionTopic: " + previousVersionTopic
               + ", topicPartitionToSubscribe: " + topicPartitionToSubscribe);
     }
-    stats.recordTotalDelegateSubscribeLatency(LatencyUtils.getElapsedTimeFromMsToMs(delegateSubscribeStartTime));
+    stats.recordTotalDelegateSubscribeLatency(getElapsedTimeFromMsToMs(delegateSubscribeStartTime));
     updateCurrentAssignment(delegate.getAssignment());
   }
 
@@ -228,19 +224,19 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         final long waitMs = endTimeMs - time.getMilliseconds();
         if (waitMs <= 0) {
           LOGGER.warn(
-              "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} milliseconds",
+              "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} seconds",
               topicPartitions,
-              timeoutMs);
+              TimeUnit.MILLISECONDS.toSeconds(timeoutMs));
           break;
         }
         wait(waitMs);
       }
-      final long elapsedMs = time.getMilliseconds() - startTimeMs;
-      if (elapsedMs > TimeUnit.SECONDS.toMillis(15)) {
+      final long elapsedSeconds = TimeUnit.MILLISECONDS.toSeconds(getElapsedTimeFromMsToMs(startTimeMs));
+      if (elapsedSeconds > 15) {
         LOGGER.warn(
-            "Wait for poll request after unsubscribe topic partition(s) ({}) took {} milliseconds",
+            "Wait for poll request after unsubscribe topic partition(s) ({}) took {} seconds",
             topicPartitions,
-            elapsedMs);
+            elapsedSeconds);
       }
       // no action to take actually, just return;
     } catch (InterruptedException e) {

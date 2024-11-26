@@ -338,8 +338,12 @@ public class TestHAASController {
 
       when(commonConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
       when(commonConfig.isStorageClusterHelixCloudEnabled()).thenReturn(true);
-      CloudConfig cloudConfig =
-          HelixUtils.getCloudConfig(CloudProvider.CUSTOMIZED, "NA", cloudInfoSources, "TestProcessor");
+      CloudConfig cloudConfig = HelixUtils.getCloudConfig(
+          CloudProvider.CUSTOMIZED,
+          "NA",
+          cloudInfoSources,
+          "com.linkedin.venice.controller.helix",
+          "TestProcessor");
       when(commonConfig.getHelixCloudConfig()).thenReturn(cloudConfig);
 
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();

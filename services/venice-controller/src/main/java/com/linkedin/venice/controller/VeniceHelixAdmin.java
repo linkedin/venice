@@ -1255,6 +1255,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushJobStatusStats.recordBatchPushSuccessSensor();
           }
         }
+        // Append job duration in minutes to log message
+        double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
+        logMessage.append(", duration: ").append(String.format("%.1f mins", jobDurationInMinutes));
         LOGGER.info(
             "{}. Incremental push: {}, push job id: {}, checkpoint: {}",
             logMessage.toString(),
@@ -6685,21 +6688,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#isInstanceRemovable(String, String, List, boolean)
+   * @see Admin#isInstanceRemovable(String, String, List)
    */
   @Override
-  public NodeRemovableResult isInstanceRemovable(
-      String clusterName,
-      String helixNodeId,
-      List<String> lockedNodes,
-      boolean isFromInstanceView) {
+  public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, List<String> lockedNodes) {
     checkControllerLeadershipFor(clusterName);
-    return InstanceStatusDecider.isRemovable(
-        getHelixVeniceClusterResources(clusterName),
-        clusterName,
-        helixNodeId,
-        lockedNodes,
-        isFromInstanceView);
+    return InstanceStatusDecider
+        .isRemovable(getHelixVeniceClusterResources(clusterName), clusterName, helixNodeId, lockedNodes);
   }
 
   /**

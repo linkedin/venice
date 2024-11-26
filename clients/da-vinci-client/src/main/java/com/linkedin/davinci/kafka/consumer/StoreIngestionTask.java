@@ -2031,7 +2031,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 offsetLag,
                 previousOffsetLag,
                 offsetLagThreshold);
-            if (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold) {
+            if (newPartitionConsumptionState.getReadyToServeInOffsetRecord()
+                && (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold)) {
               newPartitionConsumptionState.lagHasCaughtUp();
               reportCompleted(newPartitionConsumptionState, true);
               isCompletedReport = true;
@@ -3469,7 +3470,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
     aggKafkaConsumerService
-        .unsubscribeConsumerFor(versionTopic, topicPartition, SharedKafkaConsumer.STATE_TRANSITION_MAX_WAIT_MS);
+        .unsubscribeConsumerFor(versionTopic, topicPartition, serverConfig.getMaxWaitAfterUnsubscribeMs());
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,
@@ -4089,6 +4090,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             }
             unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
           }
+          partitionConsumptionState.recordReadyToServeInOffsetRecord();
         } else {
           ingestionNotificationDispatcher.reportProgress(partitionConsumptionState);
         }
@@ -4439,5 +4441,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // For unit test purpose.
   void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
     this.versionRole = versionRole;
+  }
+
+  protected boolean isDaVinciClient() {
+    return isDaVinciClient;
   }
 }

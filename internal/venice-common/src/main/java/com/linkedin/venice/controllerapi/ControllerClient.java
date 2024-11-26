@@ -26,7 +26,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -893,8 +892,8 @@ public class ControllerClient implements Closeable {
   }
 
   public NodeStatusResponse isNodeRemovable(String instanceId, List<String> lockedNodeIds) {
-    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId)
-        .add(TO_BE_STOPPED_INSTANCES, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
+    QueryParams params =
+        newParams().add(STORAGE_NODE_ID, instanceId).add(TO_BE_STOPPED_INSTANCES, String.join(",", lockedNodeIds));
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 

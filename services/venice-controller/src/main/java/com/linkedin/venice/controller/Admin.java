@@ -571,18 +571,11 @@ public interface Admin extends AutoCloseable, Closeable {
    * This instance should not be removed out of cluster, otherwise Venice will lose data.
    * For detail criteria please refer to {@link InstanceStatusDecider}
    *
+   * @param clusterName The cluster were the hosts belong.
    * @param helixNodeId nodeId of helix participant. HOST_PORT.
    * @param lockedNodes A list of helix nodeIds whose resources are assumed to be unusable (stopped).
-   * @param isFromInstanceView If the value is true, it means we will only check the partitions this instance hold.
-   *                           E.g. if all replicas of a partition are error, but this instance does not hold any
-   *                           replica in this partition, we will skip this partition in the checking.
-   *                           If the value is false, we will check all partitions of resources this instance hold.
    */
-  NodeRemovableResult isInstanceRemovable(
-      String clusterName,
-      String helixNodeId,
-      List<String> lockedNodes,
-      boolean isFromInstanceView);
+  NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, List<String> lockedNodes);
 
   /**
    * Get instance of leader controller. If there is no leader controller for the given cluster, throw a

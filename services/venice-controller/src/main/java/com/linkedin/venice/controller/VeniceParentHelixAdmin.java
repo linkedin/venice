@@ -3903,11 +3903,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public NodeRemovableResult isInstanceRemovable(
-      String clusterName,
-      String instanceId,
-      List<String> lockedNodes,
-      boolean isFromInstanceView) {
+  public NodeRemovableResult isInstanceRemovable(String clusterName, String instanceId, List<String> lockedNodes) {
     throw new VeniceException("isInstanceRemovable is not supported!");
   }
 

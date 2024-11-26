@@ -17,8 +17,10 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -65,8 +67,11 @@ public class BlobSnapshotManagerTest {
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
     Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -83,9 +88,11 @@ public class BlobSnapshotManagerTest {
   @Test(timeOut = TIMEOUT)
   public void testSameSnapshotWhenConcurrentUsersNotExceedMaxAllowedUsers() {
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -112,9 +119,11 @@ public class BlobSnapshotManagerTest {
   @Test(timeOut = TIMEOUT)
   public void testSameSnapshotWhenConcurrentUsersExceedsMaxAllowedUsers() {
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -153,9 +162,11 @@ public class BlobSnapshotManagerTest {
   public void testTwoRequestUsingSameOffset() {
     // Prepare
     Store mockStore = mock(Store.class);
-
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -191,8 +202,11 @@ public class BlobSnapshotManagerTest {
     final CountDownLatch latch = new CountDownLatch(numberOfThreads);
 
     Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
     when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
         spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
@@ -292,6 +306,42 @@ public class BlobSnapshotManagerTest {
               "Received exception during RocksDB's snapshot creation in directory " + fullSnapshotPath);
         }
       }
+    }
+  }
+
+  @Test
+  public void testNotAllowRecreateSnapshotWhenHavingConcurrentUsers() {
+    // Prepare
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
+
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
+
+    // Mock there is one existing snapshot user
+    blobSnapshotManager.increaseConcurrentUserCount(TOPIC_NAME, PARTITION_ID);
+
+    // New request but the snapshot info is not recorded, and it will try to generate a new snapshot
+    try {
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      Assert.fail("Should throw exception");
+    } catch (VeniceException e) {
+      String errorMessage = String.format(
+          "Snapshot for topic %s partition %d is still in use by others, can not recreate snapshot for new transfer request.",
+          TOPIC_NAME,
+          PARTITION_ID);
+      Assert.assertEquals(e.getMessage(), errorMessage);
     }
   }
 }

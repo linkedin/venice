@@ -33,6 +33,8 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class PartitionConsumptionState {
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
+  private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
+  private static final String TRUE = "true";
 
   private final String replicaId;
   private final int partition;
@@ -597,6 +599,19 @@ public class PartitionConsumptionState {
 
   public void setSkipKafkaMessage(boolean skipKafkaMessage) {
     this.skipKafkaMessage = skipKafkaMessage;
+  }
+
+  /**
+   * This persists to the offsetRecord associated to this partitionConsumptionState that the ready to serve check has
+   * passed.  This will be persisted to disk once the offsetRecord is checkpointed, and subsequent restarts will
+   * consult this information when determining if the node should come online or not to serve traffic
+   */
+  public void recordReadyToServeInOffsetRecord() {
+    offsetRecord.setPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE, TRUE);
+  }
+
+  public boolean getReadyToServeInOffsetRecord() {
+    return offsetRecord.getPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE).equals(TRUE);
   }
 
   /**

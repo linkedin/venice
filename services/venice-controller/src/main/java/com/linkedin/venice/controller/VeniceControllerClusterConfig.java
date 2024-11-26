@@ -50,6 +50,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
@@ -918,6 +919,7 @@ public class VeniceControllerClusterConfig {
       }
 
       String helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
+      String helixCloudInfoProcessorPackage = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE, "");
       String helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
 
       List<String> helixCloudInfoSources;
@@ -927,8 +929,12 @@ public class VeniceControllerClusterConfig {
         helixCloudInfoSources = props.getList(CONTROLLER_HELIX_CLOUD_INFO_SOURCES);
       }
 
-      helixCloudConfig = HelixUtils
-          .getCloudConfig(helixCloudProvider, helixCloudId, helixCloudInfoSources, helixCloudInfoProcessorName);
+      helixCloudConfig = HelixUtils.getCloudConfig(
+          helixCloudProvider,
+          helixCloudId,
+          helixCloudInfoSources,
+          helixCloudInfoProcessorPackage,
+          helixCloudInfoProcessorName);
     } else {
       helixCloudConfig = null;
     }

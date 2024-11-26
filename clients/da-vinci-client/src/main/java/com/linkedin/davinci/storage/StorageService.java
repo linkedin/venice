@@ -387,16 +387,22 @@ public class StorageService extends AbstractVeniceService {
           new PropertyKey.Builder(configLoader.getVeniceClusterConfig().getClusterName());
       SafeHelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
       IdealState idealState = helixDataAccessor.getProperty(propertyKeyBuilder.idealStates(storeName));
-
+      /**
+       * In a helix ideal state, helix maintains information in listfields and mapfields.  The mapfields inform which
+       * messages needs to be sent based on the current LIVEINSTANCES, and will therefore be reflective of what
+       * nodes are available to receive messages.  The listfields however will contain the assignment, and will only
+       * change if a rebalance is calculated.  For this clean up code, we rely on entries in the listfield based
+       * on which state transitions we're anticipating to receive.
+       */
       if (idealState != null) {
-        Map<String, Map<String, String>> mapFields = idealState.getRecord().getMapFields();
+        Map<String, List<String>> listFields = idealState.getRecord().getListFields();
         for (Integer partitionId: storageEnginePartitionIds) {
           if (storageEngine.isMetadataPartition(partitionId)) {
             continue;
           }
           String partitionDbName = storeName + "_" + partitionId;
-          if (!mapFields.containsKey(partitionDbName)
-              || !mapFields.get(partitionDbName).containsKey(instanceHostName)) {
+          List<String> hostNames = listFields.get(partitionDbName);
+          if (hostNames == null || !hostNames.contains(instanceHostName)) {
             LOGGER.info(
                 "the following partition is not assigned to the current host {} and is being dropped from storage engine {}: {}",
                 instanceHostName,

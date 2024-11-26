@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -109,6 +110,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private final boolean logMetadata;
   private final boolean logDataRecord;
   private final boolean logRmdRecord;
+  private final boolean logTsRecord;
 
   private final ChunkKeyValueTransformer chunkKeyValueTransformer;
   private final AvroSpecificDeserializer<ChunkedKeySuffix> chunkedKeySuffixDeserializer;
@@ -132,7 +134,8 @@ public class KafkaTopicDumper implements AutoCloseable {
       int maxConsumeAttempts,
       boolean logMetadata,
       boolean logDataRecord,
-      boolean logRmdRecord) {
+      boolean logRmdRecord,
+      boolean logTsRecord) {
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
 
@@ -186,6 +189,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     this.logMetadata = logMetadata;
     this.logDataRecord = logDataRecord;
     this.logRmdRecord = logRmdRecord;
+    this.logTsRecord = logTsRecord;
 
     if (logMetadata && !logDataRecord) {
       this.latestValueSchemaStr = null;
@@ -347,7 +351,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       final String chunkMetadata = getChunkMetadataLog(record);
 
       LOGGER.info(
-          "[Record Metadata] Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
+          "Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
           record.getOffset(),
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
@@ -454,7 +458,9 @@ public class KafkaTopicDumper implements AutoCloseable {
   }
 
   private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
-    if (logDataRecord) {
+    if (logTsRecord) {
+      logIfTopicSwitchMessage(record);
+    } else if (logDataRecord) {
       logDataRecord(record, logMetadata, logRmdRecord);
     } else if (logMetadata) {
       logRecordMetadata(record);
@@ -462,6 +468,53 @@ public class KafkaTopicDumper implements AutoCloseable {
       // If no console logging is enabled, we will save data records into local file.
       writeToFile(record);
     }
+  }
+
+  static void logIfTopicSwitchMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    KafkaKey kafkaKey = record.getKey();
+    if (!kafkaKey.isControlMessage()) {
+      // TS message is a control message, so we only care about control messages.
+      return;
+    }
+
+    ControlMessage controlMessage = (ControlMessage) record.getValue().payloadUnion;
+    if (controlMessage.controlMessageType != ControlMessageType.TOPIC_SWITCH.getValue()) {
+      return;
+    }
+
+    String logMessage = constructTopicSwitchLog(record);
+    LOGGER.info(logMessage);
+  }
+
+  /**
+   * Constructs the log message for a TopicSwitch message.
+   *
+   * @param record The PubSubMessage containing the TopicSwitch message.
+   * @return A formatted string representing the log message.
+   */
+  static String constructTopicSwitchLog(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
+    ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
+    LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
+    ControlMessage controlMessage = (ControlMessage) kafkaMessageEnvelope.payloadUnion;
+    TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+
+    return String.format(
+        "Offset:%s; %s; SourceKafkaServers: %s; SourceTopicName: %s; RewindStartTimestamp: %s; "
+            + "ProducerMd=(guid:%s,seg:%s,seq:%s,mts:%s,lts:%s); LeaderMd=(host:%s,uo:%s,ukcId:%s)",
+        record.getOffset(),
+        ControlMessageType.TOPIC_SWITCH.name(),
+        topicSwitch.sourceKafkaServers,
+        topicSwitch.sourceTopicName,
+        topicSwitch.rewindStartTimestamp,
+        GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
+        producerMetadata.segmentNumber,
+        producerMetadata.messageSequenceNumber,
+        producerMetadata.messageTimestamp,
+        producerMetadata.logicalTimestamp,
+        leaderMetadata == null ? "-" : leaderMetadata.hostName,
+        leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
+        leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 
   private void writeToFile(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {

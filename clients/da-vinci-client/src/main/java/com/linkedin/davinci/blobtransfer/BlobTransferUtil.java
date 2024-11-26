@@ -38,7 +38,8 @@ public class BlobTransferUtil {
       ReadOnlyStoreRepository readOnlyStoreRepository,
       StorageEngineRepository storageEngineRepository,
       int maxConcurrentSnapshotUser,
-      int snapshotRetentionTimeInMin) {
+      int snapshotRetentionTimeInMin,
+      int blobTransferMaxTimeoutInMin) {
     return getP2PBlobTransferManagerForDVCAndStart(
         p2pTransferPort,
         p2pTransferPort,
@@ -48,7 +49,8 @@ public class BlobTransferUtil {
         readOnlyStoreRepository,
         storageEngineRepository,
         maxConcurrentSnapshotUser,
-        snapshotRetentionTimeInMin);
+        snapshotRetentionTimeInMin,
+        blobTransferMaxTimeoutInMin);
   }
 
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
@@ -60,7 +62,8 @@ public class BlobTransferUtil {
       ReadOnlyStoreRepository readOnlyStoreRepository,
       StorageEngineRepository storageEngineRepository,
       int maxConcurrentSnapshotUser,
-      int snapshotRetentionTimeInMin) {
+      int snapshotRetentionTimeInMin,
+      int blobTransferMaxTimeoutInMin) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -71,7 +74,7 @@ public class BlobTransferUtil {
       AbstractAvroStoreClient storeClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient),
           baseDir);
@@ -101,7 +104,8 @@ public class BlobTransferUtil {
       ReadOnlyStoreRepository readOnlyStoreRepository,
       StorageEngineRepository storageEngineRepository,
       int maxConcurrentSnapshotUser,
-      int snapshotRetentionTimeInMin) {
+      int snapshotRetentionTimeInMin,
+      int blobTransferMaxTimeoutInMin) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -110,7 +114,7 @@ public class BlobTransferUtil {
           maxConcurrentSnapshotUser,
           snapshotRetentionTimeInMin);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobSnapshotManager),
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture),
           baseDir);

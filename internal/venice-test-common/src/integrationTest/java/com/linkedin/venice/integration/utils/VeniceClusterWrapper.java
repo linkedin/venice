@@ -287,6 +287,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         if (!options.getRegionName().isEmpty() && !options.getClusterName().isEmpty()) {
           serverName = options.getRegionName() + ":" + options.getClusterName() + ":sn-" + i;
         }
+
         VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
             options.getRegionName(),
             options.getClusterName(),
@@ -655,6 +656,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
     Properties mergedProperties = options.getExtraProperties();
     mergedProperties.putAll(configProperties);
+
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
         options.getRegionName(),
         getClusterName(),

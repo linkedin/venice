@@ -31,7 +31,6 @@ public class ControllerApiConstants {
   public static final String INSTANCES = "instances";
   public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
 
-  public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
   public static final String DERIVED_SCHEMA = "derived_schema";
@@ -205,8 +204,6 @@ public class ControllerApiConstants {
    * source fabric is included in the request body as byte array or not.
    */
   public static final String SOURCE_FABRIC_VERSION_INCLUDED = "source.fabric.version.included";
-
-  public static final String LOCKED_NODE_ID_LIST_SEPARATOR = ",";
 
   public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
