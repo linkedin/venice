@@ -1,6 +1,5 @@
 package com.linkedin.venice.ingestion.control;
 
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.anyLong;
@@ -114,8 +113,7 @@ public class RealTimeTopicSwitcherRewindTest {
             1,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_SOP,
-            DEFAULT_REAL_TIME_TOPIC_NAME)));
+            BufferReplayPolicy.REWIND_FROM_SOP)));
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 

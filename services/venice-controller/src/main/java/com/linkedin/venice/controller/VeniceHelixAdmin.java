@@ -5155,8 +5155,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
                 DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
                 DataReplicationPolicy.NON_AGGREGATE,
-                null,
-                DEFAULT_REAL_TIME_TOPIC_NAME));
+                null));
       } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
         store.setHybridStoreConfig(
             new HybridStoreConfigImpl(
@@ -7834,9 +7833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
           DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
           BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy),
-          hybridStoreConfigRecord.realTimeTopicName == null
-              ? ""
-              : hybridStoreConfigRecord.realTimeTopicName.toString());
+          hybridStoreConfigRecord.realTimeTopicName.toString());
     }
     return isHybrid(hybridStoreConfig);
   }

@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -1905,8 +1904,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             100,
             -1,
             DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP,
-            DEFAULT_REAL_TIME_TOPIC_NAME));
+            BufferReplayPolicy.REWIND_FROM_EOP));
     store.setActiveActiveReplicationEnabled(true);
     store.setIncrementalPushEnabled(true);
     store.setNativeReplicationEnabled(true);

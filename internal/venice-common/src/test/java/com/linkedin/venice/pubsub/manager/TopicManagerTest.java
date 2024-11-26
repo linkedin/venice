@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.manager;
 
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETE_RETRY_TIMES;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -662,8 +661,7 @@ public class TopicManagerTest {
         20000,
         -1,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP,
-        DEFAULT_REAL_TIME_TOPIC_NAME);
+        BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) < 5 days, retention will be set to 5 days
     Assert
@@ -683,8 +681,7 @@ public class TopicManagerTest {
         20000,
         -1,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP,
-        DEFAULT_REAL_TIME_TOPIC_NAME);
+        BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed
     // value

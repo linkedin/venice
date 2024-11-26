@@ -1,7 +1,5 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
-
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -38,8 +36,7 @@ public class TestStoreJsonSerializer {
         1000,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
         DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP,
-        DEFAULT_REAL_TIME_TOPIC_NAME);
+        BufferReplayPolicy.REWIND_FROM_EOP);
     store.setHybridStoreConfig(hybridStoreConfig);
     store.setReadQuotaInCU(100);
 

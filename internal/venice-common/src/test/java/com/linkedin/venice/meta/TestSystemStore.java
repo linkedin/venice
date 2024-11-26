@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -40,8 +39,7 @@ public class TestSystemStore {
             100,
             100,
             DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP,
-            DEFAULT_REAL_TIME_TOPIC_NAME));
+            BufferReplayPolicy.REWIND_FROM_EOP));
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
     // Setup a regular Venice store

@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.pushmonitor.AbstractPushMonitor.MAX_PUSH_TO_KEEP;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
@@ -736,8 +735,7 @@ public abstract class AbstractPushMonitorTest {
             100,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP,
-            DEFAULT_REAL_TIME_TOPIC_NAME));
+            BufferReplayPolicy.REWIND_FROM_EOP));
     // Prepare a mock topic replicator
     RealTimeTopicSwitcher realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
     monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
