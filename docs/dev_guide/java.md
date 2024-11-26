@@ -254,8 +254,8 @@ Note that all of the above are compact representations, meaning that every singl
 information, except for `boolean` which carries only one significant bit out of the 8 bits that make up its byte.
 
 Even when part of a `boolean[]` primitive array, each element will still take 1 byte. This JVM design choice makes 
-certain operations more efficient for the CPU to perform, at the cost of memory waste. In cases where the opposite 
-tradeoffs are desired, it is possible to use a [BitSet](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/BitSet.html), 
+certain operations more efficient for the CPU to perform, and protects against [word tearing](https://shipilev.net/blog/2014/jmm-pragmatics/#_part_ii_word_tearing),
+at the cost of memory waste. In cases where the opposite tradeoffs are desired, it is possible to use a [BitSet](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/BitSet.html), 
 which is more space-efficient thanks to "bit packing", and provides support for bit-related operations such as `AND`, 
 `OR`, `XOR`, intersection, etc.
 
@@ -290,9 +290,9 @@ point.
 An object allocated on the heap is not just floating there on its own, it has at least one pointer referencing it 
 (otherwise it is unreachable and therefore eligible to garbage collection). That pointer might be on the stack, or it 
 might be a field of some other object. Continuing with the example JVM settings above, we would be operating in the
-"compressed pointers" mode, meaning that they would take up 4 bytes each (if the max heap size is larger than 32 GB, 
-then pointers cannot be compressed and take up 8 bytes each). And so the size of the pointer needs to be added to the 
-heap size of the object itself, in order to calculate its full memory cost.
+"compressed pointers" mode, meaning that they would take up 4 bytes each (if the max heap size is >= 32 GB, then 
+pointers cannot be compressed and take up 8 bytes each). And so the size of the pointer needs to be added to the heap 
+size of the object itself, in order to calculate its full memory cost.
 
 If we assume the use of recommended factory methods, and we add the pointer size, then we get the following sizes:
 
@@ -339,18 +339,24 @@ following code is valid:
 
 ```java
 class Sample {
-  void boxingExample(int primitiveInt) {
+  Integer boxingExample(int primitiveInt) {
     Integer objectInteger = primitiveInt;
+    return objectInteger;
   }
 
-  void unboxingExample(Integer objectInteger) {
+  int unboxingExample(Integer objectInteger) {
     int primitiveInt = objectInteger; // Warning! This can throw a NullPointerException!
+    return primitiveInt; 
   }
 }
 ```
 
-In general, it is recommended to avoid implicit boxing in hot paths where it can be reasonably avoided (i.e., without 
-undue maintenance burden).
+In some cases, the JIT Compiler can optimize away certain object allocations via _scalar replacement_, and boxing can 
+sometimes be eliminated in this fashion. It should not be assumed, however, that such optimization can take place (nor 
+that it will even if it can). More details in [JVM Anatomy Quark #18: Scalar Replacement](https://shipilev.net/jvm/anatomy-quarks/18-scalar-replacement/).
+
+In general, therefore, it is recommended to avoid implicit boxing in hot paths where it can be reasonably avoided (i.e., 
+without undue maintenance burden).
 
 ### Estimating the Heap Size of Objects
 
