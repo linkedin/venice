@@ -281,14 +281,15 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
       if (shouldLogQuotaExceeded) {
         LOGGER.info(
-            "Quota exceeded for store {} partition {}, paused this partition. {}",
-            storeName,
+            "Quota exceeded for store version {} partition {}, paused this partition. Partition disk usage: {} >= partition quota: {}",
+            versionTopic,
             partition,
-            versionTopic);
+            storagePartitionDiskUsage.getUsage(),
+            diskQuotaPerPartition);
       }
-    } else { /** we have free space for this partition */
+    } else {
       /**
-       *  Paused partitions could be resumed
+       *  We have free space for this partition, paused partitions could be resumed
        */
       ingestionNotificationDispatcher.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
