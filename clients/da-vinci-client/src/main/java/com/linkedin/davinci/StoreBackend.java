@@ -156,7 +156,7 @@ public class StoreBackend {
     }
 
     if (!subscription.isEmpty()) {
-      unsubscribe(subscription);
+      subscription.removeAll(subscription);
     }
 
     subscription.addAll(partitions);
