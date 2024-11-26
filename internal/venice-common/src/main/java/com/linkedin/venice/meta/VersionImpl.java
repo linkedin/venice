@@ -300,10 +300,7 @@ public class VersionImpl implements Version {
 
   @Override
   public boolean isHybrid() {
-    HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
-    return hybridStoreConfig != null
-        && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
-            || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
+    return getHybridStoreConfig() != null;
   }
 
   @Override
