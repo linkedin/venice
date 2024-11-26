@@ -51,7 +51,7 @@ jobs:
           tar -zcvf ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ inputs.artifact_suffix }}-artifacts
       - name: Publish Test Report
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v3
         if: always() # always run even if the previous step fails
         with:
