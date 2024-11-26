@@ -12,13 +12,16 @@ import java.util.Map;
 
 
 /**
- * Holds {@link MetricEntity} and 1 Otel metric and its corresponding multiple tehuti Sensors
+ * Operational state of a metric. It holds <br>
+ * 1. {@link MetricEntity}
+ * 2. 1 Otel Instrument and
+ * 3. multiple tehuti Sensors for this Otel Metric
  */
 public class MetricEntityState {
   private MetricEntity metricEntity;
-  // Otel metric
+  /** Otel metric */
   private Object otelMetric = null;
-  // Map of tehuti names and sensors: 1 Otel metric can cover multiple Tehuti sensors
+  /** Map of tehuti names and sensors: 1 Otel metric can cover multiple Tehuti sensors */
   private Map<TehutiMetricNameEnum, Sensor> tehutiSensors = null;
 
   public MetricEntityState(MetricEntity metricEntity, VeniceOpenTelemetryMetricsRepository otelRepository) {

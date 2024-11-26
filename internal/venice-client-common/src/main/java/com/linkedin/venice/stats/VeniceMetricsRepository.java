@@ -9,8 +9,11 @@ import java.util.Map;
 
 
 /**
- * extends {@link MetricsRepository} to keep the changes to a minimum.
- * Next step would be to create a MetricsRepository inside rather than extending it
+ * Repository to hold both tehuti and OpenTelemetry metrics.
+ * This class extends {@link MetricsRepository} to keep the changes to a minimum and
+ * to avoid a breaking change.<br>
+ * Once all components are migrated to use this class: make this class add {@link MetricsRepository}
+ * as a member variable and delegate all tehuti calls to it.
  */
 public class VeniceMetricsRepository extends MetricsRepository implements Closeable {
   private final VeniceMetricsConfig veniceMetricsConfig;

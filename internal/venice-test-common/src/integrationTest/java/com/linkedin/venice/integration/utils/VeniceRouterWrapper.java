@@ -163,6 +163,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
+          // OpenTelemetry configs
           .put(OTEL_VENICE_ENABLED, Boolean.TRUE.toString())
           .put(OTEL_VENICE_EXPORT_TO_LOG, Boolean.TRUE.toString())
           .put(OTEL_VENICE_EXPORT_TO_ENDPOINT, Boolean.TRUE.toString())

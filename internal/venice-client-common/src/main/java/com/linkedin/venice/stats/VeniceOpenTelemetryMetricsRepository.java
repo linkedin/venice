@@ -245,11 +245,12 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  // for testing purpose
+  /** for testing purposes */
   SdkMeterProvider getSdkMeterProvider() {
     return sdkMeterProvider;
   }
 
+  /** for testing purposes */
   Meter getMeter() {
     return meter;
   }

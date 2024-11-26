@@ -1,7 +1,7 @@
 package com.linkedin.venice.stats.metrics;
 
 /**
- * Metric entity class to define a metric with all its properties
+ * Interface for creating metric names enum for tehuti metrics
  */
 public interface TehutiMetricNameEnum {
   String getMetricName();
