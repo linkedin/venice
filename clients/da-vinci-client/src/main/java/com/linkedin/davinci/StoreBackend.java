@@ -155,11 +155,12 @@ public class StoreBackend {
       config.store();
     }
 
-    if (!subscription.isEmpty()) {
-      subscription.removeAll(subscription);
-    }
+    ComplementSet<Integer> unassignedPartitionSet = ComplementSet.newSet(subscription);
+    // Set of partitions that are not included in the submitted set of partitions.
+    unassignedPartitionSet.removeAll(partitions);
 
     subscription.addAll(partitions);
+    unsubscribe(unassignedPartitionSet);
 
     if (daVinciFutureVersion == null) {
       trySubscribeDaVinciFutureVersion();
