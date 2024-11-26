@@ -243,7 +243,7 @@ public class ConfigKeys {
   /**
    * Time between each scheduled log compaction
    */
-  public static final String SCHEDULED_LOG_COMPACTION_INTERVAL_MS = "scheduled.log.compaction.interval.hr";
+  public static final String SCHEDULED_LOG_COMPACTION_INTERVAL_MS = "scheduled.log.compaction.interval.ms";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
