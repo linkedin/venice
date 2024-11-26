@@ -351,7 +351,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected final CountDownLatch gracefulShutdownLatch = new CountDownLatch(1);
-  protected final Lazy<ZKHelixAdmin> zkHelixAdmin;
+  protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
 
   public StoreIngestionTask(
@@ -537,6 +537,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(zkAddress));
     this.hostName = Utils.getHostName() + "_" + port;
+  }
+
+  // TEST ONLY
+
+  public void setZkHelixAdmin(ZKHelixAdmin zkHelixAdmin) {
+    this.zkHelixAdmin = Lazy.of(() -> zkHelixAdmin);
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */

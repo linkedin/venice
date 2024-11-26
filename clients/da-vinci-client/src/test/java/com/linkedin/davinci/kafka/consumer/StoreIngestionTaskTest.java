@@ -248,6 +248,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -863,8 +864,10 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             recordTransformerFunction,
-            ZOOKEEPER_ADDRESS,
+            "localhost",
             123));
+
+    storeIngestionTaskUnderTest.setZkHelixAdmin(mock(ZKHelixAdmin.class));
 
     Future testSubscribeTaskFuture = null;
     try {
