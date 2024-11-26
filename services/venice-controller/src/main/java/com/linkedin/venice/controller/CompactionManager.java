@@ -23,7 +23,6 @@ public class CompactionManager {
 
   // TODO: repush(store)
   // TODO: one CompactionManager per store repush or a persistent CompactionManager instance that handles all store
-  // repushes?
 
   public void getStoresForCompaction(
       String clusterName,
@@ -43,7 +42,7 @@ public class CompactionManager {
     filterStoresForCompaction(storeInfoList, compactionReadyStores);
   }
 
-  // package exclusive for testing
+  // package-exclusive for testing
   void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
