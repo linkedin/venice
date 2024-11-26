@@ -378,7 +378,7 @@ public class VeniceControllerClusterConfig {
    * Configs for log compaction
    */
   private final int scheduledLogCompactionThreadCount;
-  private final long scheduledLogCompactionIntervalHR;
+  private final long scheduledLogCompactionIntervalMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -813,7 +813,8 @@ public class VeniceControllerClusterConfig {
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
     this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
-    this.scheduledLogCompactionIntervalHR = props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_HR, 1);
+    this.scheduledLogCompactionIntervalMS =
+        props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
   }
 
   public VeniceProperties getProps() {
@@ -1644,7 +1645,7 @@ public class VeniceControllerClusterConfig {
     return scheduledLogCompactionThreadCount;
   }
 
-  public long getScheduledLogCompactionIntervalHR() {
-    return scheduledLogCompactionIntervalHR;
+  public long getScheduledLogCompactionIntervalMS() {
+    return scheduledLogCompactionIntervalMS;
   }
 }

@@ -291,7 +291,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getScheduledLogCompactionThreadCount();
   }
 
-  public long getScheduledLogCompactionIntervalHR() {
-    return getCommonConfig().getScheduledLogCompactionIntervalHR();
+  public long getScheduledLogCompactionIntervalMS() {
+    return getCommonConfig().getScheduledLogCompactionIntervalMS();
   }
 }
