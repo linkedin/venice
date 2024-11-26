@@ -144,10 +144,6 @@ public class StoreBackend {
       }), stats));
 
     } else if (bootstrapVersion.isPresent()) {
-      if (!subscription.isEmpty()) {
-        unsubscribe(subscription);
-        subscription.addAll(partitions);
-      }
       throw new VeniceException(
           "Bootstrap version is already selected, storeName=" + storeName + ", currentVersion=" + daVinciCurrentVersion
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
@@ -158,6 +154,11 @@ public class StoreBackend {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
     }
+
+    if (!subscription.isEmpty()) {
+      unsubscribe(subscription);
+    }
+
     subscription.addAll(partitions);
 
     if (daVinciFutureVersion == null) {
