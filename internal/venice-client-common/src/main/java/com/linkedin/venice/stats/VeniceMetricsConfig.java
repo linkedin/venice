@@ -27,12 +27,12 @@ public class VeniceMetricsConfig {
   /**
    * Config to enable OpenTelemetry metrics
    */
-  public static final String OTEL_VENICE_ENABLED = "otel.venice.enabled";
+  public static final String OTEL_VENICE_METRICS_ENABLED = "otel.venice.metrics.enabled";
 
   /**
    * Config to set the metric prefix for OpenTelemetry metrics
    */
-  public static final String OTEL_VENICE_METRIC_PREFIX = "otel.venice.metric.prefix";
+  public static final String OTEL_VENICE_METRICS_PREFIX = "otel.venice.metrics.prefix";
 
   /**
    * Config to set the naming format for OpenTelemetry metrics
@@ -44,13 +44,13 @@ public class VeniceMetricsConfig {
    * Export opentelemetry metrics to a log exporter
    * {@link VeniceOpenTelemetryMetricsRepository.LogBasedMetricExporter}
    */
-  public static final String OTEL_VENICE_EXPORT_TO_LOG = "otel.venice.export.to.log";
+  public static final String OTEL_VENICE_METRICS_EXPORT_TO_LOG = "otel.venice.metrics.export.to.log";
 
   /**
    * Export opentelemetry metrics to {@link #OTEL_EXPORTER_OTLP_METRICS_ENDPOINT}
    * over {@link #OTEL_EXPORTER_OTLP_METRICS_PROTOCOL}
    */
-  public static final String OTEL_VENICE_EXPORT_TO_ENDPOINT = "otel.venice.export.to.endpoint";
+  public static final String OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT = "otel.venice.metrics.export.to.endpoint";
 
   /**
    * Config Map to add custom dimensions to the metrics: Can be used for system dimensions
@@ -62,7 +62,7 @@ public class VeniceMetricsConfig {
    * Multiple headers are separated by ','
    * For example: "custom_dimension_one=value1,custom_dimension_two=value2,custom_dimension_three=value3"
    */
-  public static final String OTEL_VENICE_CUSTOM_DIMENSIONS_MAP = "otel.venice.custom.dimensions.map";
+  public static final String OTEL_VENICE_METRICS_CUSTOM_DIMENSIONS_MAP = "otel.venice.metrics.custom.dimensions.map";
 
   /**
    * Protocol over which the metrics are exported to {@link #OTEL_EXPORTER_OTLP_METRICS_ENDPOINT} <br>
@@ -262,19 +262,19 @@ public class VeniceMetricsConfig {
      */
     public Builder extractAndSetOtelConfigs(Map<String, String> configs) {
       String configValue;
-      if ((configValue = configs.get(OTEL_VENICE_ENABLED)) != null) {
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_ENABLED)) != null) {
         setEmitOtelMetrics(Boolean.parseBoolean(configValue));
       }
 
-      if ((configValue = configs.get(OTEL_VENICE_METRIC_PREFIX)) != null) {
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_PREFIX)) != null) {
         setMetricPrefix(configValue);
       }
 
-      if ((configValue = configs.get(OTEL_VENICE_EXPORT_TO_LOG)) != null) {
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_TO_LOG)) != null) {
         setExportOtelMetricsToLog(Boolean.parseBoolean(configValue));
       }
 
-      if ((configValue = configs.get(OTEL_VENICE_EXPORT_TO_ENDPOINT)) != null) {
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT)) != null) {
         setExportOtelMetricsToEndpoint(Boolean.parseBoolean(configValue));
       }
 
@@ -282,7 +282,7 @@ public class VeniceMetricsConfig {
        * custom dimensions are passed as key=value pairs separated by '=' <br>
        * Multiple dimensions are separated by ','
        */
-      if ((configValue = configs.get(OTEL_VENICE_CUSTOM_DIMENSIONS_MAP)) != null) {
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_CUSTOM_DIMENSIONS_MAP)) != null) {
         String[] dimensions = configValue.split(",");
         for (String dimension: dimensions) {
           String[] keyValue = dimension.split("=");
