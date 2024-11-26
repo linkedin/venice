@@ -1,5 +1,7 @@
 package com.linkedin.venice.stats;
 
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
@@ -183,7 +185,7 @@ public class VeniceMetricsConfig {
     private String otelEndpoint = null;
     Map<String, String> otelHeaders = new HashMap<>();
     private boolean exportOtelMetricsToLog = false;
-    private VeniceOpenTelemetryMetricNamingFormat metricNamingFormat = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+    private VeniceOpenTelemetryMetricNamingFormat metricNamingFormat = SNAKE_CASE;
     private AggregationTemporalitySelector otelAggregationTemporalitySelector =
         AggregationTemporalitySelector.deltaPreferred();
     private boolean useOtelExponentialHistogram = true;

@@ -11,6 +11,12 @@ import io.netty.handler.codec.http.HttpStatusClass;
 public class HttpResponseStatusCodeCategory {
   private static final String UNKNOWN_CATEGORY = "unknown";
 
+  /**
+   * Private constructor to prevent instantiation of this Utility class
+   */
+  private HttpResponseStatusCodeCategory() {
+  }
+
   public static String getVeniceHttpResponseStatusCodeCategory(HttpResponseStatus statusCode) {
     if (statusCode == null) {
       return UNKNOWN_CATEGORY;

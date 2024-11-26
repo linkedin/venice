@@ -22,6 +22,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static java.util.Collections.singletonList;
 
 import com.linkedin.alpini.base.misc.CollectionUtil;
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
@@ -58,7 +59,6 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -189,10 +189,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         this::registerSensorFinal,
         CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.HEALTHY_REQUEST, Arrays.asList(new Count(), healthyRequestRate))
-            .put(RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST, Collections.singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST, singletonList(new Count()))
             .put(RouterTehutiMetricNameEnum.TARDY_REQUEST, Arrays.asList(new Count(), tardyRequestRate))
-            .put(RouterTehutiMetricNameEnum.THROTTLED_REQUEST, Collections.singletonList(new Count()))
-            .put(RouterTehutiMetricNameEnum.BAD_REQUEST, Collections.singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.THROTTLED_REQUEST, singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.BAD_REQUEST, singletonList(new Count()))
             .build());
 
     latencyTehutiSensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
@@ -219,7 +219,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
-            .put(RouterTehutiMetricNameEnum.ERROR_RETRY, Collections.singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.ERROR_RETRY, singletonList(new Count()))
             .build());
 
     allowedRetryCountMetric = new MetricEntityState(
@@ -227,9 +227,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
-            .put(
-                RouterTehutiMetricNameEnum.ALLOWED_RETRY_REQUEST_COUNT,
-                Collections.singletonList(new OccurrenceRate()))
+            .put(RouterTehutiMetricNameEnum.ALLOWED_RETRY_REQUEST_COUNT, singletonList(new OccurrenceRate()))
             .build());
 
     disallowedRetryCountMetric = new MetricEntityState(
@@ -237,9 +235,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
-            .put(
-                RouterTehutiMetricNameEnum.DISALLOWED_RETRY_REQUEST_COUNT,
-                Collections.singletonList(new OccurrenceRate()))
+            .put(RouterTehutiMetricNameEnum.DISALLOWED_RETRY_REQUEST_COUNT, singletonList(new OccurrenceRate()))
             .build());
 
     retryDelayMetric = new MetricEntityState(
@@ -255,16 +251,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
-            .put(
-                RouterTehutiMetricNameEnum.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST,
-                Collections.singletonList(new Count()))
-            .put(RouterTehutiMetricNameEnum.SLOW_ROUTE_ABORTED_RETRY_REQUEST, Collections.singletonList(new Count()))
-            .put(
-                RouterTehutiMetricNameEnum.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
-                Collections.singletonList(new Count()))
-            .put(
-                RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
-                Collections.singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.SLOW_ROUTE_ABORTED_RETRY_REQUEST, singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST, singletonList(new Count()))
+            .put(RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST, singletonList(new Count()))
             .build());
 
     keyCountMetric = new MetricEntityState(
