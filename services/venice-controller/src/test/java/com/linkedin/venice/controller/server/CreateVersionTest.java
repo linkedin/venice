@@ -45,6 +45,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.Utils;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
@@ -190,7 +191,7 @@ public class CreateVersionTest {
     if (isSeparateTopicEnabled) {
       assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeSeparateRealTimeTopic(STORE_NAME));
     } else {
-      assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeRealTimeTopic(STORE_NAME));
+      assertEquals(versionCreateResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     }
   }
 

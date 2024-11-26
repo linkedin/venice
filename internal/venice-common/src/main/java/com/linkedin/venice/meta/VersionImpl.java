@@ -299,6 +299,11 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isHybrid() {
+    return getHybridStoreConfig() != null;
+  }
+
+  @Override
   public HybridStoreConfig getHybridStoreConfig() {
     if (this.storeVersion.hybridConfig == null) {
       return null;

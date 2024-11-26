@@ -174,6 +174,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
 
+  boolean isHybrid();
+
   HybridStoreConfig getHybridStoreConfig();
 
   void setHybridStoreConfig(HybridStoreConfig hybridConfig);
@@ -287,10 +289,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static String composeKafkaTopic(String storeName, int versionNumber) {
     return storeName + VERSION_SEPARATOR + versionNumber;
-  }
-
-  static String composeRealTimeTopic(String storeName) {
-    return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
   static String composeSeparateRealTimeTopic(String storeName) {

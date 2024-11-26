@@ -342,7 +342,7 @@ public class PushStatusStoreTest {
     runVPJ(getVPJProperties(storeName2), 1, cluster);
 
     String pushStatusStoreRT =
-        Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+        Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
     admin.getTopicManager().ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(pushStatusStoreRT));
     TestUtils.waitForNonDeterministicAssertion(
         30,

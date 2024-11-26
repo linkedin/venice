@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -136,15 +137,15 @@ public class RealTimeTopicSwitcherTest {
     Map<String, ViewConfig> viewConfigs = new HashMap<>();
     viewConfigs.put("testView", new ViewConfigImpl("testClass", Collections.emptyMap()));
 
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(storeName);
     Version version1 = new VersionImpl(storeName, 1, "push1");
     Version version2 = new VersionImpl(storeName, 2, "push2");
     version2.setViewConfigs(viewConfigs);
     Version version3 = new VersionImpl(storeName, 3, "push3");
     version3.setViewConfigs(viewConfigs);
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version1));
 
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-    Store mockStore = mock(Store.class);
-    when(mockStore.getName()).thenReturn(storeName);
     when(mockStore.getVersion(1)).thenReturn(version1);
     when(mockStore.getVersion(2)).thenReturn(version2);
     when(mockStore.getVersion(3)).thenReturn(version3);

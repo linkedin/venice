@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -26,11 +27,11 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -89,10 +90,12 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         veniceProducer.stop();
       }
     }
+    AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1, "The empty push has not activated yet...");
+      storeInfo.set(storeResponse.getStore());
+      assertEquals(storeResponse.getStore().getCurrentVersion(), 1, "The empty push has not activated yet...");
     });
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -104,7 +107,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     });
 
     // verify realtime topic exists
-    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(storeInfo.get()));
     assertTrue(topicManagerRepository.getLocalTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic));
 
     // disable store
@@ -124,7 +127,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     LOGGER.info("Delete store has completed...");
 
     // verify realtime topic does not exist
-    PubSubTopic realTimeTopicName = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+    PubSubTopic realTimeTopicName = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(storeInfo.get()));
     try {
       boolean isTruncated = topicManagerRepository.getLocalTopicManager().isTopicTruncated(realTimeTopicName, 60000);
       assertTrue(

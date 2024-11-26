@@ -58,14 +58,14 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
   @Test
   public void testKIFRepushForwardCompatibility() throws Exception {
     // Write a new record to VT with new KME protocol
-    String versionTopic = Version.composeKafkaTopic(store, version);
+    String versionTopic = Version.composeKafkaTopic(storeName, version);
     try (VeniceWriter<String, String, byte[]> veniceWriterWithNewerProtocol =
         getVeniceWriterWithNewerProtocol(getOverrideProtocolSchema(), versionTopic)) {
       veniceWriterWithNewerProtocol.put("test_key", "test_value", 1).get();
     }
 
     // Run the repush job, which will fetch the new KME schema via schema reader to deserialize the new record
-    Properties vpjProps = defaultVPJProps(cluster, "Ignored", store);
+    Properties vpjProps = defaultVPJProps(cluster, "Ignored", storeName);
     vpjProps.setProperty(SOURCE_KAFKA, "true");
     vpjProps.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
     vpjProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");

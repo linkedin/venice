@@ -1063,7 +1063,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
         Assert.assertFalse(
             childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
         Assert.assertFalse(
-            childMultiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+            childMultiStoreTopicResponse.getTopics().contains(Utils.composeRealTimeTopic(metaSystemStoreName)));
       });
     } finally {
       deleteStore(storeName);

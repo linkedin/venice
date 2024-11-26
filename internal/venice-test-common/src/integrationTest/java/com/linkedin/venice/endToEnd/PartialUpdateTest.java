@@ -80,6 +80,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1192,17 +1193,19 @@ public class PartialUpdateTest {
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
-    String realTimeTopicName = Version.composeRealTimeTopic(storeName);
-    PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
     PubSubTopic storeVersionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic storeVersionTopicV2 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 2));
-    PubSubTopicPartition realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
+    PubSubTopicPartition realTimeTopicPartition;
     PubSubTopicPartition storeVersionTopicPartitionV1 = new PubSubTopicPartitionImpl(storeVersionTopicV1, 0);
     PubSubTopicPartition storeVersionTopicPartitionV2 = new PubSubTopicPartitionImpl(storeVersionTopicV2, 0);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
+      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
+      realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)

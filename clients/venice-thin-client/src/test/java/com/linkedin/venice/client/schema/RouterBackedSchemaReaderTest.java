@@ -530,7 +530,7 @@ public class RouterBackedSchemaReaderTest {
     versionCreationResponse.setPartitionerClass(partitionerConfig.getPartitionerClass());
     versionCreationResponse.setPartitionerParams(partitionerConfig.getPartitionerParams());
     versionCreationResponse.setKafkaBootstrapServers("localhost:9092");
-    versionCreationResponse.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+    versionCreationResponse.setKafkaTopic(Utils.getRealTimeTopicName(store));
     versionCreationResponse.setEnableSSL(false);
 
     CompletableFuture<byte[]> requestTopicFuture = mock(CompletableFuture.class);
