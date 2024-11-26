@@ -190,9 +190,9 @@ specific (though, arguably, fairly common) set of JVM configurations:
 - Java 17
 - Max heap size of less than 32 GB
 - All other memory-related settings on their default values, including:
-  - Compressed pointers
-  - Compressed class pointers
-  - Default alignment size
+  - Compressed pointers (enabled)
+  - Compressed class pointers (enabled)
+  - Alignment size (8 bytes)
 
 #### Object Headers
 
@@ -232,6 +232,8 @@ bytes on the heap:
 
 From this, we can derive a rule of thumb that every time we use an Object, we are spending at least 16 bytes, and if the
 object carries a non-trivial number of fields, then likely more than that.
+
+More nuances on alignment and its downstream effects can be learned in [JVM Anatomy Quark #24: Object Alignment](https://shipilev.net/jvm/anatomy-quarks/24-object-alignment/).
 
 #### Size of Primitives
 
