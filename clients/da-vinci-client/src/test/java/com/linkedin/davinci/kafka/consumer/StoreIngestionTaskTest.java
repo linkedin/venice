@@ -2943,8 +2943,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        anyInt());
+        ZOOKEEPER_ADDRESS,
+        123);
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
@@ -3724,8 +3724,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        anyInt());
+        ZOOKEEPER_ADDRESS,
+        123);
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
@@ -3800,8 +3800,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
-            anyInt());
+            ZOOKEEPER_ADDRESS,
+            123);
 
     TopicSwitch topicSwitch = new TopicSwitch();
     topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");
@@ -3918,8 +3918,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
-            anyInt()));
+            ZOOKEEPER_ADDRESS,
+            123));
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
