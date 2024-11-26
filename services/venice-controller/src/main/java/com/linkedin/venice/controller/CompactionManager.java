@@ -15,14 +15,13 @@ import org.apache.logging.log4j.Logger;
 public class CompactionManager {
   public static final int COMPACTION_THRESHOLD_HOURS = 24;
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
-  // TODO: CompactionOrchestrator field
 
-  public CompactionManager() {
+  private static RepushOrchestrator repushOrchestrator;
+  // TODO: where to configure implemenation of RepushOrchestrator to use?
 
+  public CompactionManager(RepushOrchestrator repushOrchestrator) {
+    this.repushOrchestrator = repushOrchestrator;
   }
-
-  // TODO: repush(store)
-  // TODO: one CompactionManager per store repush or a persistent CompactionManager instance that handles all store
 
   public void getStoresForCompaction(
       String clusterName,
@@ -81,6 +80,10 @@ public class CompactionManager {
     long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
 
     return hoursSinceLastCompaction > compactionThresholdHours;
+  }
+
+  public void compactStore(String storeName) {
+    repushOrchestrator.repush(storeName);
   }
   // END isCompactionReady() helper methods
 }

@@ -375,6 +375,11 @@ public class VeniceControllerClusterConfig {
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
 
   /**
+   * Configs for repush
+   */
+  private String repushOrchestratorClassName;
+
+  /**
    * Configs for log compaction
    */
   private final int scheduledLogCompactionThreadCount;
@@ -812,6 +817,7 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
+    this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO: default value?
     this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
     this.scheduledLogCompactionIntervalMS =
         props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
@@ -1639,6 +1645,10 @@ public class VeniceControllerClusterConfig {
 
   public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
     return pushJobUserErrorCheckpoints;
+  }
+
+  public String getRepushOrchestratorClassName() {
+    return repushOrchestratorClassName;
   }
 
   public int getScheduledLogCompactionThreadCount() {

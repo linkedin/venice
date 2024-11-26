@@ -205,6 +205,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -602,7 +603,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubTopicRepository);
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
-    compactionManager = new CompactionManager();
+
+    // TODO extends interchangeable with implements?
+    Class<? extends RepushOrchestrator> repushOrchestratorClass =
+        ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+    RepushOrchestrator repushOrchestrator =
+        ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
+    compactionManager = new CompactionManager(repushOrchestrator);
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
@@ -7483,6 +7490,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public void compactStore(String storeName) {
+    compactionManager.compactStore(storeName);
     // TODO
   }
 

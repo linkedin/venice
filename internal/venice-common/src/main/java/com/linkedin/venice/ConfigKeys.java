@@ -235,6 +235,8 @@ public class ConfigKeys {
   public static final String FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS =
       "fatal.data.validation.failure.topic.retention.ms";
 
+  public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "repush.orchestrator.class.name";
+
   /**
    * Number of threads to use for scheduled log compaction
    */
