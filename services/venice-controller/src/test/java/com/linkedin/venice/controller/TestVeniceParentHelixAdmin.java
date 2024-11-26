@@ -1893,6 +1893,32 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "Native replication source fabric does not match after updating the store!");
   }
 
+  @Test(description = "Test that update store sets target region swap configs correctly")
+  public void testUpdateStoreTargetSwapRegion() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setTargetRegionSwap("prod")
+        .setTargetRegionSwapWaitTime(100)
+        .setIsDavinciHeartbeatReported(false);
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.targetSwapRegion.toString(), "prod");
+    Assert.assertEquals(updateStore.targetSwapRegionWaitTime, 100);
+    Assert.assertEquals(updateStore.isDaVinciHeartBeatReported, false);
+  }
+
   @Test
   public void testDisableHybridConfigWhenActiveActiveOrIncPushConfigIsEnabled() {
     String storeName = Utils.getUniqueString("testUpdateStore");

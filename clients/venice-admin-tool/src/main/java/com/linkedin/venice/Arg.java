@@ -287,13 +287,13 @@ public enum Arg {
   ), INSTANCES("instances", "in", true, "Input list of helix ids of nodes to check if they can removed or not"),
   TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of helix ids of nodes assumed to be stopped"),
   LAG_FILTER_ENABLED("lag-filter-enabled", "lfe", true, "Enable heartbeat lag filter for a heartbeat request"),
-  TARGET_SWAP_REGION("target-region-swap", "trs", true, "Region to start target colo push with deferred swap in"),
+  TARGET_SWAP_REGION("target-region-swap", "trs", true, "Region to swap current version during target colo push"),
   TARGET_SWAP_REGION_WAIT_TIME(
       "target-region-swap-wait-time", "trswt", true,
-      "How long to wait before swapping to the new version in a target colo push"
+      "How long to wait in minutes before swapping to the new version in a target colo push"
   ),
   DAVINCI_HEARTBEAT_REPORTED(
-      "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is enabled and healthy"
+      "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is bootstrapping and sending heartbeats"
   );
 
   private final String argName;
