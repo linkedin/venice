@@ -363,11 +363,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordHealthyRequest(Double latency, HttpResponseStatus responseStatus) {
-    TehutiMetricNameEnum tehutiMetricNameEnum = RouterTehutiMetricNameEnum.HEALTHY_REQUEST;
     VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.HEALTHY;
-    recordRequestMetric(tehutiMetricNameEnum, responseStatus, veniceResponseStatusCategory);
+    recordRequestMetric(RouterTehutiMetricNameEnum.HEALTHY_REQUEST, responseStatus, veniceResponseStatusCategory);
     if (latency != null) {
-      recordLatencyMetric(tehutiMetricNameEnum, latency, responseStatus, veniceResponseStatusCategory);
+      recordLatencyMetric(
+          RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY,
+          latency,
+          responseStatus,
+          veniceResponseStatusCategory);
     }
   }
 
@@ -400,10 +403,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordTardyRequest(double latency, HttpResponseStatus responseStatus) {
-    TehutiMetricNameEnum tehutiMetricNameEnum = RouterTehutiMetricNameEnum.TARDY_REQUEST;
     VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.TARDY;
-    recordRequestMetric(tehutiMetricNameEnum, responseStatus, veniceResponseStatusCategory);
-    recordLatencyMetric(tehutiMetricNameEnum, latency, responseStatus, veniceResponseStatusCategory);
+    recordRequestMetric(RouterTehutiMetricNameEnum.TARDY_REQUEST, responseStatus, veniceResponseStatusCategory);
+    recordLatencyMetric(
+        RouterTehutiMetricNameEnum.TARDY_REQUEST_LATENCY,
+        latency,
+        responseStatus,
+        veniceResponseStatusCategory);
   }
 
   public void recordThrottledRequest(double latency, HttpResponseStatus responseStatus) {
@@ -465,7 +471,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordBadRequestKeyCount(int keyCount) {
-    recordKeyCountMetric(keyCount, RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED);
+    recordKeyCountMetric(
+        RouterTehutiMetricNameEnum.BAD_REQUEST_KEY_COUNT,
+        keyCount,
+        RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED);
   }
 
   public void recordRequestThrottledByRouterCapacity() {
@@ -548,10 +557,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordKeyNum(int keyNum) {
-    recordKeyCountMetric(keyNum, RequestValidationOutcome.VALID);
+    recordKeyCountMetric(RouterTehutiMetricNameEnum.KEY_NUM, keyNum, RequestValidationOutcome.VALID);
   }
 
-  public void recordKeyCountMetric(int keyNum, RequestValidationOutcome outcome) {
+  public void recordKeyCountMetric(
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      int keyNum,
+      RequestValidationOutcome outcome) {
     Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
       dimensions = Attributes.builder()
@@ -559,7 +571,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           .put(getDimensionName(VENICE_REQUEST_VALIDATION_OUTCOME), outcome.getOutcome())
           .build();
     }
-    keyCountMetric.record(RouterTehutiMetricNameEnum.KEY_NUM, keyNum, dimensions);
+    keyCountMetric.record(tehutiMetricNameEnum, keyNum, dimensions);
   }
 
   public void recordRequestUsage(int usage) {
