@@ -1,5 +1,7 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.controller.logcompaction;
 
+import com.linkedin.venice.controller.repush.RepushJobResponse;
+import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.meta.StoreInfo;
@@ -17,16 +19,15 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private static RepushOrchestrator repushOrchestrator;
-  // TODO: where to configure implemenation of RepushOrchestrator to use?
+  // TODO: where to configure implementation of RepushOrchestrator to use?
 
   public CompactionManager(RepushOrchestrator repushOrchestrator) {
     this.repushOrchestrator = repushOrchestrator;
   }
 
-  public void getStoresForCompaction(
+  public ArrayList<StoreInfo> getStoresForCompaction(
       String clusterName,
-      Map<String, ControllerClient> childControllers,
-      ArrayList<StoreInfo> compactionReadyStores) {
+      Map<String, ControllerClient> childControllers) {
     ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
 
     // iterate through child controllers
@@ -38,16 +39,19 @@ public class CompactionManager {
     }
 
     // filter out
-    filterStoresForCompaction(storeInfoList, compactionReadyStores);
+    return filterStoresForCompaction(storeInfoList);
   }
 
-  // package-exclusive for testing
-  void filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList, ArrayList<StoreInfo> compactionReadyStores) {
+  // public for testing
+  // TODO: make private or package protected
+  public ArrayList<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
+    ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
         compactionReadyStores.add(storeInfo);
       }
     }
+    return compactionReadyStores;
   }
 
   // This function abstracts the criteria for a store to be ready for compaction
@@ -83,7 +87,16 @@ public class CompactionManager {
   }
 
   public void compactStore(String storeName) {
-    repushOrchestrator.repush(storeName);
+    try {
+      RepushJobResponse response = repushOrchestrator.repush(storeName);
+      LOGGER.info(
+          "Repush job triggered for store: {} with job name: {} and job exec id: {}",
+          response.getStoreName(),
+          response.getJobName(),
+          response.getJobExecId());
+    } catch (Exception e) {
+      LOGGER.error("Failed to compact store: {}", storeName, e);
+    }
   }
   // END isCompactionReady() helper methods
 }

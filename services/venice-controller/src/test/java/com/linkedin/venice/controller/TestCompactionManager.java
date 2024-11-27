@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -18,7 +19,6 @@ public class TestCompactionManager {
   public void testFilterStoresForCompaction() {
     CompactionManager mockManager = mock(CompactionManager.class);
     ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
-    ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
 
     // Mock StoreInfo instances
     StoreInfo store1 = mock(StoreInfo.class);
@@ -63,10 +63,10 @@ public class TestCompactionManager {
     storeInfoList.add(store3);
 
     // Call the real method to test
-    doCallRealMethod().when(mockManager).filterStoresForCompaction(any(), any());
+    doCallRealMethod().when(mockManager).filterStoresForCompaction(any());
 
     // Test
-    mockManager.filterStoresForCompaction(storeInfoList, compactionReadyStores);
+    ArrayList<StoreInfo> compactionReadyStores = mockManager.filterStoresForCompaction(storeInfoList);
 
     // Assert the expected outcome
     assertEquals(compactionReadyStores.size(), 2);

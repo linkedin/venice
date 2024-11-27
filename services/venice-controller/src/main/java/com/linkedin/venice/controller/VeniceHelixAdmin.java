@@ -56,6 +56,8 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
+import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -7478,14 +7480,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
-    ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
-      compactionManager.getStoresForCompaction(clusterName, childControllers, compactionReadyStores);
+      return compactionManager.getStoresForCompaction(clusterName, childControllers);
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
     }
-    return compactionReadyStores;
   }
 
   @Override

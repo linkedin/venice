@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;

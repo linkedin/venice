@@ -1,5 +1,7 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.controller.logcompaction;
 
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Set;
