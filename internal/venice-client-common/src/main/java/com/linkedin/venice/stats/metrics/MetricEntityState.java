@@ -111,9 +111,9 @@ public class MetricEntityState {
       if (sensor != null) {
         sensor.record(value);
       } else {
-        // Log using Redundant log filters to catch any bad name passed in
+        // Log using Redundant log filters to catch any bad tehutiMetricNameEnum is passed in
         String errorLog = "Tehuti Sensor with name '" + tehutiMetricNameEnum + "' not found.";
-        if (REDUNDANT_LOG_FILTER.isRedundantLog(errorLog)) {
+        if (!REDUNDANT_LOG_FILTER.isRedundantLog(errorLog)) {
           LOGGER.error(errorLog);
         }
       }
