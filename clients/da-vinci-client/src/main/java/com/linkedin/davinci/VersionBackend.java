@@ -523,9 +523,9 @@ public class VersionBackend {
         .collect(Collectors.toList());
   }
 
-  public void updatePartitionStatus(int partition, ExecutionStatus status) {
+  public void updatePartitionStatus(int partition, ExecutionStatus status, Optional<String> incrementalPushVersion) {
     if (daVinciPushStatusUpdateTask != null) {
-      daVinciPushStatusUpdateTask.updatePartitionStatus(partition, status);
+      daVinciPushStatusUpdateTask.updatePartitionStatus(partition, status, incrementalPushVersion);
     }
   }
 }
