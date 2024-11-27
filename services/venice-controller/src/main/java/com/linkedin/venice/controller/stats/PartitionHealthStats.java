@@ -22,7 +22,7 @@ public class PartitionHealthStats extends AbstractVeniceStats {
     super(null, resourceName);
   }
 
-  public PartitionHealthStats(MetricsRepository metricsRepository, String name) {
+  public PartitionHealthStats(MetricsRepository metricsRepository, String name, String clusterName) {
     super(metricsRepository, name);
     synchronized (PartitionHealthStats.class) {
       Sensor existingMetric = metricsRepository.getSensor(getSensorFullName(UNDER_REPLICATED_PARTITION_SENSOR));

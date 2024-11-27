@@ -28,7 +28,8 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
         metricsRepository,
         new KafkaConsumerServiceStatsSupplier(getMaxElapsedTimeSinceLastPollInConsumerPool),
         metadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        true);
   }
 
   public void recordTotalConsumerIdleTime(double idleTime) {
@@ -107,7 +108,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     }
 
     @Override
-    public KafkaConsumerServiceStats get(MetricsRepository metricsRepository, String storeName) {
+    public KafkaConsumerServiceStats get(MetricsRepository metricsRepository, String storeName, String clusterName) {
       throw new VeniceException("Should not be called.");
     }
 
@@ -115,6 +116,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     public KafkaConsumerServiceStats get(
         MetricsRepository metricsRepository,
         String storeName,
+        String clusterName,
         KafkaConsumerServiceStats totalStats) {
       return new KafkaConsumerServiceStats(
           metricsRepository,

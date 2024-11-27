@@ -548,9 +548,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         /**
          * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
+         *
+         * An NPE can happen if:
+         * 1. A partition receives STANDBY to LEADER transition, but not yet fully finished to set veniceWriterLazyRef
+         *   in PCS (e.g. still in IN_TRANSITION_FROM_STANDBY_TO_LEADER).
+         * 2. Then it receives LEADER to STANDBY transition and veniceWriterLazyRef is still null in PCS.
          */
         // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
-        partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partition));
+        Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef =
+            partitionConsumptionState.getVeniceWriterLazyRef();
+        if (veniceWriterLazyRef != null) {
+          veniceWriterLazyRef.ifPresent(vw -> vw.closePartition(partition));
+        }
         break;
       default:
         processCommonConsumerAction(message);

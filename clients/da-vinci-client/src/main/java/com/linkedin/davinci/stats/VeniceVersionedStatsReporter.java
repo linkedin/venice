@@ -30,10 +30,10 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     registerSensor("current_version", new AsyncGauge((ignored1, ignored2) -> currentVersion, "current_version"));
     registerSensor("future_version", new AsyncGauge((ignored1, ignored2) -> futureVersion, "future_version"));
 
-    this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current");
+    this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current", (String) null);
     if (!isSystemStore) {
-      this.futureStatsReporter = statsSupplier.get(metricsRepository, storeName + "_future");
-      this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total");
+      this.futureStatsReporter = statsSupplier.get(metricsRepository, storeName + "_future", (String) null);
+      this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total", (String) null);
     } else {
       this.futureStatsReporter = null;
       this.totalStatsReporter = null;

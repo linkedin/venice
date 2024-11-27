@@ -54,6 +54,7 @@ def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
 def scala = '2.12'
+def openTelemetryVersion = '1.43.0'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -141,6 +142,11 @@ ext.libraries = [
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
     zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
+    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
+    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
+    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
+    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}"
 ]
 
 group = 'com.linkedin.venice'
