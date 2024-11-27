@@ -1,5 +1,7 @@
 title: Venice
 remote_theme: just-the-docs/just-the-docs
+favicon_ico: "/assets/style/favicon.ico"
+
 nav_external_links:
   - title: Javadoc
     url: ./javadoc/index.html

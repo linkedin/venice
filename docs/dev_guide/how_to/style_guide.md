@@ -7,6 +7,7 @@ permalink: /docs/dev_guide/how_to/style_guide
 ---
 
 # Style Guide
+{: .no_toc }
 
 This page describes some stylistic concerns which the development team cares about. Some of them are enforced by 
 automation, while others are guidelines of a more informal, or even philosophical, nature. More generally, we believe in 
@@ -20,6 +21,14 @@ context that the project needs to navigate. As such, this should be thought of a
 natural that not all parts of the code base adhere to it perfectly. When such deviations are discovered, it is 
 encouraged to try to rectify them "in passing", even if the objective of the code change is unrelated. This, too, is a 
 judgment call, and needs to be balanced by concerns like managing the risk of unintended regressions.
+
+For those who are new to the Java language, it may be useful to read this [introduction to Java](../java.md).
+
+## Table of Contents
+{: .no_toc }
+
+- TOC
+{:toc}
 
 ## Automation
 
@@ -130,6 +139,75 @@ way to denote emptiness, and is not more or less likely to cause a `NullPointerE
 types (e.g., `-1` for a numeric value that is otherwise expected to be positive) are also perfectly appropriate ways to
 denote emptiness. For more info, here are a good [video](https://www.youtube.com/watch?v=fBYhtvY19xA&t=2317s) and 
 [post](https://homes.cs.washington.edu/~mernst/advice/nothing-is-better-than-optional.html) on this subject.
+
+### Avoid Double Brace Initialization
+
+Java supports [anonymous classes](https://docs.oracle.com/javase/tutorial/java/javaOO/anonymousclasses.html), which are
+fine in some contexts. For example:
+
+```java
+interface MyInterface {
+  void foo();
+}
+
+class Sample {
+  void sample() {
+    MyInterface anonymousClassInstance = new MyInterface() {
+      @Override
+      public void foo() {
+        System.out.println("bar");
+      }
+    };
+  }
+}
+```
+
+Java also supports static blocks, which are executed once the first time a class is loaded. For example:
+
+```java
+class Sample2 {
+  static {
+    System.out.println("This will always be printed first, and only once.");
+  }
+  
+  void sample() {
+    System.out.println("This will be printed everytime the function is called, but always after the static block.");
+  }
+}
+```
+
+There is an antipattern which consists of initializing a collection (such as a map) with "double braces" in order to add
+elements into it. This is a combination of the above two techniques, with the first (outer) set of braces denoting the
+anonymous class, and the second (inner) set of braces denoting a static block. For example:
+
+```java
+class Sample3 {
+  void sample() {
+    // antipattern:
+    Map<String, String> map1 = new HashMap<>() {
+      {
+        put("k1", "v1");
+        put("k2", "v2");
+      }
+    };
+
+    // correct way:
+    Map<String, String> map2 = new HashMap<>();
+    map2.put("k1", "v1");
+    map2.put("k2", "v2");
+    
+    // other correct way:
+    Map<String, String> map3 = CollectionUtil.<String, String>mapBuilder()
+        .put("k1", "v1")
+        .put("k2", "v2")
+        .build();
+  }
+}
+```
+
+The reason to avoid the above antipattern is that anonymous classes take up memory in the JVM's metaspace, and we
+only wish to pay this overhead for cases where we really need a separate class. The double brace style is not the only
+way of populating a map, nor is it even the least verbose way to do it, so there is no point in doing it this way.
 
 ### Look for Ways to Mitigate Failures
 
