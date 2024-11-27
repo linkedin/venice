@@ -108,6 +108,10 @@ public class StoreBackend {
     return stats;
   }
 
+  public ComplementSet<Integer> getSubscription() {
+    return subscription;
+  }
+
   public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
     return daVinciCurrentVersionRef.get();
   }
@@ -155,12 +159,7 @@ public class StoreBackend {
       config.store();
     }
 
-    ComplementSet<Integer> unassignedPartitionSet = ComplementSet.newSet(subscription);
-    // Set of partitions that are not included in the submitted set of partitions.
-    unassignedPartitionSet.removeAll(partitions);
-
     subscription.addAll(partitions);
-    unsubscribe(unassignedPartitionSet);
 
     if (daVinciFutureVersion == null) {
       trySubscribeDaVinciFutureVersion();
