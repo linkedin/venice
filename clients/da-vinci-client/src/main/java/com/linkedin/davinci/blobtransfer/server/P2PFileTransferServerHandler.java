@@ -325,10 +325,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           || httpResponseStatus.equals(HttpResponseStatus.METHOD_NOT_ALLOWED)) {
         aggVersionedBlobTransferStats
             .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.REJECTED);
-      } else if (httpResponseStatus.equals(HttpResponseStatus.INTERNAL_SERVER_ERROR)
-          || httpResponseStatus.equals(HttpResponseStatus.REQUEST_TIMEOUT)) {
-        aggVersionedBlobTransferStats
-            .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.FAILED);
       } else {
         aggVersionedBlobTransferStats
             .recordBlobTransferRequestsStatus(storeName, version, BlobTransferUtils.BlobTransferStatus.FAILED);
