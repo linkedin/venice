@@ -625,10 +625,10 @@ public class DaVinciBackend implements Closeable {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
-      if (writeBatchingPushStatus && !incrementalPushVersion.isPresent()) {
-        // Batching the push statuses from all partitions for batch pushes;
+      if (writeBatchingPushStatus) {
+        // Batching the push statuses from all partitions;
         // VersionBackend will handle the push status update to Venice backend
-        versionBackend.updatePartitionStatus(partition, status);
+        versionBackend.updatePartitionStatus(partition, status, incrementalPushVersion);
       } else {
         pushStatusStoreWriter
             .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
