@@ -6,9 +6,12 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.utils.RedundantLogFilter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,7 +21,9 @@ import java.util.Map;
  * 3. multiple tehuti Sensors for this Otel Metric
  */
 public class MetricEntityState {
-  private MetricEntity metricEntity;
+  private static final Logger LOGGER = LogManager.getLogger(MetricEntityState.class);
+  private static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
+  private final MetricEntity metricEntity;
   /** Otel metric */
   private Object otelMetric = null;
   /** Map of tehuti names and sensors: 1 Otel metric can cover multiple Tehuti sensors */
@@ -105,6 +110,12 @@ public class MetricEntityState {
       Sensor sensor = tehutiSensors.get(tehutiMetricNameEnum);
       if (sensor != null) {
         sensor.record(value);
+      } else {
+        // Log using Redundant log filters to catch any bad name passed in
+        String errorLog = "Tehuti Sensor with name '" + tehutiMetricNameEnum + "' not found.";
+        if (REDUNDANT_LOG_FILTER.isRedundantLog(errorLog)) {
+          LOGGER.error(errorLog);
+        }
       }
     }
   }
@@ -119,7 +130,13 @@ public class MetricEntityState {
     recordTehutiMetric(tehutiMetricNameEnum, value);
   }
 
+  /** used only for testing */
   Map<TehutiMetricNameEnum, Sensor> getTehutiSensors() {
     return tehutiSensors;
+  }
+
+  /** used only for testing */
+  static RedundantLogFilter getRedundantLogFilter() {
+    return REDUNDANT_LOG_FILTER;
   }
 }

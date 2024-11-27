@@ -4,6 +4,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import io.opentelemetry.api.common.Attributes;
@@ -11,6 +13,7 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.utils.RedundantLogFilter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +29,7 @@ public class MetricEntityStateTest {
   private Sensor mockSensor;
 
   private enum TestTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    TEST_METRIC;
+    TEST_METRIC_1, TEST_METRIC_2;
 
     private final String metricName;
 
@@ -65,19 +68,19 @@ public class MetricEntityStateTest {
   @Test
   public void testAddTehutiSensorsSuccessfully() {
     MetricEntityState metricEntityState = new MetricEntityState(mockMetricEntity, mockOtelRepository);
-    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC, mockSensor);
+    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC_1, mockSensor);
 
     Assert.assertNotNull(metricEntityState.getTehutiSensors());
-    Assert.assertTrue(metricEntityState.getTehutiSensors().containsKey(TestTehutiMetricNameEnum.TEST_METRIC));
+    assertTrue(metricEntityState.getTehutiSensors().containsKey(TestTehutiMetricNameEnum.TEST_METRIC_1));
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*Sensor with name 'TEST_METRIC' already exists.*")
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*Sensor with name 'TEST_METRIC_1' already exists.*")
   public void testAddTehutiSensorThrowsExceptionOnDuplicate() {
     MetricEntityState metricEntityState = new MetricEntityState(mockMetricEntity, mockOtelRepository);
-    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC, mockSensor);
+    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC_1, mockSensor);
 
     // Adding the same sensor name again should throw an exception
-    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC, mockSensor);
+    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC_1, mockSensor);
   }
 
   @Test
@@ -111,9 +114,9 @@ public class MetricEntityStateTest {
   @Test
   public void testRecordTehutiMetric() {
     MetricEntityState metricEntityState = new MetricEntityState(mockMetricEntity, mockOtelRepository);
-    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC, mockSensor);
+    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC_1, mockSensor);
 
-    metricEntityState.recordTehutiMetric(TestTehutiMetricNameEnum.TEST_METRIC, 15.0);
+    metricEntityState.recordTehutiMetric(TestTehutiMetricNameEnum.TEST_METRIC_1, 15.0);
 
     verify(mockSensor, times(1)).record(15.0);
   }
@@ -124,13 +127,27 @@ public class MetricEntityStateTest {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.HISTOGRAM);
 
     MetricEntityState metricEntityState = new MetricEntityState(mockMetricEntity, mockOtelRepository);
+    RedundantLogFilter logFilter = metricEntityState.getRedundantLogFilter();
     metricEntityState.setOtelMetric(doubleHistogram);
-    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC, mockSensor);
+    metricEntityState.addTehutiSensors(TestTehutiMetricNameEnum.TEST_METRIC_1, mockSensor);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
-    metricEntityState.record(TestTehutiMetricNameEnum.TEST_METRIC, 20.0, attributes);
 
+    // case 1: check using valid Tehuti metric that was added to metricEntityState
+    metricEntityState.record(TestTehutiMetricNameEnum.TEST_METRIC_1, 20.0, attributes);
     verify(doubleHistogram, times(1)).record(20.0, attributes);
     verify(mockSensor, times(1)).record(20.0);
+    assertFalse(logFilter.isRedundantLog("Tehuti Sensor with name 'TEST_METRIC_1' not found.", false));
+
+    // case 2: check using a Tehuti metric that was not added to metricEntityState and verify it called
+    // REDUNDANT_LOG_FILTER
+    metricEntityState.record(TestTehutiMetricNameEnum.TEST_METRIC_2, 20.0, attributes);
+    // otel metric should be called for the second time
+    verify(doubleHistogram, times(2)).record(20.0, attributes);
+    // Tehuti metric should be not called for the second time as we passed in an invalid metric name
+    verify(mockSensor, times(1)).record(20.0);
+    // This should have invoked the log filter for TEST_METRIC_2
+    assertFalse(logFilter.isRedundantLog("Tehuti Sensor with name 'TEST_METRIC_1' not found.", false));
+    assertTrue(logFilter.isRedundantLog("Tehuti Sensor with name 'TEST_METRIC_2' not found.", false));
   }
 }
