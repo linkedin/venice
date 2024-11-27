@@ -230,6 +230,9 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setBlobTransferEnabled(store.isBlobTransferEnabled());
     setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
+    setTargetSwapRegion(store.getTargetSwapRegion());
+    setTargetSwapRegionWaitTime(store.getTargetSwapRegionWaitTime());
+    setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);

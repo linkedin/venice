@@ -664,8 +664,8 @@
             {
               "name": "targetSwapRegion",
               "doc": "Controls what region to swap in the current version during target colo push",
-              "type": "string",
-              "default": ""
+              "type": ["null","string"],
+              "default": null
             },
             {
               "name": "targetSwapRegionWaitTime",

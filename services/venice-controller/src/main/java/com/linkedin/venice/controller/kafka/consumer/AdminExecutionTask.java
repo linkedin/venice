@@ -501,9 +501,12 @@ public class AdminExecutionTask implements Callable<Void> {
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
-        .setTargetRegionSwap(message.targetSwapRegion.toString())
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
+
+    if (message.targetSwapRegion != null) {
+      params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
+    }
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
