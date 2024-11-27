@@ -19,45 +19,6 @@ project's expectations.
 - TOC
 {:toc}
 
-## Other Languages
-
-Before diving into Java itself, it may be good to point out the role of some other languages. Although the Venice 
-codebase is in Java, some of Venice's dependencies are not in Java.
-
-Furthermore, there may be other languages introduced to the Venice codebase in the future, for example Python tooling or
-[Rust server code](../proposals/vip-3.md).
-
-### C++
-
-There are two major dependencies which are written in C++, and which are accessed via the [Java Native Interface](https://docs.oracle.com/en/java/javase/17/docs/specs/jni/intro.html)
-(JNI):
-
-- The [RocksDB](https://rocksdb.org) storage engine.
-- The [ZSTD](https://facebook.github.io/zstd/) compression algorithm.
-
-### Scala
-
-Some other Venice dependencies are written in [Scala](https://www.scala-lang.org), a language which gets compiled into
-bytecode and runs within the JVM, alongside the bytecode compiled from Java.
-
-Although inter-operability between Java and Scala is supported, there are nonetheless certain challenges associated with 
-the use of Scala due to the incompatibility across minor versions and the need to cross-compile Scala dependencies 
-across a range of minor versions.
-
-For this reason, the Venice project intends to not make use of any Scala within its codebase, and to limit the use of 
-Scala dependencies to the most minimal number of modules possible. In particular:
-
-- The [Kafka](https://kafka.apache.org) broker is written in Scala, but not the Kafka client library. The broker is only 
-  used within integration tests, and the main code should not depend on it.
-- The [Spark](https://spark.apache.org) framework is a runtime dependency of the [Venice Push Job](../user_guide/write_api/push_job.md),
-  and therefore VPJ is the only production module which carries a (transitive) dependency to Scala.
-
-### Groovy
-
-The build system, [Gradle](https://gradle.org), functions with the [Groovy language](https://groovy-lang.org), and so 
-the build files of each module are written in that language. Like Scala, Groovy is also a language that runs within the
-JVM, and is interoperable with Java. We do not intend to use Groovy outside of build files.
-
 ## Java in a Nutshell
 
 Java as a language is statically typed, dynamically compiled, object-oriented, and provides managed memory. Let's 
@@ -100,6 +61,51 @@ need to explicitly _free_ allocated memory, and there is no risk of accidentally
 been freed. This design improves both reliability and security, however, it comes at the cost of needing garbage 
 collection, which in some cases is a performance drag. These various aspects are explored more in-depth in later 
 sections.
+
+## Other Languages
+
+Before diving deeper into Java itself, it may be good to point out the role of some other languages. Although the Venice
+codebase is in Java, some of Venice's dependencies are not in Java.
+
+Furthermore, there may be other languages introduced to the Venice codebase in the future, for example Python tooling or
+[Rust server code](../proposals/vip-3.md).
+
+### C++
+
+There are two major dependencies which are written in C++, and which are accessed via the [Java Native Interface](https://docs.oracle.com/en/java/javase/17/docs/specs/jni/intro.html)
+(JNI):
+
+- The [RocksDB](https://rocksdb.org) storage engine.
+- The [ZSTD](https://facebook.github.io/zstd/) compression algorithm.
+
+### Scala
+
+Some other Venice dependencies are written in [Scala](https://www.scala-lang.org), a language which gets compiled into
+bytecode and runs within the JVM, alongside the bytecode compiled from Java.
+
+Although inter-operability between Java and Scala is supported, there are nonetheless certain challenges associated with
+the use of Scala due to the incompatibility across minor versions and the need to cross-compile Scala dependencies
+across a range of minor versions.
+
+For this reason, the Venice project intends to not make use of any Scala within its codebase, and to limit the use of
+Scala dependencies to the most minimal number of modules possible. In particular:
+
+- The [Kafka](https://kafka.apache.org) broker is written in Scala, but not the Kafka client library. The broker is only
+  used within integration tests, and the main code should not depend on it.
+- The [Spark](https://spark.apache.org) framework is a runtime dependency of the [Venice Push Job](../user_guide/write_api/push_job.md),
+  and therefore VPJ is the only production module which carries a (transitive) dependency to Scala.
+
+### Groovy
+
+The build system, [Gradle](https://gradle.org), functions with the [Groovy language](https://groovy-lang.org), and so
+the build files of each module are written in that language. Like Scala, Groovy is also a language that runs within the
+JVM, and is interoperable with Java. We do not intend to use Groovy outside of build files.
+
+### Javascript
+
+Finally, there is even a tiny bit of Node.js running in some of the GitHub Actions plugins, used to generate reports! It
+takes a village to raise a distributed database, and Venice is no exception! Like Groovy, this is a build dependency and
+there is no intent to use JS anywhere else in the codebase.
 
 ## Java Versions
 
@@ -430,9 +436,12 @@ Although a full exploration of this is beyond the scope of this page, a few basi
 3. In order to achieve correctness when handling state which is read and written by multiple threads, we must give
    explicit instructions to Java. For example:
 
-   1. The `volatile` keyword prepended before a field indicates that reads and writes to that field are required to go
-      all the way to RAM, rather than being allowed to consult only CPU caches. Many of the `java.util.concurrent` 
-      classes rely on `volatile` fields to implement various functionalities such as _Compare and Swap_, locking, etc.
+   1. The `volatile` keyword prepended before a field indicates that reads and writes to that field are guaranteed to be
+      consistent. Although the way this is guaranteed is not officially specified, in practice it has been 
+      [experimentally determined](https://github.com/alex-dubrouski/java-test?tab=readme-ov-file#volatiles-test) that 
+      volatile writes cause all CPU caches to get invalidated, while the volatile reads can still benefit from CPU 
+      caches. Many of the `java.util.concurrent` classes rely on `volatile` fields to implement various functionalities 
+      such as _Compare and Swap_, locking, etc.
    
    2. The `final` keyword prepended before a field indicates that it is immutable, and therefore safe to cache in the 
       CPU. Note, however, that there is a subtlety. Only a primitive final field is "fully immutable", whereas an Object 
