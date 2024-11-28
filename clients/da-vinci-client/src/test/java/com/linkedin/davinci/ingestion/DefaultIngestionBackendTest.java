@@ -45,9 +45,9 @@ public class DefaultIngestionBackendTest {
   @Mock
   private StorageService storageService;
   @Mock
-  private BlobTransferManager blobTransferManager;
-  @Mock
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  @Mock
+  private BlobTransferManager blobTransferManager;
   @Mock
   private DefaultIngestionBackend ingestionBackend;
   @Mock
@@ -114,6 +114,9 @@ public class DefaultIngestionBackendTest {
 
     ingestionBackend.startConsumption(storeConfig, PARTITION);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
   }
 
   @Test
@@ -127,6 +130,9 @@ public class DefaultIngestionBackendTest {
     CompletableFuture<Void> future =
         ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, 100L).toCompletableFuture();
     assertTrue(future.isDone());
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
   }
 
   @Test
@@ -146,6 +152,9 @@ public class DefaultIngestionBackendTest {
         ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, laggingThreshold).toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never()).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
   }
 
   @Test

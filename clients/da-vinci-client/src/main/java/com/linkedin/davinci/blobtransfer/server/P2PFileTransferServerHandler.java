@@ -119,9 +119,9 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         version = Version.parseVersionFromKafkaTopicName(blobTransferRequest.getTopicName());
         snapshotDir = new File(blobTransferRequest.getSnapshotDir());
         try {
-          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
           // Record request in metrics
           aggVersionedBlobTransferStats.recordBlobTransferRequestsCount(storeName, version);
+          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
         } catch (Exception e) {
           updateBlobTransferStatsBasedOnErrorType(storeName, version, HttpResponseStatus.NOT_FOUND);
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
