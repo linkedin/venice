@@ -8,7 +8,7 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
  * A repository of {@link StoreName} and {@link StoreVersionName}, which are intended to be used as shared instances.
  */
 public class NameRepository {
-  private static final int DEFAULT_MAXIMUM_ENTRY_COUNT = 2000;
+  public static final int DEFAULT_MAXIMUM_ENTRY_COUNT = 2000;
   private final LoadingCache<String, StoreName> storeNameCache;
   private final LoadingCache<String, StoreVersionName> storeVersionNameCache;
 

@@ -43,7 +43,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
   private final @Nullable ResponseAggregatorFactory<BASIC_HTTP_REQUEST, HTTP_RESPONSE> _responseAggregatorFactory;
   private final @Nonnull Function<Headers, Long> _requestTimeout;
   private final @Nonnull LongTailRetrySupplier<P, K> _longTailRetrySupplier;
-  private final @Nonnull Function<BasicRequest, Metrics> _metricsProvider;
+  private final @Nonnull Function<BASIC_HTTP_REQUEST, Metrics> _metricsProvider;
   private final @Nonnull BiFunction<Headers, Metrics, Headers> _metricsDecorator;
   private final @Nonnull Function<Headers, Metrics> _responseMetrics;
   private final @Nonnull Function<P, ScatterGatherStats> _scatterGatherStatsProvider;
@@ -73,7 +73,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       @Nonnull Optional<ResponseAggregatorFactory<BASIC_HTTP_REQUEST, HTTP_RESPONSE>> responseAggregatorFactory,
       @Nonnull Function<Headers, Long> requestTimeout,
       @Nonnull LongTailRetrySupplier<P, K> longTailRetrySupplier,
-      @Nonnull Function<BasicRequest, Metrics> metricsProvider,
+      @Nonnull Function<BASIC_HTTP_REQUEST, Metrics> metricsProvider,
       @Nonnull BiFunction<Headers, Metrics, Headers> metricsDecorator,
       @Nonnull Function<Headers, Metrics> responseMetrics,
       @Nonnull Function<P, ScatterGatherStats> scatterGatherStatsProvider,
@@ -306,7 +306,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     }
   }
 
-  public Metrics initializeMetrics(@Nonnull BasicRequest request) {
+  public Metrics initializeMetrics(@Nonnull BASIC_HTTP_REQUEST request) {
     return _metricsProvider.apply(request);
   }
 
@@ -318,7 +318,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     return _scatterGatherStatsProvider.apply(path);
   }
 
-  public static Builder<?, ?, ?, ?, ?, ?, ?> builder() {
+  public static <H, P extends ResourcePath<K>, K, R, HTTP_REQUEST extends BasicRequest, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> Builder<H, P, K, R, HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> builder() {
     return new Builder<>();
   }
 
@@ -354,7 +354,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
         Optional.empty();
     private Function<Headers, Long> _requestTimeout = headers -> null;
     private LongTailRetrySupplier<P, K> _longTailRetrySupplier = (resourceName, methodName) -> AsyncFuture.cancelled();
-    private Function<BasicRequest, Metrics> _metricsProvider = http -> null;
+    private Function<HTTP_REQUEST, Metrics> _metricsProvider = http -> null;
     private Function<Headers, Metrics> _responseMetrics = headers -> null;
     private BiFunction<Headers, Metrics, Headers> _metricsDecorator = (headers, metrics) -> Headers.EMPTY_HEADERS;
     private Function<P, ScatterGatherStats> _scatterGatherStatsProvider = path -> new ScatterGatherStats();
@@ -486,7 +486,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     }
 
     public Builder<H, P, K, R, HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> metricsProvider(
-        @Nonnull Function<BasicRequest, Metrics> metricsProvider) {
+        @Nonnull Function<HTTP_REQUEST, Metrics> metricsProvider) {
       _metricsProvider = Objects.requireNonNull(metricsProvider, "metricsProvider");
       return this;
     }

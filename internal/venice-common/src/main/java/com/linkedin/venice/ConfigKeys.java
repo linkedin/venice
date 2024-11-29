@@ -2381,4 +2381,11 @@ public class ConfigKeys {
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
+
+  /**
+   * The maximum number of entries (per type) to be cached in the {@link com.linkedin.venice.meta.NameRepository}.
+   *
+   * Default: {@value com.linkedin.venice.meta.NameRepository#DEFAULT_MAXIMUM_ENTRY_COUNT}
+   */
+  public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
 }

@@ -8,8 +8,10 @@ import static com.linkedin.venice.utils.concurrent.BlockingQueueType.LINKED_BLOC
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
+import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.registry.ResourceRegistry;
 import com.linkedin.alpini.base.registry.ShutdownableExecutors;
+import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.alpini.router.api.LongTailRetrySupplier;
 import com.linkedin.alpini.router.api.ScatterGatherHelper;
@@ -35,6 +37,8 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -49,11 +53,11 @@ import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
-import com.linkedin.venice.router.api.VeniceMetricsProvider;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
+import com.linkedin.venice.router.api.VeniceRole;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -76,7 +80,6 @@ import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
-import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -103,6 +106,8 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
@@ -116,7 +121,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -124,9 +128,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -579,7 +581,8 @@ public class RouterServer extends AbstractVeniceService {
         config,
         compressorFactory,
         metricsRepository,
-        retryManagerExecutorService);
+        retryManagerExecutorService,
+        new NameRepository(this.config.getNameRepoMaxEntryCount()));
 
     MetaDataHandler metaDataHandler = new MetaDataHandler(
         routingDataRepository,
@@ -600,46 +603,16 @@ public class RouterServer extends AbstractVeniceService {
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
     // Fixed retry future
-    AsyncFuture<LongSupplier> singleGetRetryFuture =
-        new SuccessAsyncFuture<>(config::getLongTailRetryForSingleGetThresholdMs);
-    LongTailRetrySupplier retrySupplier = new LongTailRetrySupplier<VenicePath, RouterKey>() {
-      private final TreeMap<Integer, Integer> longTailRetryConfigForBatchGet =
-          config.getLongTailRetryForBatchGetThresholdMs();
-
-      @Nonnull
-      @Override
-      public AsyncFuture<LongSupplier> getLongTailRetryMilliseconds(
-          @Nonnull VenicePath path,
-          @Nonnull String methodName) {
-        if (VeniceRouterUtils.isHttpGet(methodName)) {
-          // single-get
-          path.setLongTailRetryThresholdMs(config.getLongTailRetryForSingleGetThresholdMs());
-          return singleGetRetryFuture;
-        } else {
-          /**
-           * Long tail retry threshold is based on key count for batch-get request.
-           */
-          int keyNum = path.getPartitionKeys().size();
-          if (keyNum == 0) {
-            // Should not happen
-            throw new VeniceException("Met scatter-gather request without any keys");
-          }
-          /**
-           * Refer to {@link ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS} to get more info.
-           */
-          int longTailRetryThresholdMs = longTailRetryConfigForBatchGet.floorEntry(keyNum).getValue();
-          path.setLongTailRetryThresholdMs(longTailRetryThresholdMs);
-          return new SuccessAsyncFuture<>(() -> longTailRetryThresholdMs);
-        }
-      }
-    };
+    LongTailRetrySupplier<VenicePath, RouterKey> retrySupplier =
+        (path, methodName) -> new SuccessAsyncFuture<>(path::getLongTailRetryThresholdMs);
 
     responseAggregator = new VeniceResponseAggregator(routerStats, metaStoreShadowReader);
     /**
      * No need to setup {@link com.linkedin.alpini.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.
      */
-    ScatterGatherHelper scatterGather = ScatterGatherHelper.builder()
+    ScatterGatherHelper scatterGather = ScatterGatherHelper
+        .<Instance, VenicePath, RouterKey, VeniceRole, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus>builder()
         .roleFinder(new VeniceRoleFinder())
         .pathParserExtended(pathParser)
         .partitionFinder(partitionFinder)
@@ -651,7 +624,7 @@ public class RouterServer extends AbstractVeniceService {
                 .withSingleGetTardyThreshold(config.getSingleGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
                 .withMultiGetTardyThreshold(config.getMultiGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
                 .withComputeTardyThreshold(config.getComputeTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS))
-        .metricsProvider(new VeniceMetricsProvider())
+        .metricsProvider(request -> new Metrics())
         .longTailRetrySupplier(retrySupplier)
         .scatterGatherStatsProvider(new LongTailRetryStatsProvider(routerStats))
         .enableStackTraceResponseForException(true)
