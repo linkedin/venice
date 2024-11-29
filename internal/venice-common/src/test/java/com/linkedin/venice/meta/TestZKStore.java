@@ -1,9 +1,6 @@
 package com.linkedin.venice.meta;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
@@ -313,44 +310,50 @@ public class TestZKStore {
   public void testAddVersion() {
     String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    assertNull(store.getVersion(2));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(2));
-    assertNull(store.getVersion(5));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(5));
-    assertNull(store.getVersion(6));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
-    assertEquals(store.getVersions().size(), 0);
+    assertMissingVersion(store, 2, 5, 6);
+    assertVersionCount(store, 0);
+
     store.addVersion(new VersionImpl(storeName, 5));
-    assertNull(store.getVersion(2));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(2));
-    assertNotNull(store.getVersion(5));
-    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
-    assertNull(store.getVersion(6));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
-    assertEquals(store.getVersions().size(), 1);
+    assertMissingVersion(store, 2, 6);
+    assertPresentVersion(store, 5);
+    assertVersionCount(store, 1);
     // largest used version is 5
     assertEquals(store.peekNextVersion().getNumber(), 6);
+
     store.addVersion(new VersionImpl(storeName, 2));
-    assertNotNull(store.getVersion(2));
-    assertEquals(store.getVersionOrThrow(2).getNumber(), 2);
-    assertNotNull(store.getVersion(5));
-    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
-    assertNull(store.getVersion(6));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
-    assertEquals(store.getVersions().size(), 2);
+    assertMissingVersion(store, 6);
+    assertPresentVersion(store, 2, 5);
+    assertVersionCount(store, 2);
     // largest used version is still 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
+
     Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
     Assert.assertEquals(version.getNumber(), 6);
     store.addVersion(version);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 7);
-    assertNotNull(store.getVersion(2));
-    assertEquals(store.getVersionOrThrow(2).getNumber(), 2);
-    assertNotNull(store.getVersion(5));
-    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
-    assertNotNull(store.getVersion(6));
-    assertEquals(store.getVersionOrThrow(6).getNumber(), 6);
-    assertEquals(store.getVersions().size(), 3);
+    assertPresentVersion(store, 2, 5, 6);
+    assertVersionCount(store, 3);
+  }
+
+  private void assertMissingVersion(Store store, int... versionNumbers) {
+    for (int versionNumber: versionNumbers) {
+      assertNull(store.getVersion(versionNumber));
+      assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(versionNumber));
+      assertFalse(store.getVersionNumbers().contains(versionNumber));
+    }
+  }
+
+  private void assertPresentVersion(Store store, int... versionNumbers) {
+    for (int versionNumber: versionNumbers) {
+      assertNotNull(store.getVersion(versionNumber));
+      assertEquals(store.getVersionOrThrow(versionNumber).getNumber(), versionNumber);
+      assertTrue(store.getVersionNumbers().contains(versionNumber));
+    }
+  }
+
+  private void assertVersionCount(Store store, int versionCount) {
+    assertEquals(store.getVersions().size(), versionCount);
+    assertEquals(store.getVersionNumbers().size(), versionCount);
   }
 
   @Test

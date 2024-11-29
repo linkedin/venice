@@ -1,7 +1,11 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE_FALSE;
+import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE_TRUE;
+import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static com.linkedin.venice.router.api.VeniceResponseDecompressor.getCompressionStrategy;
 import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static io.netty.handler.codec.http.HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_GATEWAY;
@@ -13,16 +17,17 @@ import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ExtendedResourcePathParser;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VeniceComputePath;
@@ -37,13 +42,17 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.EnumMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
@@ -117,14 +126,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final ScheduledExecutorService retryManagerScheduler;
   private final Map<String, RetryManager> routerSingleKeyRetryManagers;
   private final Map<String, RetryManager> routerMultiKeyRetryManagers;
-
-  private final StoreDataChangedListener storeChangedListener = new StoreDataChangedListener() {
-    @Override
-    public void handleStoreDeleted(String storeName) {
-      routerSingleKeyRetryManagers.remove(storeName);
-      routerMultiKeyRetryManagers.remove(storeName);
-    }
-  };
+  private final NameRepository nameRepository = new NameRepository();
+  private final EnumMap<CompressionStrategy, Map<StoreVersionName, VeniceResponseDecompressor>> decompressorMaps;
 
   public VenicePathParser(
       VeniceVersionFinder versionFinder,
@@ -139,7 +142,43 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     this.partitionFinder = partitionFinder;
     this.routerStats = routerStats;
     this.storeRepository = storeRepository;
-    this.storeRepository.registerStoreDataChangedListener(storeChangedListener);
+    this.decompressorMaps = new EnumMap(CompressionStrategy.class);
+    for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
+      this.decompressorMaps.put(compressionStrategy, new VeniceConcurrentHashMap<>());
+    }
+    this.storeRepository.registerStoreDataChangedListener(new StoreDataChangedListener() {
+      @Override
+      public void handleStoreDeleted(String storeName) {
+        routerSingleKeyRetryManagers.remove(storeName);
+        routerMultiKeyRetryManagers.remove(storeName);
+        cleanDecompressorMaps(storeName, storeVersionName -> true);
+      }
+
+      @Override
+      public void handleStoreChanged(Store store) {
+        String storeName = store.getName();
+        IntSet upToDateVersionsSet = store.getVersionNumbers();
+        cleanDecompressorMaps(
+            storeName,
+            storeVersionName -> !upToDateVersionsSet.contains(storeVersionName.getVersionNumber()));
+      }
+
+      private void cleanDecompressorMaps(String storeName, Function<StoreVersionName, Boolean> criteriaForRemoval) {
+        for (Map<StoreVersionName, VeniceResponseDecompressor> decompressorMap: decompressorMaps.values()) {
+          // remove out dated versions (if any) from the map
+          Iterator<StoreVersionName> storeVersionNameIterator = decompressorMap.keySet().iterator();
+          StoreVersionName storeVersionName;
+          while (storeVersionNameIterator.hasNext()) {
+            storeVersionName = storeVersionNameIterator.next();
+            if (storeVersionName.getStoreName().equals(storeName)) {
+              if (criteriaForRemoval.apply(storeVersionName)) {
+                storeVersionNameIterator.remove();
+              }
+            }
+          }
+        }
+      }
+    });
     this.routerConfig = routerConfig;
     this.compressorFactory = compressorFactory;
     this.metricsRepository = metricsRepository;
@@ -179,7 +218,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     try {
       // this method may throw store not exist exception; track the exception under unhealthy request metric
       int version = versionFinder.getVersion(storeName, fullHttpRequest);
-      String resourceName = Version.composeKafkaTopic(storeName, version);
+      StoreVersionName storeVersionName = this.nameRepository.getStoreVersionName(storeName, version);
+      VeniceResponseDecompressor responseDecompressor = getDecompressor(storeVersionName, fullHttpRequest);
       String method = fullHttpRequest.method().name();
 
       if (VeniceRouterUtils.isHttpGet(method)) {
@@ -193,14 +233,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
                 retryManagerScheduler));
         // single-get request
         path = new VeniceSingleGetPath(
-            storeName,
-            version,
-            resourceName,
+            storeVersionName,
             pathHelper.getKey(),
             uri,
             partitionFinder,
             routerStats,
-            singleKeyRetryManager);
+            routerConfig,
+            singleKeyRetryManager,
+            responseDecompressor);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         RetryManager multiKeyRetryManager = routerMultiKeyRetryManagers.computeIfAbsent(
             storeName,
@@ -210,39 +250,32 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
                 routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
                 routerConfig.getMultiKeyLongTailRetryBudgetPercentDecimal(),
                 retryManagerScheduler));
+        boolean isReadComputationEnabled = storeRepository.isReadComputationEnabled(storeName);
         if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request
           path = new VeniceMultiGetPath(
-              storeName,
-              version,
-              resourceName,
+              storeVersionName,
               fullHttpRequest,
               partitionFinder,
               getBatchGetLimit(storeName),
-              routerConfig.isSmartLongTailRetryEnabled(),
-              routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              routerStats,
-              routerConfig.getLongTailRetryMaxRouteForMultiKeyReq(),
-              multiKeyRetryManager);
-          path.setResponseHeaders(
-              Collections.singletonMap(
-                  HttpConstants.VENICE_CLIENT_COMPUTE,
-                  storeRepository.isReadComputationEnabled(storeName) ? "0" : "1"));
+              routerStats.getStatsByType(RequestType.MULTI_GET),
+              routerConfig,
+              multiKeyRetryManager,
+              responseDecompressor,
+              isReadComputationEnabled ? VENICE_CLIENT_COMPUTE_FALSE : VENICE_CLIENT_COMPUTE_TRUE);
         } else if (resourceType == RouterResourceType.TYPE_COMPUTE) {
           // read compute request
           VeniceComputePath computePath = new VeniceComputePath(
-              storeName,
-              version,
-              resourceName,
+              storeVersionName,
               fullHttpRequest,
               partitionFinder,
               getBatchGetLimit(storeName),
-              routerConfig.isSmartLongTailRetryEnabled(),
-              routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              routerConfig.getLongTailRetryMaxRouteForMultiKeyReq(),
-              multiKeyRetryManager);
+              routerStats.getStatsByType(RequestType.COMPUTE),
+              routerConfig,
+              multiKeyRetryManager,
+              responseDecompressor);
 
-          if (storeRepository.isReadComputationEnabled(storeName)) {
+          if (isReadComputationEnabled) {
             path = computePath;
           } else {
             if (!request.headers().contains(HttpConstants.VENICE_CLIENT_COMPUTE)) {
@@ -253,7 +286,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
                   "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
             }
             path = computePath.toMultiGetPath();
-            path.setResponseHeaders(Collections.singletonMap(HttpConstants.VENICE_CLIENT_COMPUTE, "1"));
             routerStats.getStatsByType(RequestType.COMPUTE)
                 .recordMultiGetFallback(storeName, path.getPartitionKeys().size());
           }
@@ -293,26 +325,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           requestType = path.getRequestType();
         }
       }
-
-      boolean decompressOnClient = routerConfig.isDecompressOnClient();
-      if (decompressOnClient) {
-        Store store = storeRepository.getStore(storeName);
-        if (store == null) {
-          throw new VeniceNoStoreException(storeName);
-        }
-        decompressOnClient = store.getClientDecompressionEnabled();
-      }
-
-      // TODO: maybe we should use the builder pattern here??
-      // Setup decompressor
-      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
-          decompressOnClient,
-          routerStats,
-          fullHttpRequest,
-          storeName,
-          version,
-          compressorFactory);
-      path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats aggRouterHttpRequestStats = routerStats.getStatsByType(requestType);
       if (!requestType.equals(SINGLE_GET)) {
@@ -390,4 +402,25 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     return batchGetLimit;
   }
 
+  /** Package-private for test purposes */
+  VeniceResponseDecompressor getDecompressor(StoreVersionName storeVersionName, HttpRequest request) {
+    boolean decompressOnClient = this.routerConfig.isDecompressOnClient();
+    if (decompressOnClient) {
+      Store store = this.storeRepository.getStoreOrThrow(storeVersionName.getStoreName());
+      decompressOnClient = store.getClientDecompressionEnabled();
+    }
+
+    CompressionStrategy clientCompression = decompressOnClient
+        ? getCompressionStrategy(request.headers().get(VENICE_SUPPORTED_COMPRESSION_STRATEGY))
+        : CompressionStrategy.NO_OP;
+
+    return this.decompressorMaps.get(clientCompression)
+        .computeIfAbsent(
+            storeVersionName,
+            key -> new VeniceResponseDecompressor(
+                clientCompression,
+                this.routerStats,
+                storeVersionName,
+                this.compressorFactory));
+  }
 }
