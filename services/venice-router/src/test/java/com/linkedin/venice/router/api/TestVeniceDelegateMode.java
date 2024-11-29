@@ -27,10 +27,12 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
@@ -63,26 +65,25 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceDelegateMode {
+  private final NameRepository nameRepository = new NameRepository();
   private RetryManager retryManager;
 
-  private VenicePath getVenicePath(
-      String storeName,
-      int version,
-      String resourceName,
-      RequestType requestType,
-      List<RouterKey> keys) {
-    return getVenicePath(storeName, version, resourceName, requestType, keys, Collections.emptySet());
+  private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys) {
+    return getVenicePath(resourceName, requestType, keys, Collections.emptySet());
   }
 
   private VenicePath getVenicePath(
-      String storeName,
-      int version,
       String resourceName,
       RequestType requestType,
       List<RouterKey> keys,
       Set<String> slowStorageNodeSet) {
     retryManager = mock(RetryManager.class);
-    return new VenicePath(storeName, version, resourceName, false, -1, retryManager) {
+    VeniceResponseDecompressor decompressor = mock(VeniceResponseDecompressor.class);
+    return new VenicePath(
+        this.nameRepository.getStoreVersionName(resourceName),
+        mock(RouterRetryConfig.class),
+        retryManager,
+        decompressor) {
       private final String ROUTER_REQUEST_VERSION =
           Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
@@ -132,6 +133,11 @@ public class TestVeniceDelegateMode {
 
       public Collection<RouterKey> getPartitionKeys() {
         return keys;
+      }
+
+      @Override
+      public int getLongTailRetryThresholdMs() {
+        return 0;
       }
 
       @Override
@@ -246,7 +252,7 @@ public class TestVeniceDelegateMode {
     RouterKey key = new RouterKey("key_1".getBytes());
     List<RouterKey> keys = new ArrayList<>();
     keys.add(key);
-    VenicePath path = getVenicePath(storeName, version, resourceName, RequestType.SINGLE_GET, keys);
+    VenicePath path = getVenicePath(resourceName, RequestType.SINGLE_GET, keys);
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.GET.name();
     Map<RouterKey, String> keyPartitionMap = new HashMap<>();
@@ -289,7 +295,7 @@ public class TestVeniceDelegateMode {
     verify(retryManager, never()).isRetryAllowed(anyInt());
 
     // Verify retry manager behavior for retry request
-    path = getVenicePath(storeName, version, resourceName, RequestType.SINGLE_GET, keys);
+    path = getVenicePath(resourceName, RequestType.SINGLE_GET, keys);
     doReturn(true).when(retryManager).isRetryAllowed(anyInt());
     path.setRetryRequest();
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
@@ -310,7 +316,7 @@ public class TestVeniceDelegateMode {
     RouterKey key = new RouterKey("key_1".getBytes());
     List<RouterKey> keys = new ArrayList<>();
     keys.add(key);
-    VenicePath path = getVenicePath(storeName, version, resourceName, RequestType.SINGLE_GET, keys);
+    VenicePath path = getVenicePath(resourceName, RequestType.SINGLE_GET, keys);
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.GET.name();
     Map<RouterKey, String> keyPartitionMap = new HashMap<>();
@@ -346,7 +352,7 @@ public class TestVeniceDelegateMode {
     Set<String> slowStorageNodeSet = new HashSet<>();
     slowStorageNodeSet.add(instance1.getNodeId());
     slowStorageNodeSet.add(instance2.getNodeId());
-    VenicePath path = getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET, keys, slowStorageNodeSet);
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys, slowStorageNodeSet);
     path.setRetryRequest();
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.POST.name();
@@ -431,7 +437,7 @@ public class TestVeniceDelegateMode {
     Instance instance4 = new Instance("host4_123", "host4", 123);
     Instance instance5 = new Instance("host5_123", "host5", 123);
 
-    VenicePath path = getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET, keys);
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys);
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.POST.name();
 
@@ -514,7 +520,7 @@ public class TestVeniceDelegateMode {
     verify(retryManager, never()).isRetryAllowed(anyInt());
 
     // Verify retry manager behavior for retry request
-    path = getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET, keys);
+    path = getVenicePath(resourceName, RequestType.MULTI_GET, keys);
     doReturn(true).when(retryManager).isRetryAllowed(anyInt());
     path.setRetryRequest();
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
@@ -551,7 +557,7 @@ public class TestVeniceDelegateMode {
     keys.add(key4);
     keys.add(key5);
     keys.add(key6);
-    VenicePath path = getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET_STREAMING, keys);
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET_STREAMING, keys);
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.POST.name();
 
@@ -637,7 +643,7 @@ public class TestVeniceDelegateMode {
     keys.add(key4);
     keys.add(key5);
     keys.add(key6);
-    VenicePath path = getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET, keys);
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys);
     Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.POST.name();
 
@@ -757,7 +763,7 @@ public class TestVeniceDelegateMode {
     slowStorageNodeSet.add(instance1.getNodeId());
     slowStorageNodeSet.add(instance3.getNodeId());
     VenicePath pathForAllSlowReplicas =
-        getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET_STREAMING, keys, slowStorageNodeSet);
+        getVenicePath(resourceName, RequestType.MULTI_GET_STREAMING, keys, slowStorageNodeSet);
     scatter = new Scatter(pathForAllSlowReplicas, getPathParser(), VeniceRole.REPLICA);
     finalScatter = scatterMode
         .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);

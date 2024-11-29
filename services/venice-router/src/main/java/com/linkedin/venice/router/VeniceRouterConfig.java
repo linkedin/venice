@@ -122,7 +122,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Configuration for Venice Router.
  */
-public class VeniceRouterConfig {
+public class VeniceRouterConfig implements RouterRetryConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceRouterConfig.class);
 
   // IMMUTABLE CONFIGS
