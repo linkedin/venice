@@ -76,7 +76,6 @@ import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
-import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -116,7 +115,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -124,9 +122,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -600,39 +596,8 @@ public class RouterServer extends AbstractVeniceService {
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
     // Fixed retry future
-    AsyncFuture<LongSupplier> singleGetRetryFuture =
-        new SuccessAsyncFuture<>(config::getLongTailRetryForSingleGetThresholdMs);
-    LongTailRetrySupplier retrySupplier = new LongTailRetrySupplier<VenicePath, RouterKey>() {
-      private final TreeMap<Integer, Integer> longTailRetryConfigForBatchGet =
-          config.getLongTailRetryForBatchGetThresholdMs();
-
-      @Nonnull
-      @Override
-      public AsyncFuture<LongSupplier> getLongTailRetryMilliseconds(
-          @Nonnull VenicePath path,
-          @Nonnull String methodName) {
-        if (VeniceRouterUtils.isHttpGet(methodName)) {
-          // single-get
-          path.setLongTailRetryThresholdMs(config.getLongTailRetryForSingleGetThresholdMs());
-          return singleGetRetryFuture;
-        } else {
-          /**
-           * Long tail retry threshold is based on key count for batch-get request.
-           */
-          int keyNum = path.getPartitionKeys().size();
-          if (keyNum == 0) {
-            // Should not happen
-            throw new VeniceException("Met scatter-gather request without any keys");
-          }
-          /**
-           * Refer to {@link ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS} to get more info.
-           */
-          int longTailRetryThresholdMs = longTailRetryConfigForBatchGet.floorEntry(keyNum).getValue();
-          path.setLongTailRetryThresholdMs(longTailRetryThresholdMs);
-          return new SuccessAsyncFuture<>(() -> longTailRetryThresholdMs);
-        }
-      }
-    };
+    LongTailRetrySupplier<VenicePath, RouterKey> retrySupplier =
+        (path, methodName) -> new SuccessAsyncFuture<>(path::getLongTailRetryThresholdMs);
 
     responseAggregator = new VeniceResponseAggregator(routerStats, metaStoreShadowReader);
     /**

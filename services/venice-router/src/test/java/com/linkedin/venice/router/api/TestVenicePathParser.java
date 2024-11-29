@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE_TRUE;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -8,6 +9,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.FileAssert.fail;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
@@ -43,13 +47,13 @@ import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import org.mockito.Mockito;
@@ -122,12 +126,17 @@ public class TestVenicePathParser {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(10).when(storeRepository).getBatchGetLimit(any());
 
+    VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
+    TreeMap<Integer, Integer> batchGetRetryThresholds = new TreeMap<>();
+    batchGetRetryThresholds.put(1, 1);
+    when(routerConfig.getLongTailRetryForBatchGetThresholdMs()).thenReturn(batchGetRetryThresholds);
+
     VenicePathParser parser = new VenicePathParser<BasicFullHttpRequest>(
         getVersionFinder(),
         partitionFinder,
         getMockedStats(),
         storeRepository,
-        mock(VeniceRouterConfig.class),
+        routerConfig,
         mock(CompressorFactory.class),
         mock(VeniceMetricsRepository.class),
         mock(ScheduledExecutorService.class));
@@ -153,16 +162,14 @@ public class TestVenicePathParser {
     request.content().resetReaderIndex();
     VenicePath path = parser.parseResourceUri(uri, request);
     Assert.assertTrue(path instanceof VeniceComputePath);
-    path.getResponseHeaders()
-        .ifPresent(headers -> Assert.assertFalse(headers.containsKey(HttpConstants.VENICE_CLIENT_COMPUTE)));
+    assertNull(path.getClientComputeHeader());
 
     // Verify request handling when both read-compute and client-compute are available.
     request.headers().add(HttpConstants.VENICE_CLIENT_COMPUTE, "1");
     request.content().resetReaderIndex();
     path = parser.parseResourceUri(uri, request);
     Assert.assertTrue(path instanceof VeniceComputePath);
-    path.getResponseHeaders()
-        .ifPresent(headers -> Assert.assertFalse(headers.containsKey(HttpConstants.VENICE_CLIENT_COMPUTE)));
+    assertNull(path.getClientComputeHeader());
 
     // Verify compute to multi-get conversion when read-compute is disabled, but client-compute is available.
     doReturn(false).when(storeRepository).isReadComputationEnabled(any());
@@ -170,12 +177,8 @@ public class TestVenicePathParser {
     request.content().resetReaderIndex();
     path = parser.parseResourceUri(uri, request);
     Assert.assertTrue(path instanceof VeniceMultiGetPath);
-    Assert.assertTrue(path.getResponseHeaders().isPresent());
-    Assert.assertTrue(
-        path.getResponseHeaders()
-            .get()
-            .entrySet()
-            .contains(new AbstractMap.SimpleEntry<>(HttpConstants.VENICE_CLIENT_COMPUTE, "1")));
+    assertNotNull(path.getClientComputeHeader());
+    assertEquals(path.getClientComputeHeader(), VENICE_CLIENT_COMPUTE_TRUE);
   }
 
   @Test
