@@ -68,7 +68,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         metricsRepository,
         metadataRepository,
         () -> new HeartbeatStat(new MetricConfig(), regionNames),
-        (aMetricsRepository, storeName) -> new HeartbeatStatReporter(aMetricsRepository, storeName, regionNames),
+        (aMetricsRepository, storeName, clusterName) -> new HeartbeatStatReporter(
+            aMetricsRepository,
+            storeName,
+            regionNames),
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps);
   }

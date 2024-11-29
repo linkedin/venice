@@ -5,6 +5,11 @@ parent: User Guides
 permalink: /docs/user_guide/learn_more
 ---
 
+<!--This affects all images of the page, which for now are all icons in the bottom table. If we want other images need in this page, then we may need to refactor this. -->
+<style>
+  img {width:25px;display: block; margin-left: auto; margin-right: auto;}
+</style>
+
 # Learn More
 This page lists the Venice content published online. Please keep in mind that older content reflects an earlier phase of 
 the project and may not be entirely correct anymore.
@@ -52,13 +57,17 @@ The following talks have been given about Venice:
 - 2024: [User Stories: Trust and Privacy Filtering using Venice](https://www.youtube.com/watch?v=JMULRvcmRyk)
 - 2024: [Fast Client: Venice Next-Gen Read Path](https://www.youtube.com/watch?v=g2FxkEQU4P8)
 
-Follow us [YouTube](https://www.youtube.com/@venicedb) to hear about it when new content is published on that 
+Follow us on [YouTube](https://www.youtube.com/@venicedb) to hear about it when new content is published on that 
 platform.
 
 ## Podcasts
 The following interviews have been given about Venice:
 
-- 2022: [JUXT Cast](https://www.youtube.com/watch?v=4QBW1Pa_oIk&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=1&t=9s)
-- 2022: [SaaS Developer Community](https://www.youtube.com/watch?v=7KVw13ia6Rs&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=2)
-- 2023: [Software Misadventures Podcast](https://www.youtube.com/watch?v=aqsacLCQxaY&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=3)
-- 2024: [The Geek Narrator](https://www.youtube.com/watch?v=D6gZKM4Jnk4&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=4)
+| Year | Channel                  | Youtube                                                                                                                              | Apple                                                                                                                                                        | Spotify                                                                                                                    |
+|------|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| 2022 | JUXT Cast                | [![](../assets/icons/youtube-icon.svg)](https://www.youtube.com/watch?v=4QBW1Pa_oIk&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=1) | [![](../assets/icons/apple-podcasts-icon.svg)](https://podcasts.apple.com/us/podcast/strange-loop-edition-a-chat-with-felix-gv/id1471141263?i=1000583323923) | [![](../assets/icons/spotify-icon.svg)](https://open.spotify.com/episode/2A7irnn0KTefvOMaJ4ks96?si=zS2JMR14SXqC-yjJEq9W0w) |
+| 2022 | SaaS Developer Community | [![](../assets/icons/youtube-icon.svg)](https://www.youtube.com/watch?v=7KVw13ia6Rs&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=2) |                                                                                                                                                              |                                                                                                                            |
+| 2023 | Monday Morning Data Chat | [![](../assets/icons/youtube-icon.svg)](https://www.youtube.com/watch?v=wxo6irP8QYU&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=3) | [![](../assets/icons/apple-podcasts-icon.svg)](https://podcasts.apple.com/us/podcast/monday-morning-data-chat/id1565154727?i=1000604537042)                  | [![](../assets/icons/spotify-icon.svg)](https://open.spotify.com/episode/1V102KRPO2D3HoS7xNQLJ6?si=fDunwgUnQhev_OZJA2eiMw) |
+| 2023 | Software Misadventures   | [![](../assets/icons/youtube-icon.svg)](https://www.youtube.com/watch?v=aqsacLCQxaY&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=4) | [![](../assets/icons/apple-podcasts-icon.svg)](https://podcasts.apple.com/us/podcast/software-misadventures/id1542480882?i=1000636756076)                    | [![](../assets/icons/spotify-icon.svg)](https://open.spotify.com/episode/3sbC4lVKBt8ZvM2Lt0DedK?si=KdlmlL7WQFqJNC2RIc1e_g) |
+| 2024 | The Geek Narrator        | [![](../assets/icons/youtube-icon.svg)](https://www.youtube.com/watch?v=D6gZKM4Jnk4&list=PLfBAF5hZLVGkpALZDItoMbMrp3u3TWwQc&index=5) | [![](../assets/icons/apple-podcasts-icon.svg)](https://podcasts.apple.com/us/podcast/the-geeknarrator/id1619407689?i=1000657888486)                          | [![](../assets/icons/spotify-icon.svg)](https://open.spotify.com/episode/5P68vP7pBF8Q8ka0jni9S0?si=ZX_h29l4S7W-EkvfhMHR-Q) |
+

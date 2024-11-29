@@ -174,6 +174,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
 
+  boolean isHybrid();
+
   HybridStoreConfig getHybridStoreConfig();
 
   void setHybridStoreConfig(HybridStoreConfig hybridConfig);

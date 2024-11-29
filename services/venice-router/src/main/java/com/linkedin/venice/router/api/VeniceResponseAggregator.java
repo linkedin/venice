@@ -230,7 +230,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       }
     }
 
-    HttpResponseStatus responseStatus = finalResponse.status();
+    HttpResponseStatus httpResponseStatus = finalResponse.status();
     Map<MetricNames, TimeValue> allMetrics = metrics.getMetrics();
     /**
      * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
@@ -244,20 +244,20 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       // here...
       double latency = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
-      if (HEALTHY_STATUSES.contains(responseStatus)) {
+      if (HEALTHY_STATUSES.contains(httpResponseStatus)) {
         routerStats.getStatsByType(RequestType.SINGLE_GET)
             .recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());
         if (isFastRequest(latency, requestType)) {
-          stats.recordHealthyRequest(storeName, latency);
+          stats.recordHealthyRequest(storeName, latency, httpResponseStatus);
         } else {
-          stats.recordTardyRequest(storeName, latency);
+          stats.recordTardyRequest(storeName, latency, httpResponseStatus);
         }
-      } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
+      } else if (httpResponseStatus.equals(TOO_MANY_REQUESTS)) {
         LOGGER.debug("request is rejected by storage node because quota is exceeded");
-        stats.recordThrottledRequest(storeName, latency);
+        stats.recordThrottledRequest(storeName, latency, httpResponseStatus);
       } else {
-        LOGGER.debug("Unhealthy request detected, latency: {}ms, response status: {}", latency, responseStatus);
-        stats.recordUnhealthyRequest(storeName, latency);
+        LOGGER.debug("Unhealthy request detected, latency: {}ms, response status: {}", latency, httpResponseStatus);
+        stats.recordUnhealthyRequest(storeName, latency, httpResponseStatus);
       }
     }
     timeValue = allMetrics.get(ROUTER_RESPONSE_WAIT_TIME);
@@ -275,7 +275,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       double routingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestRoutingLatency(storeName, routingTime);
     }
-    if (HEALTHY_STATUSES.contains(responseStatus) && !venicePath.isStreamingRequest()) {
+    if (HEALTHY_STATUSES.contains(httpResponseStatus) && !venicePath.isStreamingRequest()) {
       // Only record successful response
       stats.recordResponseSize(storeName, finalResponse.content().readableBytes());
     }

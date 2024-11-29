@@ -16,7 +16,8 @@ public class AggPushStatusCleanUpStats extends AbstractVeniceAggStoreStats<PushS
         metricsRepository,
         PushStatusCleanUpStats::new,
         metadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        true);
   }
 
   public void recordLeakedPushStatusCount(int count) {

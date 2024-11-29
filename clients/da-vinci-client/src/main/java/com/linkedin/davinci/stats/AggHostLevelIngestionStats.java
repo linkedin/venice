@@ -23,10 +23,12 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
       boolean unregisterMetricForDeletedStoreEnabled,
       Time time) {
     super(
+        serverConfig.getClusterName(),
         metricsRepository,
         new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap, time),
         metadataRepository,
-        unregisterMetricForDeletedStoreEnabled);
+        unregisterMetricForDeletedStoreEnabled,
+        false);
   }
 
   static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {
@@ -44,7 +46,7 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
     }
 
     @Override
-    public HostLevelIngestionStats get(MetricsRepository metricsRepository, String storeName) {
+    public HostLevelIngestionStats get(MetricsRepository metricsRepository, String storeName, String clusterName) {
       throw new VeniceException("Should not be called.");
     }
 
@@ -52,6 +54,7 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
     public HostLevelIngestionStats get(
         MetricsRepository metricsRepository,
         String storeName,
+        String clusterName,
         HostLevelIngestionStats totalStats) {
       return new HostLevelIngestionStats(
           metricsRepository,
