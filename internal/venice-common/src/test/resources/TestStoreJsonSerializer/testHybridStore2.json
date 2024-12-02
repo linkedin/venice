@@ -92,7 +92,7 @@
       "latestVersionPromoteToCurrentTimestamp": 1729632199446,
       "versions": [
         {
-          "storeName": "venice_system_store_meta_store_ActionableRecommendationDataPointsV1",
+          "storeName": "venice_system_store_meta_store_testStore",
           "number": 3,
           "createdTime": 1729632179842,
           "pushJobId": "SYSTEM_STORE_PUSH_1729632163228",
@@ -141,7 +141,7 @@
       "number": 817,
       "replicationFactor": 3,
       "partitionCount": 20,
-      "storeName": "ActionableRecommendationDataPointsV1",
+      "storeName": "testStore",
       "hybridStoreConfig": {
         "rewindTimeInSeconds": 86400,
         "offsetLagThresholdToGoOnline": 10,
@@ -186,7 +186,7 @@
       "number": 818,
       "replicationFactor": 3,
       "partitionCount": 20,
-      "storeName": "ActionableRecommendationDataPointsV1",
+      "storeName": "testStore",
       "hybridStoreConfig": {
         "rewindTimeInSeconds": 86400,
         "offsetLagThresholdToGoOnline": 10,
