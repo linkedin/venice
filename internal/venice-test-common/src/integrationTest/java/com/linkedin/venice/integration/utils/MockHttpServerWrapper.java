@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.utils.TestUtils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;

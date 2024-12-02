@@ -26,6 +26,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;

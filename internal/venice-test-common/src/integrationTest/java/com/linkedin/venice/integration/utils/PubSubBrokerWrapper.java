@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;

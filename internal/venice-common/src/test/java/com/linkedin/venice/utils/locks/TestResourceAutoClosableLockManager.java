@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils.locks;
 
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;

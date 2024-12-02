@@ -43,6 +43,7 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.StoreUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;

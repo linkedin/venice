@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;

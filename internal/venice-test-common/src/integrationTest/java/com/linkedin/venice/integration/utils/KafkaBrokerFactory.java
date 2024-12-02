@@ -10,6 +10,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
