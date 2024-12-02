@@ -13,10 +13,9 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.schema.SchemaAdapterTest;
 import com.linkedin.venice.utils.TestUtils;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,9 +30,9 @@ import org.testng.annotations.Test;
 public class TestStoreJsonSerializer {
   @Test
   void testRealTimeTopicNameDefault() throws IOException {
-    File testFile = new File("src/test/resources/testHybridStore.json");
     StoreJSONSerializer serializer = new StoreJSONSerializer();
-    Store store = serializer.deserialize(Files.readAllBytes(testFile.toPath()), "");
+    Store store = serializer
+        .deserialize(SchemaAdapterTest.loadFileAsString("TestStoreJsonSerializer/testHybridStore.json").getBytes(), "");
 
     Assert.assertNotNull(store.getHybridStoreConfig().getRealTimeTopicName(), "realTimeTopicName should not be null");
     Assert.assertEquals(
@@ -52,9 +51,10 @@ public class TestStoreJsonSerializer {
 
   @Test
   void testRealTimeTopicName() throws IOException {
-    File testFile = new File("src/test/resources/testHybridStore2.json");
     StoreJSONSerializer serializer = new StoreJSONSerializer();
-    Store store = serializer.deserialize(Files.readAllBytes(testFile.toPath()), "");
+    Store store = serializer.deserialize(
+        SchemaAdapterTest.loadFileAsString("TestStoreJsonSerializer/testHybridStore2.json").getBytes(),
+        "");
 
     Assert.assertEquals(
         "TEST_RT_TOPIC_NAME",

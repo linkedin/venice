@@ -26,7 +26,7 @@ public class SchemaAdapterTest {
   private static final Schema EVOLVED_RECORD_SCHEMA = AvroSchemaParseUtils
       .parseSchemaFromJSONStrictValidation(loadFileAsString("AvroRecordUtilsTest/EvolvedRecordSchema.avsc"));
 
-  private static String loadFileAsString(String fileName) {
+  public static String loadFileAsString(String fileName) {
     try {
       return IOUtils.toString(
           Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
