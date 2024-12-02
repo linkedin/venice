@@ -500,7 +500,13 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBlobTransferEnabled(message.blobTransferEnabled)
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
-        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter);
+        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
+        .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
+        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
+
+    if (message.targetSwapRegion != null) {
+      params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
+    }
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -642,6 +648,7 @@ public class AdminExecutionTask implements Callable<Void> {
         storeName,
         clusterName,
         versionNumber);
+
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating

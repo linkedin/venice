@@ -903,6 +903,7 @@ public class VeniceParentHelixAdminTest {
     testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
     testUpdateBlobTransfer(parentControllerClient, childControllerClient);
     testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
+    testUpdateTargetSwapRegion(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -938,6 +939,23 @@ public class VeniceParentHelixAdminTest {
       StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       responseConsumer.accept(childStoreResponse);
     });
+  }
+
+  private void testUpdateTargetSwapRegion(ControllerClient parentClient, ControllerClient childClient) {
+    final String region = "prod";
+    final int waitTime = 100;
+    final boolean isDavinci = false;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setTargetRegionSwap(region);
+      params.setTargetRegionSwapWaitTime(waitTime);
+      params.setIsDavinciHeartbeatReported(isDavinci);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getTargetRegionSwap(), region);
+      Assert.assertEquals(response.getStore().getTargetRegionSwapWaitTime(), waitTime);
+      Assert.assertEquals(response.getStore().getIsDavinciHeartbeatReported(), isDavinci);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }
 
   private void testUpdateCompactionLag(ControllerClient parentClient, ControllerClient childClient) {

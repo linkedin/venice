@@ -257,7 +257,10 @@ public class RecoverStoreMetadata {
             .setMaxCompactionLagSeconds(deletedStore.getMaxCompactionLagSeconds())
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(deletedStore.getMaxNearlineRecordSizeBytes())
-            .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled());
+            .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
+            .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
+            .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
+            .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());

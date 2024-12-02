@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -61,6 +62,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
@@ -141,6 +144,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
+            .setTargetRegionSwap(srcStore.getTargetRegionSwap())
+            .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -736,6 +741,30 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getNearlineProducerCountPerWriter() {
     return getInteger(NEARLINE_PRODUCER_COUNT_PER_WRITER);
+  }
+
+  public UpdateStoreQueryParams setTargetRegionSwap(String targetRegion) {
+    return putString(TARGET_SWAP_REGION, targetRegion);
+  }
+
+  public Optional<String> getTargetSwapRegion() {
+    return getString(TARGET_SWAP_REGION);
+  }
+
+  public UpdateStoreQueryParams setTargetRegionSwapWaitTime(int waitTime) {
+    return putInteger(TARGET_SWAP_REGION_WAIT_TIME, waitTime);
+  }
+
+  public Optional<Integer> getTargetRegionSwapWaitTime() {
+    return getInteger(TARGET_SWAP_REGION_WAIT_TIME);
+  }
+
+  public UpdateStoreQueryParams setIsDavinciHeartbeatReported(boolean isReported) {
+    return putBoolean(IS_DAVINCI_HEARTBEAT_REPORTED, isReported);
+  }
+
+  public Optional<Boolean> getIsDavinciHeartbeatReported() {
+    return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
   }
 
   // ***************** above this line are getters and setters *****************

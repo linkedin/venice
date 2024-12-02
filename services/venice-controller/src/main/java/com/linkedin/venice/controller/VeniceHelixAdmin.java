@@ -4820,6 +4820,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
     Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
+    Optional<String> targetSwapRegion = params.getTargetSwapRegion();
+    Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
+    Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5111,6 +5114,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       nearlineProducerCountPerWriter.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setNearlineProducerCountPerWriter(aInt);
+        return store;
+      }));
+
+      targetSwapRegion.ifPresent(aString -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setTargetSwapRegion((aString));
+        return store;
+      }));
+
+      targetSwapRegionWaitTime.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setTargetSwapRegionWaitTime(aInt);
+        return store;
+      }));
+
+      isDavinciHeartbeatReported.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setIsDavinciHeartbeatReported(aBool);
         return store;
       }));
 
