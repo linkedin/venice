@@ -36,6 +36,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -48,7 +49,6 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.TestUtils;
@@ -1106,10 +1106,12 @@ public abstract class AbstractPushMonitorTest {
     Map<String, String> viewParams = new HashMap<>();
     String viewName = "testView";
     int viewPartitionCount = 10;
-    viewParams.put(ViewParameters.MATERIALIZED_VIEW_NAME.name(), viewName);
-    viewParams.put(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(viewPartitionCount));
+    viewParams.put(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name(), viewName);
     viewParams
-        .put(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(), DefaultVenicePartitioner.class.getCanonicalName());
+        .put(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(viewPartitionCount));
+    viewParams.put(
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name(),
+        DefaultVenicePartitioner.class.getCanonicalName());
     ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParams);
     viewConfigMap.put(viewName, viewConfig);
     String topic = getTopic();

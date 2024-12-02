@@ -22,9 +22,9 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -54,20 +54,20 @@ public class MaterializedViewWriterTest {
   public void testViewParametersBuilder() throws JsonProcessingException {
     String viewName = "testMaterializedView";
     int partitionCount = 3;
-    ViewParameters.Builder viewParamsBuilder = new ViewParameters.Builder(viewName);
+    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
     Map<String, String> viewParams = viewParamsBuilder.build();
     Assert.assertEquals(viewParams.size(), 1);
-    Assert.assertEquals(viewParams.get(ViewParameters.MATERIALIZED_VIEW_NAME.name()), viewName);
+    Assert.assertEquals(viewParams.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()), viewName);
     viewParamsBuilder.setPartitionCount(partitionCount);
     List<String> projectionFields = Arrays.asList("field1", "field2");
     viewParamsBuilder.setProjectionFields(projectionFields);
     viewParams = viewParamsBuilder.build();
     Assert.assertEquals(viewParams.size(), 3);
     Assert.assertEquals(
-        viewParams.get(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()),
+        viewParams.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()),
         String.valueOf(partitionCount));
     Assert.assertEquals(
-        viewParams.get(ViewParameters.MATERIALIZED_VIEW_PROJECTION_FIELDS.name()),
+        viewParams.get(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_FIELDS.name()),
         ObjectMapperFactory.getInstance().writeValueAsString(projectionFields));
   }
 
@@ -81,7 +81,7 @@ public class MaterializedViewWriterTest {
     Store store = getMockStore(storeName, 1, version);
     doReturn(true).when(store).isNearlineProducerCompressionEnabled();
     doReturn(3).when(store).getNearlineProducerCountPerWriter();
-    ViewParameters.Builder viewParamsBuilder = new ViewParameters.Builder(viewName);
+    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
     viewParamsBuilder.setPartitionCount(6);
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     Map<String, String> viewParamsMap = viewParamsBuilder.build();
@@ -107,7 +107,7 @@ public class MaterializedViewWriterTest {
     doReturn(true).when(version).isChunkingEnabled();
     doReturn(true).when(version).isRmdChunkingEnabled();
     getMockStore(storeName, 1, version);
-    ViewParameters.Builder viewParamsBuilder = new ViewParameters.Builder(viewName);
+    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
     viewParamsBuilder.setPartitionCount(6);
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     Map<String, String> viewParamsMap = viewParamsBuilder.build();

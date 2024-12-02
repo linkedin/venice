@@ -184,6 +184,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -198,7 +199,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -2849,14 +2849,15 @@ public class VeniceParentHelixAdmin implements Admin {
             String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
-      ViewParameters.Builder decoratedViewParamBuilder = new ViewParameters.Builder(viewName, viewParams);
-      if (!viewParams.containsKey(ViewParameters.MATERIALIZED_VIEW_PARTITIONER.name())) {
+      MaterializedViewParameters.Builder decoratedViewParamBuilder =
+          new MaterializedViewParameters.Builder(viewName, viewParams);
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name())) {
         decoratedViewParamBuilder.setPartitioner(store.getPartitionerConfig().getPartitionerClass());
         if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
           decoratedViewParamBuilder.setPartitionerParams(store.getPartitionerConfig().getPartitionerParams());
         }
       }
-      if (!viewParams.containsKey(ViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
         decoratedViewParamBuilder.setPartitionCount(store.getPartitionCount());
       }
       viewConfig.setViewParameters(decoratedViewParamBuilder.build());

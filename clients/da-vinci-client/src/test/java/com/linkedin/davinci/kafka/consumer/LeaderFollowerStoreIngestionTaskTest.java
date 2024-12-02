@@ -1,11 +1,14 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -13,20 +16,32 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.view.MaterializedViewWriter;
+import com.linkedin.davinci.store.view.VeniceViewWriter;
+import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 import org.testng.annotations.Test;
 
@@ -41,6 +56,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private Properties mockProperties;
   private BooleanSupplier mockBooleanSupplier;
   private VeniceStoreVersionConfig mockVeniceStoreVersionConfig;
+
+  private VeniceViewWriterFactory mockVeniceViewWriterFactory;
 
   @Test
   public void testCheckWhetherToCloseUnusedVeniceWriter() {
@@ -150,9 +167,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setServerConfig(mockVeniceServerConfig)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory);
+    when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    String viewName = "testView";
+    MaterializedViewParameters.Builder viewParamBuilder = new MaterializedViewParameters.Builder(viewName);
+    viewParamBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName()).setPartitionCount(3);
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParamBuilder.build());
+    viewConfigMap.put(viewName, viewConfig);
+    when(mockStore.getViewConfigs()).thenReturn(viewConfigMap);
 
     mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     mockConsumerAction = mock(ConsumerAction.class);
@@ -220,5 +246,26 @@ public class LeaderFollowerStoreIngestionTaskTest {
     lazyMockWriter.get();
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockWriter, times(1)).closePartition(0);
+  }
+
+  @Test
+  public void testProcessViewWriters() throws InterruptedException {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
+    MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    viewWriterMap.put("testView", materializedViewWriter);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
+    CompletableFuture<PubSubProduceResult> viewWriterFuture = new CompletableFuture<>();
+    when(materializedViewWriter.processRecord(any(), any(), anyInt())).thenReturn(viewWriterFuture);
+    setUp();
+    WriteComputeResultWrapper mockResult = mock(WriteComputeResultWrapper.class);
+    Put put = new Put();
+    put.schemaId = 1;
+    when(mockResult.getNewPut()).thenReturn(put);
+    CompletableFuture[] futures = leaderFollowerStoreIngestionTask
+        .processViewWriters(mockPartitionConsumptionState, new byte[1], null, mockResult);
+    assertEquals(futures.length, 2);
+    verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
+    verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt());
   }
 }

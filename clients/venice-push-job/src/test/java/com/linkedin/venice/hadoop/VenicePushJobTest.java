@@ -72,12 +72,12 @@ import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -977,8 +977,9 @@ public class VenicePushJobTest {
       Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
     }
     Map<String, ViewConfig> viewConfigs = new HashMap<>();
-    ViewParameters.Builder builder = new ViewParameters.Builder("testView").setPartitionCount(12)
-        .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    MaterializedViewParameters.Builder builder =
+        new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
+            .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
     viewConfigs
         .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
