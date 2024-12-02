@@ -20,7 +20,6 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
-import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;

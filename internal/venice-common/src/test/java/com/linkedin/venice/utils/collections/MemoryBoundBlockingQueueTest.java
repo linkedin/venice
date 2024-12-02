@@ -1,7 +1,6 @@
 package com.linkedin.venice.utils.collections;
 
 import com.linkedin.venice.memory.Measurable;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;

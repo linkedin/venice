@@ -13,7 +13,6 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.schema.SchemaAdapterTest;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.util.Arrays;
@@ -32,7 +31,7 @@ public class TestStoreJsonSerializer {
   void testRealTimeTopicNameDefault() throws IOException {
     StoreJSONSerializer serializer = new StoreJSONSerializer();
     Store store = serializer
-        .deserialize(SchemaAdapterTest.loadFileAsString("TestStoreJsonSerializer/testHybridStore.json").getBytes(), "");
+        .deserialize(TestUtils.loadFileAsString("TestStoreJsonSerializer/testHybridStore.json").getBytes(), "");
 
     Assert.assertNotNull(store.getHybridStoreConfig().getRealTimeTopicName(), "realTimeTopicName should not be null");
     Assert.assertEquals(
@@ -52,9 +51,8 @@ public class TestStoreJsonSerializer {
   @Test
   void testRealTimeTopicName() throws IOException {
     StoreJSONSerializer serializer = new StoreJSONSerializer();
-    Store store = serializer.deserialize(
-        SchemaAdapterTest.loadFileAsString("TestStoreJsonSerializer/testHybridStore2.json").getBytes(),
-        "");
+    Store store = serializer
+        .deserialize(TestUtils.loadFileAsString("TestStoreJsonSerializer/testHybridStore2.json").getBytes(), "");
 
     Assert.assertEquals(
         "TEST_RT_TOPIC_NAME",

@@ -3,7 +3,6 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;

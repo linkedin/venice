@@ -80,18 +80,9 @@ import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.Permission;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -104,6 +95,7 @@ import java.util.stream.Stream;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -911,6 +903,17 @@ public class TestUtils {
       FileUtils.deleteDirectory(fileToDelete);
     } catch (IOException e) {
       throw new VeniceException("Could not delete directory: " + fileToDelete, e);
+    }
+  }
+
+  public static String loadFileAsString(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      LOGGER.error(e);
+      return null;
     }
   }
 }

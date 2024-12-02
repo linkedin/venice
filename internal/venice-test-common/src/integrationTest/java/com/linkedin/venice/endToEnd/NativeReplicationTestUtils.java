@@ -6,7 +6,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;

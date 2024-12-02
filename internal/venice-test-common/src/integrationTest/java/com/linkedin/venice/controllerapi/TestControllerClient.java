@@ -10,7 +10,6 @@ import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;

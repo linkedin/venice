@@ -34,7 +34,6 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;

@@ -2,7 +2,6 @@ package com.linkedin.venice.meta;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.concurrent.Executors;

@@ -16,7 +16,6 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;

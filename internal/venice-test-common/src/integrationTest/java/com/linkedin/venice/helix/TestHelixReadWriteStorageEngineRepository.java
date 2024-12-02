@@ -6,7 +6,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;

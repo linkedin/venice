@@ -53,7 +53,6 @@ import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.StoreUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;

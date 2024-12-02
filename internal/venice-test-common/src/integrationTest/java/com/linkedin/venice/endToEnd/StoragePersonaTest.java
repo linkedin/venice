@@ -19,7 +19,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashSet;

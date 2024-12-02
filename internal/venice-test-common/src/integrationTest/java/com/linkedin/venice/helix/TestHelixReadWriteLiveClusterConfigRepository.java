@@ -5,7 +5,6 @@ import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_CONFIG;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.LiveClusterConfig;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.annotations.AfterClass;
