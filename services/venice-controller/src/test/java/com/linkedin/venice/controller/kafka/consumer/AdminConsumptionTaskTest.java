@@ -18,7 +18,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIG
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyDouble;
@@ -932,7 +931,6 @@ public class AdminConsumptionTaskTest {
     hybridConfig.offsetLagThresholdToGoOnline = 1000L;
     hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds = 300L;
     hybridConfig.dataReplicationPolicy = DataReplicationPolicy.AGGREGATE.getValue();
-    hybridConfig.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
     setStore.hybridStoreConfig = hybridConfig;
 
     ETLStoreConfigRecord etlStoreConfig = new ETLStoreConfigRecord();
