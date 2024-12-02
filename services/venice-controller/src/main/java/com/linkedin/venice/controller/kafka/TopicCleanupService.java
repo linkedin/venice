@@ -230,10 +230,8 @@ public class TopicCleanupService extends AbstractVeniceService {
       PubSubTopic topic = allTopics.poll();
       String storeName = topic.getStoreName();
       String clusterDiscovered;
-      Store store;
       try {
         clusterDiscovered = admin.discoverCluster(storeName).getFirst();
-        store = admin.getStore(clusterDiscovered, storeName);
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
             "Store {} not found. Exception when trying to delete topic: {} - {}",
@@ -244,7 +242,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         continue;
       }
 
-      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, store)) {
+      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, storeName)) {
         // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
         deleteTopic(topic);
       } else {

@@ -3516,8 +3516,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
-        store = resources.getStoreMetadataRepository().getStore(storeName);
-        safeDeleteRTTopic(clusterName, store);
+        safeDeleteRTTopic(clusterName, storeName);
       }
     }
   }
@@ -3532,27 +3531,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void safeDeleteRTTopic(String clusterName, Store store) {
-    if (isRTTopicDeletionPermittedByAllControllers(clusterName, store)) {
-      deleteRTTopic(clusterName, store.getName());
+  private void safeDeleteRTTopic(String clusterName, String storeName) {
+    if (isRTTopicDeletionPermittedByAllControllers(clusterName, storeName)) {
+      deleteRealTtimeTopic(clusterName, storeName);
     }
   }
 
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store) {
-    // Perform RT cleanup checks for batch only store that used to be hybrid. Check the local versions first
-    // to see if any version is still using RT and then also check other fabrics before deleting the RT. Since
-    // we perform this check everytime when a store version is deleted we can afford to do best effort
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
+    // Perform RT cleanup checks for batch only store that used to be hybrid. Check versions
+    // to see if any version is still using RT before deleting the RT.
+    // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
-    String storeName = store.getName();
+    // String storeName = store.getName();
     String rtTopicName = Version.composeRealTimeTopic(storeName);
-    if (Version.containsHybridVersion(store.getVersions())) {
-      LOGGER.warn(
-          "Topic {} cannot be deleted yet because the store {} has at least one hybrid version",
-          rtTopicName,
-          storeName);
-      return false;
-    }
-
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse = controllerClientEntry.getValue().getStore(storeName);
@@ -3576,7 +3567,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return true;
   }
 
-  private void deleteRTTopic(String clusterName, String storeName) {
+  private void deleteRealTtimeTopic(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
     String rtTopicToDelete = Version.composeRealTimeTopic(storeName);
     deleteRTTopicFromAllFabrics(rtTopicToDelete, controllerClientMap);
