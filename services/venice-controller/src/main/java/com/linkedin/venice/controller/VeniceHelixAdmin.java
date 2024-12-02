@@ -9,7 +9,6 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.PushType;
@@ -4780,7 +4779,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -4833,8 +4831,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridOffsetLagThreshold,
           hybridTimeLagThreshold,
           hybridDataReplicationPolicy,
-          hybridBufferReplayPolicy,
-          realTimeTopicName);
+          hybridBufferReplayPolicy);
       newHybridStoreConfig = Optional.ofNullable(hybridConfig);
     } else {
       newHybridStoreConfig = Optional.empty();
@@ -5181,8 +5178,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
                 hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
                 DataReplicationPolicy.NON_AGGREGATE,
-                hybridStoreConfig.getBufferReplayPolicy(),
-                hybridStoreConfig.getRealTimeTopicName()));
+                hybridStoreConfig.getBufferReplayPolicy()));
       }
       return store;
     });
@@ -5244,8 +5240,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<Long> hybridOffsetLagThreshold,
       Optional<Long> hybridTimeLagThreshold,
       Optional<DataReplicationPolicy> hybridDataReplicationPolicy,
-      Optional<BufferReplayPolicy> bufferReplayPolicy,
-      Optional<String> realTimeTopicName) {
+      Optional<BufferReplayPolicy> bufferReplayPolicy) {
     if (!hybridRewindSeconds.isPresent() && !hybridOffsetLagThreshold.isPresent() && !oldStore.isHybrid()) {
       return null; // For the nullable union in the avro record
     }
@@ -5263,8 +5258,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridDataReplicationPolicy.isPresent()
               ? hybridDataReplicationPolicy.get()
               : oldHybridConfig.getDataReplicationPolicy(),
-          bufferReplayPolicy.isPresent() ? bufferReplayPolicy.get() : oldHybridConfig.getBufferReplayPolicy(),
-          realTimeTopicName.orElseGet(oldHybridConfig::getRealTimeTopicName));
+          bufferReplayPolicy.isPresent() ? bufferReplayPolicy.get() : oldHybridConfig.getBufferReplayPolicy());
     } else {
       // switching a non-hybrid store to hybrid; must specify:
       // 1. rewind time
@@ -5282,8 +5276,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridOffsetLagThreshold.orElse(DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD),
           hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
           hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
-          bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(DEFAULT_REAL_TIME_TOPIC_NAME));
+          bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP));
     }
     if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
         && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
@@ -7850,8 +7843,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridStoreConfigRecord.offsetLagThresholdToGoOnline,
           hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
           DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
-          BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy),
-          hybridStoreConfigRecord.realTimeTopicName.toString());
+          BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy));
     }
     return isHybrid(hybridStoreConfig);
   }

@@ -143,16 +143,6 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public String getRealTimeTopicName() {
-      return this.delegate.getRealTimeTopicName();
-    }
-
-    @Override
-    public void setRealTimeTopicName(String realTimeTopicName) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
     public HybridStoreConfig clone() {
       return this.delegate.clone();
     }
@@ -521,11 +511,6 @@ public class ReadOnlyStore implements Store {
     @Override
     public void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled) {
       throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public boolean isHybrid() {
-      return this.delegate.isHybrid();
     }
 
     @Override
