@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 
 
-public enum ViewParameters {
+public enum MaterializedViewParameters {
   /**
    * Parameter key used to specify the re-partition view name.
    */

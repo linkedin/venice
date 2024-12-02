@@ -17,9 +17,9 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.meta.ViewParameters;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -105,7 +105,8 @@ public class TestMaterializedViewEndToEnd {
     try (ControllerClient controllerClient =
         IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
       String testViewName = "MaterializedViewTest";
-      ViewParameters.Builder viewParamBuilder = new ViewParameters.Builder(testViewName).setPartitionCount(6);
+      MaterializedViewParameters.Builder viewParamBuilder =
+          new MaterializedViewParameters.Builder(testViewName).setPartitionCount(6);
       UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
           .setViewClassName(MaterializedView.class.getCanonicalName())
           .setViewClassParams(viewParamBuilder.build());
