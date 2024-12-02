@@ -3868,6 +3868,11 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus");
   }
 
+  @Override
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store) {
+    return false;
+  }
+
   /**
    * @see VeniceHelixAdmin#isLeaderControllerFor(String)
    */

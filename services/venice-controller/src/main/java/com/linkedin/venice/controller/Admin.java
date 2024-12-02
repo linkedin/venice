@@ -538,6 +538,8 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store);
+
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
    * either a parent controller or a child controller since a cluster must have a leader child controller and a leader
