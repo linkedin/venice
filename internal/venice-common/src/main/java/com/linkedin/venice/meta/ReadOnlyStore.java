@@ -7,9 +7,12 @@ import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -839,6 +842,289 @@ public class ReadOnlyStore implements Store {
   @Override
   public void setPartitionerConfig(PartitionerConfig value) {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public StoreProperties getStoreProperties() {
+    StoreProperties storeProperties = new StoreProperties();
+
+    // Name
+    storeProperties.setName(getName());
+
+    // Owner
+    storeProperties.setOwner(getOwner());
+
+    // Created Time
+    storeProperties.setCreatedTime(getCreatedTime());
+
+    // Current Version
+    storeProperties.setCurrentVersion(getCurrentVersion());
+
+    // Partition Count
+    storeProperties.setPartitionCount(getPartitionCount());
+
+    // Low Watermark
+    storeProperties.setLowWatermark(getLowWatermark());
+
+    // Enable Writes
+    storeProperties.setEnableWrites(isEnableWrites());
+
+    // Enable Reads
+    storeProperties.setEnableReads(isEnableReads());
+
+    // Storage Quota in Bytes
+    storeProperties.setStorageQuotaInByte(getStorageQuotaInByte());
+
+    // Persistence Type
+    storeProperties.setPersistenceType(getPersistenceType().value);
+
+    // Routing Strategy
+    storeProperties.setRoutingStrategy(getRoutingStrategy().value);
+
+    // Read Strategy
+    storeProperties.setReadStrategy(getReadStrategy().value);
+
+    // Offline Push Strategy
+    storeProperties.setOfflinePushStrategy(getOffLinePushStrategy().value);
+
+    // Largest Used Version Number
+    storeProperties.setLargestUsedVersionNumber(getLargestUsedVersionNumber());
+
+    // Read Quota in CU
+    storeProperties.setReadQuotaInCU(getReadQuotaInCU());
+
+    // Hybrid Config
+    StoreHybridConfig storeHybridConfig = (StoreHybridConfig) getHybridStoreConfig();
+    storeProperties.setHybridConfig(storeHybridConfig);
+    // TODO PRANAV
+    // HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
+    // storeHybridConfig.rewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
+    // storeHybridConfig.offsetLagThresholdToGoOnline = hybridStoreConfig.getOffsetLagThresholdToGoOnline();
+    // storeHybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds =
+    // hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
+    // storeHybridConfig.dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy().getValue();
+    // storeHybridConfig.bufferReplayPolicy = hybridStoreConfig.getBufferReplayPolicy().getValue();
+
+    // View Configs
+    Map<String, ViewConfig> viewConfigs = getViewConfigs();
+    Map<CharSequence, StoreViewConfig> storeViewConfigs = new HashMap<>();
+    for (Map.Entry<String, ViewConfig> entry: viewConfigs.entrySet()) {
+      storeViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
+      // TODO PRANAV
+      // ViewConfig viewConfig = entry.getValue();
+      // StoreViewConfig storeViewConfig = new StoreViewConfig();
+      // storeViewConfig.setViewParameters(viewConfig.dataModel().getViewParameters()); // TODO PRANAV correct field?
+      // storeViewConfig.setViewClassName(viewConfig.getViewClassName());
+      // storeViewConfigs.put(entry.getKey(), storeViewConfig);
+    }
+    storeProperties.setViews(storeViewConfigs);
+
+    // Access Controlled
+    storeProperties.setAccessControlled(isAccessControlled());
+
+    // Compression Strategy
+    storeProperties.setCompressionStrategy(getCompressionStrategy().getValue());
+
+    // Client Decompression Enabled
+    storeProperties.setClientDecompressionEnabled(getClientDecompressionEnabled());
+
+    // Chunking Enabled
+    storeProperties.setChunkingEnabled(isChunkingEnabled());
+
+    // Rmd Chunking Enabled
+    storeProperties.setRmdChunkingEnabled(isRmdChunkingEnabled());
+
+    // Batch Get Limit
+    storeProperties.setBatchGetLimit(getBatchGetLimit());
+
+    // Num Versions to Preserve
+    storeProperties.setNumVersionsToPreserve(getNumVersionsToPreserve());
+
+    // Incremental Push Enabled
+    storeProperties.setIncrementalPushEnabled(isIncrementalPushEnabled());
+
+    // Separate Real Time Topic
+    storeProperties.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
+
+    // Migrating
+    storeProperties.setMigrating(isMigrating());
+
+    // Write Computation Enabled
+    storeProperties.setWriteComputationEnabled(isWriteComputationEnabled());
+
+    // Read Computation Enabled
+    storeProperties.setReadComputationEnabled(isReadComputationEnabled());
+
+    // Bootstrap to Online Timeout in Hours
+    storeProperties.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
+
+    // TODO PRANAV Leader Follower Model Enabled
+    // storeProperties.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
+
+    // Native Replication Enabled
+    storeProperties.setNativeReplicationEnabled(isNativeReplicationEnabled());
+
+    // TODO PRANAV Replication Metadata Version ID
+    // storeProperties.setReplicationMetadataVersionID(getReplicationMetadataVersionID());
+
+    // Push Stream Source Address
+    storeProperties.setPushStreamSourceAddress(getPushStreamSourceAddress());
+
+    // Backup Strategy
+    storeProperties.setBackupStrategy(getBackupStrategy().getValue());
+
+    // Schema Auto Register From Push Job Enabled
+    storeProperties.setSchemaAutoRegisterFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
+
+    // Latest Super Set Value Schema Id
+    storeProperties.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
+
+    // Hybrid Store Disk Quota Enabled
+    storeProperties.setHybridStoreDiskQuotaEnabled(isHybridStoreDiskQuotaEnabled());
+
+    // Store Metadata System Store Enabled
+    storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetadataSystemStoreEnabled());
+
+    // ETL Store Config
+    // TODO PRANAV
+    // ETLStoreConfig etlStoreConfig = getEtlStoreConfig();
+    // StoreETLConfig storeETLConfig = new StoreETLConfig();
+    // storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
+    // storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
+    // storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+    storeProperties.setEtlConfig((StoreETLConfig) getEtlStoreConfig());
+
+    // Partitioner Config
+    // TODO PRANAV
+    // PartitionerConfig partitionerConfig = getPartitionerConfig();
+    // StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
+    // storePartitionerConfig.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
+    // storePartitionerConfig.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
+    // storePartitionerConfig.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());
+    storeProperties.setPartitionerConfig((StorePartitionerConfig) getPartitionerConfig());
+
+    // TODO PRANAV Incremental Push Policy
+    // storeProperties.setIncrementalPushPolicy(IncrementalPushPolicy());
+
+    // Latest Version Promote to Current Timestamp
+    storeProperties.setLatestVersionPromoteToCurrentTimestamp(getLatestVersionPromoteToCurrentTimestamp());
+
+    // Backup Version Retention MS
+    storeProperties.setBackupVersionRetentionMs(getBackupVersionRetentionMs());
+
+    // Replication Factor
+    storeProperties.setReplicationFactor(getReplicationFactor());
+
+    // Migration Duplicate Store
+    storeProperties.setMigrationDuplicateStore(isMigrationDuplicateStore());
+
+    // native replication Source Fabric
+    storeProperties.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
+
+    // DaVinci Push Status Store Enabled
+    storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
+
+    // Store Meta System Store Enabled TODO PRANAV duplicate field?
+    storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
+
+    // ActiveActive Replication Enabled
+    storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
+
+    // TODO PRANAV Apply Target Version Filter for Inc Push
+    // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
+
+    // Min Compaction Lag Seconds
+    storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
+
+    // Max Compaction Lag Seconds
+    storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
+
+    // Max Record Size Bytes
+    storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
+
+    // Max Nearline Record Size Bytes
+    storeProperties.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
+
+    // Unused Schema Deletion Enabled
+    storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
+
+    // Versions
+    List<Version> versions = getVersions();
+    List<StoreVersion> storeVersions = new ArrayList<>();
+    for (Version version: versions) {
+      StoreVersion storeVersion = new StoreVersion();
+
+      storeVersion.setStoreName(version.getStoreName());
+      storeVersion.setNumber(version.getNumber());
+      storeVersion.setCreatedTime(version.getCreatedTime());
+      storeVersion.setStatus(version.getStatus().getValue());
+      storeVersion.setPushJobId(version.getPushJobId());
+      storeVersion.setCompressionStrategy(version.getCompressionStrategy().getValue());
+      storeVersion.setLeaderFollowerModelEnabled(version.isLeaderFollowerModelEnabled());
+      storeVersion.setNativeReplicationEnabled(version.isNativeReplicationEnabled());
+      storeVersion.setPushStreamSourceAddress(version.getPushStreamSourceAddress());
+      // storeVersion.setBufferReplayEnabledForHybrid(); TODO PRANAV
+      storeVersion.setChunkingEnabled(version.isChunkingEnabled());
+      storeVersion.setRmdChunkingEnabled(version.isRmdChunkingEnabled());
+      storeVersion.setPushType(version.getPushType().getValue());
+      storeVersion.setPartitionCount(version.getPartitionCount());
+      storeVersion.setPartitionerConfig((StorePartitionerConfig) version.getPartitionerConfig());
+      storeVersion.setIncrementalPushPolicy(version.dataModel().getIncrementalPushPolicy()); // TODO PRANAV correct
+                                                                                             // field?
+      storeVersion.setReplicationFactor(version.getReplicationFactor());
+      storeVersion.setNativeReplicationSourceFabric(version.getNativeReplicationSourceFabric());
+      storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
+      storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
+      storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
+      storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
+      storeVersion.setHybridConfig((StoreHybridConfig) version.getHybridStoreConfig());
+      storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
+      storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
+      storeVersion.setTimestampMetadataVersionId(version.getTimestampMetadataVersionId());
+      storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
+      storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
+      storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
+      Map<String, ViewConfig> versionViewConfigs = version.getViewConfigs();
+      Map<String, StoreViewConfig> versionStoreViewConfigs = new HashMap<>();
+      for (Map.Entry<String, ViewConfig> entry: versionViewConfigs.entrySet()) {
+        versionStoreViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
+      }
+      storeVersion.setViews(versionStoreViewConfigs);
+
+      storeVersions.add(storeVersion);
+    }
+    storeProperties.setVersions(storeVersions);
+
+    // System Stored
+    Map<String, SystemStoreAttributes> systemStoreAttributesMap = getSystemStores();
+    Map<CharSequence, SystemStoreProperties> systemStorePropertiesMap = new HashMap<>();
+    for (Map.Entry<String, SystemStoreAttributes> entry: systemStoreAttributesMap.entrySet()) {
+      systemStorePropertiesMap.put(entry.getKey(), (SystemStoreProperties) entry.getValue());
+      // TODO PRANAV
+      // SystemStoreAttributes systemStoreAttributes = entry.getValue();
+      // SystemStoreProperties systemStoreProperties = new SystemStoreProperties();
+      // systemStoreProperties.setCurrentVersion(systemStoreAttributes.getCurrentVersion());
+      // systemStoreProperties.setVersions(systemStoreAttributes.getVersions()); // TODO PRANAV make helper Version ->
+      // StoreVersion
+      // systemStoreProperties.setLargestUsedVersionNumber(systemStoreAttributes.getLargestUsedVersionNumber());
+      // systemStoreProperties.setLatestVersionPromoteToCurrentTimestamp(systemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp());
+      // systemStorePropertiesMap.put(entry.getKey(), systemStoreProperties);
+    }
+    storeProperties.setSystemStores(systemStorePropertiesMap);
+
+    // Storage Node Read Quota Enabled
+    storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
+
+    // Blob Transfer Enabled
+    storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
+
+    // Nearline Producer Compression Enabled
+    storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
+
+    // Nearline Producer Count per Writer
+    storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
+
+    return storeProperties;
   }
 
   @Override

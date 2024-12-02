@@ -4,6 +4,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataByClientResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
@@ -360,8 +361,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
       try {
-        MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
-        context.writeAndFlush(response);
+        MetadataFetchRequest request = (MetadataFetchRequest) message;
+        String clientName = request.getClientName().isPresent() ? request.getClientName().get() : "FC";
+        if (clientName.equals("DVC")) { // TODO ENUM, is there on already?
+          MetadataByClientResponse response = handleMetadataByClientFetchRequest(request); // TODO rename "ByClient"
+          context.writeAndFlush(response);
+        } else {
+          MetadataResponse response = handleMetadataFetchRequest(request);
+          context.writeAndFlush(response);
+        }
       } catch (UnsupportedOperationException e) {
         LOGGER.warn(
             "Metadata requested by a storage node read quota not enabled store: {}",
@@ -779,6 +787,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
     return readMetadataRetriever.getMetadata(request.getStoreName());
+  }
+
+  private MetadataByClientResponse handleMetadataByClientFetchRequest(MetadataFetchRequest request) {
+    return readMetadataRetriever.getMetadataByClient(request.getStoreName());
   }
 
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {

@@ -7,6 +7,7 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
  * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerApiConstants}
  */
 public enum Arg {
+  CLIENT("client", "ci", true, "Name of Venice client"),
   ACCESS_CONTROL("access-control", "acl", true, "Enable/disable store-level access control"),
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   SERVER_URL("server-url", "su", true, "Venice server url, eg. http://localhost:1690  This has to be a storage node"),

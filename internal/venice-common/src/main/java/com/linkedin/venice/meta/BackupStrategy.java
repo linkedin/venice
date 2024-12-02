@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.VeniceEnumValue;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -9,7 +10,7 @@ import java.util.Map;
 /**
  * Enums of the strategies used to backup older store versions in Venice.
  */
-public enum BackupStrategy {
+public enum BackupStrategy implements VeniceEnumValue {
   /** Keep numVersionsToPreserve number of backup version.
    */
   KEEP_MIN_VERSIONS(0),
@@ -41,5 +42,10 @@ public enum BackupStrategy {
       throw new VeniceException("Invalid BackupStrategy id: " + i);
     }
     return strategy;
+  }
+
+  @Override
+  public int getValue() {
+    return value;
   }
 }

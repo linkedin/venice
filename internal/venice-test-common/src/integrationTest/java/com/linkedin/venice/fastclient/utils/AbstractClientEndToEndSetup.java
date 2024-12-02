@@ -179,15 +179,15 @@ public abstract class AbstractClientEndToEndSetup {
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
-    props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
+    props.put(SERVER_HTTP2_INBOUND_ENABLED, "false");
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
     VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
-        .enableGrpc(true)
+        .enableGrpc(false)
         .numberOfRouters(1)
         .replicationFactor(2)
         .partitionSize(100)
-        .sslToStorageNodes(true)
+        .sslToStorageNodes(false)
         .sslToKafka(false)
         .extraProperties(props)
         .build();

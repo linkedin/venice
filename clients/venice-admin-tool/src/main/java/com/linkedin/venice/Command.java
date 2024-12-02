@@ -14,6 +14,7 @@ import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
+import static com.linkedin.venice.Arg.CLIENT;
 import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
@@ -151,6 +152,14 @@ import org.apache.commons.cli.CommandLine;
 
 /**
  * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerRoute}
+ *
+ * COMMAND (
+ *   "long-name",
+ *   "short-name",
+ *   "description",
+ *   "required-args",
+ *   "optional-args"
+ * )
  */
 public enum Command {
   LIST_STORES(
@@ -513,7 +522,7 @@ public enum Command {
   REQUEST_BASED_METADATA(
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
-      new Arg[] { URL, SERVER_URL, STORE }
+      new Arg[] { URL, SERVER_URL, STORE }, new Arg[] { CLIENT }
   ),
   DUMP_INGESTION_STATE(
       "dump-ingestion-state",

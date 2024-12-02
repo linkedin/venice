@@ -9,6 +9,7 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataByClientResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
@@ -116,6 +117,20 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           schemaIdHeader = metadataResponse.getResponseSchemaIdHeader();
         } else {
           String errorMessage = metadataResponse.getMessage();
+          if (errorMessage == null) {
+            errorMessage = "Unknown error";
+          }
+          body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));
+          contentType = HttpConstants.TEXT_PLAIN;
+          responseStatus = INTERNAL_SERVER_ERROR;
+        }
+      } else if (msg instanceof MetadataByClientResponse) {
+        MetadataByClientResponse metadataByClientResponse = (MetadataByClientResponse) msg;
+        if (!metadataByClientResponse.isError()) {
+          body = metadataByClientResponse.getResponseBody();
+          schemaIdHeader = metadataByClientResponse.getResponseSchemaIdHeader();
+        } else {
+          String errorMessage = metadataByClientResponse.getMessage();
           if (errorMessage == null) {
             errorMessage = "Unknown error";
           }

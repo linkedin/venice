@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -47,6 +48,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+// TODO PRANAV
 public class FastClientIndividualFeatureConfigurationTest extends AbstractClientEndToEndSetup {
   private static final Logger LOGGER = LogManager.getLogger();
 
@@ -63,6 +65,20 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       TestUtils.assertCommand(
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
     });
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testPranav() throws Exception {
+    VeniceServerWrapper veniceServerWrapper = veniceCluster.getVeniceServers().stream().findAny().get();
+
+    String controllerUrl = veniceCluster.getLeaderVeniceController().getControllerUrl().replace("http", "http");
+    String serverUrl = "http://" + veniceServerWrapper.getHost() + ":" + veniceServerWrapper.getPort();
+
+    String[] getMetadataArgs = { "--request-based-metadata", "--url", controllerUrl, "--server-url", serverUrl,
+        "--cluster", veniceCluster.getClusterName(), "--store", storeName, "--client", "DVC", "--ssl-config-path",
+        "/Users/pthiruna/linkedin/venice/internal/venice-common/testcerts/localhost.config" };
+
+    AdminTool.main(getMetadataArgs);
   }
 
   @Test(timeOut = TIME_OUT)

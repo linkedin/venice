@@ -87,6 +87,7 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.MetadataByClientResponseRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -3018,6 +3019,7 @@ public class AdminTool {
     String url = getRequiredArgument(cmd, Arg.URL);
     String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
+    Optional<String> clientName = Optional.ofNullable(getOptionalArgument(cmd, Arg.CLIENT, null));
     TransportClient transportClient = null;
     try {
       transportClient = getTransportClientForServer(storeName, serverUrl);
@@ -3029,7 +3031,8 @@ public class AdminTool {
               sslFactory,
               1),
           serverUrl,
-          storeName);
+          storeName,
+          clientName);
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
@@ -3216,7 +3219,19 @@ public class AdminTool {
       Supplier<ControllerClient> controllerClientSupplier,
       String serverUrl,
       String storeName) throws JsonProcessingException {
+    getAndPrintRequestBasedMetadata(transportClient, controllerClientSupplier, serverUrl, storeName, Optional.empty());
+  }
+
+  static void getAndPrintRequestBasedMetadata(
+      TransportClient transportClient,
+      Supplier<ControllerClient> controllerClientSupplier,
+      String serverUrl,
+      String storeName,
+      Optional<String> clientName) throws JsonProcessingException {
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    if (clientName.isPresent()) {
+      requestBasedMetadataURL += "/" + clientName.get();
+    }
     byte[] body;
     int writerSchemaId;
     try {
@@ -3230,16 +3245,34 @@ public class AdminTool {
           e);
     }
     Schema writerSchema;
-    if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {
-      SchemaResponse schemaResponse = controllerClientSupplier.get()
-          .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
-      if (schemaResponse.isError()) {
-        throw new VeniceException(
-            "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
+
+    if (clientName.isPresent()) {
+      if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_BY_CLIENT_RESPONSE.getCurrentProtocolVersion()) {
+        SchemaResponse schemaResponse = controllerClientSupplier.get()
+            .getValueSchema(
+                AvroProtocolDefinition.SERVER_METADATA_BY_CLIENT_RESPONSE.getSystemStoreName(),
+                writerSchemaId);
+        if (schemaResponse.isError()) {
+          throw new VeniceException(
+              "Failed to fetch metadata by client response schema from controller, error: "
+                  + schemaResponse.getError());
+        }
+        writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+      } else {
+        writerSchema = MetadataByClientResponseRecord.SCHEMA$;
       }
-      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
     } else {
-      writerSchema = MetadataResponseRecord.SCHEMA$;
+      if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {
+        SchemaResponse schemaResponse = controllerClientSupplier.get()
+            .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
+        if (schemaResponse.isError()) {
+          throw new VeniceException(
+              "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
+        }
+        writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+      } else {
+        writerSchema = MetadataResponseRecord.SCHEMA$;
+      }
     }
     RecordDeserializer<GenericRecord> metadataResponseDeserializer =
         FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);

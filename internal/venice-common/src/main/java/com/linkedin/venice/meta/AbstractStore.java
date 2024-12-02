@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -341,5 +342,11 @@ public abstract class AbstractStore implements Store {
         version.setPartitionCount(getPartitionCount());
       }
     }
+  }
+
+  @Override
+  public StoreProperties getStoreProperties() {
+    // throw new UnsupportedOperationException(); TODO PRANAV
+    return new StoreProperties(); // Empty props
   }
 }

@@ -665,12 +665,12 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @Override
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
-    return this.storeProperties.schemaAutoRegisteFromPushJobEnabled;
+    return this.storeProperties.schemaAutoRegisterFromPushJobEnabled;
   }
 
   @Override
   public void setSchemaAutoRegisterFromPushJobEnabled(boolean value) {
-    this.storeProperties.schemaAutoRegisteFromPushJobEnabled = value;
+    this.storeProperties.schemaAutoRegisterFromPushJobEnabled = value;
   }
 
   @Override
