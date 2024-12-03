@@ -144,14 +144,10 @@ public class DaVinciClientTest {
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
-  private File inputDir;
-  private String inputDirPath;
 
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    inputDir = getTempDataDirectory();
-    inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
@@ -1616,6 +1612,8 @@ public class DaVinciClientTest {
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
+    File inputDir = getTempDataDirectory();
+
     Runnable writeAvroFileRunnable = () -> {
       try {
         writeSimpleAvroFileWithIntToStringSchema(inputDir);
@@ -1632,7 +1630,8 @@ public class DaVinciClientTest {
         chunkingEnabled,
         compressionStrategy,
         writeAvroFileRunnable,
-        valueSchema);
+        valueSchema,
+        inputDir);
   }
 
   /*
@@ -1649,6 +1648,9 @@ public class DaVinciClientTest {
       int numKeys) {
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
     Consumer<Properties> propertiesConsumer = properties -> {};
+
+    File inputDir = getTempDataDirectory();
+
     Runnable writeAvroFileRunnable = () -> {
       try {
         writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
@@ -1665,7 +1667,8 @@ public class DaVinciClientTest {
         chunkingEnabled,
         compressionStrategy,
         writeAvroFileRunnable,
-        valueSchema);
+        valueSchema,
+        inputDir);
   }
 
   /*
@@ -1681,6 +1684,8 @@ public class DaVinciClientTest {
       int numKeys) {
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
     Consumer<Properties> propertiesConsumer = properties -> {};
+
+    File inputDir = getTempDataDirectory();
     Runnable writeAvroFileRunnable = () -> {
       try {
         writeSimpleAvroFileWithIntToIntSchema(inputDir, numKeys);
@@ -1697,7 +1702,8 @@ public class DaVinciClientTest {
         chunkingEnabled,
         compressionStrategy,
         writeAvroFileRunnable,
-        valueSchema);
+        valueSchema,
+        inputDir);
   }
 
   private void setUpStore(
@@ -1708,11 +1714,13 @@ public class DaVinciClientTest {
       boolean chunkingEnabled,
       CompressionStrategy compressionStrategy,
       Runnable writeAvroFileRunnable,
-      String valueSchema) {
+      String valueSchema,
+      File inputDir) {
     // Produce input data.
     writeAvroFileRunnable.run();
 
     // Setup VPJ job properties.
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
     propertiesConsumer.accept(vpjProperties);
     // Create & update store for test.

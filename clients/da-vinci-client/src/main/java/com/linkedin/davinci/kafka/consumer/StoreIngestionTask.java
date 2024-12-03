@@ -3562,7 +3562,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-
         if (metricsEnabled && recordLevelMetricEnabled.get() && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
           // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
