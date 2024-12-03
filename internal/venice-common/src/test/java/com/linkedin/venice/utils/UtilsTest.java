@@ -9,16 +9,12 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-<<<<<<< HEAD
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-=======
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
->>>>>>> 3fc9c6139 (remove logging; improvement)
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
