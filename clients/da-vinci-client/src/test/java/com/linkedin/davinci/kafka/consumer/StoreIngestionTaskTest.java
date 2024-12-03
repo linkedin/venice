@@ -3703,6 +3703,25 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
     verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
+
+    Schema schema1 = Schema.parse(
+        "{" + "\"fields\": ["
+            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+            + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
+            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
+    Schema schema2 = Schema.parse(
+        "{" + "\"fields\": ["
+            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+            + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
+            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
+    doReturn(true).when(mockStore).isReadComputationEnabled();
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(anyString(), anyInt());
+    SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
+    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema1);
+    doReturn(schemaEntry1).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
+    doReturn(Arrays.asList(schemaEntry1, schemaEntry2)).when(mockSchemaRepo).getValueSchemas(anyString());
+    storeIngestionTaskUnderTest.setValueSchemaId(2);
+    storeIngestionTaskUnderTest.warmupSchemaCache(mockStore);
   }
 
   @Test(dataProvider = "aaConfigProvider")

@@ -4109,11 +4109,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LOGGER.info("Replica: {} is ready to serve", partitionConsumptionState.getReplicaId());
   }
 
+  // test only
+  void setValueSchemaId(int id) {
+    this.valueSchemaId = id;
+  }
+
   /**
    * Try to warm-up the schema repo cache before reporting completion as new value schema could cause latency degradation
    * while trying to compile it in the read-path.
    */
-  private void warmupSchemaCache(Store store) {
+  void warmupSchemaCache(Store store) {
     if (!store.isReadComputationEnabled()) {
       return;
     }
