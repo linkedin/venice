@@ -72,7 +72,7 @@ public class BlobTransferUtils {
     // Calculate total size of all files in the directory
     long totalSizeInBytes = getTotalSizeOfFiles(partitionDir);
     // Convert bytes to MB
-    double totalSizeInMB = totalSizeInBytes / (1024.0 * 1024.0);
+    double totalSizeInMB = totalSizeInBytes / (1000.0 * 1000.0);
     // Calculate throughput in MB/sec
     double throughput = totalSizeInMB / transferTimeInSec;
     return throughput;
