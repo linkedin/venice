@@ -2301,7 +2301,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.storeName = storeName;
       setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
 
-      boolean isUpdateForStoreMigration = storeMigration.isPresent() && storeMigration.get();
+      boolean isUpdateForStoreMigration = storeMigration.orElse(false);
       if (!isUpdateForStoreMigration && !currStore.isHybrid()
           && (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent())) {
         // Today target colo pushjob cannot handle hybrid stores, so if a batch push is running, fail the request
