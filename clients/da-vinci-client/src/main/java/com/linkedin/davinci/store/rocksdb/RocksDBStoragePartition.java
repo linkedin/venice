@@ -412,6 +412,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         options.setBlobFileSize(rocksDBServerConfig.getBlobFileSizeInBytes());
         options.setBlobGarbageCollectionAgeCutoff(rocksDBServerConfig.getBlobGarbageCollectionAgeCutOff());
         options.setBlobGarbageCollectionForceThreshold(rocksDBServerConfig.getBlobGarbageCollectionForceThreshold());
+        options.setBlobFileStartingLevel(rocksDBServerConfig.getBlobFileStartingLevel());
       }
     }
 
