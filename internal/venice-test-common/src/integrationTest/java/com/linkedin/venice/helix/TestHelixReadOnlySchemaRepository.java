@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
+import static java.util.Comparator.*;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -15,7 +16,9 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -150,6 +153,15 @@ public class TestHelixReadOnlySchemaRepository {
         3,
         TimeUnit.SECONDS,
         () -> schemaRORepo.getValueSchemas(storeName).size() == 2);
+
+    List<SchemaEntry> schemaEntries = new ArrayList<>(schemaRORepo.getValueSchemas(storeName));
+
+    schemaEntries.sort(comparingInt(SchemaEntry::getId));
+    for (SchemaEntry entry: schemaEntries) {
+      if (entry.getId() > 3) {
+        break;
+      }
+    }
     SchemaEntry valueSchema1 = schemaRORepo.getValueSchema(storeName, 1);
     Assert.assertNotNull(valueSchema1);
     Assert.assertEquals(valueSchema1.getSchema().toString(), Schema.parse(valueSchemaStr1).toString());

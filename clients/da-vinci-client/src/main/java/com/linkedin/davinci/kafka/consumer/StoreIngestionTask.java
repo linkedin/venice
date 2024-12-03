@@ -14,6 +14,7 @@ import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
+import static java.util.Comparator.*;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -4128,18 +4129,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     int numSchemaToGenerate = serverConfig.getNumSchemaFastClassWarmup();
     long warmUpTimeLimit = serverConfig.getFastClassSchemaWarmupTimeout();
-    int endSchemaId = numSchemaToGenerate >= valueSchemaId ? 1 : valueSchemaId - numSchemaToGenerate;
     Schema writerSchema = schemaRepository.getValueSchema(storeName, valueSchemaId).getSchema();
-    Set<Schema> schemaSet = new HashSet<>();
-
-    for (int i = valueSchemaId; i >= endSchemaId; i--) {
-      schemaSet.add(schemaRepository.getValueSchema(storeName, i).getSchema());
-    }
-    if (store.getLatestSuperSetValueSchemaId() > 0) {
-      schemaSet.add(schemaRepository.getValueSchema(storeName, store.getLatestSuperSetValueSchemaId()).getSchema());
-    }
-    for (Schema schema: schemaSet) {
-      FastSerializerDeserializerFactory.cacheFastAvroGenericDeserializer(writerSchema, schema, warmUpTimeLimit);
+    List<SchemaEntry> schemaEntries = new ArrayList<>(schemaRepository.getValueSchemas(storeName));
+    schemaEntries.sort(comparingInt(SchemaEntry::getId).reversed());
+    // Try to warm the schema cache by generating last `getNumSchemaFastClassWarmup` schemas.
+    int schemaGenerated = 0;
+    for (SchemaEntry schemaEntry: schemaEntries) {
+      if (schemaGenerated > numSchemaToGenerate) {
+        break;
+      }
+      schemaGenerated++;
+      FastSerializerDeserializerFactory
+          .cacheFastAvroGenericDeserializer(writerSchema, schemaEntry.getSchema(), warmUpTimeLimit);
     }
   }
 
