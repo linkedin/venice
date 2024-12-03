@@ -3533,7 +3533,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void safeDeleteRTTopic(String clusterName, String storeName) {
     if (isRTTopicDeletionPermittedByAllControllers(clusterName, storeName)) {
-      deleteRealTtimeTopic(clusterName, storeName);
+      String rtTopicToDelete = Version.composeRealTimeTopic(storeName);
+      deleteRTTopicFromAllFabrics(rtTopicToDelete, clusterName);
+    }
+    // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
+    // delete it.
+    String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+    if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
+      deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, clusterName);
     }
   }
 
@@ -3542,7 +3549,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // to see if any version is still using RT before deleting the RT.
     // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
-    // String storeName = store.getName();
     String rtTopicName = Version.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
@@ -3567,19 +3573,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return true;
   }
 
-  private void deleteRealTtimeTopic(String clusterName, String storeName) {
+  private void deleteRTTopicFromAllFabrics(String topic, String clusterName) {
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
-    String rtTopicToDelete = Version.composeRealTimeTopic(storeName);
-    deleteRTTopicFromAllFabrics(rtTopicToDelete, controllerClientMap);
-    // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
-    // delete it.
-    String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
-    if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
-      deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, controllerClientMap);
-    }
-  }
-
-  private void deleteRTTopicFromAllFabrics(String topic, Map<String, ControllerClient> controllerClientMap) {
     truncateKafkaTopic(topic);
     for (ControllerClient controllerClient: controllerClientMap.values()) {
       ControllerResponse deleteResponse = controllerClient.deleteKafkaTopic(topic);
