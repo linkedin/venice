@@ -3717,7 +3717,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockStore).isReadComputationEnabled();
     doReturn(true).when(mockSchemaRepo).hasValueSchema(anyString(), anyInt());
     SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
-    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema1);
+    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema2);
     doReturn(schemaEntry1).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
     doReturn(Arrays.asList(schemaEntry1, schemaEntry2)).when(mockSchemaRepo).getValueSchemas(anyString());
     storeIngestionTaskUnderTest.setValueSchemaId(2);
