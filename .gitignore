@@ -4,8 +4,9 @@
 *.iws
 *.log
 *.project
-*.swp
+*a.swp
 *.class
+*.classpath
 *.jar
 .gradle
 .idea

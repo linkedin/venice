@@ -154,7 +154,6 @@ public abstract class NativeMetadataRepository
     return null;
   }
 
-  // TODO PRANAV getStoreOrThrow
   @Override
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
     Store store = subscribedStoreMap.get(storeName);

@@ -12,6 +12,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -24,6 +25,8 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.utils.HelixUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -157,7 +160,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       checkStore(storeName, store);
 
       // Store Properties
-      StoreProperties storeProperties = store.getStoreProperties();
+      StoreProperties storeProperties = ((ReadOnlyStore) store).getStoreProperties();
 
       // Key Schemas
       Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
@@ -186,7 +189,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       // StoreMetaValue
       StoreMetaValue storeMetaValue = new StoreMetaValue();
       storeMetaValue.setTimestamp(System.currentTimeMillis());
-      storeMetaValue.setStoreProperties(storeProperties); // TODO from ReadOnlyStore delegate
+      storeMetaValue.setStoreProperties(storeProperties);
       storeMetaValue.setStoreKeySchemas(storeKeySchemas);
       storeMetaValue.setStoreValueSchemas(storeValueSchemas);
       storeMetaValue.setStoreValueSchemaIdsWrittenPerStoreVersion(idsWrittenPerStoreVersion);
@@ -204,6 +207,17 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       LOGGER.warn("Failed to populate request based metadata by client for store: {}.", storeName);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e.getMessage());
+      response.setError(true);
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount();
+    } catch (Exception e) {
+      StringWriter sw = new StringWriter();
+      try (PrintWriter pw = new PrintWriter(sw)) {
+        e.printStackTrace(pw);
+      }
+      String trace = sw.toString();
+      LOGGER.warn("Failed to populate request based metadata by client for store: {}.", storeName);
+      response.setMessage(
+          "Failed to populate metadata by client for store: " + storeName + " due to: " + e.toString() + "\n" + trace);
       response.setError(true);
       serverMetadataServiceStats.recordRequestBasedMetadataFailureCount();
     }

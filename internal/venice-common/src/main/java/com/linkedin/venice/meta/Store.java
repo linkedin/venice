@@ -3,7 +3,6 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
-import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -104,8 +103,6 @@ public interface Store {
   PartitionerConfig getPartitionerConfig();
 
   void setPartitionerConfig(PartitionerConfig value);
-
-  StoreProperties getStoreProperties();
 
   boolean isEnableWrites();
 

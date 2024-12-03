@@ -844,7 +844,6 @@ public class ReadOnlyStore implements Store {
     throw new UnsupportedOperationException();
   }
 
-  @Override
   public StoreProperties getStoreProperties() {
     StoreProperties storeProperties = new StoreProperties();
 
@@ -894,28 +893,13 @@ public class ReadOnlyStore implements Store {
     storeProperties.setReadQuotaInCU(getReadQuotaInCU());
 
     // Hybrid Config
-    StoreHybridConfig storeHybridConfig = (StoreHybridConfig) getHybridStoreConfig();
-    storeProperties.setHybridConfig(storeHybridConfig);
-    // TODO PRANAV
-    // HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
-    // storeHybridConfig.rewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
-    // storeHybridConfig.offsetLagThresholdToGoOnline = hybridStoreConfig.getOffsetLagThresholdToGoOnline();
-    // storeHybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds =
-    // hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
-    // storeHybridConfig.dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy().getValue();
-    // storeHybridConfig.bufferReplayPolicy = hybridStoreConfig.getBufferReplayPolicy().getValue();
+    storeProperties.setHybridConfig(convertHybridStoreConfig(getHybridStoreConfig()));
 
     // View Configs
     Map<String, ViewConfig> viewConfigs = getViewConfigs();
     Map<CharSequence, StoreViewConfig> storeViewConfigs = new HashMap<>();
     for (Map.Entry<String, ViewConfig> entry: viewConfigs.entrySet()) {
       storeViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
-      // TODO PRANAV
-      // ViewConfig viewConfig = entry.getValue();
-      // StoreViewConfig storeViewConfig = new StoreViewConfig();
-      // storeViewConfig.setViewParameters(viewConfig.dataModel().getViewParameters()); // TODO PRANAV correct field?
-      // storeViewConfig.setViewClassName(viewConfig.getViewClassName());
-      // storeViewConfigs.put(entry.getKey(), storeViewConfig);
     }
     storeProperties.setViews(storeViewConfigs);
 
@@ -986,22 +970,15 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetadataSystemStoreEnabled());
 
     // ETL Store Config
-    // TODO PRANAV
-    // ETLStoreConfig etlStoreConfig = getEtlStoreConfig();
-    // StoreETLConfig storeETLConfig = new StoreETLConfig();
-    // storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
-    // storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
-    // storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
-    storeProperties.setEtlConfig((StoreETLConfig) getEtlStoreConfig());
+    ETLStoreConfig etlStoreConfig = getEtlStoreConfig();
+    StoreETLConfig storeETLConfig = new StoreETLConfig();
+    storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
+    storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
+    storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+    storeProperties.setEtlConfig(storeETLConfig);
 
     // Partitioner Config
-    // TODO PRANAV
-    // PartitionerConfig partitionerConfig = getPartitionerConfig();
-    // StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
-    // storePartitionerConfig.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
-    // storePartitionerConfig.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
-    // storePartitionerConfig.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());
-    storeProperties.setPartitionerConfig((StorePartitionerConfig) getPartitionerConfig());
+    storeProperties.setPartitionerConfig(convertPartitionerConfig(getPartitionerConfig()));
 
     // TODO PRANAV Incremental Push Policy
     // storeProperties.setIncrementalPushPolicy(IncrementalPushPolicy());
@@ -1024,7 +1001,7 @@ public class ReadOnlyStore implements Store {
     // DaVinci Push Status Store Enabled
     storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
 
-    // Store Meta System Store Enabled TODO PRANAV duplicate field?
+    // Store Meta System Store Enabled
     storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
 
     // ActiveActive Replication Enabled
@@ -1052,46 +1029,7 @@ public class ReadOnlyStore implements Store {
     List<Version> versions = getVersions();
     List<StoreVersion> storeVersions = new ArrayList<>();
     for (Version version: versions) {
-      StoreVersion storeVersion = new StoreVersion();
-
-      storeVersion.setStoreName(version.getStoreName());
-      storeVersion.setNumber(version.getNumber());
-      storeVersion.setCreatedTime(version.getCreatedTime());
-      storeVersion.setStatus(version.getStatus().getValue());
-      storeVersion.setPushJobId(version.getPushJobId());
-      storeVersion.setCompressionStrategy(version.getCompressionStrategy().getValue());
-      storeVersion.setLeaderFollowerModelEnabled(version.isLeaderFollowerModelEnabled());
-      storeVersion.setNativeReplicationEnabled(version.isNativeReplicationEnabled());
-      storeVersion.setPushStreamSourceAddress(version.getPushStreamSourceAddress());
-      // storeVersion.setBufferReplayEnabledForHybrid(); TODO PRANAV
-      storeVersion.setChunkingEnabled(version.isChunkingEnabled());
-      storeVersion.setRmdChunkingEnabled(version.isRmdChunkingEnabled());
-      storeVersion.setPushType(version.getPushType().getValue());
-      storeVersion.setPartitionCount(version.getPartitionCount());
-      storeVersion.setPartitionerConfig((StorePartitionerConfig) version.getPartitionerConfig());
-      storeVersion.setIncrementalPushPolicy(version.dataModel().getIncrementalPushPolicy()); // TODO PRANAV correct
-                                                                                             // field?
-      storeVersion.setReplicationFactor(version.getReplicationFactor());
-      storeVersion.setNativeReplicationSourceFabric(version.getNativeReplicationSourceFabric());
-      storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
-      storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
-      storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
-      storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
-      storeVersion.setHybridConfig((StoreHybridConfig) version.getHybridStoreConfig());
-      storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
-      storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
-      storeVersion.setTimestampMetadataVersionId(version.getTimestampMetadataVersionId());
-      storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
-      storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
-      storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
-      Map<String, ViewConfig> versionViewConfigs = version.getViewConfigs();
-      Map<String, StoreViewConfig> versionStoreViewConfigs = new HashMap<>();
-      for (Map.Entry<String, ViewConfig> entry: versionViewConfigs.entrySet()) {
-        versionStoreViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
-      }
-      storeVersion.setViews(versionStoreViewConfigs);
-
-      storeVersions.add(storeVersion);
+      storeVersions.add(convertVersion(version));
     }
     storeProperties.setVersions(storeVersions);
 
@@ -1099,16 +1037,27 @@ public class ReadOnlyStore implements Store {
     Map<String, SystemStoreAttributes> systemStoreAttributesMap = getSystemStores();
     Map<CharSequence, SystemStoreProperties> systemStorePropertiesMap = new HashMap<>();
     for (Map.Entry<String, SystemStoreAttributes> entry: systemStoreAttributesMap.entrySet()) {
-      systemStorePropertiesMap.put(entry.getKey(), (SystemStoreProperties) entry.getValue());
-      // TODO PRANAV
-      // SystemStoreAttributes systemStoreAttributes = entry.getValue();
-      // SystemStoreProperties systemStoreProperties = new SystemStoreProperties();
-      // systemStoreProperties.setCurrentVersion(systemStoreAttributes.getCurrentVersion());
-      // systemStoreProperties.setVersions(systemStoreAttributes.getVersions()); // TODO PRANAV make helper Version ->
-      // StoreVersion
-      // systemStoreProperties.setLargestUsedVersionNumber(systemStoreAttributes.getLargestUsedVersionNumber());
-      // systemStoreProperties.setLatestVersionPromoteToCurrentTimestamp(systemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp());
-      // systemStorePropertiesMap.put(entry.getKey(), systemStoreProperties);
+      SystemStoreAttributes systemStoreAttributes = entry.getValue();
+      SystemStoreProperties systemStoreProperties = new SystemStoreProperties();
+
+      // Current Version
+      systemStoreProperties.setCurrentVersion(systemStoreAttributes.getCurrentVersion());
+      // Largest Used Version Number
+      systemStoreProperties.setLargestUsedVersionNumber(systemStoreAttributes.getLargestUsedVersionNumber());
+
+      // Versions
+      List<Version> systemStoreVersions = systemStoreAttributes.getVersions();
+      List<StoreVersion> systemStorePropertiesVersions = new ArrayList<>();
+      for (Version version: systemStoreVersions) {
+        systemStorePropertiesVersions.add(convertVersion(version));
+      }
+      systemStoreProperties.setVersions(systemStorePropertiesVersions);
+
+      // Latest Version Promote to Current Timestamp
+      systemStoreProperties
+          .setLatestVersionPromoteToCurrentTimestamp(systemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp());
+
+      systemStorePropertiesMap.put(entry.getKey(), systemStoreProperties);
     }
     storeProperties.setSystemStores(systemStorePropertiesMap);
 
@@ -1728,5 +1677,152 @@ public class ReadOnlyStore implements Store {
     }
     ReadOnlyStore store = (ReadOnlyStore) o;
     return this.delegate.equals(store.delegate);
+  }
+
+  private StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
+    StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
+
+    // Partitioner Class
+    storePartitionerConfig.setPartitionerClass(partitionerConfig.getPartitionerClass());
+
+    // Partitioner Params
+    Map<CharSequence, CharSequence> storePartitionerConfigParams = new HashMap<>();
+    Map<String, String> partitionerConfigParam = partitionerConfig.getPartitionerParams();
+    for (Map.Entry<String, String> entry: partitionerConfigParam.entrySet()) {
+      storePartitionerConfigParams.put(entry.getKey(), entry.getValue());
+    }
+    storePartitionerConfig.setPartitionerParams(storePartitionerConfigParams);
+
+    // Amplification Factor
+    storePartitionerConfig.setAmplificationFactor(partitionerConfig.getAmplificationFactor());
+
+    return storePartitionerConfig;
+  }
+
+  private StoreVersion convertVersion(Version version) {
+    StoreVersion storeVersion = new StoreVersion();
+
+    // Store Name
+    storeVersion.setStoreName(version.getStoreName());
+
+    // Number
+    storeVersion.setNumber(version.getNumber());
+
+    // Created Time
+    storeVersion.setCreatedTime(version.getCreatedTime());
+
+    // Status
+    storeVersion.setStatus(version.getStatus().getValue());
+
+    // Push Job ID
+    storeVersion.setPushJobId(version.getPushJobId());
+
+    // Compression Strategy
+    storeVersion.setCompressionStrategy(version.getCompressionStrategy().getValue());
+
+    // Leader Follower Model Enabled
+    storeVersion.setLeaderFollowerModelEnabled(version.isLeaderFollowerModelEnabled());
+
+    // Native Replication Enabled
+    storeVersion.setNativeReplicationEnabled(version.isNativeReplicationEnabled());
+
+    // Push Stream Source Address
+    storeVersion.setPushStreamSourceAddress(version.getPushStreamSourceAddress());
+
+    // Buffer Replay Enabled for Hybrid
+    // storeVersion.setBufferReplayEnabledForHybrid(); TODO PRANAV
+
+    // Chunking Enabled
+    storeVersion.setChunkingEnabled(version.isChunkingEnabled());
+
+    // Rmd Chunking Enabled
+    storeVersion.setRmdChunkingEnabled(version.isRmdChunkingEnabled());
+
+    // Push Type
+    storeVersion.setPushType(version.getPushType().getValue());
+
+    // Partition Count
+    storeVersion.setPartitionCount(version.getPartitionCount());
+
+    // Partitioner Config
+    storeVersion.setPartitionerConfig(convertPartitionerConfig(version.getPartitionerConfig()));
+
+    // Incremental Push Policy
+    // storeVersion.setIncrementalPushPolicy(version.getIncrementalPushPolicy()); TODO PRANAV
+
+    // Replication Factor
+    storeVersion.setReplicationFactor(version.getReplicationFactor());
+
+    // Native Replication Source Fabric
+    storeVersion.setNativeReplicationSourceFabric(version.getNativeReplicationSourceFabric());
+
+    // Incremental Push Enabled
+    storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
+
+    // Seperate Realtime Topic Enabled
+    storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
+
+    // Block Transfer Enabled
+    storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
+
+    // Use Version Level Incremental Push Enabled
+    storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
+
+    // Hybrid Config
+    storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
+
+    // Use Version Level Hybrid Config
+    storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
+
+    // ActiveActive Replication Enabled
+    storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
+
+    // Timestamp Metadata Version ID
+    storeVersion.setTimestampMetadataVersionId(version.getTimestampMetadataVersionId());
+
+    // Data Recovery Config
+    storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
+
+    // Defer Version Swap
+    storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
+
+    // Repush Source Version
+    storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
+
+    // Views
+    Map<String, ViewConfig> versionViewConfigs = version.getViewConfigs();
+    Map<String, StoreViewConfig> versionStoreViewConfigs = new HashMap<>();
+    for (Map.Entry<String, ViewConfig> entry: versionViewConfigs.entrySet()) {
+      versionStoreViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
+    }
+    storeVersion.setViews(versionStoreViewConfigs);
+
+    return storeVersion;
+  }
+
+  private StoreHybridConfig convertHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+    if (hybridStoreConfig == null) {
+      return null;
+    }
+
+    StoreHybridConfig storeHybridConfig = new StoreHybridConfig();
+
+    // Rewind Time in Seconds
+    storeHybridConfig.setRewindTimeInSeconds(hybridStoreConfig.getRewindTimeInSeconds());
+
+    // Offset Lag Threshold to go Online
+    storeHybridConfig.setOffsetLagThresholdToGoOnline(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
+
+    // Producer Timestamp Lag Threshold To Go Online in Seconds
+    storeHybridConfig.setProducerTimestampLagThresholdToGoOnlineInSeconds(
+        hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
+
+    // Data Replication Policy
+    storeHybridConfig.setDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy().getValue());
+
+    // Buffer Replay Policy
+    storeHybridConfig.setBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy().getValue());
+
+    return storeHybridConfig;
   }
 }
