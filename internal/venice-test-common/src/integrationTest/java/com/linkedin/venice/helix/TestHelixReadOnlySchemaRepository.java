@@ -1,7 +1,6 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
-import static java.util.Comparator.*;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
