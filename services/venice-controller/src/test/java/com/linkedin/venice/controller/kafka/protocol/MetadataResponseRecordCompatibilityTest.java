@@ -23,9 +23,8 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
     Map<Integer, Schema> metadataResponseRecordSchemaMap = new HashMap<>();
     try {
       for (int i = 1; i <= AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(); i++) {
-        metadataResponseRecordSchemaMap.put(
-            i,
-            Utils.getSchemaFromResource("avro/MetadataResponseRecord/v" + i + "/MetadataByClientResponseRecord.avsc"));
+        metadataResponseRecordSchemaMap
+            .put(i, Utils.getSchemaFromResource("avro/MetadataResponseRecord/v" + i + "/MetadataResponseRecord.avsc"));
       }
       return metadataResponseRecordSchemaMap;
     } catch (IOException e) {

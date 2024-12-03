@@ -4,8 +4,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.MetadataByClientResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.MetadataWithStorePropertiesResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
@@ -364,7 +364,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         MetadataFetchRequest request = (MetadataFetchRequest) message;
         String clientName = request.getClientName().isPresent() ? request.getClientName().get() : "FC";
         if (clientName.equals("DVC")) { // TODO ENUM, is there on already?
-          MetadataByClientResponse response = handleMetadataByClientFetchRequest(request); // TODO rename "ByClient"
+          MetadataWithStorePropertiesResponse response = handleMetadataWithStorePropertiesFetchRequest(request);
           context.writeAndFlush(response);
         } else {
           MetadataResponse response = handleMetadataFetchRequest(request);
@@ -789,8 +789,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return readMetadataRetriever.getMetadata(request.getStoreName());
   }
 
-  private MetadataByClientResponse handleMetadataByClientFetchRequest(MetadataFetchRequest request) {
-    return readMetadataRetriever.getMetadataByClient(request.getStoreName());
+  private MetadataWithStorePropertiesResponse handleMetadataWithStorePropertiesFetchRequest(
+      MetadataFetchRequest request) {
+    return readMetadataRetriever.getMetadataWithStoreProperties(request.getStoreName());
   }
 
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {

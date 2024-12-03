@@ -87,8 +87,8 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.metadata.response.MetadataByClientResponseRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.MetadataWithStorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -3247,10 +3247,11 @@ public class AdminTool {
     Schema writerSchema;
 
     if (clientName.isPresent()) {
-      if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_BY_CLIENT_RESPONSE.getCurrentProtocolVersion()) {
+      if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_WITH_STORE_PROPERTIES_RESPONSE
+          .getCurrentProtocolVersion()) {
         SchemaResponse schemaResponse = controllerClientSupplier.get()
             .getValueSchema(
-                AvroProtocolDefinition.SERVER_METADATA_BY_CLIENT_RESPONSE.getSystemStoreName(),
+                AvroProtocolDefinition.SERVER_METADATA_WITH_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
                 writerSchemaId);
         if (schemaResponse.isError()) {
           throw new VeniceException(
@@ -3259,7 +3260,7 @@ public class AdminTool {
         }
         writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
       } else {
-        writerSchema = MetadataByClientResponseRecord.SCHEMA$;
+        writerSchema = MetadataWithStorePropertiesResponseRecord.SCHEMA$;
       }
     } else {
       if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {

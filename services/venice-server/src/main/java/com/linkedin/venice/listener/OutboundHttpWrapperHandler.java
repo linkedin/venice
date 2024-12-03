@@ -9,8 +9,8 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.MetadataByClientResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.MetadataWithStorePropertiesResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.HttpConstants;
@@ -124,13 +124,14 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           contentType = HttpConstants.TEXT_PLAIN;
           responseStatus = INTERNAL_SERVER_ERROR;
         }
-      } else if (msg instanceof MetadataByClientResponse) {
-        MetadataByClientResponse metadataByClientResponse = (MetadataByClientResponse) msg;
-        if (!metadataByClientResponse.isError()) {
-          body = metadataByClientResponse.getResponseBody();
-          schemaIdHeader = metadataByClientResponse.getResponseSchemaIdHeader();
+      } else if (msg instanceof MetadataWithStorePropertiesResponse) {
+        MetadataWithStorePropertiesResponse metadataWithStorePropertiesResponse =
+            (MetadataWithStorePropertiesResponse) msg;
+        if (!metadataWithStorePropertiesResponse.isError()) {
+          body = metadataWithStorePropertiesResponse.getResponseBody();
+          schemaIdHeader = metadataWithStorePropertiesResponse.getResponseSchemaIdHeader();
         } else {
-          String errorMessage = metadataByClientResponse.getMessage();
+          String errorMessage = metadataWithStorePropertiesResponse.getMessage();
           if (errorMessage == null) {
             errorMessage = "Unknown error";
           }

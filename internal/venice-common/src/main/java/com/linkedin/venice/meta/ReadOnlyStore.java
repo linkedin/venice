@@ -958,7 +958,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setBackupStrategy(getBackupStrategy().getValue());
 
     // Schema Auto Register From Push Job Enabled
-    storeProperties.setSchemaAutoRegisterFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
+    storeProperties.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
 
     // Latest Super Set Value Schema Id
     storeProperties.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
@@ -1042,6 +1042,7 @@ public class ReadOnlyStore implements Store {
 
       // Current Version
       systemStoreProperties.setCurrentVersion(systemStoreAttributes.getCurrentVersion());
+
       // Largest Used Version Number
       systemStoreProperties.setLargestUsedVersionNumber(systemStoreAttributes.getLargestUsedVersionNumber());
 
@@ -1686,11 +1687,8 @@ public class ReadOnlyStore implements Store {
     storePartitionerConfig.setPartitionerClass(partitionerConfig.getPartitionerClass());
 
     // Partitioner Params
-    Map<CharSequence, CharSequence> storePartitionerConfigParams = new HashMap<>();
     Map<String, String> partitionerConfigParam = partitionerConfig.getPartitionerParams();
-    for (Map.Entry<String, String> entry: partitionerConfigParam.entrySet()) {
-      storePartitionerConfigParams.put(entry.getKey(), entry.getValue());
-    }
+    Map<CharSequence, CharSequence> storePartitionerConfigParams = new HashMap<>(partitionerConfigParam);
     storePartitionerConfig.setPartitionerParams(storePartitionerConfigParams);
 
     // Amplification Factor
@@ -1778,7 +1776,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
 
     // Timestamp Metadata Version ID
-    storeVersion.setTimestampMetadataVersionId(version.getTimestampMetadataVersionId());
+    storeVersion.setTimestampMetadataVersionId(version.getRmdVersionId());
 
     // Data Recovery Config
     storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());

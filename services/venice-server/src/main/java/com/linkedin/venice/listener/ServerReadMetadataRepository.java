@@ -1,7 +1,7 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.davinci.listener.response.MetadataByClientResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.MetadataWithStorePropertiesResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.stats.ServerMetadataServiceStats;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -151,9 +151,9 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
    * fetch request.
    */
   @Override
-  public MetadataByClientResponse getMetadataByClient(String storeName) {
+  public MetadataWithStorePropertiesResponse getMetadataWithStoreProperties(String storeName) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
-    MetadataByClientResponse response = new MetadataByClientResponse();
+    MetadataWithStorePropertiesResponse response = new MetadataWithStorePropertiesResponse();
 
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);

@@ -15,8 +15,8 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.metadata.response.MetadataByClientResponseRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.MetadataWithStorePropertiesResponseRecord;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
@@ -174,7 +174,7 @@ public enum AvroProtocolDefinition {
   /**
    * Response record for metadata by client fetch request.
    */
-  SERVER_METADATA_BY_CLIENT_RESPONSE(1, MetadataByClientResponseRecord.class),
+  SERVER_METADATA_WITH_STORE_PROPERTIES_RESPONSE(1, MetadataWithStorePropertiesResponseRecord.class),
 
   /**
    * Value schema for change capture event.

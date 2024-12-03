@@ -1,6 +1,6 @@
 {
   "type": "record",
-  "name": "MetadataByClientResponseRecord",
+  "name": "MetadataWithStorePropertiesResponseRecord",
   "namespace": "com.linkedin.venice.metadata.response",
   "doc": "This record will store metadata",
   "fields": [
