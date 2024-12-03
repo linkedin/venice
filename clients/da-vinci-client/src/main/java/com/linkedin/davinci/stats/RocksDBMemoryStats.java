@@ -55,7 +55,11 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       "rocksdb.actual-delayed-write-rate",
       "rocksdb.block-cache-capacity",
       "rocksdb.block-cache-pinned-usage",
-      "rocksdb.block-cache-usage");
+      "rocksdb.block-cache-usage",
+      "rocksdb.num-blob-files",
+      "rocksdb.total-blob-file-size",
+      "rocksdb.live-blob-file-size",
+      "rocksdb.live-blob-file-garbage-size");
 
   // metrics emitted on a per instance basis need only be collected once, not aggregated
   private static final Set<String> INSTANCE_METRIC_DOMAINS = Collections.unmodifiableSet(
