@@ -294,7 +294,7 @@ public enum Arg {
   ),
   DAVINCI_HEARTBEAT_REPORTED(
       "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is bootstrapping and sending heartbeats"
-  );
+  ), STORE_MIGRATION("store-migration", "sm", true, "Enable store migration store config");
 
   private final String argName;
   private final String first;
