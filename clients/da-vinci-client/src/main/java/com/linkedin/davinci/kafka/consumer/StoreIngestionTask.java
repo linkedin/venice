@@ -1386,8 +1386,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Special handling for current version when encountering {@link MemoryLimitExhaustedException}.
          */
-        if ((partitionException instanceof MemoryLimitExhaustedException
-            || partitionException.getCause() instanceof MemoryLimitExhaustedException)
+        if (ExceptionUtils.recursiveClassEquals(partitionException, MemoryLimitExhaustedException.class)
             && isCurrentVersion.getAsBoolean()) {
           LOGGER.warn(
               "Encountered MemoryLimitExhaustedException, and ingestion task will try to reopen the database and"
@@ -4360,8 +4359,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         continue;
       }
       Exception partitionIngestionException = ex.getException();
-      if (partitionIngestionException instanceof MemoryLimitExhaustedException
-          || partitionIngestionException.getCause() instanceof MemoryLimitExhaustedException) {
+      if (ExceptionUtils.recursiveClassEquals(partitionIngestionException, MemoryLimitExhaustedException.class)) {
         return true;
       }
     }
