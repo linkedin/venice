@@ -1125,6 +1125,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.SEPARATE_REALTIME_TOPIC_ENABLED, p -> params.setSeparateRealTimeTopicEnabled(p), argSet);
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p), argSet);
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p), argSet);
+    booleanParam(cmd, Arg.ENABLE_STORE_MIGRATION, p -> params.setStoreMigration(p), argSet);
     integerParam(
         cmd,
         Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,

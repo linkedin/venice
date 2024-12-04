@@ -18,6 +18,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_D
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
@@ -448,10 +449,14 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public UpdateStoreQueryParams setStoreMigration(boolean migrating) {
-    return putBoolean(STORE_MIGRATION, migrating);
+    return putBoolean(STORE_MIGRATION, migrating).putBoolean(ENABLE_STORE_MIGRATION, migrating);
   }
 
   public Optional<Boolean> getStoreMigration() {
+    Optional<Boolean> storeMigration = getBoolean(ENABLE_STORE_MIGRATION);
+    if (storeMigration.isPresent()) {
+      return storeMigration;
+    }
     return getBoolean(STORE_MIGRATION);
   }
 
