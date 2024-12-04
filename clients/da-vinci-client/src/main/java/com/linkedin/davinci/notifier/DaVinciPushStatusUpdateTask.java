@@ -143,7 +143,7 @@ public class DaVinciPushStatusUpdateTask {
   public Set<Integer> getTrackedPartitions(Optional<String> incrementalPushVersion) {
     if (incrementalPushVersion.isPresent()) {
       IncrementalPushStatus incrementalPushStatus = incrementalPushVersionToStatus.get(incrementalPushVersion.get());
-      return (incrementalPushStatus == null) ? Collections.EMPTY_SET : incrementalPushStatus.partitionStatus.keySet();
+      return (incrementalPushStatus == null) ? Collections.emptySet() : incrementalPushStatus.partitionStatus.keySet();
     } else {
       return batchPushPartitionStatus.keySet();
     }
