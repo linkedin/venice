@@ -2703,6 +2703,7 @@ public abstract class StoreIngestionTaskTest {
     long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     SchemaEntry schemaEntry = new SchemaEntry(1, STRING_SCHEMA);
+    SchemaEntry schemaEntry3 = new SchemaEntry(3, STRING_SCHEMA);
 
     // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(
@@ -2712,8 +2713,7 @@ public abstract class StoreIngestionTaskTest {
           // since notifier reporting happens before offset update, it actually reports previous offsets
           verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
           // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT`
-          // for
-          // batch push job.
+          // for batch push job.
           verify(mockLogNotifier).completed(
               eq(topic),
               eq(PARTITION_FOO),
@@ -2723,11 +2723,13 @@ public abstract class StoreIngestionTaskTest {
         aaConfig);
     config.setBeforeStartingConsumption(() -> {
       Store mockStore = mock(Store.class);
+      storeIngestionTaskUnderTest.setValueSchemaId(EXISTING_SCHEMA_ID);
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(true).when(mockStore).isReadComputationEnabled();
       doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
+      doReturn(Arrays.asList(schemaEntry, schemaEntry3)).when(mockSchemaRepo).getValueSchemas(anyString());
       doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
     }).setExtraServerProperties(Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1));
     runTest(config);
@@ -3703,25 +3705,6 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
     verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
-
-    Schema schema1 = Schema.parse(
-        "{" + "\"fields\": ["
-            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
-            + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
-            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
-    Schema schema2 = Schema.parse(
-        "{" + "\"fields\": ["
-            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
-            + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
-            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
-    doReturn(true).when(mockStore).isReadComputationEnabled();
-    doReturn(true).when(mockSchemaRepo).hasValueSchema(anyString(), anyInt());
-    SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
-    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema2);
-    doReturn(schemaEntry1).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
-    doReturn(Arrays.asList(schemaEntry1, schemaEntry2)).when(mockSchemaRepo).getValueSchemas(anyString());
-    storeIngestionTaskUnderTest.setValueSchemaId(2);
-    storeIngestionTaskUnderTest.warmupSchemaCache(mockStore);
   }
 
   @Test(dataProvider = "aaConfigProvider")
