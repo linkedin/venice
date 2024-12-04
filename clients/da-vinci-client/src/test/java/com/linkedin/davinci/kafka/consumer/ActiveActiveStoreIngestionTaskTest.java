@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -12,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -130,30 +130,35 @@ public class ActiveActiveStoreIngestionTaskTest {
   @Test
   public void testHandleDeleteBeforeEOP() {
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask)
-        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isComputeFastAvroEnabled()).thenReturn(false);
+    when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        spy(new StorePartitionDataReceiver(ingestionTask, topicPartition, "dummyUrl", 0));
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.isEndOfPushReceived()).thenReturn(false);
+    when(pcs.getVeniceWriterLazyRef()).thenReturn(Lazy.of(() -> mock(VeniceWriter.class)));
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
-    KafkaKey kafkaKey = mock(KafkaKey.class);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, new byte[] { 1 });
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     when(consumerRecord.getValue()).thenReturn(kafkaValue);
     when(consumerRecord.getOffset()).thenReturn(1L);
+    when(consumerRecord.getTopicPartition()).thenReturn(topicPartition);
     kafkaValue.messageType = MessageType.DELETE.getValue();
     Delete deletePayload = new Delete();
     kafkaValue.payloadUnion = deletePayload;
+    PubSubMessageProcessedResult result =
+        new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
+    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultWrapper =
+        new PubSubMessageProcessedResultWrapper<>(consumerRecord);
+    resultWrapper.setProcessedResult(result);
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    ingestionTask.processMessageAndMaybeProduceToKafka(
-        new PubSubMessageProcessedResultWrapper<>(consumerRecord),
-        pcs,
-        0,
-        "dummyUrl",
-        0,
-        0L,
-        0L);
-    verify(ingestionTask, times(1)).produceToLocalKafka(
+    storePartitionDataReceiver.processMessageAndMaybeProduceToKafka(resultWrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    verify(storePartitionDataReceiver, times(1)).produceToLocalKafka(
         any(),
         any(),
         leaderProducedRecordContextArgumentCaptor.capture(),
@@ -319,17 +324,18 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     HostLevelIngestionStats mockHostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mockHostLevelIngestionStats);
     when(ingestionTask.getVersionIngestionStats()).thenReturn(mock(AggVersionedIngestionStats.class));
     when(ingestionTask.getVersionedDIVStats()).thenReturn(mock(AggVersionedDIVStats.class));
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
-    when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
-        .thenCallRealMethod();
-    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
-        .thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
-    doCallRealMethod().when(ingestionTask)
-        .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(testTopic), partition);
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        new StorePartitionDataReceiver(ingestionTask, topicPartition, kafkaUrl, kafkaClusterId);
+
     byte[] key = "foo".getBytes();
     byte[] updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
 
@@ -398,11 +404,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
-    ingestionTask.produceToLocalKafka(
+    storePartitionDataReceiver.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
-        ingestionTask.getProduceToTopicFunction(
+        storePartitionDataReceiver.getProduceToTopicFunction(
             partitionConsumptionState,
             updatedKeyBytes,
             updatedValueBytes,
