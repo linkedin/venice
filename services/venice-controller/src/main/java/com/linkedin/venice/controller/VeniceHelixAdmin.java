@@ -3532,15 +3532,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void safeDeleteRTTopic(String clusterName, String storeName) {
-    if (isRTTopicDeletionPermittedByAllControllers(clusterName, storeName)) {
+    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, storeName);
+    if (rtDeletionPermitted) {
       String rtTopicToDelete = Version.composeRealTimeTopic(storeName);
       deleteRTTopicFromAllFabrics(rtTopicToDelete, clusterName);
-    }
-    // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
-    // delete it.
-    String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
-    if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
-      deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, clusterName);
+      // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
+      // delete it.
+      String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+      if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
+        deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, clusterName);
+      }
     }
   }
 
