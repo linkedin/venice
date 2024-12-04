@@ -285,14 +285,14 @@ public class AdminToolE2ETest {
 
       // Update store migration status to true
       String[] adminToolArgs = new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster",
-          clusterName, "--store", storeName, "--update-store", "--store-migration", "true" };
+          clusterName, "--store", storeName, "--update-store", "--enable-store-migration", "true" };
       AdminTool.main(adminToolArgs);
       validateStoreMigrationStatus(parentControllerClient, storeName, true, "parentController");
       validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, true);
 
       // Set back status to false and validate
       adminToolArgs = new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster", clusterName,
-          "--store", storeName, "--update-store", "--store-migration", "false" };
+          "--store", storeName, "--update-store", "--enable-store-migration", "false" };
       AdminTool.main(adminToolArgs);
       validateStoreMigrationStatus(parentControllerClient, storeName, false, "parentController");
       validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, false);

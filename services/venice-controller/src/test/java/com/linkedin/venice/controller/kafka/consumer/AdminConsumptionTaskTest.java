@@ -4,6 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CO
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
@@ -14,7 +15,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -957,7 +957,7 @@ public class AdminConsumptionTaskTest {
       setStore.updatedConfigsList.add(ENABLE_WRITES);
       setStore.updatedConfigsList.add(ACCESS_CONTROLLED);
       setStore.updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-      setStore.updatedConfigsList.add(STORE_MIGRATION);
+      setStore.updatedConfigsList.add(ENABLE_STORE_MIGRATION);
       setStore.updatedConfigsList.add(WRITE_COMPUTATION_ENABLED);
       setStore.updatedConfigsList.add(READ_COMPUTATION_ENABLED);
       setStore.updatedConfigsList.add(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
