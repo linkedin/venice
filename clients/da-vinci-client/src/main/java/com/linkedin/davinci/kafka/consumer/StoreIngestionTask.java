@@ -354,6 +354,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
 
+  private Lazy<ZKHelixAdmin> zkHelixAdmin;
+
   public StoreIngestionTask(
       StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
@@ -367,7 +369,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       Queue<VeniceNotifier> notifiers,
-      String zkAddress,
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
       int port) {
     this.storeConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
@@ -535,14 +537,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
-    this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(zkAddress));
     this.hostName = Utils.getHostName() + "_" + port;
-  }
-
-  // TEST ONLY
-
-  public void setZkHelixAdmin(ZKHelixAdmin zkHelixAdmin) {
-    this.zkHelixAdmin = Lazy.of(() -> zkHelixAdmin);
+    this.zkHelixAdmin = zkHelixAdmin;
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */

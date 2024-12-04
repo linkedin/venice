@@ -79,7 +79,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private final String clusterName;
   private final String participantName;
   private final String zkAddress;
-  private StoreIngestionService ingestionService = null;
+  private final StoreIngestionService ingestionService;
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;

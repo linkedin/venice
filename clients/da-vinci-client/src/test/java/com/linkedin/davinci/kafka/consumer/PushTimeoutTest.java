@@ -79,7 +79,7 @@ public class PushTimeoutTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         122);
 
     leaderFollowerStoreIngestionTask
@@ -156,7 +156,7 @@ public class PushTimeoutTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
 
     leaderFollowerStoreIngestionTask

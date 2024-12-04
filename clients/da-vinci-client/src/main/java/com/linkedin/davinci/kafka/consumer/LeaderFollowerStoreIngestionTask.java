@@ -112,6 +112,7 @@ import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -216,7 +217,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      String zkAddress,
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
       int port) {
     super(
         storageService,
@@ -231,7 +232,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         recordTransformerFunction,
         builder.getLeaderFollowerNotifiers(),
-        zkAddress,
+        zkHelixAdmin,
         port);
     this.version = version;
     this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();

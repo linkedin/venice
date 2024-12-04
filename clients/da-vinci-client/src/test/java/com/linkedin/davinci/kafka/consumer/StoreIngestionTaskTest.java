@@ -864,10 +864,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             recordTransformerFunction,
-            "localhost",
+            Lazy.of(() -> mock(ZKHelixAdmin.class)),
             123));
-
-    storeIngestionTaskUnderTest.setZkHelixAdmin(mock(ZKHelixAdmin.class));
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -2943,7 +2941,7 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
@@ -3096,7 +3094,7 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
@@ -3317,7 +3315,7 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
 
     if (hybridConfig.equals(HYBRID) && nodeType.equals(LEADER) && isAaWCParallelProcessingEnabled()) {
@@ -3467,7 +3465,7 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
 
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
@@ -3624,7 +3622,7 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            ZOOKEEPER_ADDRESS,
+            null,
             123);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
@@ -3724,7 +3722,7 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
@@ -3800,7 +3798,7 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            ZOOKEEPER_ADDRESS,
+            null,
             123);
 
     TopicSwitch topicSwitch = new TopicSwitch();
@@ -3918,7 +3916,7 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            ZOOKEEPER_ADDRESS,
+            null,
             123));
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
@@ -4454,7 +4452,7 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        ZOOKEEPER_ADDRESS,
+        null,
         123);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
@@ -4573,7 +4571,7 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            ZOOKEEPER_ADDRESS,
+            null,
             123);
 
     ingestionTask.setPartitionConsumptionState(0, pcs);
@@ -4664,7 +4662,7 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            ZOOKEEPER_ADDRESS,
+            null,
             123);
 
     ingestionTask.setPartitionConsumptionState(0, pcs0);

@@ -75,6 +75,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -115,7 +116,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      String zkAddress,
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
       int port) {
     super(
         storageService,
@@ -129,7 +130,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerFunction,
-        zkAddress,
+        zkHelixAdmin,
         port);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();

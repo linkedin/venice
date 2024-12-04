@@ -24,12 +24,14 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 
 
 public class StoreIngestionTaskFactory {
@@ -54,7 +56,7 @@ public class StoreIngestionTaskFactory {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      String zkAddress,
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
       int portNum) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -69,7 +71,7 @@ public class StoreIngestionTaskFactory {
           isIsolatedIngestion,
           cacheBackend,
           recordTransformerFunction,
-          zkAddress,
+          zkHelixAdmin,
           portNum);
     }
     return new LeaderFollowerStoreIngestionTask(
@@ -84,7 +86,7 @@ public class StoreIngestionTaskFactory {
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerFunction,
-        zkAddress,
+        zkHelixAdmin,
         portNum);
   }
 

@@ -277,6 +277,7 @@ public class DaVinciBackend implements Closeable {
           pubSubClientsFactory,
           Optional.empty(),
           // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
+          null,
           null);
 
       ingestionService.start();
