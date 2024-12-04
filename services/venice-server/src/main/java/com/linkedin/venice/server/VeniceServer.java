@@ -11,6 +11,7 @@ import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -118,6 +119,7 @@ public class VeniceServer {
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -455,6 +457,7 @@ public class VeniceServer {
      * Initialize Blob transfer manager for Service
      */
     if (serverConfig.isBlobTransferManagerEnabled()) {
+      aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
       blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
@@ -465,8 +468,10 @@ public class VeniceServer {
           storageService.getStorageEngineRepository(),
           serverConfig.getMaxConcurrentSnapshotUser(),
           serverConfig.getSnapshotRetentionTimeInMin(),
-          serverConfig.getBlobTransferMaxTimeoutInMin());
+          serverConfig.getBlobTransferMaxTimeoutInMin(),
+          aggVersionedBlobTransferStats);
     } else {
+      aggVersionedBlobTransferStats = null;
       blobTransferManager = null;
     }
 

@@ -1,7 +1,10 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
+
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
@@ -44,6 +47,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
   protected final NettyFileTransferClient nettyClient;
+  // blob transfer stats to record all blob transfer related stats
+  protected final AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   // peer finder is responsible to find the peers that have the requested blob
   protected final BlobFinder peerFinder;
   private final String baseDir;
@@ -52,11 +57,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       P2PBlobTransferService blobTransferService,
       NettyFileTransferClient nettyClient,
       BlobFinder peerFinder,
-      String baseDir) {
+      String baseDir,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
     this.peerFinder = peerFinder;
     this.baseDir = baseDir;
+    this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
   }
 
   @Override
@@ -147,12 +154,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
             .toCompletableFuture()
             .thenAccept(inputStream -> {
               // Success case: Complete the future with the input stream
-              LOGGER.info(
-                  FETCHED_BLOB_SUCCESS_MSG,
-                  replicaId,
-                  chosenHost,
-                  Duration.between(startTime, Instant.now()).getSeconds());
+              long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
+              LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
               resultFuture.complete(inputStream);
+              // Updating the blob transfer stats with the transfer time and throughput
+              updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
             })
             .exceptionally(ex -> {
               handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
@@ -200,5 +206,35 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     blobTransferService.close();
     nettyClient.close();
     peerFinder.close();
+  }
+
+  /**
+   * Get the blob transfer stats
+   * @return the blob transfer stats
+   */
+  public AggVersionedBlobTransferStats getAggVersionedBlobTransferStats() {
+    return aggVersionedBlobTransferStats;
+  }
+
+  /**
+   * Basd on the transfer time, store name, version, and partition, update the blob transfer file receive stats
+   * @param transferTime the transfer time in seconds
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   */
+  private void updateBlobTransferFileReceiveStats(double transferTime, String storeName, int version, int partition) {
+    try {
+      double throughput = getThroughputPerPartition(baseDir, storeName, version, partition, transferTime);
+      aggVersionedBlobTransferStats.recordBlobTransferTimeInSec(storeName, version, transferTime);
+      aggVersionedBlobTransferStats.recordBlobTransferFileReceiveThroughput(storeName, version, throughput);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to update updateBlobTransferFileReceiveStats for store {} version {} partition {}",
+          storeName,
+          version,
+          partition,
+          e);
+    }
   }
 }

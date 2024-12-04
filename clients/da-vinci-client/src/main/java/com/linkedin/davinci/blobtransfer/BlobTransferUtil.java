@@ -4,6 +4,7 @@ import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
@@ -39,7 +40,8 @@ public class BlobTransferUtil {
       StorageEngineRepository storageEngineRepository,
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
-      int blobTransferMaxTimeoutInMin) {
+      int blobTransferMaxTimeoutInMin,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
     return getP2PBlobTransferManagerForDVCAndStart(
         p2pTransferPort,
         p2pTransferPort,
@@ -50,7 +52,8 @@ public class BlobTransferUtil {
         storageEngineRepository,
         maxConcurrentSnapshotUser,
         snapshotRetentionTimeInMin,
-        blobTransferMaxTimeoutInMin);
+        blobTransferMaxTimeoutInMin,
+        aggVersionedBlobTransferStats);
   }
 
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
@@ -63,7 +66,8 @@ public class BlobTransferUtil {
       StorageEngineRepository storageEngineRepository,
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
-      int blobTransferMaxTimeoutInMin) {
+      int blobTransferMaxTimeoutInMin,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -77,7 +81,8 @@ public class BlobTransferUtil {
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient),
-          baseDir);
+          baseDir,
+          aggVersionedBlobTransferStats);
       manager.start();
       return manager;
     } catch (Exception e) {
@@ -105,7 +110,8 @@ public class BlobTransferUtil {
       StorageEngineRepository storageEngineRepository,
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
-      int blobTransferMaxTimeoutInMin) {
+      int blobTransferMaxTimeoutInMin,
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -117,7 +123,8 @@ public class BlobTransferUtil {
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture),
-          baseDir);
+          baseDir,
+          aggVersionedBlobTransferStats);
       manager.start();
       return manager;
     } catch (Exception e) {

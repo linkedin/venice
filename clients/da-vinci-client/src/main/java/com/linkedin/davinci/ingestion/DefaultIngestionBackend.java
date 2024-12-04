@@ -116,6 +116,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     String storeName = store.getName();
     return blobTransferManager.get(storeName, versionNumber, partitionId).handle((inputStream, throwable) -> {
+      updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
       if (throwable != null) {
         LOGGER.error(
             "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}",
@@ -254,6 +255,30 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private void syncStoreVersionConfig(Store store, VeniceStoreVersionConfig storeConfig) {
     if (store.isBlobTransferEnabled()) {
       storeConfig.setBlobTransferEnabled(true);
+    }
+  }
+
+  /**
+   * Update the blob transfer response stats based on the blob transfer success.
+   * @param isBlobTransferSuccess true if the blob transfer is successful, false otherwise.
+   */
+  private void updateBlobTransferResponseStats(boolean isBlobTransferSuccess, String storeName, int version) {
+    if (blobTransferManager.getAggVersionedBlobTransferStats() == null) {
+      LOGGER.error(
+          "Blob transfer stats is not initialized. Skip updating blob transfer response stats for store {} version {}",
+          storeName,
+          version);
+      return;
+    }
+
+    try {
+      // Record the blob transfer request count.
+      blobTransferManager.getAggVersionedBlobTransferStats().recordBlobTransferResponsesCount(storeName, version);
+      // Record the blob transfer response based on the blob transfer status.
+      blobTransferManager.getAggVersionedBlobTransferStats()
+          .recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, version, isBlobTransferSuccess);
+    } catch (Exception e) {
+      LOGGER.error("Failed to update blob transfer response stats for store {} version {}", storeName, version, e);
     }
   }
 }

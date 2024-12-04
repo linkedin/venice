@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
@@ -49,6 +50,7 @@ public class TestNettyP2PBlobTransferManager {
   NettyP2PBlobTransferManager manager;
   StorageMetadataService storageMetadataService;
   BlobSnapshotManager blobSnapshotManager;
+  AggVersionedBlobTransferStats blobTransferStats;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
   String TEST_STORE = "test_store";
@@ -72,6 +74,7 @@ public class TestNettyP2PBlobTransferManager {
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     storageMetadataService = mock(StorageMetadataService.class);
 
+    blobTransferStats = mock(AggVersionedBlobTransferStats.class);
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     blobSnapshotManager =
@@ -82,7 +85,7 @@ public class TestNettyP2PBlobTransferManager {
     client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
     finder = mock(BlobFinder.class);
 
-    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString());
+    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);
     manager.start();
   }
 
