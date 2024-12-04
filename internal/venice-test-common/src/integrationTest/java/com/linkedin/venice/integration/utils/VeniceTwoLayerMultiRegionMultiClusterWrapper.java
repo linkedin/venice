@@ -283,7 +283,6 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
             pubSubBrokerWrapper,
             baseSecurityProtocol,
             Utils.SEPARATE_TOPIC_SUFFIX);
-        LOGGER.info("DEBUGGING MAPPING: {} {}", clusterId, mapping);
         kafkaClusterMap.put(String.valueOf(clusterId), mapping);
       }
 

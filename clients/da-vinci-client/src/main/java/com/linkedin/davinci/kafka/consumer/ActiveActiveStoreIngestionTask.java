@@ -1521,6 +1521,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         beforeProcessingRecordTimestampNs);
   }
 
+  /**
+   * This method does a few things for leader topic-partition subscription:
+   * (1) Calculate Kafka URL to leader subscribe offset map.
+   * (2) Subscribe to all the Kafka upstream.
+   * (3) Potentially sync offset to PartitionConsumptionState map if needed.
+   */
   void prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
       PartitionConsumptionState partitionConsumptionState,

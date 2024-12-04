@@ -3470,7 +3470,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * This method unsubscribes topic-partition from the input.
-   * If it is real-time topic and separate RT topic is enabled, it will also unsubscribe from it.
+   * If it is real-time topic and separate RT topic is enabled, it will also unsubscribe from separate real-time topic.
    */
   public void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
@@ -3511,6 +3511,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
+  /**
+   * This method will try to resolve actual topic-partition from input Kafka URL and subscribe to the resolved
+   * topic-partition.
+   */
   public void consumerSubscribe(
       PubSubTopic pubSubTopic,
       PartitionConsumptionState partitionConsumptionState,
@@ -3523,11 +3527,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
-    final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled()
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       return;
     }
+    final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
@@ -4490,6 +4494,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isSeparatedRealtimeTopicEnabled;
   }
 
+  /**
+   * For RT input topic with separate-RT kafka URL, this method will return topic-partition with separated-RT topic.
+   * For other case, it will return topic-partition with input topic.
+   */
   PubSubTopicPartition resolveTopicPartitionWithKafkaURL(
       PubSubTopic topic,
       PartitionConsumptionState partitionConsumptionState,
@@ -4500,6 +4508,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return pubSubTopicPartition;
   }
 
+  /**
+   * This method will return resolve topic from input Kafka URL. If it is a separated topic Kafka URL and input topic
+   * is RT topic, it will return separate RT topic, otherwise it will return input topic.
+   */
   PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
     if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
         && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
