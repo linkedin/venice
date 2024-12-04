@@ -115,7 +115,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.job }}
+          name: ${{ github.job }}-jdk${{ matrix.jdk }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 

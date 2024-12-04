@@ -259,6 +259,12 @@
     </Or>
   </Match>
   <Match>
+    <Bug pattern="RC_REF_COMPARISON"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.CollectionUtilsTest"/>
+    </Or>
+  </Match>
+  <Match>
     <!--Auto-generated classes. No plan to fix-->
     <Bug pattern="RI_REDUNDANT_INTERFACES"/>
     <Or>

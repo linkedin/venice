@@ -7,11 +7,13 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.alpini.base.misc.ImmutableMapEntry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -164,5 +166,39 @@ public class CollectionUtilsTest {
       res = res * 31 + stringVal.hashCode();
       return res;
     }
+  }
+
+  @Test
+  public void testMapBuilder() {
+    Map<String, Integer> map = CollectionUtils.<String, Integer>mapBuilder().build();
+    Assert.assertEquals(map.size(), 0);
+
+    map = CollectionUtils.<String, Integer>mapBuilder().add(ImmutableMapEntry.make("TEST", 1)).build();
+    Assert.assertEquals(map.size(), 1);
+    Assert.assertSame(map.get("TEST"), 1);
+
+    map = CollectionUtils.<String, Integer>mapBuilder()
+        .add(ImmutableMapEntry.make("TEST", 1))
+        .add(ImmutableMapEntry.make("FOO", 2))
+        .build();
+    Assert.assertEquals(map.size(), 2);
+    Assert.assertSame(map.get("TEST"), 1);
+    Assert.assertSame(map.get("FOO"), 2);
+  }
+
+  @Test
+  public void testSetOf0() {
+    Set<String> set = CollectionUtils.setOf(Collections.emptyList());
+    Assert.assertEquals(set.size(), 0);
+
+    set = CollectionUtils.setOf(new String[0]);
+    Assert.assertEquals(set.size(), 0);
+  }
+
+  @Test
+  public void testSetOf1() {
+    Set<String> set = CollectionUtils.setOf("TEST");
+    Assert.assertEquals(set.size(), 1);
+    Assert.assertTrue(set.contains("TEST"));
   }
 }

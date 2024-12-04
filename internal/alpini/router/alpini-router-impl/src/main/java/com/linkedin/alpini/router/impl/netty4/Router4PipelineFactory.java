@@ -4,7 +4,6 @@ import com.linkedin.alpini.netty4.handlers.BasicServerChannelInitializer;
 import com.linkedin.alpini.netty4.handlers.ConnectionLimitHandler;
 import com.linkedin.alpini.netty4.handlers.Http2SettingsFrameLogger;
 import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
-import com.linkedin.alpini.netty4.misc.EventGroupLoopSupplier;
 import com.linkedin.alpini.netty4.misc.NettyUtils;
 import com.linkedin.alpini.router.ScatterGatherRequestHandler4;
 import com.linkedin.alpini.router.api.ResourcePath;
@@ -81,15 +80,6 @@ public class Router4PipelineFactory<C extends Channel> extends
                     NettyUtils.executorGroup(channelPipeline),
                     entry.getFirst(),
                     (ChannelHandler) entry.getSecond())));
-  }
-
-  void addLast(ChannelPipeline channelPipeline, String handlerName, ChannelHandler channelHandler) {
-    if (channelHandler instanceof EventGroupLoopSupplier) {
-      channelPipeline
-          .addLast(((EventGroupLoopSupplier) channelHandler).getEventLoopGroup(), handlerName, channelHandler);
-    } else {
-      channelPipeline.addLast(NettyUtils.executorGroup(channelPipeline), handlerName, channelHandler);
-    }
   }
 
   private Router4PipelineFactory<C> add(
