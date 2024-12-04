@@ -12,7 +12,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -275,43 +274,56 @@ public class AdminToolE2ETest {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);) {
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
       TestUtils.assertCommand(
           parentControllerClient
               .retryableRequest(5, c -> c.createNewStore(storeName, "test", "\"string\"", "\"string\"")));
 
-      StoreResponse storeResponse = TestUtils.assertCommand(parentControllerClient.getStore(storeName));
-      StoreInfo storeInfo = Objects.requireNonNull(storeResponse.getStore(), "Store not found");
-      assertFalse(storeInfo.isMigrating(), "Store::isMigrating should be false");
-      // Update store migration status
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(true));
+      // Ensure store migration status is false
+      validateStoreMigrationStatus(parentControllerClient, storeName, false, "parentController");
+      validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, false);
 
+      // Update store migration status to true
       String[] adminToolArgs = new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster",
           clusterName, "--store", storeName, "--update-store", "--store-migration", "true" };
       AdminTool.main(adminToolArgs);
+      validateStoreMigrationStatus(parentControllerClient, storeName, true, "parentController");
+      validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, true);
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse updatedStoreResponse = parentControllerClient.getStore(storeName);
-        StoreInfo updatedStoreInfo =
-            Objects.requireNonNull(updatedStoreResponse.getStore(), "Store not found in parent controller");
-        assertTrue(updatedStoreInfo.isMigrating(), "Store::isMigrating should be true in parent controller");
-      });
-
-      for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
-        try (ControllerClient childControllerClient =
-            new ControllerClient(clusterName, childRegion.getControllerConnectString())) {
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-            StoreResponse updatedStoreResponse = childControllerClient.getStore(storeName);
-            StoreInfo updatedStoreInfo = Objects.requireNonNull(
-                updatedStoreResponse.getStore(),
-                "Store not found in child controller: " + childRegion.getRegionName());
-            assertTrue(
-                updatedStoreInfo.isMigrating(),
-                "Store::isMigrating should be true in child controller: " + childRegion.getRegionName());
-          });
-        }
-      }
-
+      // Set back status to false and validate
+      adminToolArgs = new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster", clusterName,
+          "--store", storeName, "--update-store", "--store-migration", "false" };
+      AdminTool.main(adminToolArgs);
+      validateStoreMigrationStatus(parentControllerClient, storeName, false, "parentController");
+      validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, false);
     }
+  }
+
+  private void validateStoreMigrationStatusAcrossChildRegions(
+      String storeName,
+      String clusterName,
+      boolean expectedStatus) {
+    for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
+      try (ControllerClient childControllerClient =
+          new ControllerClient(clusterName, childRegion.getControllerConnectString())) {
+        validateStoreMigrationStatus(childControllerClient, storeName, expectedStatus, childRegion.getRegionName());
+      }
+    }
+  }
+
+  private void validateStoreMigrationStatus(
+      ControllerClient controllerClient,
+      String storeName,
+      boolean expectedStatus,
+      String region) {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      StoreInfo storeInfo = Objects.requireNonNull(storeResponse.getStore(), "Store not found in " + region);
+      if (expectedStatus) {
+        assertTrue(storeInfo.isMigrating(), "Store::isMigrating should be true in " + region);
+      } else {
+        assertFalse(storeInfo.isMigrating(), "Store::isMigrating should be false in " + region);
+      }
+    });
   }
 }
