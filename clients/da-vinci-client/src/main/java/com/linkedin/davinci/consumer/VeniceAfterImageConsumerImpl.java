@@ -7,6 +7,8 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -24,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,6 +42,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   final private Lazy<VeniceChangelogConsumerImpl<K, V>> internalSeekConsumer;
   private final ScheduledExecutorService versionSwapExecutorService = Executors.newSingleThreadScheduledExecutor();
   AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
+  private final VersionSwapDataChangeListener versionSwapListener = new VersionSwapDataChangeListener();
 
   public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
     this(
@@ -63,7 +67,14 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
-    return internalPoll(timeoutInMs, "");
+    try {
+      return internalPoll(timeoutInMs, "");
+    } catch (UnknownTopicOrPartitionException ex) {
+      LOGGER.error("Caught unknown Topic exception, will attempt repair and retry: ", ex);
+      storeRepository.refresh();
+      versionSwapListener.handleStoreChanged(null);
+      return internalPoll(timeoutInMs, "");
+    }
   }
 
   @Override
@@ -74,7 +85,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     if (!versionSwapThreadScheduled.get()) {
-      // schedule the version swap thread
+      // schedule the version swap thread and set up the callback listener
+      this.storeRepository.registerStoreDataChangedListener(versionSwapListener);
       versionSwapExecutorService
           .schedule(new VersionSwapDetectionThread(), versionSwapDetectionIntervalTimeInMs, TimeUnit.MILLISECONDS);
       versionSwapThreadScheduled.set(true);
@@ -166,47 +178,58 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return super.internalSeek(partitions, targetTopic, seekAction);
   }
 
+  private class VersionSwapDataChangeListener implements StoreDataChangedListener {
+    @Override
+    public void handleStoreChanged(Store store) {
+      synchronized (this) {
+        Set<Integer> partitions = new HashSet<>();
+        try {
+          // Check the current version of the server
+          int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
+
+          // Check the current ingested version
+          Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
+          synchronized (subscriptions) {
+            if (subscriptions.isEmpty()) {
+              return;
+            }
+            int maxVersion = -1;
+            for (PubSubTopicPartition topicPartition: subscriptions) {
+              int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+              if (version >= maxVersion) {
+                maxVersion = version;
+              }
+            }
+
+            // Seek to end of push
+            if (currentVersion != maxVersion) {
+              // get current subscriptions and seek to endOfPush
+              for (PubSubTopicPartition partitionSubscription: subscriptions) {
+                partitions.add(partitionSubscription.getPartitionNumber());
+              }
+            }
+
+            LOGGER.info(
+                "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: "
+                    + changelogClientConfig.getConsumerName());
+            seekToEndOfPush(partitions).get();
+          }
+        } catch (Exception e) {
+          LOGGER.error(
+              "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " on consumer: "
+                  + changelogClientConfig.getConsumerName() + "will retry...",
+              e);
+        }
+      }
+    }
+  }
+
   private class VersionSwapDetectionThread implements Runnable {
     @Override
     public void run() {
-      Set<Integer> partitions = new HashSet<>();
-      try {
-        // Check the current version of the server
-        int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
-
-        // Check the current ingested version
-        Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
-        synchronized (subscriptions) {
-          if (subscriptions.isEmpty()) {
-            return;
-          }
-          int maxVersion = -1;
-          for (PubSubTopicPartition topicPartition: subscriptions) {
-            int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
-            if (version >= maxVersion) {
-              maxVersion = version;
-            }
-          }
-
-          // Seek to end of push
-          if (currentVersion != maxVersion) {
-            // get current subscriptions and seek to endOfPush
-            for (PubSubTopicPartition partitionSubscription: subscriptions) {
-              partitions.add(partitionSubscription.getPartitionNumber());
-            }
-          }
-
-          LOGGER.info(
-              "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: "
-                  + changelogClientConfig.getConsumerName());
-          seekToEndOfPush(partitions).get();
-        }
-      } catch (Exception e) {
-        LOGGER.error(
-            "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " on consumer: "
-                + changelogClientConfig.getConsumerName() + "will retry...",
-            e);
-      }
+      // the purpose of this thread is to just keep polling just in case something goes wrong at time of the store
+      // repository change.
+      versionSwapListener.handleStoreChanged(null);
     }
   }
 }
