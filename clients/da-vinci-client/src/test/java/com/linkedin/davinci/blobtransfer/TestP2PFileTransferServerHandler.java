@@ -7,7 +7,6 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTy
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
-import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -55,7 +54,6 @@ public class TestP2PFileTransferServerHandler {
   BlobSnapshotManager blobSnapshotManager;
   ReadOnlyStoreRepository readOnlyStoreRepository;
   StorageEngineRepository storageEngineRepository;
-  AggVersionedBlobTransferStats blobTransferStats;
 
   @BeforeMethod
   public void setUp() throws IOException {
@@ -64,7 +62,6 @@ public class TestP2PFileTransferServerHandler {
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
     readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
-    blobTransferStats = Mockito.mock(AggVersionedBlobTransferStats.class);
 
     blobSnapshotManager =
         new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
