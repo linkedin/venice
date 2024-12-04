@@ -206,5 +206,12 @@ public class DaVinciPushStatusUpdateTask {
       this.startSignalSent = false;
       this.endSignalSent = false;
     }
+
+    @Override
+    public String toString() {
+      return "IncrementalPushStatus{" + "incrementalPushVersion='" + incrementalPushVersion + '\''
+          + ", startSignalSent=" + startSignalSent + ", endSignalSent=" + endSignalSent + ", partitionStatus="
+          + partitionStatus + '}';
+    }
   }
 }
