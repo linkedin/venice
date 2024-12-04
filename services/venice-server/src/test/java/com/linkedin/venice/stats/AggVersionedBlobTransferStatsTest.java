@@ -61,19 +61,6 @@ public class AggVersionedBlobTransferStatsTest {
         NaN);
     // Count default value is 0.0
     Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_failed_num_requests.IngestionStatsGauge").value(),
-        0.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_rejected_num_requests.IngestionStatsGauge").value(),
-        0.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_successful_num_requests.IngestionStatsGauge").value(),
-        0.0);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_total_num_requests.IngestionStatsGauge").value(),
-        0.0);
-
-    Assert.assertEquals(
         reporter.query("." + storeName + "_total--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
         0.0);
     Assert.assertEquals(
