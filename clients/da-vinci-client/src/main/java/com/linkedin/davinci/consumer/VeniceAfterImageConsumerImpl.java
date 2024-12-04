@@ -87,8 +87,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (!versionSwapThreadScheduled.get()) {
       // schedule the version swap thread and set up the callback listener
       this.storeRepository.registerStoreDataChangedListener(versionSwapListener);
-      versionSwapExecutorService
-          .schedule(new VersionSwapDetectionThread(), versionSwapDetectionIntervalTimeInMs, TimeUnit.MILLISECONDS);
+      versionSwapExecutorService.scheduleAtFixedRate(
+          new VersionSwapDetectionThread(),
+          versionSwapDetectionIntervalTimeInMs,
+          versionSwapDetectionIntervalTimeInMs,
+          TimeUnit.MILLISECONDS);
       versionSwapThreadScheduled.set(true);
     }
     return super.subscribe(partitions);
