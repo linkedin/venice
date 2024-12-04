@@ -1650,6 +1650,9 @@ public class AdminTool {
     long startingOffset = (getOptionalArgument(cmd, Arg.STARTING_OFFSET) == null)
         ? -1
         : Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
+    long startingTimestamp = (getOptionalArgument(cmd, Arg.STARTING_TIMESTAMP) == null)
+        ? -1
+        : Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_TIMESTAMP));
     int messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
@@ -1673,6 +1676,7 @@ public class AdminTool {
           kafkaTopic,
           partitionNumber,
           startingOffset,
+          startingTimestamp,
           messageCount,
           parentDir,
           maxConsumeAttempts,

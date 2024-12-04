@@ -1,9 +1,13 @@
 package com.linkedin.venice;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -25,8 +29,10 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -43,12 +49,11 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestKafkaTopicDumper {
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   @Test
   public void testAdminToolConsumptionForChunkedData() throws IOException {
@@ -78,7 +83,7 @@ public class TestKafkaTopicDumper {
     String keyString = "test";
     byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, schemaStr);
     PubSubTopicPartition pubSubTopicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), assignedPartition);
 
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     long startTimestamp = 10;
@@ -93,6 +98,7 @@ public class TestKafkaTopicDumper {
         topic,
         assignedPartition,
         0,
+        -1,
         2,
         "",
         3,
@@ -107,18 +113,18 @@ public class TestKafkaTopicDumper {
     for (int i = 0; i < numChunks; i++) {
       chunkMessage = ChunkingTestUtils.createChunkedRecord(serializedKey, 1, 1, i, 0, pubSubTopicPartition);
       String metadataLog = kafkaTopicDumper.getChunkMetadataLog(chunkMessage);
-      Assert.assertEquals(metadataLog, String.format(metadataFormat, "WITH_VALUE_CHUNK, ChunkIndex: " + i));
+      assertEquals(metadataLog, String.format(metadataFormat, "WITH_VALUE_CHUNK, ChunkIndex: " + i));
     }
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
         ChunkingTestUtils.createChunkValueManifestRecord(serializedKey, chunkMessage, numChunks, pubSubTopicPartition);
     String manifestChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(manifestMessage);
-    Assert.assertEquals(manifestChunkMetadataLog, String.format(metadataFormat, "WITH_CHUNK_MANIFEST"));
+    assertEquals(manifestChunkMetadataLog, String.format(metadataFormat, "WITH_CHUNK_MANIFEST"));
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deleteMessage =
         ChunkingTestUtils.createDeleteRecord(serializedKey, null, pubSubTopicPartition);
     String deleteChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(deleteMessage);
-    Assert.assertEquals(deleteChunkMetadataLog, " ChunkMd=(type:WITH_FULL_VALUE)");
+    assertEquals(deleteChunkMetadataLog, " ChunkMd=(type:WITH_FULL_VALUE)");
   }
 
   @Test
@@ -186,7 +192,7 @@ public class TestKafkaTopicDumper {
     String keyString = "test";
     byte[] serializedKey = keySerializer.serialize(keyString);
     PubSubTopicPartition pubSubTopicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), assignedPartition);
 
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     long startTimestamp = 10;
@@ -201,6 +207,7 @@ public class TestKafkaTopicDumper {
         topic,
         assignedPartition,
         0,
+        -1,
         2,
         "",
         3,
@@ -226,30 +233,30 @@ public class TestKafkaTopicDumper {
         ChunkingTestUtils.createPutRecord(serializedKey, serializedValue, serializedRmd, pubSubTopicPartition);
     String returnedLog = kafkaTopicDumper.buildDataRecordLog(putMessage, false);
     String expectedLog = String.format("Key: %s; Value: %s; Schema: %d", keyString, valueRecord, 1);
-    Assert.assertEquals(returnedLog, expectedLog);
+    assertEquals(returnedLog, expectedLog);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(putMessage, true);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d; RMD: %s", keyString, valueRecord, 1, rmdRecord);
-    Assert.assertEquals(returnedLog, expectedLog);
+    assertEquals(returnedLog, expectedLog);
 
     // Test UPDATE
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> updateMessage =
         ChunkingTestUtils.createUpdateRecord(serializedKey, serializedUpdate, pubSubTopicPartition);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(updateMessage, false);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d-%d", keyString, updateRecord, 1, 1);
-    Assert.assertEquals(returnedLog, expectedLog);
+    assertEquals(returnedLog, expectedLog);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(updateMessage, true);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d-%d; RMD: null", keyString, updateRecord, 1, 1);
-    Assert.assertEquals(returnedLog, expectedLog);
+    assertEquals(returnedLog, expectedLog);
 
     // Test DELETE with and without RMD
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deleteMessage =
         ChunkingTestUtils.createDeleteRecord(serializedKey, serializedRmd, pubSubTopicPartition);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(deleteMessage, false);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d", keyString, null, 1);
-    Assert.assertEquals(returnedLog, expectedLog);
+    assertEquals(returnedLog, expectedLog);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(deleteMessage, true);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d; RMD: %s", keyString, null, 1, rmdRecord);
-    Assert.assertEquals(returnedLog, expectedLog);
+    assertEquals(returnedLog, expectedLog);
   }
 
   @Test
@@ -273,7 +280,7 @@ public class TestKafkaTopicDumper {
     messageEnvelope.payloadUnion = controlMessage;
 
     PubSubTopicPartition pubSubTopicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test_topic_rt"), 0);
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_topic_rt"), 0);
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
         new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 120, 0, 0, null);
@@ -299,5 +306,51 @@ public class TestKafkaTopicDumper {
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> regularMessage =
         new ImmutablePubSubMessage<>(regularMsgKey, null, pubSubTopicPartition, 120, 0, 0, null);
     KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage); // Should not throw any exception
+  }
+
+  @Test
+  public void testGetOffsetToConsumerFrom() {
+    PubSubConsumerAdapter consumerAdapter = mock(PubSubConsumerAdapter.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_topic_rt"), 0);
+    // Case 1: When start timestamp is non-negative and start offset is non-negative; offsetForTime is
+    // non-null then it should be used as the start offset.
+    long startOffset = -1;
+    long startTimestamp = 123456789L;
+    long offsetForTime = 1234L;
+    long beginningOffset = 0;
+    when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(offsetForTime);
+    when(consumerAdapter.beginningOffset(eq(topicPartition), any())).thenReturn(beginningOffset);
+    long actualStartOffset =
+        KafkaTopicDumper.getOffsetToConsumerFrom(consumerAdapter, topicPartition, startOffset, startTimestamp);
+    assertEquals(actualStartOffset, offsetForTime);
+
+    // Case 2: When start timestamp is non-negative and start offset is non-negative; but offsetForTime is null,
+    // beginning offset should be used as the start offset.
+    when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(null);
+    long finalStartOffset = -1;
+    long finalStartTimestamp = 123456789L;
+    PubSubClientException e = expectThrows(
+        PubSubClientException.class,
+        () -> KafkaTopicDumper
+            .getOffsetToConsumerFrom(consumerAdapter, topicPartition, finalStartOffset, finalStartTimestamp));
+    assertTrue(e.getMessage().contains("No offset found"));
+
+    // Case 3: When start timestamp is non-negative and start offset is non-negative; but beginning offset is higher
+    // than offsetForTime, beginning offset should be used as the start offset.
+    beginningOffset = 12356L;
+    when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(startOffset);
+    when(consumerAdapter.beginningOffset(eq(topicPartition), any())).thenReturn(beginningOffset);
+    actualStartOffset =
+        KafkaTopicDumper.getOffsetToConsumerFrom(consumerAdapter, topicPartition, startOffset, startTimestamp);
+    assertEquals(actualStartOffset, beginningOffset);
+
+    // Case 4: When start timestamp is negative and start offset > beginning offset, start offset should be used.
+    startOffset = 1234L;
+    startTimestamp = -1;
+    when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(null);
+    when(consumerAdapter.beginningOffset(eq(topicPartition), any())).thenReturn(0L);
+    actualStartOffset =
+        KafkaTopicDumper.getOffsetToConsumerFrom(consumerAdapter, topicPartition, startOffset, startTimestamp);
+    assertEquals(actualStartOffset, startOffset);
   }
 }

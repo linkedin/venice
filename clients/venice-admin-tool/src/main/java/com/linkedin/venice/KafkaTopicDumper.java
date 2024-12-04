@@ -36,6 +36,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
@@ -129,6 +130,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       String topic,
       int partitionNumber,
       long startingOffset,
+      long startingTimestamp,
       int messageCount,
       String parentDir,
       int maxConsumeAttempts,
@@ -237,12 +239,6 @@ public class KafkaTopicDumper implements AutoCloseable {
 
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partitionNumber);
-
-    Long partitionBeginningOffset =
-        consumer.beginningOffset(partition, getPubsubOffsetApiTimeoutDurationDefaultValue());
-    long computedStartingOffset = Math.max(partitionBeginningOffset, startingOffset);
-    LOGGER.info("Starting from offset: {}", computedStartingOffset);
-    consumer.subscribe(partition, computedStartingOffset - 1);
     this.endOffset = consumer.endOffset(partition);
     LOGGER.info("End offset for partition {} is {}", partition, this.endOffset);
     if (messageCount < 0) {
@@ -250,10 +246,50 @@ public class KafkaTopicDumper implements AutoCloseable {
     } else {
       this.messageCount = messageCount;
     }
-
+    long computedStartingOffset = getOffsetToConsumerFrom(consumer, partition, startingOffset, startingTimestamp);
+    consumer.subscribe(partition, computedStartingOffset - 1);
     if (!(logMetadata || logDataRecord)) {
       setupDumpFile();
     }
+  }
+
+  static long getOffsetToConsumerFrom(
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition partition,
+      long startingOffset,
+      long startingTimestamp) {
+    if (startingTimestamp != -1) {
+      LOGGER.info(
+          "Requested to dump topic-partition: {} with starting timestamp: {}. Will try to find the offset for the timestamp.",
+          partition,
+          startingTimestamp);
+      Long offsetForTime = consumer.offsetForTime(partition, startingTimestamp);
+      if (offsetForTime != null) {
+        LOGGER.info(
+            "Found offset: {} for timestamp: {} in topic-partition: {}",
+            offsetForTime,
+            startingTimestamp,
+            partition);
+        startingOffset = offsetForTime;
+      } else {
+        LOGGER.error(
+            "No offset found for timestamp: {} in topic-partition: {}. There might be no message in the topic-partition "
+                + " with timestamp greater than or equal to the requested timestamp.",
+            startingTimestamp,
+            partition);
+        throw new PubSubClientException(
+            "No offset found for timestamp: " + startingTimestamp + " in topic-partition: " + partition);
+      }
+    }
+
+    Long partitionBeginningOffset =
+        consumer.beginningOffset(partition, getPubsubOffsetApiTimeoutDurationDefaultValue());
+    long computedStartingOffset = Math.max(partitionBeginningOffset, startingOffset);
+    LOGGER.info(
+        "Consumer will start consuming from offset: {} in topic-partition: {}",
+        computedStartingOffset,
+        partition);
+    return computedStartingOffset;
   }
 
   /**

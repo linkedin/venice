@@ -213,6 +213,7 @@ public class TestAdminToolConsumption {
         topic,
         assignedPartition,
         0,
+        -1,
         2,
         "",
         3,
