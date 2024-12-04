@@ -71,12 +71,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
   public void testPranav() throws Exception {
     VeniceServerWrapper veniceServerWrapper = veniceCluster.getVeniceServers().stream().findAny().get();
 
-    String controllerUrl = veniceCluster.getLeaderVeniceController().getControllerUrl().replace("http", "http");
-    String serverUrl = "http://" + veniceServerWrapper.getHost() + ":" + veniceServerWrapper.getPort();
+    String controllerUrl = veniceCluster.getLeaderVeniceController().getControllerUrl().replace("http", "https");
+    String serverUrl = "https://" + veniceServerWrapper.getHost() + ":" + veniceServerWrapper.getPort();
 
     String[] getMetadataArgs = { "--request-based-metadata", "--url", controllerUrl, "--server-url", serverUrl,
-        "--cluster", veniceCluster.getClusterName(), "--store", storeName, "--client", "DVC", "--ssl-config-path",
-        "/Users/pthiruna/linkedin/venice/internal/venice-common/testcerts/localhost.config" };
+        "--cluster", veniceCluster.getClusterName(), "--store", storeName, "--client", "DVC"
+        // "--ssl-config-path", "/Users/pthiruna/linkedin/venice/internal/venice-common/testcerts/localhost.config"
+    };
 
     AdminTool.main(getMetadataArgs);
   }

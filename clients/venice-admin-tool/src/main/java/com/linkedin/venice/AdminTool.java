@@ -3023,6 +3023,7 @@ public class AdminTool {
     TransportClient transportClient = null;
     try {
       transportClient = getTransportClientForServer(storeName, serverUrl);
+      System.out.println("TRANSPORT CLIENT");
       getAndPrintRequestBasedMetadata(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
@@ -3040,12 +3041,13 @@ public class AdminTool {
 
   private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
-    if (clientConfig.isHttps()) {
-      if (!sslFactory.isPresent()) {
-        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
-      }
-      clientConfig.setSslFactory(sslFactory.get());
-    }
+    clientConfig.setSslFactory(SslUtils.getVeniceLocalSslFactory());
+    // if (clientConfig.isHttps()) {
+    // if (!sslFactory.isPresent()) {
+    // throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
+    // }
+    // clientConfig.setSslFactory(sslFactory.get()); TODO PRANAV make generic
+    // }
     return ClientFactory.getTransportClient(clientConfig);
   }
 
