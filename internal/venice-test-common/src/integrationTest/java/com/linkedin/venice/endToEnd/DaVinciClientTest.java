@@ -83,15 +83,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
-import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.*;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1280,6 +1272,25 @@ public class DaVinciClientTest {
     try (DaVinciClient<Integer, Integer> client =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
       assertThrows(VeniceException.class, () -> client.get(0).get());
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
+  public void testBootstrapSubscription(DaVinciConfig daVinciConfig) throws Exception {
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+
+    VeniceProperties backendConfig = new PropertyBuilder().build();
+
+    Set<Integer> keySet = new HashSet<>();
+    for (int i = 0; i < KEY_COUNT; ++i) {
+      keySet.add(i);
+    }
+
+    try (DaVinciClient<Integer, Object> client = ServiceFactory
+        .getGenericAvroDaVinciClient(storeName, cluster.getZk().getAddress(), daVinciConfig, backendConfig)) {
+      // We only subscribe to 1/3 of the partitions so some data will not be present locally.
+      client.subscribe(Collections.singleton(0)).get();
+      assertThrows(() -> client.batchGet(keySet).get());
     }
   }
 
