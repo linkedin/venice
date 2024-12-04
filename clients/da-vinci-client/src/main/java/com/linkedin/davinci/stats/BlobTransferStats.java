@@ -1,6 +1,5 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -16,14 +15,6 @@ import org.apache.logging.log4j.Logger;
 public class BlobTransferStats {
   private static final Logger LOGGER = LogManager.getLogger(BlobTransferStats.class);
 
-  // Per-instance metrics
-  // As a receiver, track the number of requests received from remote hosts,
-  // along with counts for successful, failed, and rejected requests handled by this host.
-  protected static final String BLOB_TRANSFER_TOTAL_NUM_REQUESTS = "blob_transfer_total_num_requests";
-  protected static final String BLOB_TRANSFER_SUCCESSFUL_NUM_REQUESTS = "blob_transfer_successful_num_requests";
-  protected static final String BLOB_TRANSFER_FAILED_NUM_REQUESTS = "blob_transfer_failed_num_requests";
-  protected static final String BLOB_TRANSFER_REJECTED_NUM_REQUESTS = "blob_transfer_rejected_num_requests";
-
   // As a sender, track the number of requests sent for bootstrap,
   // including counts for successful and failed responses from the remote receiver.
   // This can also represent the number of partitions successfully or unsuccessfully bootstrapped via blob transfer.
@@ -37,14 +28,6 @@ public class BlobTransferStats {
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private final MetricsRepository localMetricRepository;
-  private Count blobTransferTotalNumRequestsCount = new Count();
-  private Sensor blobTransferTotalNumRequestsSensor;
-  private Count blobTransferSuccessNumRequestsCount = new Count();
-  private Sensor blobTransferSuccessNumRequestsSensor;
-  private Count blobTransferFailedNumRequestsCount = new Count();
-  private Sensor blobTransferFailedNumRequestsSensor;
-  private Count blobTransferRejectedNumRequestsCount = new Count();
-  private Sensor blobTransferRejectedNumRequestsSensor;
   private Count blobTransferTotalNumResponsesCount = new Count();
   private Sensor blobTransferTotalNumResponsesSensor;
   private Count blobTransferSuccessNumResponsesCount = new Count();
@@ -58,20 +41,6 @@ public class BlobTransferStats {
 
   public BlobTransferStats() {
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
-
-    blobTransferTotalNumRequestsSensor = localMetricRepository.sensor(BLOB_TRANSFER_TOTAL_NUM_REQUESTS);
-    blobTransferTotalNumRequestsSensor.add(BLOB_TRANSFER_TOTAL_NUM_REQUESTS, blobTransferTotalNumRequestsCount);
-
-    blobTransferSuccessNumRequestsSensor = localMetricRepository.sensor(BLOB_TRANSFER_SUCCESSFUL_NUM_REQUESTS);
-    blobTransferSuccessNumRequestsSensor
-        .add(BLOB_TRANSFER_SUCCESSFUL_NUM_REQUESTS, blobTransferSuccessNumRequestsCount);
-
-    blobTransferFailedNumRequestsSensor = localMetricRepository.sensor(BLOB_TRANSFER_FAILED_NUM_REQUESTS);
-    blobTransferFailedNumRequestsSensor.add(BLOB_TRANSFER_FAILED_NUM_REQUESTS, blobTransferFailedNumRequestsCount);
-
-    blobTransferRejectedNumRequestsSensor = localMetricRepository.sensor(BLOB_TRANSFER_REJECTED_NUM_REQUESTS);
-    blobTransferRejectedNumRequestsSensor
-        .add(BLOB_TRANSFER_REJECTED_NUM_REQUESTS, blobTransferRejectedNumRequestsCount);
 
     blobTransferTotalNumResponsesSensor = localMetricRepository.sensor(BLOB_TRANSFER_TOTAL_NUM_RESPONSES);
     blobTransferTotalNumResponsesSensor.add(BLOB_TRANSFER_TOTAL_NUM_RESPONSES, blobTransferTotalNumResponsesCount);
@@ -88,28 +57,6 @@ public class BlobTransferStats {
 
     blobTransferTimeSensor = localMetricRepository.sensor(BLOB_TRANSFER_TIME);
     blobTransferTimeSensor.add(BLOB_TRANSFER_TIME, blobTransferTimeGauge);
-  }
-
-  /**
-   * When receiving a blob transfer request, bump the total requests amount this host receive.
-   */
-  public void recordBlobTransferRequestsCount() {
-    blobTransferTotalNumRequestsSensor.record();
-  }
-
-  /**
-   * When receiving a blob transfer request, bump the total requests amount this host receive,
-   * based on the host status, bump the successful, failed or rejected requests amount.
-   * @param status the status of the blob transfer request
-   */
-  public void recordBlobTransferRequestsStatus(BlobTransferStatus status) {
-    if (status.equals(BlobTransferStatus.SUCCESS)) {
-      blobTransferSuccessNumRequestsSensor.record();
-    } else if (status.equals(BlobTransferStatus.FAILED)) {
-      blobTransferFailedNumRequestsSensor.record();
-    } else if (status.equals(BlobTransferStatus.REJECTED)) {
-      blobTransferRejectedNumRequestsSensor.record();
-    }
   }
 
   /**
@@ -152,38 +99,6 @@ public class BlobTransferStats {
    * All get methods to get the sensor value
    * @return the sensor value
    */
-  public double getBlobTransferTotalNumRequests() {
-    if (blobTransferTotalNumRequestsCount == null) {
-      return 0;
-    } else {
-      return blobTransferTotalNumRequestsCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-  }
-
-  public double getBlobTransferSuccessNumRequests() {
-    if (blobTransferSuccessNumRequestsCount == null) {
-      return 0;
-    } else {
-      return blobTransferSuccessNumRequestsCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-  }
-
-  public double getBlobTransferFailedNumRequests() {
-    if (blobTransferFailedNumRequestsCount == null) {
-      return 0;
-    } else {
-      return blobTransferFailedNumRequestsCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-  }
-
-  public double getBlobTransferRejectedNumRequests() {
-    if (blobTransferRejectedNumRequestsCount == null) {
-      return 0;
-    } else {
-      return blobTransferRejectedNumRequestsCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-  }
-
   public double getBlobTransferTotalNumResponses() {
     if (blobTransferTotalNumResponsesCount == null) {
       return 0;

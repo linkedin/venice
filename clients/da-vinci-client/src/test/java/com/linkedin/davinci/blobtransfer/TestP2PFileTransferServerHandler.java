@@ -4,8 +4,6 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
@@ -70,11 +68,8 @@ public class TestP2PFileTransferServerHandler {
 
     blobSnapshotManager =
         new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
-    serverHandler = new P2PFileTransferServerHandler(
-        baseDir.toString(),
-        blobTransferMaxTimeoutInMin,
-        blobSnapshotManager,
-        blobTransferStats);
+    serverHandler =
+        new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
   }
 
@@ -96,7 +91,6 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 405);
-    Mockito.verify(blobTransferStats, Mockito.never()).recordBlobTransferRequestsCount(anyString(), anyInt());
   }
 
   @Test
@@ -105,7 +99,6 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 400);
-    Mockito.verify(blobTransferStats, Mockito.never()).recordBlobTransferRequestsCount(anyString(), anyInt());
   }
 
   @Test
@@ -124,9 +117,6 @@ public class TestP2PFileTransferServerHandler {
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 404);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
-    Mockito.verify(blobTransferStats, Mockito.times(1)).recordBlobTransferRequestsCount("myStore", 1);
-    Mockito.verify(blobTransferStats, Mockito.times(1))
-        .recordBlobTransferRequestsStatus("myStore", 1, BlobTransferUtils.BlobTransferStatus.REJECTED);
   }
 
   @Test
@@ -149,9 +139,6 @@ public class TestP2PFileTransferServerHandler {
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 500);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
-    Mockito.verify(blobTransferStats, Mockito.times(1)).recordBlobTransferRequestsCount("myStore", 1);
-    Mockito.verify(blobTransferStats, Mockito.times(1))
-        .recordBlobTransferRequestsStatus("myStore", 1, BlobTransferUtils.BlobTransferStatus.FAILED);
   }
 
   @Test
@@ -213,9 +200,6 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
-    Mockito.verify(blobTransferStats, Mockito.times(1)).recordBlobTransferRequestsCount("myStore", 1);
-    Mockito.verify(blobTransferStats, Mockito.times(1))
-        .recordBlobTransferRequestsStatus("myStore", 1, BlobTransferUtils.BlobTransferStatus.SUCCESS);
     // end of STATUS response
 
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
@@ -306,9 +290,6 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse endOfTransfer = (DefaultHttpResponse) response;
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
-    Mockito.verify(blobTransferStats, Mockito.times(1)).recordBlobTransferRequestsCount("myStore", 1);
-    Mockito.verify(blobTransferStats, Mockito.times(1))
-        .recordBlobTransferRequestsStatus("myStore", 1, BlobTransferUtils.BlobTransferStatus.SUCCESS);
     // end of STATUS response
 
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
@@ -335,8 +316,5 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(((DefaultHttpResponse) response).status(), HttpResponseStatus.NOT_FOUND);
 
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
-    Mockito.verify(blobTransferStats, Mockito.times(1)).recordBlobTransferRequestsCount("myStore", 1);
-    Mockito.verify(blobTransferStats, Mockito.times(1))
-        .recordBlobTransferRequestsStatus("myStore", 1, BlobTransferUtils.BlobTransferStatus.REJECTED);
   }
 }

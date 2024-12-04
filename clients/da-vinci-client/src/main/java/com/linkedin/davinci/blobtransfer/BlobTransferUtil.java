@@ -77,14 +77,8 @@ public class BlobTransferUtil {
           snapshotRetentionTimeInMin);
       AbstractAvroStoreClient storeClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
-      P2PBlobTransferService p2pBlobTransferService = new P2PBlobTransferService(
-          p2pTransferServerPort,
-          baseDir,
-          blobTransferMaxTimeoutInMin,
-          blobSnapshotManager,
-          aggVersionedBlobTransferStats);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          p2pBlobTransferService,
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new DaVinciBlobFinder(storeClient),
           baseDir,
@@ -125,14 +119,8 @@ public class BlobTransferUtil {
           storageMetadataService,
           maxConcurrentSnapshotUser,
           snapshotRetentionTimeInMin);
-      P2PBlobTransferService p2pBlobTransferService = new P2PBlobTransferService(
-          p2pTransferServerPort,
-          baseDir,
-          blobTransferMaxTimeoutInMin,
-          blobSnapshotManager,
-          aggVersionedBlobTransferStats);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          p2pBlobTransferService,
+          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
           new ServerBlobFinder(customizedViewFuture),
           baseDir,

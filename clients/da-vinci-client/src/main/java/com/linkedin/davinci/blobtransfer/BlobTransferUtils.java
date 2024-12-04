@@ -23,16 +23,6 @@ public class BlobTransferUtils {
   }
 
   /**
-   * Enum for the status of a blob transfer
-   * SUCCESS: the blob transfer is successfully
-   * REJECTED: the blob transfer request is rejected, no any file is sent
-   * FAILED: the blob transfer is failed during the transfer
-   */
-  public enum BlobTransferStatus {
-    SUCCESS, REJECTED, FAILED
-  }
-
-  /**
    * Check if the HttpResponse message is for metadata.
    * @param msg the HttpResponse message
    * @return true if the message is a metadata message, false otherwise

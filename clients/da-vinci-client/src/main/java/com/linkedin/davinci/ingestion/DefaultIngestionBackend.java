@@ -263,6 +263,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * @param isBlobTransferSuccess true if the blob transfer is successful, false otherwise.
    */
   private void updateBlobTransferResponseStats(boolean isBlobTransferSuccess, String storeName, int version) {
+    if (blobTransferManager.getAggVersionedBlobTransferStats() == null) {
+      LOGGER.error(
+          "Blob transfer stats is not initialized. Skip updating blob transfer response stats for store {} version {}",
+          storeName,
+          version);
+      return;
+    }
+
     try {
       // Record the blob transfer request count.
       blobTransferManager.getAggVersionedBlobTransferStats().recordBlobTransferResponsesCount(storeName, version);

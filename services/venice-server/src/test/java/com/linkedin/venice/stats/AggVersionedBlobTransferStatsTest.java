@@ -5,7 +5,6 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -84,25 +83,6 @@ public class AggVersionedBlobTransferStatsTest {
         reporter.query("." + storeName + "_total--blob_transfer_total_num_responses.IngestionStatsGauge").value(),
         0.0);
 
-    // Record request count
-    stats.recordBlobTransferRequestsCount(storeName, 1);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_total_num_requests.IngestionStatsGauge").value(),
-        1.0);
-    // Record request status
-    stats.recordBlobTransferRequestsStatus(storeName, 1, BlobTransferStatus.SUCCESS);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_successful_num_requests.IngestionStatsGauge").value(),
-        1.0);
-    stats.recordBlobTransferRequestsStatus(storeName, 1, BlobTransferStatus.FAILED);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_failed_num_requests.IngestionStatsGauge").value(),
-        1.0);
-    stats.recordBlobTransferRequestsStatus(storeName, 1, BlobTransferStatus.REJECTED);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_total--blob_transfer_rejected_num_requests.IngestionStatsGauge").value(),
-        1.0);
-
     // Record response count
     stats.recordBlobTransferResponsesCount(storeName, 1);
     Assert.assertEquals(
@@ -113,6 +93,7 @@ public class AggVersionedBlobTransferStatsTest {
     Assert.assertEquals(
         reporter.query("." + storeName + "_total--blob_transfer_successful_num_responses.IngestionStatsGauge").value(),
         1.0);
+
     stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 1, false);
     Assert.assertEquals(
         reporter.query("." + storeName + "_total--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),

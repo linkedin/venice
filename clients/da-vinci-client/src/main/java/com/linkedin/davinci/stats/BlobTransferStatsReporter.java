@@ -26,26 +26,6 @@ public class BlobTransferStatsReporter extends AbstractVeniceStatsReporter<BlobT
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getBlobTransferTotalNumRequests(),
-            BlobTransferStats.BLOB_TRANSFER_TOTAL_NUM_REQUESTS));
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> getStats().getBlobTransferSuccessNumRequests(),
-            BlobTransferStats.BLOB_TRANSFER_SUCCESSFUL_NUM_REQUESTS));
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> getStats().getBlobTransferFailedNumRequests(),
-            BlobTransferStats.BLOB_TRANSFER_FAILED_NUM_REQUESTS));
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> getStats().getBlobTransferRejectedNumRequests(),
-            BlobTransferStats.BLOB_TRANSFER_REJECTED_NUM_REQUESTS));
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
             () -> getStats().getBlobTransferTotalNumResponses(),
             BlobTransferStats.BLOB_TRANSFER_TOTAL_NUM_RESPONSES));
     registerSensor(
