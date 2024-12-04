@@ -500,6 +500,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
+        isSeparatedRealtimeTopicEnabled(),
         ingestionNotificationDispatcher,
         this::pauseConsumption,
         this::resumeConsumption);

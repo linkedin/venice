@@ -892,7 +892,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
       LOGGER.info(
-          "Obtain version swap message: {} and versions swap high watermarks: {} for topic-partition: {}",
+          "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
           versionSwap,
           versionSwap.getLocalHighWatermarks(),
           pubSubTopicPartition);
