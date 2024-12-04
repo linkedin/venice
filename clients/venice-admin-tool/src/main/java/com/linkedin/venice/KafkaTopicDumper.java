@@ -264,14 +264,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           partition,
           startingTimestamp);
       Long offsetForTime = consumer.offsetForTime(partition, startingTimestamp);
-      if (offsetForTime != null) {
-        LOGGER.info(
-            "Found offset: {} for timestamp: {} in topic-partition: {}",
-            offsetForTime,
-            startingTimestamp,
-            partition);
-        startingOffset = offsetForTime;
-      } else {
+      if (offsetForTime == null) {
         LOGGER.error(
             "No offset found for timestamp: {} in topic-partition: {}. There might be no message in the topic-partition "
                 + " with timestamp greater than or equal to the requested timestamp.",
@@ -280,6 +273,12 @@ public class KafkaTopicDumper implements AutoCloseable {
         throw new PubSubClientException(
             "No offset found for timestamp: " + startingTimestamp + " in topic-partition: " + partition);
       }
+      LOGGER.info(
+          "Found offset: {} for timestamp: {} in topic-partition: {}",
+          offsetForTime,
+          startingTimestamp,
+          partition);
+      startingOffset = offsetForTime;
     }
 
     Long partitionBeginningOffset =
