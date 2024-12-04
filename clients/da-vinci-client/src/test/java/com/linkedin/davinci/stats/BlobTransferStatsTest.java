@@ -42,7 +42,7 @@ public class BlobTransferStatsTest {
   }
 
   @Test
-  public void BlobTransferStatsReporterCanReportForGauge() {
+  public void blobTransferStatsReporterCanReportForGauge() {
     MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
@@ -68,7 +68,7 @@ public class BlobTransferStatsTest {
   }
 
   @Test
-  public void BlobTransferStatsReporterCanReportForCount() {
+  public void blobTransferStatsReporterCanReportForCount() {
     MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
