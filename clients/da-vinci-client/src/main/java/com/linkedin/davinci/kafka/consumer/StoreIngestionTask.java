@@ -4143,10 +4143,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       }
       schemaGenerated++;
-      FastSerializerDeserializerFactory
-          .cacheFastAvroGenericDeserializer(writerSchema, schemaEntry.getSchema(), warmUpTimeLimit);
+      cacheFastAvroGenericDeserializer(writerSchema, schemaEntry.getSchema(), warmUpTimeLimit);
     }
     LOGGER.info("Warmed up cache of {} schemas of store {}", schemaGenerated, storeName);
+  }
+
+  void cacheFastAvroGenericDeserializer(Schema writerSchema, Schema readerSchema, long warmUpTimeLimit) {
+    FastSerializerDeserializerFactory.cacheFastAvroGenericDeserializer(writerSchema, readerSchema, warmUpTimeLimit);
   }
 
   public void reportError(String message, int userPartition, Exception e) {

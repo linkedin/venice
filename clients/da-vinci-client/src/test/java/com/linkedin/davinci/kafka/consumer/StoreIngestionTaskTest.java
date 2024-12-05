@@ -24,7 +24,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
-import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
@@ -53,7 +52,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
-import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
@@ -865,7 +863,6 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             recordTransformerFunction));
-
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {
@@ -2696,43 +2693,64 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
   }
 
-  @Test(dataProvider = "aaConfigProvider")
-  public void testSchemaCacheWarming(AAConfig aaConfig) throws Exception {
-    setStoreVersionStateSupplier(true);
-    localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    SchemaEntry schemaEntry = new SchemaEntry(1, STRING_SCHEMA);
-    SchemaEntry schemaEntry3 = new SchemaEntry(3, STRING_SCHEMA);
-
-    // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
-    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(
+  @Test
+  public void testSchemaCacheWarming() throws Exception {
+    VenicePartitioner partitioner = getVenicePartitioner();
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
+    MockStoreVersionConfigs storeAndVersionConfigs =
+        setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), false, true, AA_OFF);
+    StorageService storageService = mock(StorageService.class);
+    Store mockStore = storeAndVersionConfigs.store;
+    Version version = storeAndVersionConfigs.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
+        .getLocalStorageEngine(topic);
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
         Utils.setOf(PARTITION_FOO),
-        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-          // since notifier reporting happens before offset update, it actually reports previous offsets
-          verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-          // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT`
-          // for batch push job.
-          verify(mockLogNotifier).completed(
-              eq(topic),
-              eq(PARTITION_FOO),
-              longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
-              eq("STANDBY"));
-        }),
-        aaConfig);
-    config.setBeforeStartingConsumption(() -> {
-      Store mockStore = mock(Store.class);
-      storeIngestionTaskUnderTest.setValueSchemaId(EXISTING_SCHEMA_ID);
-      doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
-      doReturn(true).when(mockStore).isReadComputationEnabled();
-      doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
-      doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
-      doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
-      doReturn(Arrays.asList(schemaEntry, schemaEntry3)).when(mockSchemaRepo).getValueSchemas(anyString());
-      doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
-    }).setExtraServerProperties(Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1));
-    runTest(config);
+        Optional.empty(),
+        new HashMap<>(),
+        false,
+        null,
+        null).build();
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+
+    storeIngestionTaskUnderTest = spy(
+        ingestionTaskFactory.getNewIngestionTask(
+            storageService,
+            mockStore,
+            version,
+            kafkaProps,
+            isCurrentVersion,
+            storeConfig,
+            PARTITION_FOO,
+            false,
+            Optional.empty(),
+            null));
+
+    Schema schema1 = Schema.parse(
+        "{" + "\"fields\": ["
+            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+            + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
+            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
+    Schema schema2 = Schema.parse(
+        "{" + "\"fields\": ["
+            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+            + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
+            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
+    doReturn(true).when(mockStore).isReadComputationEnabled();
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(anyString(), anyInt());
+    SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
+    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema2);
+    doReturn(schemaEntry1).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
+    doReturn(Arrays.asList(schemaEntry1, schemaEntry2)).when(mockSchemaRepo).getValueSchemas(anyString());
+    storeIngestionTaskUnderTest.setValueSchemaId(2);
+    storeIngestionTaskUnderTest.warmupSchemaCache(mockStore);
+    verify(storeIngestionTaskUnderTest, times(1)).cacheFastAvroGenericDeserializer(schema1, schema1, 120000L);
   }
 
   @Test(dataProvider = "aaConfigProvider")
