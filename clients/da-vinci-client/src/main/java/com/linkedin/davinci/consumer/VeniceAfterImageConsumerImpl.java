@@ -175,6 +175,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     });
   }
 
+  public boolean subscribed() {
+    return isSubscribed.get();
+  }
+
   @Override
   protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,

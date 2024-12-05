@@ -68,6 +68,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -105,6 +106,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, Boolean> partitionToBootstrapState = new VeniceConcurrentHashMap<>();
   protected final long startTimestamp;
+
+  protected final AtomicBoolean isSubscribed = new AtomicBoolean(false);
 
   protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
@@ -260,8 +263,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
         }
-        return null;
       }
+      isSubscribed.set(true);
+      return null;
     });
   }
 

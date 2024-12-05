@@ -32,6 +32,10 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   @Override
   public void handleStoreChanged(Store store) {
     // store may be null as this is called by other repair tasks
+    if (!consumer.subscribed()) {
+      // skip this for now as the consumer hasn't even been set up yet
+      return;
+    }
     synchronized (this) {
       Set<Integer> partitions = new HashSet<>();
       try {
