@@ -26,12 +26,13 @@ public interface IngestionBackend extends Closeable {
    * @param storeConfig Store version config
    * @param partition Partition number to be dropped in the store version.
    * @param timeoutInSeconds Number of seconds to wait before timeout.
+   * @return a future for the drop partition action.
    */
-  default void dropStoragePartitionGracefully(
+  default CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds) {
-    dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, true);
+    return dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, true);
   }
 
   /**
@@ -40,8 +41,9 @@ public interface IngestionBackend extends Closeable {
    * @param partition Partition number to be dropped in the store version.
    * @param timeoutInSeconds Number of seconds to wait before timeout.
    * @param removeEmptyStorageEngine Whether to drop storage engine when dropping the last partition.
+   * @return a future for the drop partition action.
    */
-  void dropStoragePartitionGracefully(
+  CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds,

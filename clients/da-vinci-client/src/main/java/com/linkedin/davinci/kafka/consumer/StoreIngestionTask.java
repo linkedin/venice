@@ -660,7 +660,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Drops a storage partition gracefully.
    * This is always a Helix triggered action.
    */
-  public void dropStoragePartitionGracefully(PubSubTopicPartition topicPartition) {
+  public CompletableFuture<Void> dropStoragePartitionGracefully(PubSubTopicPartition topicPartition) {
     int partitionId = topicPartition.getPartitionNumber();
     synchronized (this) {
       if (isRunning()) {
@@ -670,7 +670,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionId);
         ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
         consumerActionsQueue.add(consumerAction);
-        return;
+        return consumerAction.getFuture();
       }
     }
 
@@ -679,6 +679,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         topicPartition.getTopicName(),
         partitionId);
     dropPartitionSynchronously(topicPartition);
+    return CompletableFuture.completedFuture(null);
   }
 
   /**
