@@ -150,6 +150,7 @@ public class TestHelixReadOnlySchemaRepository {
         3,
         TimeUnit.SECONDS,
         () -> schemaRORepo.getValueSchemas(storeName).size() == 2);
+
     SchemaEntry valueSchema1 = schemaRORepo.getValueSchema(storeName, 1);
     Assert.assertNotNull(valueSchema1);
     Assert.assertEquals(valueSchema1.getSchema().toString(), Schema.parse(valueSchemaStr1).toString());
