@@ -475,10 +475,9 @@ public class DaVinciBackend implements Closeable {
       AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
       aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
       StoreBackend storeBackend = getStoreOrThrow(storeName);
-      ComplementSet<Integer> persistedPartitionIds = ComplementSet.newSet(storageEngine.getPersistedPartitionIds());
-      ComplementSet<Integer> unassignedPartitionSet = ComplementSet.newSet(storeBackend.getSubscription());
-      // Set of partitions that are not included in the submitted set of partitions.
-      unassignedPartitionSet.removeAll(persistedPartitionIds);
+      ComplementSet<Integer> subscription = ComplementSet.newSet(storeBackend.getSubscription());
+      ComplementSet<Integer> unassignedPartitionSet = ComplementSet.newSet(storageEngine.getPersistedPartitionIds());
+      unassignedPartitionSet.removeAll(subscription);
       storeBackend.unsubscribe(unassignedPartitionSet);
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
