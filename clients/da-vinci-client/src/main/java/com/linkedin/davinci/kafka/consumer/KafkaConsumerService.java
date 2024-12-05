@@ -89,7 +89,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private final ExecutorService consumerExecutor;
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
 
   /**
    * @param statsOverride injection of stats, for test purposes
