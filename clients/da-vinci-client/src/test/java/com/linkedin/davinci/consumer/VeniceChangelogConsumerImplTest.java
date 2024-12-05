@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.davinci.kafka.consumer.TestPubSubTopic;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
@@ -40,6 +41,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdConstants;
@@ -410,6 +412,33 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.close();
     verify(mockPubSubConsumer, times(2)).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
+  }
+
+  @Test
+  public void testVersionSwapDataChangeListener() {
+    VeniceAfterImageConsumerImpl mockConsumer = Mockito.mock(VeniceAfterImageConsumerImpl.class);
+    Mockito.when(mockConsumer.subscribed()).thenReturn(true);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+        new TestPubSubTopic(storeName + "_v1", storeName, PubSubTopicType.VERSION_TOPIC),
+        1);
+
+    Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
+    topicPartitionSet.add(topicPartition);
+    Mockito.when(mockConsumer.getTopicAssignment()).thenReturn(topicPartitionSet);
+    Mockito.when(mockConsumer.seekToEndOfPush(Mockito.anySet())).thenReturn(CompletableFuture.completedFuture(null));
+
+    String storeName = "Leppalúði_store";
+
+    ThinClientMetaStoreBasedRepository mockRepository = Mockito.mock(ThinClientMetaStoreBasedRepository.class);
+    Store mockStore = Mockito.mock(Store.class);
+    Mockito.when(mockStore.getCurrentVersion()).thenReturn(5);
+    Mockito.when(mockRepository.getStore(storeName)).thenReturn(mockStore);
+
+    VersionSwapDataChangeListener changeListener =
+        new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "");
+    changeListener.handleStoreChanged(null);
+    Mockito.verify(mockConsumer).seekToEndOfPush(Mockito.anySet());
+
   }
 
   @Test

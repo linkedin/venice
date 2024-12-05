@@ -266,8 +266,7 @@ public class TestChangelogConsumer {
           .setControllerD2ServiceName(D2_SERVICE_NAME)
           .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
           .setLocalD2ZkHosts(localZkServer.getAddress())
-          .setControllerRequestRetryCount(3)
-          .setVersionSwapDetectionIntervalTimeInMs(10L);
+          .setControllerRequestRetryCount(3);
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
