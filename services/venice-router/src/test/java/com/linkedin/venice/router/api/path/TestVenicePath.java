@@ -39,14 +39,11 @@ public class TestVenicePath {
   private static class SmartRetryVenicePath extends VenicePath {
     private final String ROUTER_REQUEST_VERSION =
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+    private final Time time;
 
     public SmartRetryVenicePath(Time time, RetryManager retryManager) {
-      super(
-          nameRepository.getStoreVersionName("fake_resource_v1"),
-          time,
-          mock(RouterRetryConfig.class),
-          retryManager,
-          null);
+      super(nameRepository.getStoreVersionName("fake_resource_v1"), mock(RouterRetryConfig.class), retryManager, null);
+      this.time = time;
     }
 
     @Override
@@ -102,6 +99,11 @@ public class TestVenicePath {
     @Override
     public int getLongTailRetryThresholdMs() {
       return 20;
+    }
+
+    @Override
+    protected Time getTime() {
+      return this.time;
     }
   }
 
