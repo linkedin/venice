@@ -4392,7 +4392,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return true;
   }
 
-  public CountDownLatch getGracefulShutdownLatch() {
+  CountDownLatch getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
   }
 
