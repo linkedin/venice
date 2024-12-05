@@ -1,8 +1,8 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
-import com.linkedin.davinci.listener.response.MetadataWithStorePropertiesResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesResponse;
 import com.linkedin.davinci.stats.ServerMetadataServiceStats;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -144,16 +144,16 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   }
 
   /**
-   * Return the metadata information for the given store. The data is retrieved from its respective repositories which
+   * Return the store properties for the given store. The data is retrieved from its respective repositories which
    * originate from the VeniceServer.
    * @param storeName
-   * @return {@link MetadataResponse} object that holds all the information required for answering a server metadata
+   * @return {@link StorePropertiesResponse} object that holds all the information required for answering a server metadata
    * fetch request.
    */
   @Override
-  public MetadataWithStorePropertiesResponse getMetadataWithStoreProperties(String storeName) {
+  public StorePropertiesResponse getStoreProperties(String storeName) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
-    MetadataWithStorePropertiesResponse response = new MetadataWithStorePropertiesResponse();
+    StorePropertiesResponse response = new StorePropertiesResponse();
 
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
@@ -274,9 +274,8 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   }
 
   private int getCurrentVersionNumberOrThrow(String storeName, Store store) throws VeniceException {
-
-    // Version metadata
     int currentVersionNumber = store.getCurrentVersion();
+
     if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
       throw new VeniceException(
           "No valid store version available to read for store: " + storeName
@@ -287,9 +286,8 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   }
 
   private Map<CharSequence, List<CharSequence>> getRoutingInfo(String storeName, int currentVersionNumber) {
-
-    // Routing metadata
     Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
+
     String currentVersionResource = Version.composeKafkaTopic(storeName, currentVersionNumber);
     for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
         .getAllPartitions()) {

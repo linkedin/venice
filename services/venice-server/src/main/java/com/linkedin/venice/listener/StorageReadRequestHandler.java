@@ -5,11 +5,11 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
-import com.linkedin.davinci.listener.response.MetadataWithStorePropertiesResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -42,6 +42,7 @@ import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
@@ -361,19 +362,22 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
       try {
-        MetadataFetchRequest request = (MetadataFetchRequest) message;
-        String clientName = request.getClientName().isPresent() ? request.getClientName().get() : "FC";
-        if (clientName.equals("DVC")) { // TODO ENUM, is there on already?
-          MetadataWithStorePropertiesResponse response = handleMetadataWithStorePropertiesFetchRequest(request);
-          context.writeAndFlush(response);
-        } else {
-          MetadataResponse response = handleMetadataFetchRequest(request);
-          context.writeAndFlush(response);
-        }
+        MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
+        context.writeAndFlush(response);
       } catch (UnsupportedOperationException e) {
         LOGGER.warn(
             "Metadata requested by a storage node read quota not enabled store: {}",
             ((MetadataFetchRequest) message).getStoreName());
+        context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.FORBIDDEN));
+      }
+    } else if (message instanceof StorePropertiesFetchRequest) {
+      try {
+        StorePropertiesResponse response = handleStorePropertiesFetchRequest((StorePropertiesFetchRequest) message);
+        context.writeAndFlush(response);
+      } catch (UnsupportedOperationException e) {
+        LOGGER.warn(
+            "Store Properties requested by a storage node read quota not enabled store: {}",
+            ((StorePropertiesFetchRequest) message).getStoreName());
         context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.FORBIDDEN));
       }
     } else if (message instanceof CurrentVersionRequest) {
@@ -789,9 +793,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return readMetadataRetriever.getMetadata(request.getStoreName());
   }
 
-  private MetadataWithStorePropertiesResponse handleMetadataWithStorePropertiesFetchRequest(
-      MetadataFetchRequest request) {
-    return readMetadataRetriever.getMetadataWithStoreProperties(request.getStoreName());
+  private StorePropertiesResponse handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
+    System.out.println("handleStorePropertiesFetchRequest: " + request.getStoreName());
+    return readMetadataRetriever.getStoreProperties(request.getStoreName());
   }
 
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {

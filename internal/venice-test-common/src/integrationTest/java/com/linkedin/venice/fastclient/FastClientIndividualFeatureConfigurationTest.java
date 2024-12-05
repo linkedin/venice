@@ -48,7 +48,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-// TODO PRANAV
 public class FastClientIndividualFeatureConfigurationTest extends AbstractClientEndToEndSetup {
   private static final Logger LOGGER = LogManager.getLogger();
 
@@ -68,18 +67,16 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
   }
 
   @Test(timeOut = TIME_OUT)
-  public void testPranav() throws Exception {
+  public void testRequestBasedStoreProperties() throws Exception {
     VeniceServerWrapper veniceServerWrapper = veniceCluster.getVeniceServers().stream().findAny().get();
 
     String controllerUrl = veniceCluster.getLeaderVeniceController().getControllerUrl().replace("http", "https");
     String serverUrl = "https://" + veniceServerWrapper.getHost() + ":" + veniceServerWrapper.getPort();
 
-    String[] getMetadataArgs = { "--request-based-metadata", "--url", controllerUrl, "--server-url", serverUrl,
-        "--cluster", veniceCluster.getClusterName(), "--store", storeName, "--client", "DVC"
-        // "--ssl-config-path", "/Users/pthiruna/linkedin/venice/internal/venice-common/testcerts/localhost.config"
-    };
+    String[] getStorePropertiesArgs = { "--request-based-store-properties", "--url", controllerUrl, "--server-url",
+        serverUrl, "--cluster", veniceCluster.getClusterName(), "--store", storeName, "--ssl-local" };
 
-    AdminTool.main(getMetadataArgs);
+    AdminTool.main(getStorePropertiesArgs);
   }
 
   @Test(timeOut = TIME_OUT)

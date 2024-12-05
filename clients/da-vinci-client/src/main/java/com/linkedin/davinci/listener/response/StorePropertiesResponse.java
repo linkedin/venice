@@ -1,6 +1,6 @@
 package com.linkedin.davinci.listener.response;
 
-import com.linkedin.venice.metadata.response.MetadataWithStorePropertiesResponseRecord;
+import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -14,14 +14,14 @@ import java.util.Map;
 /**
  * This class stores all the information required for answering a server metadata fetch request.
  */
-public class MetadataWithStorePropertiesResponse {
+public class StorePropertiesResponse {
   private boolean isError;
   private String message;
 
-  private final MetadataWithStorePropertiesResponseRecord responseRecord;
+  private final StorePropertiesResponseRecord responseRecord;
 
-  public MetadataWithStorePropertiesResponse() {
-    this.responseRecord = new MetadataWithStorePropertiesResponseRecord();
+  public StorePropertiesResponse() {
+    this.responseRecord = new StorePropertiesResponseRecord();
   }
 
   public void setStoreMetaValue(StoreMetaValue storeMetaValue) {
@@ -41,13 +41,13 @@ public class MetadataWithStorePropertiesResponse {
   }
 
   private byte[] serializedResponse() {
-    RecordSerializer<MetadataWithStorePropertiesResponseRecord> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(MetadataWithStorePropertiesResponseRecord.SCHEMA$);
+    RecordSerializer<StorePropertiesResponseRecord> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(StorePropertiesResponseRecord.SCHEMA$);
     return serializer.serialize(responseRecord);
   }
 
   public int getResponseSchemaIdHeader() {
-    return AvroProtocolDefinition.SERVER_METADATA_WITH_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion();
+    return AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion();
   }
 
   public void setError(boolean error) {
@@ -66,7 +66,7 @@ public class MetadataWithStorePropertiesResponse {
     return this.message;
   }
 
-  public MetadataWithStorePropertiesResponseRecord getResponseRecord() {
+  public StorePropertiesResponseRecord getResponseRecord() {
     return responseRecord;
   }
 }

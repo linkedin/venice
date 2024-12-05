@@ -1,8 +1,8 @@
 {
   "type": "record",
-  "name": "MetadataWithStorePropertiesResponseRecord",
+  "name": "StorePropertiesResponseRecord",
   "namespace": "com.linkedin.venice.metadata.response",
-  "doc": "This record will store metadata",
+  "doc": "This record will store store properties",
   "fields": [
     {
       "name": "storeMetaValue",

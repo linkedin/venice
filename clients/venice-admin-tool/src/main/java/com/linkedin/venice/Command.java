@@ -14,7 +14,6 @@ import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
-import static com.linkedin.venice.Arg.CLIENT;
 import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
@@ -522,7 +521,12 @@ public enum Command {
   REQUEST_BASED_METADATA(
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
-      new Arg[] { URL, SERVER_URL, STORE }, new Arg[] { CLIENT }
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  REQUEST_BASED_STORE_PROPERTIES(
+      "request-based-store-properties",
+      "Get the store's properties using request based store properties endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
   ),
   DUMP_INGESTION_STATE(
       "dump-ingestion-state",

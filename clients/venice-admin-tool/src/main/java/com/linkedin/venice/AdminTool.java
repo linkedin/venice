@@ -88,7 +88,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.metadata.response.MetadataWithStorePropertiesResponseRecord;
+import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -552,6 +552,9 @@ public class AdminTool {
           break;
         case REQUEST_BASED_METADATA:
           getRequestBasedMetadata(cmd);
+          break;
+        case REQUEST_BASED_STORE_PROPERTIES:
+          getRequestBasedStoreProperties(cmd);
           break;
         case DUMP_INGESTION_STATE:
           dumpIngestionState(cmd);
@@ -3019,11 +3022,9 @@ public class AdminTool {
     String url = getRequiredArgument(cmd, Arg.URL);
     String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
-    Optional<String> clientName = Optional.ofNullable(getOptionalArgument(cmd, Arg.CLIENT, null));
     TransportClient transportClient = null;
     try {
       transportClient = getTransportClientForServer(storeName, serverUrl);
-      System.out.println("TRANSPORT CLIENT");
       getAndPrintRequestBasedMetadata(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
@@ -3032,8 +3033,28 @@ public class AdminTool {
               sslFactory,
               1),
           serverUrl,
-          storeName,
-          clientName);
+          storeName);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  private static void getRequestBasedStoreProperties(CommandLine cmd) throws JsonProcessingException {
+    String url = getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer(storeName, serverUrl);
+      getAndPrintRequestBasedStoreProperties(
+          transportClient,
+          () -> ControllerClientFactory.discoverAndConstructControllerClient(
+              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
+              url,
+              sslFactory,
+              1),
+          serverUrl,
+          storeName);
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
@@ -3041,13 +3062,12 @@ public class AdminTool {
 
   private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
-    clientConfig.setSslFactory(SslUtils.getVeniceLocalSslFactory());
-    // if (clientConfig.isHttps()) {
-    // if (!sslFactory.isPresent()) {
-    // throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
-    // }
-    // clientConfig.setSslFactory(sslFactory.get()); TODO PRANAV make generic
-    // }
+    if (clientConfig.isHttps()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
+      }
+      clientConfig.setSslFactory(sslFactory.get());
+    }
     return ClientFactory.getTransportClient(clientConfig);
   }
 
@@ -3221,19 +3241,7 @@ public class AdminTool {
       Supplier<ControllerClient> controllerClientSupplier,
       String serverUrl,
       String storeName) throws JsonProcessingException {
-    getAndPrintRequestBasedMetadata(transportClient, controllerClientSupplier, serverUrl, storeName, Optional.empty());
-  }
-
-  static void getAndPrintRequestBasedMetadata(
-      TransportClient transportClient,
-      Supplier<ControllerClient> controllerClientSupplier,
-      String serverUrl,
-      String storeName,
-      Optional<String> clientName) throws JsonProcessingException {
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
-    if (clientName.isPresent()) {
-      requestBasedMetadataURL += "/" + clientName.get();
-    }
     byte[] body;
     int writerSchemaId;
     try {
@@ -3247,35 +3255,16 @@ public class AdminTool {
           e);
     }
     Schema writerSchema;
-
-    if (clientName.isPresent()) {
-      if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_WITH_STORE_PROPERTIES_RESPONSE
-          .getCurrentProtocolVersion()) {
-        SchemaResponse schemaResponse = controllerClientSupplier.get()
-            .getValueSchema(
-                AvroProtocolDefinition.SERVER_METADATA_WITH_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
-                writerSchemaId);
-        if (schemaResponse.isError()) {
-          throw new VeniceException(
-              "Failed to fetch metadata by client response schema from controller, error: "
-                  + schemaResponse.getError());
-        }
-        writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
-      } else {
-        writerSchema = MetadataWithStorePropertiesResponseRecord.SCHEMA$;
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {
+      SchemaResponse schemaResponse = controllerClientSupplier.get()
+          .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
       }
+      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
     } else {
-      if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {
-        SchemaResponse schemaResponse = controllerClientSupplier.get()
-            .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
-        if (schemaResponse.isError()) {
-          throw new VeniceException(
-              "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
-        }
-        writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
-      } else {
-        writerSchema = MetadataResponseRecord.SCHEMA$;
-      }
+      writerSchema = MetadataResponseRecord.SCHEMA$;
     }
     RecordDeserializer<GenericRecord> metadataResponseDeserializer =
         FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
@@ -3283,6 +3272,45 @@ public class AdminTool {
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
     Object printObject = ObjectMapperFactory.getInstance().readValue(metadataResponse.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
+  }
+
+  static void getAndPrintRequestBasedStoreProperties(
+      TransportClient transportClient,
+      Supplier<ControllerClient> controllerClientSupplier,
+      String serverUrl,
+      String storeName) throws JsonProcessingException {
+    String requestBasedStorePropertiesURL = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + storeName;
+    byte[] body;
+    int writerSchemaId;
+    try {
+      TransportClientResponse transportClientResponse = transportClient.get(requestBasedStorePropertiesURL).get();
+      writerSchemaId = transportClientResponse.getSchemaId();
+      body = transportClientResponse.getBody();
+    } catch (Exception e) {
+      throw new VeniceException(
+          "Encountered exception while trying to send store properties request to: " + serverUrl + "/"
+              + requestBasedStorePropertiesURL,
+          e);
+    }
+    Schema writerSchema;
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
+      SchemaResponse schemaResponse = controllerClientSupplier.get()
+          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
+      }
+      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+    } else {
+      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+    }
+    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
+    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 
