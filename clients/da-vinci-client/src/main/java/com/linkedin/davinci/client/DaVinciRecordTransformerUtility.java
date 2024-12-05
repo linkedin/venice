@@ -3,16 +3,16 @@ package com.linkedin.davinci.client;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Objects;
+import java.util.Optional;
 import org.apache.avro.Schema;
 
 
@@ -74,24 +74,20 @@ public class DaVinciRecordTransformerUtility<K, O> {
   /**
    * @return true if transformer logic has changed since the last time the class was loaded
    */
-  public boolean hasTransformerLogicChanged(int classHash) {
+  public boolean hasTransformerLogicChanged(AbstractStorageEngine storageEngine, int partitionId, int classHash) {
     try {
-      String classHashPath = String.format("./classHash-%d.txt", recordTransformer.getStoreVersion());
-      File f = new File(classHashPath);
-      if (f.exists()) {
-        try (BufferedReader br = new BufferedReader(new FileReader(classHashPath))) {
-          int storedClassHash = Integer.parseInt(br.readLine());
-          if (storedClassHash == classHash) {
-            return false;
-          }
-        }
+      Optional<OffsetRecord> offsetRecord = storageEngine.getPartitionOffset(partitionId);
+      Integer offsetRecordClassHash = offsetRecord.map(OffsetRecord::getTransformerClassHash).orElse(null);
+      if (!Objects.equals(offsetRecordClassHash, classHash)) {
+        offsetRecord.ifPresent(record -> {
+          record.setTransformerClassHash(classHash);
+          storageEngine.putPartitionOffset(partitionId, record);
+        });
+        return true;
+      } else {
+        return false;
       }
-
-      try (FileWriter fw = new FileWriter(classHashPath)) {
-        fw.write(String.valueOf(classHash));
-      }
-      return true;
-    } catch (IOException e) {
+    } catch (IllegalArgumentException | StorageInitializationException e) {
       throw new VeniceException("Failed to check if transformation logic has changed", e);
     }
   }
@@ -101,18 +97,17 @@ public class DaVinciRecordTransformerUtility<K, O> {
    */
   public final void onRecovery(
       AbstractStorageEngine storageEngine,
-      Integer partition,
+      int partitionId,
       Lazy<VeniceCompressor> compressor) {
-    // ToDo: Store class hash in RocksDB to support blob transfer
     int classHash = recordTransformer.getClassHash();
-    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash);
+    boolean transformerLogicChanged = hasTransformerLogicChanged(storageEngine, partitionId, classHash);
 
     if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
       // Bootstrap from VT
-      storageEngine.clearPartitionOffset(partition);
+      storageEngine.clearPartitionOffset(partitionId);
     } else {
       // Bootstrap from local storage
-      AbstractStorageIterator iterator = storageEngine.getIterator(partition);
+      AbstractStorageIterator iterator = storageEngine.getIterator(partitionId);
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();
