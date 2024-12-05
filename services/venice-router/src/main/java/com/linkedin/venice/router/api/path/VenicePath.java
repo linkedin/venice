@@ -31,7 +31,6 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private Collection<RouterKey> partitionKeys;
   protected final RouterRetryConfig retryConfig;
   protected final RetryManager retryManager;
-  private final Time time;
   private final VeniceResponseDecompressor responseDecompressor;
   private boolean retryRequest = false;
   private long originalRequestStartTs = -1;
@@ -53,17 +52,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       RouterRetryConfig retryConfig,
       RetryManager retryManager,
       VeniceResponseDecompressor responseDecompressor) {
-    this(storeVersionName, SystemTime.INSTANCE, retryConfig, retryManager, responseDecompressor);
-  }
-
-  public VenicePath(
-      StoreVersionName storeVersionName,
-      Time time,
-      RouterRetryConfig retryConfig,
-      RetryManager retryManager,
-      VeniceResponseDecompressor responseDecompressor) {
     this.storeVersionName = storeVersionName;
-    this.time = time;
     this.retryConfig = retryConfig;
     this.retryManager = retryManager;
     this.responseDecompressor = responseDecompressor;
@@ -199,7 +188,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public void recordOriginalRequestStartTimestamp() {
     if (!isRetryRequest()) {
-      setOriginalRequestStartTs(time.getMilliseconds());
+      setOriginalRequestStartTs(getTime().getMilliseconds());
     }
   }
 
@@ -214,7 +203,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     }
     if (isRetryRequest()) {
       // Retry request
-      long retryDelay = time.getMilliseconds() - getOriginalRequestStartTs();
+      long retryDelay = getTime().getMilliseconds() - getOriginalRequestStartTs();
       long smartRetryThreshold = getLongTailRetryThresholdMs() + getSmartLongTailRetryAbortThresholdMs();
       if (retryDelay > smartRetryThreshold) {
         return true;
@@ -298,5 +287,9 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public boolean isLongTailRetryWithinBudget(int numberOfRoutes) {
     return retryManager.isRetryAllowed(numberOfRoutes);
+  }
+
+  protected Time getTime() {
+    return SystemTime.INSTANCE;
   }
 }
