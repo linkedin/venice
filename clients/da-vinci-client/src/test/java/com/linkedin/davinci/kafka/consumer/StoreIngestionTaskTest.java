@@ -2694,14 +2694,12 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testSchemaCacheWarming() throws Exception {
+  public void testSchemaCacheWarming() {
     VenicePartitioner partitioner = getVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
     MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), false, true, AA_OFF);
+        setupStoreAndVersionMocks(2, partitionerConfig, Optional.empty(), false, true, AA_OFF);
     StorageService storageService = mock(StorageService.class);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
@@ -2742,12 +2740,18 @@ public abstract class StoreIngestionTaskTest {
             + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
             + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
             + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
+    Schema schema5 = Schema.parse(
+        "{" + "\"fields\": ["
+            + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+            + "   {\"default\": -1, \"doc\": \"test field three\", \"name\": \"testField2\", \"type\": \"float\"}"
+            + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
     doReturn(true).when(mockStore).isReadComputationEnabled();
     doReturn(true).when(mockSchemaRepo).hasValueSchema(anyString(), anyInt());
     SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
     SchemaEntry schemaEntry2 = new SchemaEntry(2, schema2);
+    SchemaEntry schemaEntry5 = new SchemaEntry(5, schema5);
     doReturn(schemaEntry1).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
-    doReturn(Arrays.asList(schemaEntry1, schemaEntry2)).when(mockSchemaRepo).getValueSchemas(anyString());
+    doReturn(Arrays.asList(schemaEntry1, schemaEntry5, schemaEntry2)).when(mockSchemaRepo).getValueSchemas(anyString());
     storeIngestionTaskUnderTest.setValueSchemaId(2);
     storeIngestionTaskUnderTest.warmupSchemaCache(mockStore);
     verify(storeIngestionTaskUnderTest, times(1)).cacheFastAvroGenericDeserializer(schema1, schema1, 120000L);

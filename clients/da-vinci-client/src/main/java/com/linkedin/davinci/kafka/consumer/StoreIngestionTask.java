@@ -4137,15 +4137,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     List<SchemaEntry> schemaEntries = new ArrayList<>(schemaRepository.getValueSchemas(storeName));
     schemaEntries.sort(comparingInt(SchemaEntry::getId).reversed());
     // Try to warm the schema cache by generating last `getNumSchemaFastClassWarmup` schemas.
-    int schemaGenerated = 0;
+    Set<Integer> schemaGenerated = new HashSet<>();
     for (SchemaEntry schemaEntry: schemaEntries) {
-      if (schemaGenerated > numSchemaToGenerate) {
+      schemaGenerated.add(schemaEntry.getId());
+      if (schemaGenerated.size() > numSchemaToGenerate) {
         break;
       }
-      schemaGenerated++;
       cacheFastAvroGenericDeserializer(writerSchema, schemaEntry.getSchema(), warmUpTimeLimit);
     }
-    LOGGER.info("Warmed up cache of {} schemas of store {}", schemaGenerated, storeName);
+    LOGGER.info("Warmed up cache of value schema with ids {} of store {}", schemaGenerated, storeName);
   }
 
   void cacheFastAvroGenericDeserializer(Schema writerSchema, Schema readerSchema, long warmUpTimeLimit) {
