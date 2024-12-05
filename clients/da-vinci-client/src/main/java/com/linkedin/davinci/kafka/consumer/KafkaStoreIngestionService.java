@@ -676,7 +676,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
       if (storeIngestionTask != null) {
-        storeIngestionTask.shutdown(30);
+        storeIngestionTask.shutdownAndWait(30);
         LOGGER.info("Successfully shut down ingestion task for {}", topicName);
       } else {
         LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);

@@ -3917,7 +3917,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This method is a blocking call to wait for {@link StoreIngestionTask} for fully shutdown in the given time.
    * @param waitTime Maximum wait time for the shutdown operation.
    */
-  public synchronized void shutdown(int waitTime) {
+  public void shutdownAndWait(int waitTime) {
     long startTimeInMs = System.currentTimeMillis();
     close();
     try {
