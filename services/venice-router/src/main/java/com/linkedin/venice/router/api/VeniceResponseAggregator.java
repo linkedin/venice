@@ -19,7 +19,7 @@ import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.misc.TimeValue;
-import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -61,7 +61,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * {@code VeniceResponseAggregator} aggregates the sub-responses returned by storage node for a multi-get request.
  */
-public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
+public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicHttpRequest, FullHttpResponse> {
   private static final List<HttpResponseStatus> HEALTHY_STATUSES = Arrays.asList(OK, NOT_FOUND);
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceResponseAggregator.class);
@@ -137,7 +137,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   @Nonnull
   @Override
   public FullHttpResponse buildResponse(
-      @Nonnull BasicFullHttpRequest request,
+      @Nonnull BasicHttpRequest request,
       Metrics metrics,
       @Nonnull List<FullHttpResponse> gatheredResponses) {
     if (gatheredResponses.isEmpty()) {

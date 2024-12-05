@@ -131,7 +131,7 @@ public class TestVenicePathParser {
     batchGetRetryThresholds.put(1, 1);
     when(routerConfig.getLongTailRetryForBatchGetThresholdMs()).thenReturn(batchGetRetryThresholds);
 
-    VenicePathParser parser = new VenicePathParser<BasicFullHttpRequest>(
+    VenicePathParser parser = new VenicePathParser(
         getVersionFinder(),
         partitionFinder,
         getMockedStats(),
