@@ -201,7 +201,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void dropStoragePartitionGracefully(
+  public CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds,
@@ -210,7 +210,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
-    getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+    return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
   }
 
   @Override
