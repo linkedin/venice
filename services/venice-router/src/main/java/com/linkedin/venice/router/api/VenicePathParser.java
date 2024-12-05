@@ -8,12 +8,10 @@ import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest
 import static com.linkedin.venice.router.api.VeniceResponseDecompressor.getCompressionStrategy;
 import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static io.netty.handler.codec.http.HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
-import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_GATEWAY;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_REQUEST;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.MOVED_PERMANENTLY;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ExtendedResourcePathParser;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
@@ -74,8 +72,7 @@ import org.apache.commons.lang.StringUtils;
  *
  *   The VenicePathParser is responsible for looking up the active version of the store, and constructing the store-version
  */
-public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
-    implements ExtendedResourcePathParser<VenicePath, RouterKey, HTTP_REQUEST> {
+public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, RouterKey, BasicFullHttpRequest> {
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start
                                                                                                // and end of string
   public static final int STORE_MAX_LENGTH = 128;
@@ -188,17 +185,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   }
 
   @Override
-  public VenicePath parseResourceUri(String uri, HTTP_REQUEST request) throws RouterException {
-    if (!(request instanceof BasicFullHttpRequest)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          null,
-          null,
-          BAD_GATEWAY,
-          "parseResourceUri should receive a BasicFullHttpRequest");
-    }
-    BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest) request;
-
-    VenicePathParserHelper pathHelper = parseRequest(request);
+  public VenicePath parseResourceUri(String uri, BasicFullHttpRequest fullHttpRequest) throws RouterException {
+    VenicePathParserHelper pathHelper = parseRequest(fullHttpRequest);
     RouterResourceType resourceType = pathHelper.getResourceType();
     if (resourceType != RouterResourceType.TYPE_STORAGE && resourceType != RouterResourceType.TYPE_COMPUTE) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
@@ -278,7 +266,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           if (isReadComputationEnabled) {
             path = computePath;
           } else {
-            if (!request.headers().contains(HttpConstants.VENICE_CLIENT_COMPUTE)) {
+            if (!fullHttpRequest.headers().contains(HttpConstants.VENICE_CLIENT_COMPUTE)) {
               throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
                   storeName,
                   computePath.getRequestType(),
@@ -295,14 +283,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               null,
               BAD_REQUEST,
               "The passed in request must be either a GET or " + "be a POST with a resource type of " + TYPE_STORAGE
-                  + " or " + TYPE_COMPUTE + ", but instead it was: " + request.toString());
+                  + " or " + TYPE_COMPUTE + ", but instead it was: " + fullHttpRequest.toString());
         }
       } else {
         throw RouterExceptionAndTrackingUtils
             .newRouterExceptionAndTracking(null, null, BAD_REQUEST, "Method: " + method + " is not allowed");
       }
       RequestType requestType = path.getRequestType();
-      if (StreamingUtils.isStreamingEnabled(request)) {
+      if (StreamingUtils.isStreamingEnabled(fullHttpRequest)) {
         if (requestType.equals(RequestType.MULTI_GET) || requestType.equals(RequestType.COMPUTE)) {
           // Right now, streaming support is only available for multi-get and compute
           // Extract ChunkedWriteHandler reference
