@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -121,9 +122,10 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
   private final CompressorFactory compressorFactory;
   private final MetricsRepository metricsRepository;
   private final ScheduledExecutorService retryManagerScheduler;
-  private final Map<String, RetryManager> routerSingleKeyRetryManagers;
-  private final Map<String, RetryManager> routerMultiKeyRetryManagers;
+  private final Map<StoreName, RetryManager> routerSingleKeyRetryManagers;
+  private final Map<StoreName, RetryManager> routerMultiKeyRetryManagers;
   private final NameRepository nameRepository = new NameRepository();
+  /** Outer map of {client's desired compression strategy -> inner map of {store-version -> decompressor}} */
   private final EnumMap<CompressionStrategy, Map<StoreVersionName, VeniceResponseDecompressor>> decompressorMaps;
 
   public VenicePathParser(
@@ -145,7 +147,8 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
     }
     this.storeRepository.registerStoreDataChangedListener(new StoreDataChangedListener() {
       @Override
-      public void handleStoreDeleted(String storeName) {
+      public void handleStoreDeleted(String storeNameString) {
+        StoreName storeName = nameRepository.getStoreName(storeNameString);
         routerSingleKeyRetryManagers.remove(storeName);
         routerMultiKeyRetryManagers.remove(storeName);
         cleanDecompressorMaps(storeName, storeVersionName -> true);
@@ -153,21 +156,21 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
 
       @Override
       public void handleStoreChanged(Store store) {
-        String storeName = store.getName();
+        StoreName storeName = nameRepository.getStoreName(store.getName());
         IntSet upToDateVersionsSet = store.getVersionNumbers();
         cleanDecompressorMaps(
             storeName,
             storeVersionName -> !upToDateVersionsSet.contains(storeVersionName.getVersionNumber()));
       }
 
-      private void cleanDecompressorMaps(String storeName, Function<StoreVersionName, Boolean> criteriaForRemoval) {
+      private void cleanDecompressorMaps(StoreName storeName, Function<StoreVersionName, Boolean> criteriaForRemoval) {
         for (Map<StoreVersionName, VeniceResponseDecompressor> decompressorMap: decompressorMaps.values()) {
           // remove out dated versions (if any) from the map
           Iterator<StoreVersionName> storeVersionNameIterator = decompressorMap.keySet().iterator();
           StoreVersionName storeVersionName;
           while (storeVersionNameIterator.hasNext()) {
             storeVersionName = storeVersionNameIterator.next();
-            if (storeVersionName.getStoreName().equals(storeName)) {
+            if (storeVersionName.getStore().equals(storeName)) {
               if (criteriaForRemoval.apply(storeVersionName)) {
                 storeVersionNameIterator.remove();
               }
@@ -212,7 +215,7 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
 
       if (VeniceRouterUtils.isHttpGet(method)) {
         RetryManager singleKeyRetryManager = routerSingleKeyRetryManagers.computeIfAbsent(
-            storeName,
+            storeVersionName.getStore(),
             ignored -> new RetryManager(
                 metricsRepository,
                 SINGLE_KEY_RETRY_MANAGER_STATS_PREFIX + storeName,
@@ -231,7 +234,7 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
             responseDecompressor);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         RetryManager multiKeyRetryManager = routerMultiKeyRetryManagers.computeIfAbsent(
-            storeName,
+            storeVersionName.getStore(),
             ignored -> new RetryManager(
                 metricsRepository,
                 MULTI_KEY_RETRY_MANAGER_STATS_PREFIX + storeName,
