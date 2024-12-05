@@ -3922,7 +3922,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     close();
     try {
       if (!getGracefulShutdownLatch().await(waitTime, SECONDS)) {
-        LOGGER.info(
+        LOGGER.warn(
             "Unable to shutdown ingestion task of topic: {} gracefully in {}ms",
             kafkaVersionTopic,
             SECONDS.toMillis(waitTime));
