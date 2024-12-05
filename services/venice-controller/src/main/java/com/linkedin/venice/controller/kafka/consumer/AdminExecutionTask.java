@@ -666,7 +666,9 @@ public class AdminExecutionTask implements Callable<Void> {
     } else {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
-      if (skipConsumption) {
+      boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
+      String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
+      if (skipConsumption && isTargetRegionPushWithDeferredSwap) {
         // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "
@@ -687,6 +689,7 @@ public class AdminExecutionTask implements Callable<Void> {
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
             message.versionSwapDeferred,
+            targetedRegions,
             repushSourceVersion);
       }
     }

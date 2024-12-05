@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -88,6 +89,7 @@ public abstract class AbstractPushMonitor
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
   private final DisabledPartitionStats disabledPartitionStats;
+  private final String regionName;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -134,6 +136,7 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
         controllerConfig.useDaVinciSpecificExecutionStatusForError());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+    this.regionName = controllerConfig.getRegionName();
     pushStatusCollector.start();
   }
 
@@ -1120,15 +1123,37 @@ public abstract class AbstractPushMonitor
                     storeName,
                     versionNumber));
           }
-          if (version.isVersionSwapDeferred()) {
+
+          /**
+           * Switch to the new version if:
+           * 1.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
+           * 2.target region push w/ deferred swap is enabled and the current region matches the target region
+           *
+           * Do not switch to the new version now if:
+           * 1.deferred version swap is enabled (it will be manually swapped at a later date)
+           * 2.target region push is enabled and the current region does NOT match the target region (it will be swapped
+           *  after targetSwapRegionWaitTime passes)
+           */
+          Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          boolean isValidTargetRegion = targetRegions.contains(regionName);
+          boolean isTargetRegionPushWithDeferredSwap = version.isVersionSwapDeferred() && isValidTargetRegion;
+          boolean isNormalPush = !version.isVersionSwapDeferred();
+          boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
+          if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
+            int previousVersion = store.getCurrentVersion();
+            store.setCurrentVersion(versionNumber);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+          } else if (isDeferredSwap) {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {}. Skipping version swap.",
                 store.getName(),
                 versionNumber);
           } else {
-            int previousVersion = store.getCurrentVersion();
-            store.setCurrentVersion(versionNumber);
-            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            LOGGER.info(
+                "Version swap is deferred for store {} on version {} in region {} due to target region push w/ deferred swap",
+                store.getName(),
+                versionNumber,
+                regionName);
           }
         } else {
           LOGGER.info(

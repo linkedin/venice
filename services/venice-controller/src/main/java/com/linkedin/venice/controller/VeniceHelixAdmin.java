@@ -1986,11 +1986,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  /**
-   * This is a wrapper for VeniceHelixAdmin#addVersion but performs additional operations needed for add version invoked
-   * from the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an add
-   * version message.
-   */
   @Override
   public void addVersionAndStartIngestion(
       String clusterName,
@@ -2003,6 +1998,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
+      int repushSourceVersion) {
+    addVersionAndStartIngestion(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNumber,
+        numberOfPartitions,
+        pushType,
+        remoteKafkaBootstrapServers,
+        rewindTimeInSecondsOverride,
+        replicationMetadataVersionId,
+        versionSwapDeferred,
+        null,
+        repushSourceVersion);
+  }
+
+  /**
+   * This is a wrapper for VeniceHelixAdmin#addVersion but performs additional operations needed for add version invoked
+   * from the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an add
+   * version message.
+   */
+  public void addVersionAndStartIngestion(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int versionNumber,
+      int numberOfPartitions,
+      PushType pushType,
+      String remoteKafkaBootstrapServers,
+      long rewindTimeInSecondsOverride,
+      int replicationMetadataVersionId,
+      boolean versionSwapDeferred,
+      String targetedRegions,
       int repushSourceVersion) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
@@ -2053,6 +2081,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         Optional.empty(),
         versionSwapDeferred,
+        targetedRegions,
         repushSourceVersion);
   }
 
@@ -2490,49 +2519,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             useFastKafkaOperationTimeout));
   }
 
-  private Pair<Boolean, Version> addVersion(
-      String clusterName,
-      String storeName,
-      String pushJobId,
-      int versionNumber,
-      int numberOfPartitions,
-      int replicationFactor,
-      boolean startIngestion,
-      boolean sendStartOfPush,
-      boolean sorted,
-      boolean useFastKafkaOperationTimeout,
-      PushType pushType,
-      String compressionDictionary,
-      String remoteKafkaBootstrapServers,
-      Optional<String> sourceGridFabric,
-      long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId,
-      Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred,
-      int repushSourceVersion) {
-    return addVersion(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNumber,
-        numberOfPartitions,
-        replicationFactor,
-        startIngestion,
-        sendStartOfPush,
-        sorted,
-        useFastKafkaOperationTimeout,
-        pushType,
-        compressionDictionary,
-        remoteKafkaBootstrapServers,
-        sourceGridFabric,
-        rewindTimeInSecondsOverride,
-        replicationMetadataVersionId,
-        emergencySourceRegion,
-        versionSwapDeferred,
-        null,
-        repushSourceVersion);
-  }
-
   private Optional<Version> getVersionFromSourceCluster(
       ReadWriteStoreRepository repository,
       String destinationCluster,
@@ -2804,6 +2790,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version.setRepushSourceVersion(repushSourceVersion);
             }
 
+            if (versionSwapDeferred && StringUtils.isNotEmpty(targetedRegions)) {
+              version.setTargetSwapRegion(targetedRegions);
+            }
+
             Properties veniceViewProperties = new Properties();
             veniceViewProperties.put(PARTITION_COUNT, numberOfPartitions);
             veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
@@ -3061,6 +3051,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             replicationMetadataVersionId,
             emergencySourceRegion,
             versionSwapDeferred,
+            null,
             repushSourceVersion).getSecond();
   }
 
