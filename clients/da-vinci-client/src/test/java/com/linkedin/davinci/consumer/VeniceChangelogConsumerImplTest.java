@@ -416,10 +416,8 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testVersionSwapDataChangeListener() {
-    // consumer.getTopicAssignment();
-    // this.consumer.seekToEndOfPush(partitions).get();
     VeniceAfterImageConsumerImpl mockConsumer = Mockito.mock(VeniceAfterImageConsumerImpl.class);
-    // Set<PubSubTopicPartition> getTopicAssignment()
+    Mockito.when(mockConsumer.subscribed()).thenReturn(true);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
         new TestPubSubTopic(storeName + "_v1", storeName, PubSubTopicType.VERSION_TOPIC),
         1);
