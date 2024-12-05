@@ -1341,24 +1341,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         .filter(LeaderFollowerStoreIngestionTask.LEADER_OFFSET_LAG_FILTER)
         // the lag is (latest fabric RT offset - consumed fabric RT offset)
         .mapToLong((pcs) -> {
-          PubSubTopic currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-          if (currentLeaderTopic == null || !currentLeaderTopic.isRealTime()) {
+          PubSubTopic resolvedLeaderTopic =
+              resolveTopicWithKafkaURL(pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository), kafkaSourceAddress);
+          if (resolvedLeaderTopic == null || !resolvedLeaderTopic.isRealTime()) {
             // Leader topic not found, indicating that it is VT topic.
             return 0;
           }
-
+          String resolveKafkaUrl = Utils.resolveKafkaUrlForSepTopic(kafkaSourceAddress);
           // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
           long lagBasedOnMetrics =
-              getPartitionOffsetLagBasedOnMetrics(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
+              getPartitionOffsetLagBasedOnMetrics(resolveKafkaUrl, resolvedLeaderTopic, pcs.getPartition());
           if (lagBasedOnMetrics >= 0) {
             return lagBasedOnMetrics;
           }
 
           // Fall back to calculate offset lag in the old way
           return measureLagWithCallToPubSub(
-              kafkaSourceAddress,
-              currentLeaderTopic,
+              resolveKafkaUrl,
+              resolvedLeaderTopic,
               pcs.getPartition(),
               pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress));
         })
