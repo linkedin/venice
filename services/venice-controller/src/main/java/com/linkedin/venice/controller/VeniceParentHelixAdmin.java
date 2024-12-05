@@ -4809,7 +4809,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return a list of StoreInfo objects of stores that are ready for compaction
    */
   @Override
-  public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
+  public List<StoreInfo> getStoresForCompaction(String clusterName) {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 

@@ -7479,7 +7479,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public ArrayList<StoreInfo> getStoresForCompaction(String clusterName) {
+  public List<StoreInfo> getStoresForCompaction(String clusterName) {
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);

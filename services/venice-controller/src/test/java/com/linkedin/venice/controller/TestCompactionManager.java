@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -66,7 +67,7 @@ public class TestCompactionManager {
     doCallRealMethod().when(mockManager).filterStoresForCompaction(any());
 
     // Test
-    ArrayList<StoreInfo> compactionReadyStores = mockManager.filterStoresForCompaction(storeInfoList);
+    List<StoreInfo> compactionReadyStores = mockManager.filterStoresForCompaction(storeInfoList);
 
     // Assert the expected outcome
     assertEquals(compactionReadyStores.size(), 2);

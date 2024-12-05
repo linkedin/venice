@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -18,16 +19,14 @@ public class CompactionManager {
   public static final int COMPACTION_THRESHOLD_HOURS = 24;
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
-  private static RepushOrchestrator repushOrchestrator;
+  private RepushOrchestrator repushOrchestrator;
   // TODO: where to configure implementation of RepushOrchestrator to use?
 
   public CompactionManager(RepushOrchestrator repushOrchestrator) {
     this.repushOrchestrator = repushOrchestrator;
   }
 
-  public ArrayList<StoreInfo> getStoresForCompaction(
-      String clusterName,
-      Map<String, ControllerClient> childControllers) {
+  public List<StoreInfo> getStoresForCompaction(String clusterName, Map<String, ControllerClient> childControllers) {
     ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
 
     // iterate through child controllers
@@ -44,7 +43,7 @@ public class CompactionManager {
 
   // public for testing
   // TODO: make private or package protected
-  public ArrayList<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
+  public List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
     ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
