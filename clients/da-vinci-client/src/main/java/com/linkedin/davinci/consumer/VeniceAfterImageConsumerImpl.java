@@ -7,9 +7,6 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -42,7 +39,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   final private Lazy<VeniceChangelogConsumerImpl<K, V>> internalSeekConsumer;
   private final ScheduledExecutorService versionSwapExecutorService = Executors.newSingleThreadScheduledExecutor();
   AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
-  private final VersionSwapDataChangeListener versionSwapListener = new VersionSwapDataChangeListener();
+  private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
   public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
     this(
@@ -63,6 +60,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     super(changelogClientConfig, consumer);
     internalSeekConsumer = seekConsumer;
     versionSwapDetectionIntervalTimeInMs = changelogClientConfig.getVersionSwapDetectionIntervalTimeInMs();
+    versionSwapListener = new VersionSwapDataChangeListener<K, V>(
+        this,
+        storeRepository,
+        storeName,
+        changelogClientConfig.getConsumerName());
   }
 
   @Override
@@ -179,52 +181,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
     return super.internalSeek(partitions, targetTopic, seekAction);
-  }
-
-  private class VersionSwapDataChangeListener implements StoreDataChangedListener {
-    @Override
-    public void handleStoreChanged(Store store) {
-      synchronized (this) {
-        Set<Integer> partitions = new HashSet<>();
-        try {
-          // Check the current version of the server
-          int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
-
-          // Check the current ingested version
-          Set<PubSubTopicPartition> subscriptions = getTopicAssignment();
-          synchronized (subscriptions) {
-            if (subscriptions.isEmpty()) {
-              return;
-            }
-            int maxVersion = -1;
-            for (PubSubTopicPartition topicPartition: subscriptions) {
-              int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
-              if (version >= maxVersion) {
-                maxVersion = version;
-              }
-            }
-
-            // Seek to end of push
-            if (currentVersion != maxVersion) {
-              // get current subscriptions and seek to endOfPush
-              for (PubSubTopicPartition partitionSubscription: subscriptions) {
-                partitions.add(partitionSubscription.getPartitionNumber());
-              }
-            }
-
-            LOGGER.info(
-                "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: "
-                    + changelogClientConfig.getConsumerName());
-            seekToEndOfPush(partitions).get();
-          }
-        } catch (Exception e) {
-          LOGGER.error(
-              "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " on consumer: "
-                  + changelogClientConfig.getConsumerName() + "will retry...",
-              e);
-        }
-      }
-    }
   }
 
   private class VersionSwapDetectionThread implements Runnable {
