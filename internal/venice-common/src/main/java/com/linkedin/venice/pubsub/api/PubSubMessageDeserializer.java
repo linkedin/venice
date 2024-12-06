@@ -96,6 +96,7 @@ public class PubSubMessageDeserializer {
         return putEnvelopePool.get();
       // No need to pool control messages since there are so few of them, and they are varied anyway, limiting reuse.
       case MessageType.Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE:
+      case MessageType.Constants.DIV_KEY_HEADER_BYTE:
         return new KafkaMessageEnvelope();
       case MessageType.Constants.UPDATE_KEY_HEADER_BYTE:
         return updateEnvelopePool.get();
