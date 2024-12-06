@@ -12,7 +12,7 @@
     if: $Conditional
     timeout-minutes: $TimeOut
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4

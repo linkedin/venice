@@ -25,7 +25,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +91,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -157,7 +157,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -223,7 +223,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -289,7 +289,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -355,7 +355,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -421,7 +421,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -487,7 +487,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -553,7 +553,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -619,7 +619,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -685,7 +685,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -751,7 +751,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -817,7 +817,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -883,7 +883,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -949,7 +949,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1015,7 +1015,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1081,7 +1081,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1147,7 +1147,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1213,7 +1213,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1279,7 +1279,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1345,7 +1345,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1411,7 +1411,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1477,7 +1477,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1543,7 +1543,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1609,7 +1609,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1675,7 +1675,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1741,7 +1741,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1807,7 +1807,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1873,7 +1873,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -1939,7 +1939,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
@@ -2005,7 +2005,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.job }}-jdk${{ matrix.jdk }}
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
