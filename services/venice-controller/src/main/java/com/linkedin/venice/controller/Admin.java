@@ -60,7 +60,6 @@ import org.apache.avro.Schema;
 
 
 public interface Admin extends AutoCloseable, Closeable {
-
   // Wrapper to include both overall offline push status and other extra useful info
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;
@@ -944,7 +943,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * @param storeName
-   * triggers repush for storeName
+   * triggers repush for storeName for log compaction of store topic
    */
   void compactStore(String storeName);
 
