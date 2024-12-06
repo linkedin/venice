@@ -2,9 +2,10 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.alpini.router.api.ResourcePath;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RetryManager;
+import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceResponseDecompressor;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -17,30 +18,22 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import org.apache.http.client.methods.HttpUriRequest;
 
 
 public abstract class VenicePath implements ResourcePath<RouterKey> {
-  private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong(0);
-
-  private final String resourceName;
+  protected final StoreVersionName storeVersionName;
   private Collection<RouterKey> partitionKeys;
-  protected final String storeName;
-  protected final int versionNumber;
+  protected final RouterRetryConfig retryConfig;
   protected final RetryManager retryManager;
-  private final Time time;
+  private final VeniceResponseDecompressor responseDecompressor;
   private boolean retryRequest = false;
-  private final boolean smartLongTailRetryEnabled;
-  private final int smartLongTailRetryAbortThresholdMs;
   private long originalRequestStartTs = -1;
-  private int longTailRetryThresholdMs = Integer.MAX_VALUE;
   /**
    * This slow storage node set, which will be decided by the scattered requests of the original request.
    * And this set is mostly used to decide whether we should send retry request to any specific storage node or not.
@@ -54,69 +47,35 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private Set<String> slowStorageNodeSet = new ConcurrentSkipListSet<>();
   private boolean ignoreSlowStorageNodes = false;
 
-  // Whether the request supports streaming or not
-  private VeniceChunkedResponse chunkedResponse = null;
-  private VeniceResponseDecompressor responseDecompressor = null;
-  private Optional<Map<CharSequence, String>> responseHeaders = Optional.empty();
-
-  private long requestId = -1;
-  private int helixGroupId = -1;
-
   public VenicePath(
-      String storeName,
-      int versionNumber,
-      String resourceName,
-      boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs,
-      RetryManager retryManager) {
-    this(
-        storeName,
-        versionNumber,
-        resourceName,
-        smartLongTailRetryEnabled,
-        smartLongTailRetryAbortThresholdMs,
-        new SystemTime(),
-        retryManager);
-  }
-
-  public VenicePath(
-      String storeName,
-      int versionNumber,
-      String resourceName,
-      boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs,
-      Time time,
-      RetryManager retryManager) {
-    this.resourceName = resourceName;
-    this.storeName = storeName;
-    this.versionNumber = versionNumber;
-    this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
-    this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
-    this.time = time;
+      StoreVersionName storeVersionName,
+      RouterRetryConfig retryConfig,
+      RetryManager retryManager,
+      VeniceResponseDecompressor responseDecompressor) {
+    this.storeVersionName = storeVersionName;
+    this.retryConfig = retryConfig;
     this.retryManager = retryManager;
+    this.responseDecompressor = responseDecompressor;
   }
 
   public synchronized long getRequestId() {
-    if (requestId < 0) {
-      requestId = REQUEST_ID_GENERATOR.getAndIncrement();
-    }
-    return requestId;
+    return -1;
   }
 
   public int getHelixGroupId() {
-    return helixGroupId;
+    return -1;
   }
 
   public void setHelixGroupId(int helixGroupId) {
-    this.helixGroupId = helixGroupId;
+    // No-op.
   }
 
   public boolean isSmartLongTailRetryEnabled() {
-    return smartLongTailRetryEnabled;
+    return false;
   }
 
   public int getSmartLongTailRetryAbortThresholdMs() {
-    return smartLongTailRetryAbortThresholdMs;
+    return -1;
   }
 
   protected void setPartitionKeys(Collection<RouterKey> keys) {
@@ -130,25 +89,25 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   public int getRequestSize() {
-    // The final single-element array is being used in closure since closure can only operate final variables.
-    final int[] size = { 0 };
-    getPartitionKeys().stream().forEach(key -> size[0] += key.getKeyBuffer().remaining());
-
-    return size[0];
+    int size = 0;
+    for (RouterKey key: getPartitionKeys()) {
+      size += key.getKeyBuffer().remaining();
+    }
+    return size;
   }
 
   public int getVersionNumber() {
-    return this.versionNumber;
+    return this.storeVersionName.getVersionNumber();
   }
 
   @Nonnull
   @Override
   public String getResourceName() {
-    return this.resourceName;
+    return this.storeVersionName.getName();
   }
 
   public String getStoreName() {
-    return this.storeName;
+    return this.storeVersionName.getStoreName();
   }
 
   @Override
@@ -170,7 +129,6 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       setRetryRequest();
     }
 
-    setLongTailRetryThresholdMs(originalPath.getLongTailRetryThresholdMs());
     /**
      * All the sub-requests and retry requests for a multi-get request will share the same slow
      * storage node set.
@@ -178,12 +136,6 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     slowStorageNodeSet = originalPath.slowStorageNodeSet;
     ignoreSlowStorageNodes = originalPath.ignoreSlowStorageNodes;
     setOriginalRequestStartTs(originalPath.getOriginalRequestStartTs());
-
-    this.chunkedResponse = originalPath.chunkedResponse;
-    this.responseDecompressor = originalPath.responseDecompressor;
-
-    this.requestId = originalPath.getRequestId();
-    this.helixGroupId = originalPath.getHelixGroupId();
   }
 
   public boolean isRetryRequest() {
@@ -198,13 +150,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.originalRequestStartTs = originalRequestStartTs;
   }
 
-  public int getLongTailRetryThresholdMs() {
-    return longTailRetryThresholdMs;
-  }
-
-  public void setLongTailRetryThresholdMs(int longTailRetryThresholdMs) {
-    this.longTailRetryThresholdMs = longTailRetryThresholdMs;
-  }
+  public abstract int getLongTailRetryThresholdMs();
 
   public void requestStorageNode(String storageNode) {
     if (!isRetryRequest()) {
@@ -232,7 +178,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    * @return
    */
   public boolean canRequestStorageNode(String storageNode) {
-    if (!smartLongTailRetryEnabled) {
+    if (!isSmartLongTailRetryEnabled()) {
       return true;
     }
     return !isRetryRequest() || // original request
@@ -242,7 +188,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public void recordOriginalRequestStartTimestamp() {
     if (!isRetryRequest()) {
-      setOriginalRequestStartTs(time.getMilliseconds());
+      setOriginalRequestStartTs(getTime().getMilliseconds());
     }
   }
 
@@ -252,12 +198,12 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    * @return
    */
   public boolean isRetryRequestTooLate() {
-    if (!smartLongTailRetryEnabled) {
+    if (!isSmartLongTailRetryEnabled()) {
       return false;
     }
     if (isRetryRequest()) {
       // Retry request
-      long retryDelay = time.getMilliseconds() - getOriginalRequestStartTs();
+      long retryDelay = getTime().getMilliseconds() - getOriginalRequestStartTs();
       long smartRetryThreshold = getLongTailRetryThresholdMs() + getSmartLongTailRetryAbortThresholdMs();
       if (retryDelay > smartRetryThreshold) {
         return true;
@@ -274,7 +220,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       setupHeaderFunc.accept(HttpConstants.VENICE_RETRY, "1");
     }
     // Streaming
-    if (chunkedResponse != null) {
+    if (isStreamingRequest()) {
       setupHeaderFunc.accept(HttpConstants.VENICE_STREAMING, "1");
     }
   }
@@ -287,38 +233,12 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       ChannelHandlerContext ctx,
       VeniceChunkedWriteHandler chunkedWriteHandler,
       RouterStats<AggRouterHttpRequestStats> routerStats) {
-    if (chunkedResponse != null) {
-      // Defensive code
-      throw new IllegalStateException("VeniceChunkedWriteHandler has already been setup");
-    }
-    this.chunkedResponse = new VeniceChunkedResponse(
-        storeName,
-        getStreamingRequestType(),
-        ctx,
-        chunkedWriteHandler,
-        routerStats,
-        getResponseHeaders());
+    throw new UnsupportedOperationException(
+        "setChunkedWriteHandler is only available with " + VeniceMultiKeyPath.class.getSimpleName() + " subclasses.");
   }
 
-  public void setResponseHeaders(Map<CharSequence, String> responseHeaders) {
-    if (this.chunkedResponse != null) {
-      throw new VeniceException("Response headers must be set before calling setChunkedWriteHandler");
-    }
-    if (this.responseHeaders.isPresent()) {
-      throw new VeniceException("Response headers has already been setup");
-    }
-    this.responseHeaders = Optional.of(responseHeaders);
-  }
-
-  public Optional<Map<CharSequence, String>> getResponseHeaders() {
-    return this.responseHeaders;
-  }
-
-  public void setResponseDecompressor(VeniceResponseDecompressor decompressor) {
-    if (responseDecompressor != null) {
-      throw new VeniceException("VeniceResponseDecompressor has already been setup");
-    }
-    this.responseDecompressor = decompressor;
+  public @Nullable String getClientComputeHeader() {
+    return null;
   }
 
   public VeniceResponseDecompressor getResponseDecompressor() {
@@ -331,8 +251,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return responseDecompressor;
   }
 
-  public VeniceChunkedResponse getChunkedResponse() {
-    return this.chunkedResponse;
+  public @Nullable VeniceChunkedResponse getChunkedResponse() {
+    return null;
   }
 
   public boolean isStreamingRequest() {
@@ -367,5 +287,9 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public boolean isLongTailRetryWithinBudget(int numberOfRoutes) {
     return retryManager.isRetryAllowed(numberOfRoutes);
+  }
+
+  protected Time getTime() {
+    return SystemTime.INSTANCE;
   }
 }
