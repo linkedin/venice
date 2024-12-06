@@ -382,15 +382,15 @@ public class KafkaTopicDumper implements AutoCloseable {
         boolean hasProcessedRecords = false;
         while (recordIterator.hasNext() && processedMessageCount < messageCount) {
           PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordIterator.next();
+          // Exit early if endOffset is reached
+          if (record.getOffset() > endOffset) {
+            LOGGER.info("Reached endOffset: {}. Total messages processed: {}", endOffset, processedMessageCount);
+            return processedMessageCount;
+          }
           processedMessageCount++;
           lastProcessedRecord = record;
           hasProcessedRecords = true;
           processRecord(record);
-          // Exit early if endOffset is reached
-          if (record.getOffset() >= endOffset) {
-            LOGGER.info("Reached endOffset. Total messages processed: {}", processedMessageCount);
-            return processedMessageCount;
-          }
         }
 
         // Log progress if sufficient messages have been processed since the last report

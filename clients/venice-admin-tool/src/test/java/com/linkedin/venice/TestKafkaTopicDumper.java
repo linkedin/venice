@@ -417,11 +417,11 @@ public class TestKafkaTopicDumper {
     assertEquals(processedCount, 0, "Should process no messages when poll returns empty");
 
     // Case 5: endOffset is reached before messageCount is reached
-    mockMessages = createMockMessages(3, 0);
+    mockMessages = createMockMessages(4, 0);
     mockPollResult.put(topicPartition, mockMessages);
     when(mockConsumer.poll(5000L)).thenReturn(mockPollResult);
     processedCount = spyDumper.fetchAndProcess(0, 2, 5);
-    assertEquals(processedCount, 3, "Should stop processing when endOffset is reached and tailing is disabled");
+    assertEquals(processedCount, 3, "Should stop processing when endOffset is reached");
 
     // Verify unsubscription
     verify(mockConsumer, atLeastOnce()).unSubscribe(topicPartition);
