@@ -14,7 +14,7 @@
     timeout-minutes: $TimeOut
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-$FlowName
-     cancel-in-progress: true
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
