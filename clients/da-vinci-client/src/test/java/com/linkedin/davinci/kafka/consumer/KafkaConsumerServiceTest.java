@@ -205,7 +205,7 @@ public class KafkaConsumerServiceTest {
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, true, () -> {
       verify(consumer1, atLeastOnce()).poll(anyLong());
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFromConsumer(versionTopic, topicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, topicPartition);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
       Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains("0"));

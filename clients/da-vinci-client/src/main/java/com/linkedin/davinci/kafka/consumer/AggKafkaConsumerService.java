@@ -484,7 +484,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFromConsumer(versionTopic, pubSubTopicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
       for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
           .entrySet()) {
         PubSubTopicPartition topicPartition = entry.getKey();

@@ -88,8 +88,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private final Logger LOGGER;
   private final ExecutorService consumerExecutor;
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
+  // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
+      new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -395,15 +396,24 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
          * are zero-based and ConsumptionTasks are submitted to the executor in order.
          */
         Thread slowestThread = threadFactory.getThread(slowestTaskId);
-
+        SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(slowestTaskId).getKey();
+        Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+            getIngestionInfoFromConsumer(consumer);
+        // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+            .entrySet()) {
+          sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+        }
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
-            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}",
+            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}, consumer info:\n{}",
             kafkaUrl,
             slowestTaskId,
             maxElapsedTimeSinceLastPollInConsumerPool,
             slowestThread != null ? slowestThread.getName() : null,
-            ExceptionUtils.threadToThrowableToString(slowestThread));
+            ExceptionUtils.threadToThrowableToString(slowestThread),
+            sb.toString());
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
@@ -530,10 +540,17 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
-  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+        getIngestionInfoFromConsumer(consumer);
+    return topicPartitionIngestionInfoMap;
+  }
+
+  private Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      SharedKafkaConsumer consumer) {
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
