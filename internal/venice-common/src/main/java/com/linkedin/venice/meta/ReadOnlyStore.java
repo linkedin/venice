@@ -942,13 +942,13 @@ public class ReadOnlyStore implements Store {
     // Bootstrap to Online Timeout in Hours
     storeProperties.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
 
-    // TODO PRANAV Leader Follower Model Enabled
+    // Leader Follower Model Enabled
     // storeProperties.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
 
     // Native Replication Enabled
     storeProperties.setNativeReplicationEnabled(isNativeReplicationEnabled());
 
-    // TODO PRANAV Replication Metadata Version ID
+    // Replication Metadata Version ID
     // storeProperties.setReplicationMetadataVersionID(getReplicationMetadataVersionID());
 
     // Push Stream Source Address
@@ -980,7 +980,7 @@ public class ReadOnlyStore implements Store {
     // Partitioner Config
     storeProperties.setPartitionerConfig(convertPartitionerConfig(getPartitionerConfig()));
 
-    // TODO PRANAV Incremental Push Policy
+    // Incremental Push Policy
     // storeProperties.setIncrementalPushPolicy(IncrementalPushPolicy());
 
     // Latest Version Promote to Current Timestamp
@@ -1007,7 +1007,7 @@ public class ReadOnlyStore implements Store {
     // ActiveActive Replication Enabled
     storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
 
-    // TODO PRANAV Apply Target Version Filter for Inc Push
+    // Apply Target Version Filter for Inc Push
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
 
     // Min Compaction Lag Seconds
@@ -1033,7 +1033,7 @@ public class ReadOnlyStore implements Store {
     }
     storeProperties.setVersions(storeVersions);
 
-    // System Stored
+    // System Stores
     Map<String, SystemStoreAttributes> systemStoreAttributesMap = getSystemStores();
     Map<CharSequence, SystemStoreProperties> systemStorePropertiesMap = new HashMap<>();
     for (Map.Entry<String, SystemStoreAttributes> entry: systemStoreAttributesMap.entrySet()) {
@@ -1728,7 +1728,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setPushStreamSourceAddress(version.getPushStreamSourceAddress());
 
     // Buffer Replay Enabled for Hybrid
-    // storeVersion.setBufferReplayEnabledForHybrid(); TODO PRANAV
+    // storeVersion.setBufferReplayEnabledForHybrid();
 
     // Chunking Enabled
     storeVersion.setChunkingEnabled(version.isChunkingEnabled());
@@ -1746,7 +1746,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setPartitionerConfig(convertPartitionerConfig(version.getPartitionerConfig()));
 
     // Incremental Push Policy
-    // storeVersion.setIncrementalPushPolicy(version.getIncrementalPushPolicy()); TODO PRANAV
+    // storeVersion.setIncrementalPushPolicy(version.getIncrementalPushPolicy());
 
     // Replication Factor
     storeVersion.setReplicationFactor(version.getReplicationFactor());
@@ -1757,7 +1757,7 @@ public class ReadOnlyStore implements Store {
     // Incremental Push Enabled
     storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
 
-    // Seperate Realtime Topic Enabled
+    // Separate Realtime Topic Enabled
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
 
     // Block Transfer Enabled

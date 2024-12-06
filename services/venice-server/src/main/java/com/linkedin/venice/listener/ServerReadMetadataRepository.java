@@ -104,14 +104,8 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       }
 
       // Schema metadata
-      Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
-          String.valueOf(schemaRepository.getKeySchema(storeName).getId()),
-          schemaRepository.getKeySchema(storeName).getSchema().toString());
-      Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
-      int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
-      for (SchemaEntry schemaEntry: schemaRepository.getValueSchemas(storeName)) {
-        valueSchemas.put(String.valueOf(schemaEntry.getId()), schemaEntry.getSchema().toString());
-      }
+      Map<CharSequence, CharSequence> keySchema = getKeySchema(storeName);
+      Map<CharSequence, CharSequence> valueSchemas = getValueSchemas(storeName);
 
       // Routing metadata
       Map<CharSequence, List<CharSequence>> routingInfo = getRoutingInfo(storeName, currentVersionNumber);
@@ -126,7 +120,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setVersions(versions);
       response.setKeySchema(keySchema);
       response.setValueSchemas(valueSchemas);
-      response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
+      response.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
       response.setRoutingInfo(routingInfo);
       response.setHelixGroupInfo(helixGroupInfo);
       if (store.getBatchGetLimit() > 0) {
@@ -163,28 +157,18 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       StoreProperties storeProperties = ((ReadOnlyStore) store).getStoreProperties();
 
       // Key Schemas
-      Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
-          String.valueOf(schemaRepository.getKeySchema(storeName).getId()),
-          schemaRepository.getKeySchema(storeName).getSchema().toString());
+      Map<CharSequence, CharSequence> keySchema = getKeySchema(storeName);
       StoreKeySchemas storeKeySchemas = new StoreKeySchemas();
       storeKeySchemas.setKeySchemaMap(keySchema);
 
       // Value Schemas
-      Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
-      for (SchemaEntry schemaEntry: schemaRepository.getValueSchemas(storeName)) {
-        valueSchemas.put(String.valueOf(schemaEntry.getId()), schemaEntry.getSchema().toString());
-      }
+      Map<CharSequence, CharSequence> valueSchemas = getValueSchemas(storeName);
       StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
       storeValueSchemas.setValueSchemaMap(valueSchemas);
 
       // IdsWrittenPerStoreVersion
-      int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
       ArrayList<Integer> idsWrittenPerStoreVersion = new ArrayList<>();
-      idsWrittenPerStoreVersion.add(latestSuperSetValueSchemaId);
-
-      // Routing metadata
-      int currentVersionNumber = getCurrentVersionNumberOrThrow(storeName, store);
-      Map<CharSequence, List<CharSequence>> routingInfo = getRoutingInfo(storeName, currentVersionNumber);
+      idsWrittenPerStoreVersion.add(store.getLatestSuperSetValueSchemaId());
 
       // StoreMetaValue
       StoreMetaValue storeMetaValue = new StoreMetaValue();
@@ -199,6 +183,10 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
         helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
       }
+
+      // Routing metadata
+      int currentVersionNumber = getCurrentVersionNumberOrThrow(storeName, store);
+      Map<CharSequence, List<CharSequence>> routingInfo = getRoutingInfo(storeName, currentVersionNumber);
 
       response.setStoreMetaValue(storeMetaValue);
       response.setHelixGroupInfo(helixGroupInfo);
@@ -271,6 +259,22 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
                 + "client refresh service discovery.");
       }
     }
+  }
+
+  private Map<CharSequence, CharSequence> getKeySchema(String storeName) {
+    return Collections.singletonMap(
+        String.valueOf(schemaRepository.getKeySchema(storeName).getId()),
+        schemaRepository.getKeySchema(storeName).getSchema().toString());
+  }
+
+  private Map<CharSequence, CharSequence> getValueSchemas(String storeName) {
+
+    Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
+    for (SchemaEntry schemaEntry: schemaRepository.getValueSchemas(storeName)) {
+      valueSchemas.put(String.valueOf(schemaEntry.getId()), schemaEntry.getSchema().toString());
+    }
+
+    return valueSchemas;
   }
 
   private int getCurrentVersionNumberOrThrow(String storeName, Store store) throws VeniceException {

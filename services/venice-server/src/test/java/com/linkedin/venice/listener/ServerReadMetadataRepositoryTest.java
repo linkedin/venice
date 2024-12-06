@@ -48,7 +48,6 @@ public class ServerReadMetadataRepositoryTest {
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
-  private ReadOnlyStoreRepository metadataRepository;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private MetricsRepository metricsRepository;
   private final static String TEST_STORE = "test_store";

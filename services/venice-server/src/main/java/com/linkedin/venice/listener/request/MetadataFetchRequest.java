@@ -25,6 +25,6 @@ public class MetadataFetchRequest {
   }
 
   public String getStoreName() {
-    return this.storeName;
+    return storeName;
   }
 }

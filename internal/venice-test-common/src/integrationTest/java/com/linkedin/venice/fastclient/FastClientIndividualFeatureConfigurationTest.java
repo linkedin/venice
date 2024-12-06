@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -8,40 +7,24 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.fasterxml.jackson.databind.ObjectWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerClientFactory;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.meta.QueryAction;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -52,12 +35,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -83,68 +63,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       TestUtils.assertCommand(
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
     });
-  }
-
-  @Test(timeOut = TIME_OUT)
-  public void testRequestBasedStoreProperties() throws Exception {
-
-    // Venice Server
-    VeniceServerWrapper veniceServerWrapper = veniceCluster.getVeniceServers().stream().findAny().get();
-
-    // Urls
-    String controllerUrl = veniceCluster.getLeaderVeniceController().getControllerUrl().replace("http", "https");
-    String serverUrl = "https://" + veniceServerWrapper.getHost() + ":" + veniceServerWrapper.getPort();
-
-    // SSL Factory
-    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
-
-    // Transport Client
-    com.linkedin.venice.client.store.ClientConfig clientConfig =
-        com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
-    clientConfig.setSslFactory(sslFactory.get());
-    TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
-
-    Supplier<ControllerClient> controllerClientSupplier =
-        () -> ControllerClientFactory.discoverAndConstructControllerClient(
-            AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
-            controllerUrl,
-            sslFactory,
-            1);
-
-    // TODO PRANAV
-    String requestBasedStorePropertiesURL = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + storeName;
-    byte[] body;
-    int writerSchemaId;
-    try {
-      TransportClientResponse transportClientResponse = transportClient.get(requestBasedStorePropertiesURL).get();
-      writerSchemaId = transportClientResponse.getSchemaId();
-      body = transportClientResponse.getBody();
-    } catch (Exception e) {
-      throw new VeniceException(
-          "Encountered exception while trying to send store properties request to: " + serverUrl + "/"
-              + requestBasedStorePropertiesURL,
-          e);
-    }
-    Schema writerSchema;
-    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
-      SchemaResponse schemaResponse = controllerClientSupplier.get()
-          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
-      if (schemaResponse.isError()) {
-        throw new VeniceException(
-            "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
-      }
-      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
-    } else {
-      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
-    }
-    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
-        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
-    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
-    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
-    // Use the Avro record's toString() instead and pretty print it.
-    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
-    ObjectWriter jsonWriter = ObjectMapperFactory.getInstance().writerWithDefaultPrettyPrinter();
-    System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 
   @Test(timeOut = TIME_OUT)
