@@ -16,15 +16,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
  * This class is a helper class that contains writer side chunking logics.
  */
 public class WriterChunkingHelper {
-  private static final Logger LOGGER = LogManager.getLogger(WriterChunkingHelper.class);
   public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   /**
@@ -39,31 +36,6 @@ public class WriterChunkingHelper {
    * @param sendMessageFunction Pass in function for sending message
    * @return Chunked payload arrays and manifest.
    */
-  public static ChunkedPayloadAndManifest chunkPayloadAndSend(
-      byte[] serializedKey,
-      byte[] payload,
-      boolean isValuePayload,
-      int schemaId,
-      int chunkedKeySuffixStartingIndex,
-      boolean isChunkAwareCallback,
-      Supplier<String> sizeReport,
-      int maxSizeForUserPayloadPerMessageInBytes,
-      KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
-      BiConsumer<VeniceWriter.KeyProvider, Put> sendMessageFunction) {
-    return chunkPayloadAndSend(
-        serializedKey,
-        payload,
-        MessageType.PUT,
-        isValuePayload,
-        schemaId,
-        chunkedKeySuffixStartingIndex,
-        isChunkAwareCallback,
-        sizeReport,
-        maxSizeForUserPayloadPerMessageInBytes,
-        keyWithChunkingSuffixSerializer,
-        sendMessageFunction);
-  }
-
   public static ChunkedPayloadAndManifest chunkPayloadAndSend(
       byte[] serializedKey,
       byte[] payload,
@@ -141,6 +113,7 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
+
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex + chunkedKeySuffixStartingIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 

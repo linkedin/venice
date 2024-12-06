@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
@@ -43,6 +44,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -76,6 +78,9 @@ import org.testng.annotations.Test;
 
 public class VeniceWriterUnitTest {
   private static final long TIMEOUT = 10 * Time.MS_PER_SECOND;
+  private static final int CHUNK_MANIFEST_SCHEMA_ID =
+      AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
 
   @Test(dataProvider = "Chunking-And-Partition-Counts", dataProviderClass = DataProviderUtils.class)
   public void testTargetPartitionIsSameForAllOperationsWithTheSameKey(boolean isChunkingEnabled, int partitionCount) {
@@ -144,10 +149,7 @@ public class VeniceWriterUnitTest {
         0,
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
-        new DeleteMetadata(
-            AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
-            1,
-            WriterChunkingHelper.EMPTY_BYTE_BUFFER));
+        new DeleteMetadata(CHUNK_VALUE_SCHEMA_ID, 1, WriterChunkingHelper.EMPTY_BYTE_BUFFER));
 
     ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
@@ -331,9 +333,7 @@ public class VeniceWriterUnitTest {
     // Check manifest for both value and rmd.
     KafkaMessageEnvelope actualValue4 = kmeArgumentCaptor.getAllValues().get(4);
     assertEquals(actualValue4.messageType, MessageType.PUT.getValue());
-    assertEquals(
-        ((Put) actualValue4.payloadUnion).schemaId,
-        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    assertEquals(((Put) actualValue4.payloadUnion).schemaId, CHUNK_MANIFEST_SCHEMA_ID);
     assertEquals(((Put) actualValue4.payloadUnion).replicationMetadataVersionId, putMetadata.getRmdVersionId());
     assertEquals(
         ((Put) actualValue4.payloadUnion).replicationMetadataPayload,
@@ -526,7 +526,7 @@ public class VeniceWriterUnitTest {
         pubSubMessageHeadersArgumentCaptor.capture(),
         any());
     for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
-      Assert.assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
+      assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
     }
     for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
       assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
@@ -658,70 +658,59 @@ public class VeniceWriterUnitTest {
           continue; // Ok behavior. Small records should never throw RecordTooLargeException
         }
         if (!isChunkingEnabled || size == TOO_LARGE_VALUE_SIZE) {
-          Assert.fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
+          fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
         }
       } catch (Exception e) {
-        Assert.assertTrue(e instanceof RecordTooLargeException);
+        assertTrue(e instanceof RecordTooLargeException);
         Assert.assertNotEquals(size, SMALL_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
       }
     }
   }
 
-  @Test
-  public void testGlobalDivChunking() {
-    final int maxRecordSizeBytes = BYTES_PER_MB;
-    CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
-    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
-    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
-    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-        .setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setMaxRecordSizeBytes(maxRecordSizeBytes)
-        .build();
-    VeniceProperties props = VeniceProperties.empty();
-    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+  /**
+   * Writes two GlobalRtDiv messages, one that needs chunking and one that doesn't, and verifies the sent output.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testGlobalRtDivChunking() {
+    final int NON_CHUNKED_VALUE_SIZE = BYTES_PER_MB / 2; // 500 KB
+    final int CHUNKED_VALUE_SIZE = BYTES_PER_MB * 2; // 2 MB
+    for (int size: Arrays.asList(NON_CHUNKED_VALUE_SIZE, CHUNKED_VALUE_SIZE)) {
+      CompletableFuture<PubSubProduceResult> mockedFuture = mock(CompletableFuture.class);
+      PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+      when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+      final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+      final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+          .setKeySerializer(serializer)
+          .setValueSerializer(serializer)
+          .build();
+      VeniceProperties props = VeniceProperties.empty();
+      final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
 
-    final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
-    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
-    for (int size: Arrays.asList(SMALL_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
       char[] valueChars = new char[size];
       Arrays.fill(valueChars, '*');
-      try {
-        writer.sendChunkSupportedDivMessage(0, "test-key", new String(valueChars));
-      } catch (Exception e) {
-        Assert.fail("Shouldn't have thrown any exception");
-      }
+      writer.sendGlobalRtDivMessage(0, "test-key", new String(valueChars));
 
+      // NON_CHUNKED_VALUE_SIZE: 1 SOS, 1 GlobalRtDiv Message
+      // CHUNKED_VALUE_SIZE: 1 SOS, 3 DivChunk, 1 DivManifest
+      final int invocationCount = (size == NON_CHUNKED_VALUE_SIZE) ? 2 : 5;
+      ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-      ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
-
-      if (size == SMALL_VALUE_SIZE) {
-        // 1 SOS, 1 DivControlMessage
-        verify(mockedProducer, times(2))
-            .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
-      } else { // TOO_LARGE_VALUE_SIZE
-        // 1 SOS, 4 DivChunk, 1 DivManifest
-        verify(mockedProducer, times(6))
-            .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
-      }
-
-      for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
-        Assert.assertTrue(key.isDivControlMessage() || key.isControlMessage());
-      }
+      verify(mockedProducer, times(invocationCount))
+          .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+      keyArgumentCaptor.getAllValues().forEach(key -> assertTrue(key.isGlobalRtDiv() || key.isControlMessage()));
 
       for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
         if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
-          Assert.assertTrue(
-              ((ControlMessage) kme.getPayloadUnion()).getControlMessageType() == ControlMessageType.START_OF_SEGMENT
-                  .getValue());
+          ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
+          assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
         } else {
-          Assert.assertTrue(kme.messageType == MessageType.PUT.getValue());
           Put put = (Put) kme.payloadUnion;
-          Assert.assertTrue(
-              put.getSchemaId() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
-                  || put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()
-                  || put.getSchemaId() == AvroProtocolDefinition.GLOBAL_DIV_STATE.getCurrentProtocolVersion());
+          assertEquals(kme.messageType, MessageType.PUT.getValue());
+          if (size == NON_CHUNKED_VALUE_SIZE) {
+            assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+          } else {
+            assertTrue(put.getSchemaId() == CHUNK_VALUE_SCHEMA_ID || put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID);
+          }
         }
       }
     }

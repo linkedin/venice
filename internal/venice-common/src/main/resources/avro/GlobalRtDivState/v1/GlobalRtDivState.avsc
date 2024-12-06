@@ -1,7 +1,7 @@
 {
-  "name": "GlobalDivState",
+  "name": "GlobalRtDivState",
   "namespace": "com.linkedin.venice.kafka.protocol.state",
-  "doc": "",
+  "doc": "Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to the followers via local VT",
   "type": "record",
   "fields": [
     {
@@ -17,7 +17,7 @@
       "name": "producerStates",
       "type": {
         "type": "map",
-        "doc": "A map that maps producer GUID -> producer state for real-time data.",
+        "doc": "A map that maps producer GUID -> producer state for realtime data.",
         "values": {
           "name": "ProducerPartitionState",
           "namespace": "com.linkedin.venice.kafka.protocol.state",
