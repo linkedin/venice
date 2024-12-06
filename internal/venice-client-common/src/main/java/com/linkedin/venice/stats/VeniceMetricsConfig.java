@@ -111,6 +111,10 @@ public class VeniceMetricsConfig {
 
   private final String serviceName;
   private final String metricPrefix;
+  /**
+   * List of all the metrics emitted by the service: Currently used to set Exponential Histogram view
+   * for instruments of type {@link com.linkedin.venice.stats.metrics.MetricType#HISTOGRAM}
+   */
   private final Collection<MetricEntity> metricEntities;
   /** reusing tehuti's MetricConfig */
   private final MetricConfig tehutiMetricConfig;
@@ -266,6 +270,11 @@ public class VeniceMetricsConfig {
       String configValue;
       if ((configValue = configs.get(OTEL_VENICE_METRICS_ENABLED)) != null) {
         setEmitOtelMetrics(Boolean.parseBoolean(configValue));
+      }
+
+      if (!emitOtelMetrics) {
+        // Early return if OpenTelemetry metrics are disabled
+        return this;
       }
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_PREFIX)) != null) {
