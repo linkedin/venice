@@ -19,6 +19,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,7 +58,8 @@ public class PushMonitorDelegator implements PushMonitor {
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      VeniceWriterFactory veniceWriterFactory) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
 
@@ -75,7 +77,8 @@ public class PushMonitorDelegator implements PushMonitor {
         helixAdminClient,
         controllerConfig,
         pushStatusStoreReader,
-        disabledPartitionStats);
+        disabledPartitionStats,
+        veniceWriterFactory);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

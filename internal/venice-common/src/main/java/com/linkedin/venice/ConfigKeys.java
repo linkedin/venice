@@ -2340,6 +2340,6 @@ public class ConfigKeys {
    */
   public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
       "server.nearline.workload.producer.throughput.optimization.enabled";
-
   public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
+  public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
 }

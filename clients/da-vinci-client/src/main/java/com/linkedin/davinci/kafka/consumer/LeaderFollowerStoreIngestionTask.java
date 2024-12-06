@@ -9,6 +9,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
@@ -100,6 +101,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -329,6 +331,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
+        }
+        if (tmpValueForHasChangeCaptureViewWriter) {
           break;
         }
       }
@@ -2398,7 +2402,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
       // UPDATE message is only expected in LEADER which must be produced to kafka.
       MessageType msgType = MessageType.valueOf(kafkaValue);
-      if (msgType == MessageType.UPDATE && !produceToLocalKafka) {
+      if (msgType == UPDATE && !produceToLocalKafka) {
         throw new VeniceMessageException(
             ingestionTaskName + " hasProducedToKafka: Received UPDATE message in non-leader for: "
                 + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
@@ -2432,6 +2436,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
         }
+        /**
+         * Materialized view need to produce to the corresponding view topic for the batch portion of the data. This is
+         * achieved in the following ways:
+         *   1. Remote fabric(s) will leverage NR where the leader will replicate VT from NR source fabric and produce
+         *   to local view topic(s).
+         *   2. NR source fabric's view topic will be produced by VPJ. This is because there is no checkpointing and
+         *   easy way to add checkpointing for leaders consuming the local VT. Making it difficult and error prone if
+         *   we let the leader produce to view topic(s) in NR source fabric.
+         */
         return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
       }
 
@@ -2485,6 +2498,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
              */
           case END_OF_PUSH:
+            // CMs that are produced with DIV pass-through mode can break DIV without synchronization with view writers
+            checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
             /**
              * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
              * after successfully producing to kafka.
@@ -2531,6 +2546,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * In such case the heartbeat is produced to VT with updated {@link LeaderMetadataWrapper}.
              */
             if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+              checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
               produceToLocalKafka(
                   consumerRecord,
                   partitionConsumptionState,
@@ -2550,6 +2566,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+                // We also want to synchronize with view writers for heartbeat CMs, so we can detect hanging VWs
+                checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
                 propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                     partitionConsumptionState,
                     consumerRecord,
@@ -3330,9 +3348,60 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           beforeProcessingRecordTimestampNs,
           beforeProcessingBatchRecordsTimestampMs).getWriteComputeResultWrapper();
     }
+    if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
+      return;
+    }
+    // Write to views
+    if (viewWriters != null && !viewWriters.isEmpty()) {
+      long preprocessingTime = System.currentTimeMillis();
+      CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
+      CompletableFuture[] viewWriterFutures =
+          processViewWriters(partitionConsumptionState, keyBytes, null, writeComputeResultWrapper);
+      CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+        hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+        if (exception == null) {
+          produceToLocalKafkaHelper(
+              consumerRecord,
+              partitionConsumptionState,
+              writeComputeResultWrapper,
+              partition,
+              kafkaUrl,
+              kafkaClusterId,
+              beforeProcessingRecordTimestampNs);
+          currentVersionTopicWrite.complete(null);
+        } else {
+          VeniceException veniceException = new VeniceException(exception);
+          this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+          currentVersionTopicWrite.completeExceptionally(veniceException);
+        }
+      });
+      partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+    } else {
+      produceToLocalKafkaHelper(
+          consumerRecord,
+          partitionConsumptionState,
+          writeComputeResultWrapper,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+    }
+  }
 
-    Put newPut = writeComputeResultWrapper.getNewPut();
+  private void produceToLocalKafkaHelper(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      WriteComputeResultWrapper writeComputeResultWrapper,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
     LeaderProducedRecordContext leaderProducedRecordContext;
+    Put newPut = writeComputeResultWrapper.getNewPut();
     switch (msgType) {
       case PUT:
         leaderProducedRecordContext =
@@ -3386,10 +3455,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         break;
 
       case UPDATE:
-        if (writeComputeResultWrapper.isSkipProduce()) {
-          return;
-        }
-
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, newPut);
         BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
@@ -3603,15 +3668,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processVersionSwapMessage(
+  protected void processControlMessageForViews(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       PartitionConsumptionState partitionConsumptionState) {
 
     // Iterate through list of views for the store and process the control message.
     for (VeniceViewWriter viewWriter: viewWriters.values()) {
-      // TODO: at some point, we should do this on more or all control messages potentially as we add more view types
-      viewWriter.processControlMessage(controlMessage, partition, partitionConsumptionState, this.versionNumber);
+      viewWriter
+          .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, partition, partitionConsumptionState);
     }
   }
 
@@ -3870,6 +3937,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  protected CompletableFuture[] processViewWriters(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      MergeConflictResultWrapper mergeConflictResultWrapper,
+      WriteComputeResultWrapper writeComputeResultWrapper) {
+    CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
+    int index = 0;
+    // The first future is for the previous write to VT
+    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+    for (VeniceViewWriter writer: viewWriters.values()) {
+      viewWriterFutures[index++] = writer.processRecord(
+          writeComputeResultWrapper.getNewPut().putValue,
+          keyBytes,
+          writeComputeResultWrapper.getNewPut().schemaId);
+    }
+    return viewWriterFutures;
+  }
+
   /**
    * Once leader is marked completed, immediately reset {@link #lastSendIngestionHeartbeatTimestamp}
    * such that {@link #maybeSendIngestionHeartbeat()} will send HB SOS to the respective RT topics
@@ -3882,5 +3967,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // reset lastSendIngestionHeartbeatTimestamp to force sending HB SOS to the respective RT topics.
       lastSendIngestionHeartbeatTimestamp.set(0);
     }
+  }
+
+  private void checkAndWaitForLastVTProduceFuture(PartitionConsumptionState partitionConsumptionState)
+      throws ExecutionException, InterruptedException {
+    partitionConsumptionState.getLastVTProduceCallFuture().get();
   }
 }

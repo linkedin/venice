@@ -157,4 +157,6 @@ public class PushJobSetting implements Serializable {
     // Default for preserving backward compatibility
     this.jobStartTimeMs = System.currentTimeMillis();
   }
+
+  public String materializedViewConfigFlatMap;
 }

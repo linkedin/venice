@@ -109,7 +109,7 @@ public class OfflinePushStatusTest {
     }
     offlinePushStatus.setPartitionStatuses(Collections.singletonList(partitionStatus));
     Assert.assertTrue(
-        offlinePushStatus.isReadyToStartBufferReplay(false),
+        offlinePushStatus.isEOPReceivedInEveryPartition(false),
         "Buffer replay should be allowed to start since END_OF_PUSH_RECEIVED was already received");
   }
 
