@@ -88,8 +88,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private final Logger LOGGER;
   private final ExecutorService consumerExecutor;
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
+  // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
+      new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
 
   /**
    * @param statsOverride injection of stats, for test purposes
