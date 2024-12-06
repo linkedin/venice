@@ -1347,18 +1347,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             // Leader topic not found, indicating that it is VT topic.
             return 0;
           }
-          String resolveKafkaUrl = Utils.resolveKafkaUrlForSepTopic(kafkaSourceAddress);
+          String resolvedKafkaUrl = Utils.resolveKafkaUrlForSepTopic(kafkaSourceAddress);
           // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
           long lagBasedOnMetrics =
-              getPartitionOffsetLagBasedOnMetrics(resolveKafkaUrl, resolvedLeaderTopic, pcs.getPartition());
+              getPartitionOffsetLagBasedOnMetrics(resolvedKafkaUrl, resolvedLeaderTopic, pcs.getPartition());
           if (lagBasedOnMetrics >= 0) {
             return lagBasedOnMetrics;
           }
 
           // Fall back to calculate offset lag in the old way
           return measureLagWithCallToPubSub(
-              resolveKafkaUrl,
+              resolvedKafkaUrl,
               resolvedLeaderTopic,
               pcs.getPartition(),
               pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress));
