@@ -121,12 +121,6 @@ public class DaVinciPushStatusUpdateTask {
         incrementalPushStatus.endSignalSent = true;
         // Clean up the status map for incremental push versions in case there are too many of them and cause OOM
         incrementalPushStatus.partitionStatus.clear();
-      } else if (!incrementalPushStatus.endSignalSent
-          && isAnyPartitionOnErrorStatus(Optional.of(incrementalPushVersion))) {
-        sendPushStatus(ExecutionStatus.ERROR, Optional.of(incrementalPushVersion));
-        incrementalPushStatus.endSignalSent = true;
-        // Clean up the status map for incremental push versions in case there are too many of them and cause OOM
-        incrementalPushStatus.partitionStatus.clear();
       }
     });
   }
