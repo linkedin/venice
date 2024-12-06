@@ -6,7 +6,12 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.tehuti.metrics.MetricConfig;
+import java.util.ArrayList;
+import java.util.Collection;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -41,7 +46,11 @@ public class VeniceMetricsRepositoryTest {
 
   @Test
   public void testConstructorWithMetricConfigAndOtelEnabled() {
-    VeniceMetricsConfig metricsConfig = new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true).build();
+    Collection<MetricEntity> metricEntities = new ArrayList<>();
+    metricEntities
+        .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
+    VeniceMetricsConfig metricsConfig =
+        new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true).setMetricEntities(metricEntities).build();
     VeniceMetricsRepository repository = new VeniceMetricsRepository(metricsConfig);
 
     assertEquals(

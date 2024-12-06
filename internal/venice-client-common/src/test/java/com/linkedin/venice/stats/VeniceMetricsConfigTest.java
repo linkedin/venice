@@ -84,9 +84,10 @@ public class VeniceMetricsConfigTest {
         .build();
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "No enum constant com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.INVALID_FORMAT")
   public void testOtelConfigWithInvalidMetricFormat() {
     Map<String, String> otelConfigs = new HashMap<>();
+    otelConfigs.put(OTEL_VENICE_METRICS_ENABLED, "true");
     otelConfigs.put(OTEL_VENICE_METRICS_NAMING_FORMAT, "INVALID_FORMAT");
 
     new Builder().extractAndSetOtelConfigs(otelConfigs).build();

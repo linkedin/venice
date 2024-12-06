@@ -3,9 +3,14 @@ package com.linkedin.venice.utils.metrics;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
 
@@ -59,8 +64,13 @@ public class MetricsRepositoryUtils {
       long initialMetricsMeasurementTimeoutMs,
       boolean isOtelEnabled,
       VeniceOpenTelemetryMetricNamingFormat otelFormat) {
+    Collection<MetricEntity> metricEntities = new ArrayList<>();
+    metricEntities
+        .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
+
     return new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setEmitOtelMetrics(isOtelEnabled)
+            .setMetricEntities(metricEntities)
             .setMetricNamingFormat(otelFormat)
             .setTehutiMetricConfig(getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs))
             .build());
