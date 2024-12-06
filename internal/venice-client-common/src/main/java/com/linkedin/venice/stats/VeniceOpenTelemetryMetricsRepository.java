@@ -77,13 +77,18 @@ public class VeniceOpenTelemetryMetricsRepository {
    * instruments, so {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector} to enable exponential
    * histogram aggregation is not used here to not convert the histograms of type {@link MetricType#MIN_MAX_COUNT_SUM_AGGREGATIONS}
    * to exponential histograms to be able to follow explict boundaries.
+   *
+   * If the metric entities are empty, it will throw an exception. Failing fast here as
+   * 1. If we configure exponential histogram aggregation for every histogram: it could lead to increased memory usage
+   * 2. If we don't configure exponential histogram aggregation for every histogram: it could lead to observability miss
    */
   private void setExponentialHistogramAggregation(SdkMeterProviderBuilder builder, VeniceMetricsConfig metricsConfig) {
     List<String> metricNames = new ArrayList<>();
 
-    if (metricsConfig.getMetricEntities().isEmpty()) {
-      LOGGER
-          .warn("No metric entities found in config: {} to configure exponential histogram", metricsConfig.toString());
+    Collection<MetricEntity> metricEntities = metricsConfig.getMetricEntities();
+    if (metricEntities == null || metricsConfig.getMetricEntities().isEmpty()) {
+      throw new IllegalArgumentException(
+          "metricEntities cannot be empty if exponential Histogram is enabled, List all the metrics used in this service using setMetricEntities method");
     }
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
