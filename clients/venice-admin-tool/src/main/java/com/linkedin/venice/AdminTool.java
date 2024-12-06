@@ -593,7 +593,7 @@ public class AdminTool {
           break;
         case DUMP_HOST_HEARTBEAT:
           dumpHostHeartbeat(cmd);
-        case RUN_CLUSTER_COMMAND:
+        case CLUSTER_BATCH_TASK:
           runClusterCommand(cmd);
           break;
         default:
@@ -861,9 +861,9 @@ public class AdminTool {
   }
 
   private static void runClusterCommand(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.RUN_CLUSTER_COMMAND);
-    String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.RUN_CLUSTER_COMMAND);
-    String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.RUN_CLUSTER_COMMAND);
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.CLUSTER_BATCH_TASK);
+    String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
+    String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
     int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
     System.out.println(
         "[**** Cluster Command Params ****] Cluster: " + clusterName + ", Task: " + task + ", Checkpoint: "
@@ -885,11 +885,13 @@ public class AdminTool {
 
     // Load progress from checkpoint file. If file does not exist, it will create new one during checkpointing.
     try {
-      Path filePath = Paths.get(checkpointFile).toAbsolutePath();
-      if (!Files.exists(filePath)) {
-        System.out.println("Checkpoint file path does not exist, will create a new checkpoint file: " + filePath);
+      Path checkpointFilePath = Paths.get(checkpointFile);
+      if (!Files.exists(checkpointFilePath.toAbsolutePath())) {
+        System.out.println(
+            "Checkpoint file path does not exist, will create a new checkpoint file: "
+                + checkpointFilePath.toAbsolutePath());
       } else {
-        List<String> fileLines = Files.readAllLines(Paths.get(checkpointFile));
+        List<String> fileLines = Files.readAllLines(checkpointFilePath);
         for (String line: fileLines) {
           String storeName = line.split(",")[0];
           // For now, it is boolean to start with, we can add more states to support retry.
@@ -906,9 +908,9 @@ public class AdminTool {
     List<String> taskList =
         progressMap.entrySet().stream().filter(e -> !e.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
 
-    // Validate task type.
+    // Validate task type. For now, we only has one task, if we have more task in the future, we can extend this logic.
     Supplier<Function<String, Boolean>> functionSupplier;
-    if ("PushSystemStore".equals(task)) {
+    if (SystemStorePushTask.TASK_NAME.equals(task)) {
       functionSupplier = () -> new SystemStorePushTask(controllerClient, controllerClientMap, clusterName);
     } else {
       System.out.println("Undefined task: " + task);
