@@ -151,7 +151,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
     Set<PubSubTopic> topics = new HashSet<>();
-    topics.add(pubSubTopicRepository.getTopic(storeName + Version.REAL_TIME_TOPIC_SUFFIX));
+    topics.add(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName)));
     topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,

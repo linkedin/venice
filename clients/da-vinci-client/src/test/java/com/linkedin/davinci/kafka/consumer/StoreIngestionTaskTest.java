@@ -503,7 +503,7 @@ public abstract class StoreIngestionTaskTest {
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
-        .thenReturn(storeNameWithoutVersionInfo + Version.REAL_TIME_TOPIC_SUFFIX);
+        .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
 
     mockLogNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
@@ -3984,7 +3984,7 @@ public abstract class StoreIngestionTaskTest {
 
   @Test
   public void testResubscribeAfterRoleChange() throws Exception {
-    String realTimeTopicName = storeNameWithoutVersionInfo + Version.REAL_TIME_TOPIC_SUFFIX;
+    String realTimeTopicName = Utils.composeRealTimeTopic(storeNameWithoutVersionInfo);
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
     // Prepare both local and remote real-time topics
     inMemoryLocalKafkaBroker.createTopic(realTimeTopicName, PARTITION_COUNT);

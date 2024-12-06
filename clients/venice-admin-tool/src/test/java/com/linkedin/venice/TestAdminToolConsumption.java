@@ -26,7 +26,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -123,8 +122,7 @@ public class TestAdminToolConsumption {
     when(storeInfo.getPartitionCount()).thenReturn(2);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
-    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
-        .thenReturn(STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX);
+    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName()).thenReturn(Utils.composeRealTimeTopic(STORE_NAME));
     String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;

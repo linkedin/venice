@@ -106,7 +106,7 @@ public class TestTopicCleanupService {
       String requestedStoreName = invocation.getArgument(1); // Capture the storeName argument
       Store mockStore = mock(Store.class, RETURNS_DEEP_STUBS);
       when(mockStore.getHybridStoreConfig().getRealTimeTopicName())
-          .thenReturn(requestedStoreName + Version.REAL_TIME_TOPIC_SUFFIX);
+          .thenReturn(Utils.composeRealTimeTopic(requestedStoreName));
       return mockStore;
     });
   }
@@ -473,9 +473,8 @@ public class TestTopicCleanupService {
   @Test
   public void testExtractVersionTopicsToCleanupIgnoresInputWithNonVersionTopics() {
     String storeName = Utils.getUniqueString("test_store");
-    String realTimeTopicName = storeName + Version.REAL_TIME_TOPIC_SUFFIX;
     Map<PubSubTopic, Long> topicRetentions = new HashMap<>();
-    topicRetentions.put(pubSubTopicRepository.getTopic(realTimeTopicName), Long.MAX_VALUE);
+    topicRetentions.put(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName)), Long.MAX_VALUE);
     topicRetentions
         .put(pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(storeName, 1)), Long.MAX_VALUE);
     topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1)), 1000L);

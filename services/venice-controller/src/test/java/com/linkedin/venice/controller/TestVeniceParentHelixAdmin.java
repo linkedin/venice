@@ -1522,7 +1522,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
     parentAdmin.getStore(storeName, clusterName);
-    Version incrementalPushVersion = new VersionImpl(storeName, 1, storeName + Version.REAL_TIME_TOPIC_SUFFIX);
+    Version incrementalPushVersion = new VersionImpl(storeName, 1);
     assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);
