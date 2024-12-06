@@ -195,12 +195,27 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
           // Gracefully drop partition to drain the requests to this partition
           Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds()));
         } catch (InterruptedException e) {
-          throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
+          throw new VeniceException("Got interrupted while waiting for graceful drop delay of serving version", e);
         } finally {
           this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
       }
-      removePartitionFromStoreGracefully();
+      CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
+      boolean waitForDropPartition = !dropPartitionFuture.isDone();
+      try {
+        if (waitForDropPartition) {
+          this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+        }
+        dropPartitionFuture.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException e) {
+        throw new VeniceException("Got interrupted while waiting for drop partition future to complete", e);
+      } catch (Exception e) {
+        throw new VeniceException("Got exception while waiting for drop partition future to complete", e);
+      } finally {
+        if (waitForDropPartition) {
+          this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+        }
+      }
     });
   }
 

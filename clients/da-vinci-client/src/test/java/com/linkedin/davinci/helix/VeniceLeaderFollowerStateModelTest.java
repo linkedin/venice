@@ -1,6 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -128,5 +129,26 @@ public class VeniceLeaderFollowerStateModelTest extends
         .thenReturn(Pair.create(mockStore, null));
     testStateModel.onBecomeOfflineFromStandby(mockMessage, mockContext);
     verify(spyHeartbeatMonitoringService).removeLagMonitor(any(), eq(testPartition));
+  }
+
+  @Test
+  public void testTransitionToDropIsBlockedOnDropPartitionAction() {
+    // if the resource is not the current serving version, state transition thread will not be blocked. However, we
+    // still block it once to wait for drop partition action if it's done asynchronously via SIT
+    CompletableFuture mockDropPartitionFuture = mock(CompletableFuture.class);
+    when(mockDropPartitionFuture.isDone()).thenReturn(false);
+    when(mockIngestionBackend.dropStoragePartitionGracefully(any(), anyInt(), anyInt()))
+        .thenReturn(mockDropPartitionFuture);
+    when(mockStore.getCurrentVersion()).thenReturn(2);
+    testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
+    verify(mockParticipantStateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(mockParticipantStateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+
+    // if the resource is the current serving version, state transition thread will be blocked. And it will be blocked
+    // again for drop partition action if it's done asynchronously via SIT
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
+    verify(mockParticipantStateTransitionStats, times(3)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(mockParticipantStateTransitionStats, times(3)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
   }
 }

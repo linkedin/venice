@@ -131,7 +131,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void dropStoragePartitionGracefully(
+  public CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds,
@@ -156,6 +156,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       getMainIngestionMonitorService().cleanupTopicState(topicName);
       getMainIngestionRequestClient().removeStorageEngine(topicName);
     }
+    return CompletableFuture.completedFuture(null);
   }
 
   @Override
