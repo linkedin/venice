@@ -72,7 +72,8 @@ public class TestIncrementalPush {
     cluster.getNewStore(storeName);
     AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
     cluster.useControllerClient(controllerClient -> {
-      storeInfo.set(controllerClient.getStore(storeName).getStore());
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+      storeInfo.set(storeResponse.getStore());
     });
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setIncrementalPushEnabled(true)
