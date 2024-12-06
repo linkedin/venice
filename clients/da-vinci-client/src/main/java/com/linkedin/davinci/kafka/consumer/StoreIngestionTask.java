@@ -354,8 +354,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
 
-  private Lazy<ZKHelixAdmin> zkHelixAdmin;
-
   public StoreIngestionTask(
       StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
