@@ -14,6 +14,7 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   IntegrationTests_1000:
+    name: IntegrationTests_1000
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +25,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1000
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,6 +81,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1010:
+    name: IntegrationTests_1010
     strategy:
       fail-fast: false
       matrix:
@@ -87,6 +92,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1010
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -140,6 +148,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1020:
+    name: IntegrationTests_1020
     strategy:
       fail-fast: false
       matrix:
@@ -150,6 +159,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1020
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -203,6 +215,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1030:
+    name: IntegrationTests_1030
     strategy:
       fail-fast: false
       matrix:
@@ -213,6 +226,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1030
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -266,6 +282,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1040:
+    name: IntegrationTests_1040
     strategy:
       fail-fast: false
       matrix:
@@ -276,6 +293,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1040
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -329,6 +349,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1050:
+    name: IntegrationTests_1050
     strategy:
       fail-fast: false
       matrix:
@@ -339,6 +360,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1050
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -392,6 +416,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1060:
+    name: IntegrationTests_1060
     strategy:
       fail-fast: false
       matrix:
@@ -402,6 +427,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1060
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -455,6 +483,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1070:
+    name: IntegrationTests_1070
     strategy:
       fail-fast: false
       matrix:
@@ -465,6 +494,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1070
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -518,6 +550,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1080:
+    name: IntegrationTests_1080
     strategy:
       fail-fast: false
       matrix:
@@ -528,6 +561,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1080
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -581,6 +617,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1090:
+    name: IntegrationTests_1090
     strategy:
       fail-fast: false
       matrix:
@@ -591,6 +628,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1090
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -644,6 +684,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1100:
+    name: IntegrationTests_1100
     strategy:
       fail-fast: false
       matrix:
@@ -654,6 +695,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1100
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -707,6 +751,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1110:
+    name: IntegrationTests_1110
     strategy:
       fail-fast: false
       matrix:
@@ -717,6 +762,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1110
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -770,6 +818,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1120:
+    name: IntegrationTests_1120
     strategy:
       fail-fast: false
       matrix:
@@ -780,6 +829,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1120
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -833,6 +885,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1130:
+    name: IntegrationTests_1130
     strategy:
       fail-fast: false
       matrix:
@@ -843,6 +896,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1130
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -896,6 +952,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1200:
+    name: IntegrationTests_1200
     strategy:
       fail-fast: false
       matrix:
@@ -906,6 +963,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1200
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -959,6 +1019,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1210:
+    name: IntegrationTests_1210
     strategy:
       fail-fast: false
       matrix:
@@ -969,6 +1030,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1210
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1022,6 +1086,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1220:
+    name: IntegrationTests_1220
     strategy:
       fail-fast: false
       matrix:
@@ -1032,6 +1097,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1220
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1085,6 +1153,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1230:
+    name: IntegrationTests_1230
     strategy:
       fail-fast: false
       matrix:
@@ -1095,6 +1164,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1230
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1148,6 +1220,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1240:
+    name: IntegrationTests_1240
     strategy:
       fail-fast: false
       matrix:
@@ -1158,6 +1231,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1240
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1211,6 +1287,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1250:
+    name: IntegrationTests_1250
     strategy:
       fail-fast: false
       matrix:
@@ -1221,6 +1298,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1250
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1274,6 +1354,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1260:
+    name: IntegrationTests_1260
     strategy:
       fail-fast: false
       matrix:
@@ -1284,6 +1365,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1260
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1337,6 +1421,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1270:
+    name: IntegrationTests_1270
     strategy:
       fail-fast: false
       matrix:
@@ -1347,6 +1432,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1270
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1400,6 +1488,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1280:
+    name: IntegrationTests_1280
     strategy:
       fail-fast: false
       matrix:
@@ -1410,6 +1499,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1280
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1463,6 +1555,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1400:
+    name: IntegrationTests_1400
     strategy:
       fail-fast: false
       matrix:
@@ -1473,6 +1566,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1400
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1526,6 +1622,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1410:
+    name: IntegrationTests_1410
     strategy:
       fail-fast: false
       matrix:
@@ -1536,6 +1633,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1410
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1589,6 +1689,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1420:
+    name: IntegrationTests_1420
     strategy:
       fail-fast: false
       matrix:
@@ -1599,6 +1700,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1420
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1652,6 +1756,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1430:
+    name: IntegrationTests_1430
     strategy:
       fail-fast: false
       matrix:
@@ -1662,6 +1767,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1430
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1715,6 +1823,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1440:
+    name: IntegrationTests_1440
     strategy:
       fail-fast: false
       matrix:
@@ -1725,6 +1834,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1440
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1778,6 +1890,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1500:
+    name: IntegrationTests_1500
     strategy:
       fail-fast: false
       matrix:
@@ -1788,6 +1901,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1500
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1841,6 +1957,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_1550:
+    name: IntegrationTests_1550
     strategy:
       fail-fast: false
       matrix:
@@ -1851,6 +1968,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1550
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1904,6 +2024,7 @@ jobs:
           retention-days: 30
 
   IntegrationTests_9999:
+    name: IntegrationTests_9999
     strategy:
       fail-fast: false
       matrix:
@@ -1914,6 +2035,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_9999
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
