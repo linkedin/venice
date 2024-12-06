@@ -1,4 +1,5 @@
   $FlowName:
+    name: $FlowName
     strategy:
       fail-fast: false
       matrix:
@@ -12,7 +13,7 @@
     if: $Conditional
     timeout-minutes: $TimeOut
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.job }}-jdk${{ matrix.jdk }}
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-$FlowName
      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
