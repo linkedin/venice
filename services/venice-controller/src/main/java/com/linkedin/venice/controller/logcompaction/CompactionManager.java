@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class CompactionManager {
-  public static final int COMPACTION_THRESHOLD_HOURS = 24;
+  public static final int DEFAULT_COMPACTION_THRESHOLD_HOURS = 24;
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private RepushOrchestrator repushOrchestrator;
@@ -57,10 +57,9 @@ public class CompactionManager {
   private boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(COMPACTION_THRESHOLD_HOURS, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(DEFAULT_COMPACTION_THRESHOLD_HOURS, storeInfo);
   }
 
-  // START isCompactionReady() helper methods: each method below encapsulates a log compaction readiness criterion
   /**
    * This function checks if the last compaction time is older than the threshold.
    * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
@@ -97,5 +96,4 @@ public class CompactionManager {
       LOGGER.error("Failed to compact store: {}", storeName, e);
     }
   }
-  // END isCompactionReady() helper methods
 }
