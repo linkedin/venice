@@ -129,10 +129,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
 
   private final String systemStoreName;
-  private Attributes commonMetricDimensions = null;
-  private boolean emitOpenTelemetryMetrics = false;
-  private VeniceOpenTelemetryMetricNamingFormat openTelemetryMetricFormat =
-      VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat();
+  private final Attributes commonMetricDimensions;
+  private final boolean emitOpenTelemetryMetrics;
+  private final VeniceOpenTelemetryMetricNamingFormat openTelemetryMetricFormat;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -160,7 +159,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           attributesBuilder.put(entry.getKey(), entry.getValue());
         }
         commonMetricDimensions = attributesBuilder.build();
+      } else {
+        commonMetricDimensions = null;
       }
+    } else {
+      emitOpenTelemetryMetrics = false;
+      openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat();
+      commonMetricDimensions = null;
     }
 
     this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
