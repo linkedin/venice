@@ -1,5 +1,8 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.utils.Utils;
+
+
 public interface PubSubTopic {
   /**
    * @return the name of the topic
@@ -18,6 +21,10 @@ public interface PubSubTopic {
 
   default boolean isRealTime() {
     return getPubSubTopicType() == PubSubTopicType.REALTIME_TOPIC;
+  }
+
+  default boolean isSeparateRealTimeTopic() {
+    return getPubSubTopicType() == PubSubTopicType.REALTIME_TOPIC && getName().endsWith(Utils.SEPARATE_TOPIC_SUFFIX);
   }
 
   default boolean isStreamReprocessingTopic() {

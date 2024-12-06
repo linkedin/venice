@@ -260,32 +260,32 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       PubSubSecurityProtocol baseSecurityProtocol = PubSubSecurityProtocol.valueOf(
           serverProperties.get().getProperty(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name()));
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
-
       Map<String, String> mapping;
       for (int i = 1; i <= regionNames.size(); i++) {
-        mapping = new HashMap<>();
         int clusterId = i - 1;
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, regionNames.get(clusterId));
+        String regionName = regionNames.get(clusterId);
         PubSubSecurityProtocol securityProtocol = baseSecurityProtocol;
         if (clusterId > 0) {
           // Testing mixed security on any 2-layer setup with 2 or more DCs.
           securityProtocol = PubSubSecurityProtocol.SSL;
         }
-        mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name());
-
-        // N.B. the first Kafka broker in the list is the parent, which we're excluding from the mapping, so this
-        // is why the index here is offset by 1 compared to the cluster ID.
         PubSubBrokerWrapper pubSubBrokerWrapper = kafkaBrokers.get(i);
-        String kafkaAddress = securityProtocol == PubSubSecurityProtocol.SSL
-            ? pubSubBrokerWrapper.getSSLAddress()
-            : pubSubBrokerWrapper.getAddress();
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaAddress);
-        String otherKafkaAddress = securityProtocol == PubSubSecurityProtocol.PLAINTEXT
-            ? pubSubBrokerWrapper.getSSLAddress()
-            : pubSubBrokerWrapper.getAddress();
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS, otherKafkaAddress);
+        mapping = prepareKafkaClusterMappingInfo(regionName, pubSubBrokerWrapper, securityProtocol, "");
         kafkaClusterMap.put(String.valueOf(clusterId), mapping);
       }
+
+      for (int i = 1 + regionNames.size(); i <= 2 * regionNames.size(); i++) {
+        int clusterId = i - 1;
+        String regionName = regionNames.get(clusterId - regionNames.size());
+        PubSubBrokerWrapper pubSubBrokerWrapper = kafkaBrokers.get(i - regionNames.size());
+        mapping = prepareKafkaClusterMappingInfo(
+            regionName,
+            pubSubBrokerWrapper,
+            baseSecurityProtocol,
+            Utils.SEPARATE_TOPIC_SUFFIX);
+        kafkaClusterMap.put(String.valueOf(clusterId), mapping);
+      }
+
       LOGGER.info(
           "addKafkaClusterIDMappingToServerConfigs \n\treceived broker list: \n\t\t{} \n\tand generated cluster map: \n\t\t{}",
           kafkaBrokers.stream().map(PubSubBrokerWrapper::toString).collect(Collectors.joining("\n\t\t")),
@@ -294,6 +294,26 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     } else {
       return Collections.emptyMap();
     }
+  }
+
+  static Map<String, String> prepareKafkaClusterMappingInfo(
+      String regionName,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
+      PubSubSecurityProtocol securityProtocol,
+      String suffix) {
+    Map<String, String> mapping = new HashMap<>();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, regionName + suffix);
+    mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name());
+
+    String kafkaAddress = securityProtocol == PubSubSecurityProtocol.SSL
+        ? pubSubBrokerWrapper.getSSLAddress()
+        : pubSubBrokerWrapper.getAddress();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaAddress + suffix);
+    String otherKafkaAddress = securityProtocol == PubSubSecurityProtocol.PLAINTEXT
+        ? pubSubBrokerWrapper.getSSLAddress()
+        : pubSubBrokerWrapper.getAddress();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS, otherKafkaAddress + suffix);
+    return mapping;
   }
 
   @Override

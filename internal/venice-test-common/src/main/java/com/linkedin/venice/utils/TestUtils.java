@@ -817,7 +817,7 @@ public class TestUtils {
     } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version);
     } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
-      return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+      return PubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
           + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
@@ -875,12 +875,12 @@ public class TestUtils {
   public static List<String> searchForFileExtension(File directory, String fileExtension) {
     List<String> result = new ArrayList<>();
     if (!directory.canRead()) {
-      LOGGER.error("Cannot read directory: ", directory.getAbsolutePath());
+      LOGGER.error("Cannot read directory: {}", directory.getAbsolutePath());
       return result;
     }
     File[] files = directory.listFiles();
     if (files == null) {
-      LOGGER.error("Error reading directory ", directory.getAbsolutePath());
+      LOGGER.error("Error reading directory: {}", directory.getAbsolutePath());
       return result;
     }
     for (File file: files) {

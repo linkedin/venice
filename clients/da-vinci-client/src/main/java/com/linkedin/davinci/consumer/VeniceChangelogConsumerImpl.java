@@ -857,7 +857,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       partitionToPutMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
-
     // Determine if the event should be filtered or not
     if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
       return Optional.empty();
@@ -893,9 +892,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
       LOGGER.info(
-          "Obtain version swap message: {} and versions swap high watermarks: {}",
+          "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
           versionSwap,
-          versionSwap.getLocalHighWatermarks());
+          versionSwap.getLocalHighWatermarks(),
+          pubSubTopicPartition);
       PubSubTopic newServingVersionTopic =
           pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 

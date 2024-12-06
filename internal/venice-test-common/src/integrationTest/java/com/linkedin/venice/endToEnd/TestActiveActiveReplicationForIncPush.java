@@ -15,6 +15,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static org.testng.Assert.assertEquals;
@@ -159,6 +160,9 @@ public class TestActiveActiveReplicationForIncPush {
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
       propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);
+      if (isSeparateRealTimeTopicEnabled) {
+        propsInc1.put(PUSH_TO_SEPARATE_REALTIME_TOPIC, "true");
+      }
       TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc1);
 
       propsInc2.setProperty(INCREMENTAL_PUSH, "true");

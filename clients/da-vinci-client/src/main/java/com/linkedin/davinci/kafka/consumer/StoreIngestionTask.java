@@ -287,6 +287,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final boolean isWriteComputationEnabled;
 
+  protected final boolean isSeparatedRealtimeTopicEnabled;
+
   /**
    * Freeze ingestion if ready to serve or local data exists
    */
@@ -432,6 +434,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.isWriteComputationEnabled = store.isWriteComputationEnabled();
 
+    this.isSeparatedRealtimeTopicEnabled = version.isSeparateRealTimeTopicEnabled();
+
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
 
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
@@ -496,6 +500,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
+        isSeparatedRealtimeTopicEnabled,
         ingestionNotificationDispatcher,
         this::pauseConsumption,
         this::resumeConsumption);
@@ -1551,7 +1556,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           forceUnSubscribedCount++;
         }
       }
-      if (topicPartitionsToUnsubscribe.size() != 0) {
+      if (!topicPartitionsToUnsubscribe.isEmpty()) {
         consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
       }
     }
@@ -2119,9 +2124,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        PubSubTopicPartition pubSubTopicPartition =
-            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
-        consumerSubscribe(pubSubTopicPartition, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
+        consumerSubscribe(
+            topicPartition.getPubSubTopic(),
+            newPartitionConsumptionState,
+            offsetRecord.getLocalVersionTopicOffset(),
+            localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
@@ -3463,14 +3470,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * This method unsubscribes topic-partition from the input.
+   * If it is real-time topic and separate RT topic is enabled, it will also unsubscribe from separate real-time topic.
+   */
+  public void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
+    consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
+    if (isSeparatedRealtimeTopicEnabled() && topic.isRealTime()) {
+      PubSubTopic separateRealTimeTopic =
+          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
+      consumerUnSubscribeForStateTransition(separateRealTimeTopic, partitionConsumptionState);
+    }
+  }
+
+  /**
    * It is important during a state transition to wait in {@link SharedKafkaConsumer#waitAfterUnsubscribe(long, Set, long)}
    * until all inflight messages have been processed by the consumer, otherwise there could be a mismatch in the PCS's
    * leader-follower state vs the intended state when the message was polled. Thus, we use an increased timeout of up to
    * 30 minutes according to the maximum value of the metric consumer_records_producing_to_write_buffer_latency.
    */
-  public void consumerUnSubscribeForStateTransition(
-      PubSubTopic topic,
-      PartitionConsumptionState partitionConsumptionState) {
+  void consumerUnSubscribeForStateTransition(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
@@ -3494,9 +3512,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
-    // TODO: pass special format of kafka url as input here when subscribe to the separate incremental push topic
+  /**
+   * This method will try to resolve actual topic-partition from input Kafka URL and subscribe to the resolved
+   * topic-partition.
+   */
+  public void consumerSubscribe(
+      PubSubTopic pubSubTopic,
+      PartitionConsumptionState partitionConsumptionState,
+      long startOffset,
+      String kafkaURL) {
+    PubSubTopicPartition resolvedTopicPartition =
+        resolveTopicPartitionWithKafkaURL(pubSubTopic, partitionConsumptionState, kafkaURL);
+    consumerSubscribe(resolvedTopicPartition, startOffset, kafkaURL);
+  }
+
+  void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
     String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
+    if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled()
+        && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
+      return;
+    }
     final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
@@ -4454,6 +4489,44 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     return true;
+  }
+
+  public boolean isSeparatedRealtimeTopicEnabled() {
+    return isSeparatedRealtimeTopicEnabled;
+  }
+
+  /**
+   * For RT input topic with separate-RT kafka URL, this method will return topic-partition with separated-RT topic.
+   * For other case, it will return topic-partition with input topic.
+   */
+  PubSubTopicPartition resolveTopicPartitionWithKafkaURL(
+      PubSubTopic topic,
+      PartitionConsumptionState partitionConsumptionState,
+      String kafkaURL) {
+    PubSubTopic resolvedTopic = resolveTopicWithKafkaURL(topic, kafkaURL);
+    PubSubTopicPartition pubSubTopicPartition = partitionConsumptionState.getSourceTopicPartition(resolvedTopic);
+    LOGGER.info("Resolved topic-partition: {} from kafkaURL: {}", pubSubTopicPartition, kafkaURL);
+    return pubSubTopicPartition;
+  }
+
+  /**
+   * This method will return resolve topic from input Kafka URL. If it is a separated topic Kafka URL and input topic
+   * is RT topic, it will return separate RT topic, otherwise it will return input topic.
+   */
+  PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
+    if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
+        && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
+      return getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
+    }
+    return topic;
+  }
+
+  PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
+  }
+
+  Function<String, String> getKafkaClusterUrlResolver() {
+    return kafkaClusterUrlResolver;
   }
 
   CountDownLatch getGracefulShutdownLatch() {

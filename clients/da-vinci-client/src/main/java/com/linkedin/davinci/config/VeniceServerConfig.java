@@ -65,11 +65,13 @@ import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_MEMORY_STATS_ENABLED;
@@ -531,6 +533,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
   private final KafkaConsumerServiceDelegator.ConsumerPoolStrategyType consumerPoolStrategyType;
   private final int consumerPoolSizeForCurrentVersionAAWCLeader;
+  private final int consumerPoolSizeForCurrentVersionSepRTLeader;
   private final int consumerPoolSizeForNonCurrentVersionAAWCLeader;
   private final int consumerPoolSizeForCurrentVersionNonAAWCLeader;
   private final int consumerPoolSizeForNonCurrentVersionNonAAWCLeader;
@@ -554,6 +557,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int defaultMaxRecordSizeBytes;
   private final int aaWCLeaderQuotaRecordsPerSecond;
   private final int currentVersionAAWCLeaderQuotaRecordsPerSecond;
+  private final int currentVersionSepRTLeaderQuotaRecordsPerSecond;
   private final int currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
   private final int nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
   private final int nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
@@ -888,6 +892,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT.name()));
     consumerPoolSizeForCurrentVersionAAWCLeader =
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER, 10);
+    consumerPoolSizeForCurrentVersionSepRTLeader =
+        serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER, 10);
     consumerPoolSizeForNonCurrentVersionAAWCLeader =
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER, 10);
     consumerPoolSizeForCurrentVersionNonAAWCLeader =
@@ -920,6 +926,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     aaWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
     currentVersionAAWCLeaderQuotaRecordsPerSecond =
         serverProperties.getInt(SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    currentVersionSepRTLeaderQuotaRecordsPerSecond =
+        serverProperties.getInt(SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
     currentVersionNonAAWCLeaderQuotaRecordsPerSecond =
         serverProperties.getInt(SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
     nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond =
@@ -1605,6 +1613,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return consumerPoolSizeForCurrentVersionAAWCLeader;
   }
 
+  public int getConsumerPoolSizeForCurrentVersionSepRTLeader() {
+    return consumerPoolSizeForCurrentVersionSepRTLeader;
+  }
+
   public int getConsumerPoolSizeForNonCurrentVersionAAWCLeader() {
     return consumerPoolSizeForNonCurrentVersionAAWCLeader;
   }
@@ -1671,6 +1683,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getCurrentVersionAAWCLeaderQuotaRecordsPerSecond() {
     return currentVersionAAWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getCurrentVersionSepRTLeaderQuotaRecordsPerSecond() {
+    return currentVersionSepRTLeaderQuotaRecordsPerSecond;
   }
 
   public int getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond() {

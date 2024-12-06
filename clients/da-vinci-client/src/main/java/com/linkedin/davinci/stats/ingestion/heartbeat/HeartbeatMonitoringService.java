@@ -12,6 +12,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,7 +59,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       ReadOnlyStoreRepository metadataRepository,
       Set<String> regionNames,
       String localRegionName) {
-    this.regionNames = regionNames;
+    this.regionNames = regionNames.stream().filter(x -> !Utils.isSeparateTopicRegion(x)).collect(Collectors.toSet());
     this.localRegionName = localRegionName;
     this.reportingThread = new HeartbeatReporterThread();
     this.lagLoggingThread = new HeartbeatLagLoggingThread();

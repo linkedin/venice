@@ -295,7 +295,8 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         PartitionReplicaIngestionContext topicPartitionReplicaRole) {
       PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic versionTopic = topicPartitionReplicaRole.getVersionTopic();
-      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()) {
+      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()
+          && !topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
         return dedicatedConsumerService;
       }
       return defaultConsumerService;
@@ -304,6 +305,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   public class CurrentVersionConsumerPoolStrategy extends ConsumerPoolStrategy {
     private final KafkaConsumerService consumerServiceForCurrentVersionAAWCLeader;
+    private final KafkaConsumerService consumerServiceForCurrentVersionSepRTLeader;
     private final KafkaConsumerService consumerServiceForCurrentVersionNonAAWCLeader;
     private final KafkaConsumerService consumerServiceForNonCurrentVersionAAWCLeader;
     private final KafkaConsumerService consumerServiceNonCurrentNonAAWCLeader;
@@ -313,6 +315,10 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
           serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader(),
           ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL);
       consumerServices.add(consumerServiceForCurrentVersionAAWCLeader);
+      this.consumerServiceForCurrentVersionSepRTLeader = consumerServiceConstructor.apply(
+          serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader(),
+          ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL);
+      consumerServices.add(consumerServiceForCurrentVersionSepRTLeader);
       this.consumerServiceForCurrentVersionNonAAWCLeader = consumerServiceConstructor.apply(
           serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader(),
           ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL);
@@ -342,7 +348,9 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime()) {
-          return consumerServiceForCurrentVersionAAWCLeader;
+          return pubSubTopic.isSeparateRealTimeTopic()
+              ? consumerServiceForCurrentVersionSepRTLeader
+              : consumerServiceForCurrentVersionAAWCLeader;
         } else {
           return consumerServiceForCurrentVersionNonAAWCLeader;
         }

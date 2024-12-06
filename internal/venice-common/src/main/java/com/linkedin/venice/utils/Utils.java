@@ -22,8 +22,10 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -1036,6 +1038,28 @@ public class Utils {
       return kafkaUrl.substring(0, kafkaUrl.length() - SEPARATE_TOPIC_SUFFIX.length());
     }
     return kafkaUrl;
+  }
+
+  /**
+   * Check whether input region is for separate RT topic.
+   */
+  public static boolean isSeparateTopicRegion(String region) {
+    return region.endsWith(SEPARATE_TOPIC_SUFFIX);
+  }
+
+  /**
+   * Resolve leader topic from input topic.
+   * If input topic is separate RT topic, return the corresponding RT topic.
+   * Otherwise, return the original input topic.
+   */
+  public static PubSubTopic resolveLeaderTopicFromPubSubTopic(
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubTopic pubSubTopic) {
+    if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.REALTIME_TOPIC)
+        && pubSubTopic.getName().endsWith(SEPARATE_TOPIC_SUFFIX)) {
+      return pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(pubSubTopic.getStoreName()));
+    }
+    return pubSubTopic;
   }
 
   /**
