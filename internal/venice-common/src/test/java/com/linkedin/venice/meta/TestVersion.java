@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.meta.Version.VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -113,6 +115,8 @@ public class TestVersion {
     Assert.assertTrue(Version.isATopicThatIsVersioned(topic));
     topic = "abc_v1_cc";
     Assert.assertTrue(Version.isATopicThatIsVersioned(topic));
+    String pushId = VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + System.currentTimeMillis();
+    Assert.assertTrue(Version.isPushIdTTLRePush(pushId));
   }
 
   @Test
