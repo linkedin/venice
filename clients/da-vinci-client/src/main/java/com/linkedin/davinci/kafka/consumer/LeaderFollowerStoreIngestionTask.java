@@ -1479,7 +1479,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         upstreamTopic = versionTopic;
       }
       if (upstreamTopic.isRealTime()) {
-        offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+        offsetRecord.mergeUpstreamOffsets(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
       } else {
         offsetRecord.setCheckpointUpstreamVersionTopicOffset(
             partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset());
