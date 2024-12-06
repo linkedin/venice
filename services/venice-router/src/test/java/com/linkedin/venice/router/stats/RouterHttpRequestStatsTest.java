@@ -15,12 +15,17 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.Collection;
 import org.testng.annotations.Test;
 
 
@@ -31,9 +36,13 @@ public class RouterHttpRequestStatsTest {
     String clusterName = "test-cluster";
     MetricsRepository metricsRepository;
     if (useVeniceMetricRepository) {
+      Collection<MetricEntity> metricEntities = new ArrayList<>();
+      metricEntities
+          .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
       metricsRepository = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository(
           isOtelEnabled,
-          isOtelEnabled ? PASCAL_CASE : VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
+          isOtelEnabled ? PASCAL_CASE : VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat(),
+          metricEntities);
     } else {
       metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     }
