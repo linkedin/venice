@@ -28,6 +28,7 @@ import org.apache.logging.log4j.Logger;
  * It will also skip empty push to store which is being migrated and is in the destination cluster.
  */
 public class SystemStorePushTask implements Function<String, Boolean> {
+  public static final String TASK_NAME = "PushSystemStore";
   private static final Logger LOGGER = LogManager.getLogger(SystemStorePushTask.class);
   private static final int JOB_POLLING_RETRY_COUNT = 200;
   private static final int JOB_POLLING_RETRY_PERIOD_IN_SECONDS = 5;
@@ -65,6 +66,19 @@ public class SystemStorePushTask implements Function<String, Boolean> {
 
     for (VeniceSystemStoreType type: SYSTEM_STORE_TYPE) {
       String systemStoreName = type.getSystemStoreName(storeName);
+      /**
+       *  In current implementation, a push to system store will flip the flag to true, which can introduce unexpected
+       *  behavior to the store. Here, we skip the system store push if it is turned off.
+       */
+      boolean isSystemStoreEnabled = VeniceSystemStoreType.META_STORE.equals(type)
+          ? storeResponse.getStore().isStoreMetaSystemStoreEnabled()
+          : storeResponse.getStore().isDaVinciPushStatusStoreEnabled();
+      if (!isSystemStoreEnabled) {
+        LOGGER.warn(
+            "{} System store: {} is disabled. Will skip the push.",
+            SYSTEM_STORE_PUSH_TASK_LOG_PREFIX,
+            systemStoreName);
+      }
       VersionResponse response = parentControllerClient.getStoreLargestUsedVersion(clusterName, systemStoreName);
       if (response.isError()) {
         LOGGER.error(
