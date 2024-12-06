@@ -2732,7 +2732,9 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            null, null, 123));
+            null,
+            null,
+            123));
 
     Schema schema1 = Schema.parse(
         "{" + "\"fields\": ["
