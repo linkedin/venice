@@ -19,8 +19,6 @@ public class StorePropertiesFetchRequest {
       throw new VeniceException("not a valid request for a Store Properties action: " + uri);
     }
 
-    System.out.println("StorePropertiesFetchRequest.parseGetHttpRequest: " + requestParts.toString());
-
     String storeName = requestParts[2];
     return new StorePropertiesFetchRequest(storeName);
   }

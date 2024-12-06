@@ -794,7 +794,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private StorePropertiesResponse handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
-    System.out.println("handleStorePropertiesFetchRequest: " + request.getStoreName());
     return readMetadataRetriever.getStoreProperties(request.getStoreName());
   }
 
