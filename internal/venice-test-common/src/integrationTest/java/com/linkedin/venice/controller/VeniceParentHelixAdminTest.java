@@ -158,7 +158,7 @@ public class VeniceParentHelixAdminTest {
                 false,
                 Optional.empty(),
                 Optional.empty(),
-                Optional.of("dc-1"),
+                Optional.of("dc-0"),
                 false,
                 -1));
         // Check version-level rewind time config

@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
@@ -15,6 +16,7 @@ import com.linkedin.venice.meta.Version;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -190,7 +192,7 @@ public class UtilsTest {
 
   @Test
   public void testSanitizingStringForLogger() {
-    Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
+    assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
   }
 
   @Test
@@ -199,13 +201,13 @@ public class UtilsTest {
     Assert.assertTrue(Utils.parseCommaSeparatedStringToSet("").isEmpty());
 
     Set<String> set = Utils.parseCommaSeparatedStringToSet("a,b,c");
-    Assert.assertEquals(set.size(), 3);
+    assertEquals(set.size(), 3);
     Assert.assertTrue(set.contains("a"));
     Assert.assertTrue(set.contains("b"));
     Assert.assertTrue(set.contains("c"));
 
     Set<String> setWithSpaces = Utils.parseCommaSeparatedStringToSet("a, b, c");
-    Assert.assertEquals(setWithSpaces.size(), 3);
+    assertEquals(setWithSpaces.size(), 3);
     Assert.assertTrue(setWithSpaces.contains("a"));
     Assert.assertTrue(setWithSpaces.contains("b"));
     Assert.assertTrue(setWithSpaces.contains("c"));
@@ -217,25 +219,25 @@ public class UtilsTest {
     Assert.assertTrue(Utils.parseCommaSeparatedStringToList("").isEmpty());
 
     List<String> list = Utils.parseCommaSeparatedStringToList("a,b,c");
-    Assert.assertEquals(list.size(), 3);
-    Assert.assertEquals(list.get(0), "a");
-    Assert.assertEquals(list.get(1), "b");
-    Assert.assertEquals(list.get(2), "c");
+    assertEquals(list.size(), 3);
+    assertEquals(list.get(0), "a");
+    assertEquals(list.get(1), "b");
+    assertEquals(list.get(2), "c");
 
     List<String> stringList = Utils.parseCommaSeparatedStringToList("a, b, c");
-    Assert.assertEquals(stringList.size(), 3);
-    Assert.assertEquals(list.get(0), "a");
-    Assert.assertEquals(list.get(1), "b");
-    Assert.assertEquals(list.get(2), "c");
+    assertEquals(stringList.size(), 3);
+    assertEquals(list.get(0), "a");
+    assertEquals(list.get(1), "b");
+    assertEquals(list.get(2), "c");
   }
 
   @Test
   public void testResolveKafkaUrlForSepTopic() {
     String originalKafkaUrl = "localhost:12345";
     String originalKafkaUrlForSep = "localhost:12345_sep";
-    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
-    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
-    Assert.assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+    assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
+    assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
+    assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
   }
 
   @Test
@@ -344,4 +346,30 @@ public class UtilsTest {
     String result = Utils.getRealTimeTopicName(mockVersion);
     assertEquals("TestStore" + Version.REAL_TIME_TOPIC_SUFFIX, result);
   }
+
+  @Test
+  public void testParseDateTimeToEpoch() throws Exception {
+    // Case 1: Valid Input
+    String dateTimePst = "2024-12-02 15:30:00";
+    String dateTimeUtc = "2024-12-02 23:30:00";
+    String format = "yyyy-MM-dd HH:mm:ss";
+    String timeZone = "America/Los_Angeles";
+    long expectedEpoch = 1733182200000L;
+
+    long epochTime = Utils.parseDateTimeToEpoch(dateTimePst, format, timeZone);
+    assertEquals(epochTime, expectedEpoch, "The epoch time does not match the expected value.");
+
+    // Case 2: Invalid Date Format
+    assertThrows(ParseException.class, () -> Utils.parseDateTimeToEpoch("2024-12-02T15:30:00", format, timeZone));
+
+    // Case 3: Invalid Time Zone; fallback to GMT
+    long gmtEpochTime = Utils.parseDateTimeToEpoch(dateTimeUtc, format, "InvalidTimeZone");
+    assertEquals(gmtEpochTime, expectedEpoch, "The epoch time does not match the expected value for GMT.");
+
+    // Case 4: Different Time Zone
+    String utcTimeZone = "UTC";
+    long utcEpochTime = Utils.parseDateTimeToEpoch(dateTimeUtc, format, utcTimeZone);
+    assertEquals(utcEpochTime, expectedEpoch, "The epoch time does not match the expected value for UTC.");
+  }
+
 }

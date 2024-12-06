@@ -89,9 +89,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
@@ -123,7 +125,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -141,7 +142,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -160,15 +160,18 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class AdminTool {
+  private static final Logger LOGGER = LogManager.getLogger(AdminTool.class);
   private static ObjectWriter jsonWriter = ObjectMapperFactory.getInstance().writerWithDefaultPrettyPrinter();
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
 
-  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -185,6 +188,8 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.location",
       "zookeeper.ssl.trustStore.password",
       "zookeeper.ssl.trustStore.type");
+  private static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
+  private static final String PST_TIME_ZONE = "America/Los_Angeles";
 
   public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
@@ -1539,7 +1544,6 @@ public class AdminTool {
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
@@ -1553,7 +1557,7 @@ public class AdminTool {
             .setTopicMinLogCompactionLagMs(0L)
             .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
             .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
-            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubTopicRepository(TOPIC_REPOSITORY)
             .setTopicMetadataFetcherConsumerPoolSize(1)
             .setTopicMetadataFetcherThreadPoolSize(1)
             .build();
@@ -1562,7 +1566,7 @@ public class AdminTool {
         new TopicManagerRepository(topicManagerContext, kafkaBootstrapServer).getLocalTopicManager()) {
       String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       try {
-        topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
+        topicManager.ensureTopicIsDeletedAndBlock(TOPIC_REPOSITORY.getTopic(topicName));
         long runTime = System.currentTimeMillis() - startTime;
         printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
       } catch (PubSubOpTimeoutException e) {
@@ -1620,21 +1624,22 @@ public class AdminTool {
     String progressInterval = getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
 
-    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
-    dateFormat.setTimeZone(TimeZone.getTimeZone("America/Los_Angeles"));
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       TopicMessageFinder.find(
           controllerClient,
           consumer,
           kafkaTopic,
           keyString,
-          dateFormat.parse(startDateInPST).getTime(),
-          endDateInPST == null ? Long.MAX_VALUE : dateFormat.parse(endDateInPST).getTime(),
+          Utils.parseDateTimeToEpoch(startDateInPST, DEFAULT_DATE_FORMAT, PST_TIME_ZONE),
+          endDateInPST == null
+              ? Long.MAX_VALUE
+              : Utils.parseDateTimeToEpoch(endDateInPST, DEFAULT_DATE_FORMAT, PST_TIME_ZONE),
           progressInterval == null ? 1000000 : Long.parseLong(progressInterval));
     }
   }
 
-  private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
+  private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
+      throws java.text.ParseException {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
@@ -1661,26 +1666,47 @@ public class AdminTool {
     if (getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS) != null) {
       maxConsumeAttempts = Integer.parseInt(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
+    String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
+    long startTimestamp =
+        startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
+    if (startTimestamp != -1 && startingOffset != -1) {
+      throw new VeniceException("Only one of start date and starting offset can be specified");
+    }
+
+    String endDatetime = getOptionalArgument(cmd, Arg.END_DATE);
+    long endTimestamp =
+        endDatetime == null ? -1 : Utils.parseDateTimeToEpoch(endDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
 
     boolean logMetadata = cmd.hasOption(Arg.LOG_METADATA.toString());
     boolean logDataRecord = cmd.hasOption(Arg.LOG_DATA_RECORD.toString());
     boolean logRmdRecord = cmd.hasOption(Arg.LOG_RMD_RECORD.toString());
     boolean logTsRecord = cmd.hasOption(Arg.LOG_TS_RECORD.toString());
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
+      PubSubTopicPartition topicPartition =
+          new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(kafkaTopic), partitionNumber);
+      long startOffset =
+          KafkaTopicDumper.calculateStartingOffset(consumer, topicPartition, startingOffset, startTimestamp);
+      long endOffset = KafkaTopicDumper.calculateEndingOffset(consumer, topicPartition, endTimestamp);
+      if (messageCount <= 0) {
+        messageCount = (int) (endOffset - startOffset);
+      }
+      LOGGER.info(
+          "TopicPartition: {} Start offset: {}, End offset: {}, Message count: {}",
+          topicPartition,
+          startOffset,
+          endOffset,
+          messageCount);
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
           consumer,
-          kafkaTopic,
-          partitionNumber,
-          startingOffset,
-          messageCount,
+          topicPartition,
           parentDir,
           maxConsumeAttempts,
           logMetadata,
           logDataRecord,
           logRmdRecord,
           logTsRecord)) {
-        ktd.fetchAndProcess();
+        ktd.fetchAndProcess(startOffset, endOffset, messageCount);
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");
         e.printStackTrace();

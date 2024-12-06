@@ -39,6 +39,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,6 +55,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -1033,5 +1036,19 @@ public class Utils {
       return kafkaUrl.substring(0, kafkaUrl.length() - SEPARATE_TOPIC_SUFFIX.length());
     }
     return kafkaUrl;
+  }
+
+  /**
+   * Parses a date-time string to epoch milliseconds using the default format and time zone.
+   *
+   * @param dateTime the date-time string in the format "yyyy-MM-dd hh:mm:ss"
+   * @return the epoch time in milliseconds
+   * @throws ParseException if the date-time string cannot be parsed
+   */
+  public static long parseDateTimeToEpoch(String dateTime, String dateTimeFormat, String timeZone)
+      throws ParseException {
+    SimpleDateFormat dateFormat = new SimpleDateFormat(dateTimeFormat);
+    dateFormat.setTimeZone(TimeZone.getTimeZone(timeZone));
+    return dateFormat.parse(dateTime).getTime();
   }
 }
