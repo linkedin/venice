@@ -210,17 +210,13 @@ public class TestAdminToolConsumption {
     KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
         controllerClient,
         apacheKafkaConsumer,
-        topic,
-        assignedPartition,
-        0,
-        -1,
-        2,
+        pubSubTopicPartition,
         "",
         3,
         true,
         false,
         false,
         false);
-    Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(), consumedMessageCount);
+    Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(0, 1, 2), consumedMessageCount);
   }
 }
