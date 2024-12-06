@@ -154,6 +154,9 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
+import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.SCHEDULED_LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SCHEDULED_LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -177,6 +180,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -485,7 +489,7 @@ public class VeniceControllerClusterConfig {
 
   /**
    * Number of replicas for each kafka topic. It can be different from the Venice Storage Node replication factor,
-   * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
+   * defined by {@value ConfigKeys#DEFAULT_REPLICA_FACTOR}.
    */
   private final int kafkaReplicationFactor;
   private final int kafkaReplicationFactorRTTopics;
@@ -534,6 +538,17 @@ public class VeniceControllerClusterConfig {
   private final long serviceDiscoveryRegistrationRetryMS;
 
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+
+  /**
+   * Configs for repush
+   */
+  private String repushOrchestratorClassName;
+
+  /**
+   * Configs for log compaction
+   */
+  private final int scheduledLogCompactionThreadCount;
+  private final long scheduledLogCompactionIntervalMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -615,7 +630,7 @@ public class VeniceControllerClusterConfig {
     this.sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     this.refreshIntervalForZkReconnectInMs =
-        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, TimeUnit.SECONDS.toMillis(10));
     this.enableOfflinePushSSLAllowlist = props.getBooleanWithAlternative(
         ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
         // go/inclusivecode deferred(Reference will be removed when clients have migrated)
@@ -978,6 +993,10 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
+    this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO: default value?
+    this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
+    this.scheduledLogCompactionIntervalMS =
+        props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
   }
 
   public VeniceProperties getProps() {
@@ -1794,5 +1813,17 @@ public class VeniceControllerClusterConfig {
 
   public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
     return pushJobUserErrorCheckpoints;
+  }
+
+  public String getRepushOrchestratorClassName() {
+    return repushOrchestratorClassName;
+  }
+
+  public int getScheduledLogCompactionThreadCount() {
+    return scheduledLogCompactionThreadCount;
+  }
+
+  public long getScheduledLogCompactionIntervalMS() {
+    return scheduledLogCompactionIntervalMS;
   }
 }

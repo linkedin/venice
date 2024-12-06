@@ -10,6 +10,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -46,8 +47,9 @@ public class VeniceController {
   private VeniceControllerService controllerService;
   private AdminSparkServer adminServer;
   private AdminSparkServer secureAdminServer;
-  private TopicCleanupService topicCleanupService;
+  private LogCompactionService logCompactionService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
+  private TopicCleanupService topicCleanupService;
 
   private Optional<DisabledPartitionEnablerService> disabledPartitionEnablerService;
   private Optional<UnusedValueSchemaCleanupService> unusedValueSchemaCleanupService;
@@ -201,6 +203,8 @@ public class VeniceController {
         throw new VeniceException(
             "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
       }
+
+      logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
@@ -248,6 +252,7 @@ public class VeniceController {
       secureAdminServer.start();
     }
     topicCleanupService.start();
+    logCompactionService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
@@ -312,6 +317,7 @@ public class VeniceController {
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
+    Utils.closeQuietlyWithErrorLogged(logCompactionService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);

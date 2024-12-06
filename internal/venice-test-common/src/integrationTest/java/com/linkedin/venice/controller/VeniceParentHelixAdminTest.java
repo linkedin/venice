@@ -713,7 +713,6 @@ public class VeniceParentHelixAdminTest {
         });
       }
     }
-
   }
 
   private void testSuperSetSchemaGen(ControllerClient parentControllerClient) {

@@ -242,6 +242,21 @@ public class ConfigKeys {
       "fatal.data.validation.failure.topic.retention.ms";
 
   /**
+   * Class name of the implementation of interface {@link com.linkedin.venice.controller.repush.RepushOrchestrator} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   */
+  public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "repush.orchestrator.class.name";
+
+  /**
+   * Number of threads to use for scheduled log compaction
+   */
+  public static final String SCHEDULED_LOG_COMPACTION_THREAD_COUNT = "scheduled.log.compaction.thread.count";
+
+  /**
+   * Time between each scheduled log compaction
+   */
+  public static final String SCHEDULED_LOG_COMPACTION_INTERVAL_MS = "scheduled.log.compaction.interval.ms";
+
+  /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
    *

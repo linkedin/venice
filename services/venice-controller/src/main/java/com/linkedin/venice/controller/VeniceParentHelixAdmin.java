@@ -4889,6 +4889,22 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * see {@link Admin#getStoresForCompaction}
+   */
+  @Override
+  public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  }
+
+  /**
+   * see {@link Admin#compactStore}
+   */
+  @Override
+  public void compactStore(String storeName) {
+    // TODO
+  }
+
+  /**
    * @return the largest used version number for the given store from the store graveyard.
    */
   @Override
