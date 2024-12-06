@@ -24,6 +24,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,6 +90,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -150,6 +156,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -213,6 +222,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -276,6 +288,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -339,6 +354,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -402,6 +420,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -465,6 +486,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -528,6 +552,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -591,6 +618,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -654,6 +684,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -717,6 +750,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -780,6 +816,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -843,6 +882,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -906,6 +948,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -969,6 +1014,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1032,6 +1080,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1095,6 +1146,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1158,6 +1212,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1221,6 +1278,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1284,6 +1344,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1347,6 +1410,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1410,6 +1476,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1473,6 +1542,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1536,6 +1608,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1599,6 +1674,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1662,6 +1740,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1725,6 +1806,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1788,6 +1872,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1851,6 +1938,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1914,6 +2004,9 @@ jobs:
      contents: read
      checks: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:

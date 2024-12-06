@@ -11,6 +11,9 @@
     needs: $Dependency
     if: $Conditional
     timeout-minutes: $TimeOut
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
