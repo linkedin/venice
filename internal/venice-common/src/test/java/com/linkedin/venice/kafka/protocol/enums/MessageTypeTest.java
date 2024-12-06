@@ -17,7 +17,7 @@ public class MessageTypeTest extends VeniceEnumValueTest<MessageType> {
         .put(1, MessageType.DELETE)
         .put(2, MessageType.CONTROL_MESSAGE)
         .put(3, MessageType.UPDATE)
-        .put(4, MessageType.CONTROL_MESSAGE_DIV)
+        .put(4, MessageType.GLOBAL_RT_DIV)
         .build();
   }
 }

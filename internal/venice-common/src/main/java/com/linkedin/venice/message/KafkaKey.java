@@ -67,10 +67,10 @@ public class KafkaKey implements Measurable {
   }
 
   /**
-   * @return true if this key corresponds to a DIV control message, and false otherwise.
+   * @return true if this key corresponds to a GlobalRtDiv message, and false otherwise.
    */
-  public boolean isDivControlMessage() {
-    return keyHeaderByte == MessageType.CONTROL_MESSAGE_DIV.getKeyHeaderByte();
+  public boolean isGlobalRtDiv() {
+    return keyHeaderByte == MessageType.GLOBAL_RT_DIV.getKeyHeaderByte();
   }
 
   /**
@@ -84,9 +84,23 @@ public class KafkaKey implements Measurable {
     return key == null ? 0 : key.length;
   }
 
+  private String messageTypeString() {
+    switch (keyHeaderByte) {
+      case MessageType.Constants.PUT_KEY_HEADER_BYTE:
+        return "PUT or DELETE"; // PUT_KEY_HEADER_BYTE corresponds to both PUT or DELETE
+      case MessageType.Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE:
+        return "CONTROL_MESSAGE";
+      case MessageType.Constants.UPDATE_KEY_HEADER_BYTE:
+        return "UPDATE";
+      case MessageType.Constants.GLOBAL_RT_DIV_KEY_HEADER_BYTE:
+        return "GLOBAL_RT_DIV";
+      default:
+        return "UNKNOWN";
+    }
+  }
+
   public String toString() {
-    return getClass().getSimpleName() + "(" + (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE") + ", "
-        + ByteUtils.toHexString(key) + ")";
+    return getClass().getSimpleName() + "(" + messageTypeString() + ", " + ByteUtils.toHexString(key) + ")";
   }
 
   public int getHeapSize() {

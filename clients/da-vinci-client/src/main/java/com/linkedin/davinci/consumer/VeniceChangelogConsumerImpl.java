@@ -793,7 +793,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate deserializers and compressors
-      Lazy deserializerProvider;
+      Lazy<RecordDeserializer> deserializerProvider;
       int readerSchemaId;
       VeniceCompressor compressor;
       if (pubSubTopicPartition.getPubSubTopic().isViewTopic() && changelogClientConfig.isBeforeImageView()) {
@@ -812,9 +812,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           keyBytes,
           put.getPutValue(),
           message.getOffset(),
-          deserializerProvider,
           readerSchemaId,
-          compressor);
+          compressor,
+          (valueBytes) -> deserializerProvider.get().deserialize(valueBytes));
       if (assembledObject == null) {
         // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
         // it's waiting for more input. In this case, just return an empty optional for now.

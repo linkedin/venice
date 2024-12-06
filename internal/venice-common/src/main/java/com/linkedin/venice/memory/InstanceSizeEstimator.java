@@ -159,6 +159,7 @@ public class InstanceSizeEstimator {
     int size = KME_PARTIAL_CLASS_OVERHEAD;
     switch (MessageType.valueOf(kme)) {
       case PUT:
+      case GLOBAL_RT_DIV:
         size += getSize((Put) kme.payloadUnion);
         break;
       case DELETE:

@@ -273,12 +273,12 @@ public class OffsetRecord {
   }
 
   /**
-   * Reset the checkpoint upstream offset map to another map provided as the input.
-   * @param checkpointUpstreamOffsetMap
+   * Update the checkpoint upstream offset map with new values from another map provided as the input.
+   * @param newUpstreamOffsetMap
    */
-  public void resetUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMap) {
-    Validate.notNull(checkpointUpstreamOffsetMap);
-    for (Map.Entry<String, Long> offsetEntry: checkpointUpstreamOffsetMap.entrySet()) {
+  public void mergeUpstreamOffsets(@Nonnull Map<String, Long> newUpstreamOffsetMap) {
+    Validate.notNull(newUpstreamOffsetMap);
+    for (Map.Entry<String, Long> offsetEntry: newUpstreamOffsetMap.entrySet()) {
       // leader offset can be the topic offset from any colo
       this.setLeaderUpstreamOffset(offsetEntry.getKey(), offsetEntry.getValue());
     }

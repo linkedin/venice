@@ -1,9 +1,15 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
-import static com.linkedin.venice.utils.Utils.*;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -12,7 +18,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.state.GlobalDivState;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -43,8 +49,8 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestGlobalDiv {
-  private static final Logger LOGGER = LogManager.getLogger(TestGlobalDiv.class);
+public class TestGlobalRtDiv {
+  private static final Logger LOGGER = LogManager.getLogger(TestGlobalRtDiv.class);
 
   private VeniceClusterWrapper sharedVenice;
 
@@ -128,28 +134,25 @@ public class TestGlobalDiv {
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         sharedVenice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
-    try (VeniceWriter<byte[], byte[], byte[]> verstionTopicWriter =
+    try (VeniceWriter<byte[], byte[], byte[]> versionTopicWriter =
         TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
             .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeKafkaTopic(storeName, 1)).build())) {
 
-      InternalAvroSpecificSerializer<GlobalDivState> serializer =
-          AvroProtocolDefinition.GLOBAL_DIV_STATE.getSerializer();
+      InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
 
-      GlobalDivState state = createGlobalDivState("localhost:9090", false);
-      verstionTopicWriter
-          .sendChunkSupportedDivMessage(
+      GlobalRtDivState state = createGlobalRtDivState("localhost:9090", false);
+      versionTopicWriter
+          .sendGlobalRtDivMessage(
               0,
               "NonChunkedKey".getBytes(),
               ByteUtils.extractByteArray(serializer.serialize(state)))
           .get();
       LOGGER.info("Sent non-chunked div message");
 
-      state = createGlobalDivState("localhost:9092", true);
-      verstionTopicWriter
-          .sendChunkSupportedDivMessage(
-              0,
-              "ChunkedKey".getBytes(),
-              ByteUtils.extractByteArray(serializer.serialize(state)))
+      state = createGlobalRtDivState("localhost:9092", true);
+      versionTopicWriter
+          .sendGlobalRtDivMessage(0, "ChunkedKey".getBytes(), ByteUtils.extractByteArray(serializer.serialize(state)))
           .get();
       LOGGER.info("Sent chunked div message");
 
@@ -159,21 +162,17 @@ public class TestGlobalDiv {
     }
   }
 
-  private GlobalDivState createGlobalDivState(String srcUrl, boolean isChunked) {
-    GlobalDivState state = new GlobalDivState();
+  private GlobalRtDivState createGlobalRtDivState(String srcUrl, boolean isChunked) {
+    GlobalRtDivState state = new GlobalRtDivState();
     state.producerStates = new HashMap<>();
     state.setSrcUrl(srcUrl);
 
-    if (isChunked) {
-      // Create a large state with 20k entries.
-      for (int i = 0; i < 20000; i++) {
-        byte[] bytes = new byte[256];
-        random.nextBytes(bytes);
-        GUID guid = new GUID(bytes);
-        state.producerStates.put(guidToUtf8(guid), createProducerPartitionState(i, i));
-      }
-    } else {
-      state.producerStates = Collections.emptyMap();
+    final int entryCount = (isChunked) ? 20000 : 1; // Create a large state with 20k entries to trigger chunking
+    for (int i = 0; i < entryCount; i++) {
+      byte[] bytes = new byte[256];
+      random.nextBytes(bytes);
+      GUID guid = new GUID(bytes);
+      state.producerStates.put(guidToUtf8(guid), createProducerPartitionState(i, i));
     }
     return state;
   }

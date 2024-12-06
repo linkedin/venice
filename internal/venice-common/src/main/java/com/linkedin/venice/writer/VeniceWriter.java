@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
-import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_DIV_STATE;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -1041,6 +1040,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         callback,
         leaderMetadataWrapper,
         logicalTs);
+
     DeleteMetadata deleteMetadata =
         new DeleteMetadata(valueSchemaId, putPayload.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
     PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
@@ -1060,50 +1060,53 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * send the messages in chunked or non-chunked mode based on the size of the message. Today, DIV is the only user of
    * this method, but it can be extended easily to support other class types in the future.
    *
-   * All the messages sent through this method are of type {@link MessageType#CONTROL_MESSAGE_DIV} in its KafkaKey and
+   * All the messages sent through this method are of type {@link MessageType#GLOBAL_RT_DIV} in its KafkaKey and
    * all their corresponding {@link KafkaMessageEnvelope} uses {@link Put} as the payload. Inside the Put payload, the
    * actual message is stored in the putValue field and the schema id has 3 cases:
    *
-   * 1. If the message is non-chunked, the schema id is set to {@link AvroProtocolDefinition#GLOBAL_DIV_STATE}.
+   * 1. If the message is non-chunked, the schema id is set to {@link AvroProtocolDefinition#GLOBAL_RT_DIV_STATE}.
    * 2. If the message is chunk message, the schema id is set to {@link AvroProtocolDefinition#CHUNK}.
    * 3. If the message is a chunk manifest message, the schema id is set to {@link AvroProtocolDefinition#CHUNKED_VALUE_MANIFEST}.
    */
-  public CompletableFuture<PubSubProduceResult> sendChunkSupportedDivMessage(int partition, K key, V value) {
+  public CompletableFuture<PubSubProduceResult> sendGlobalRtDivMessage(int partition, K key, V value) {
     if (partition < 0 || partition >= numberOfPartitions) {
       throw new VeniceException("Invalid partition: " + partition);
     }
 
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
-    int totalRecordSize = calculateTotalRecordSize(serializedKey, serializedValue, null);
 
-    if (isChunkingNeededForRecord(totalRecordSize)) {
-      return sendDivMessageChunked(
-          partition,
-          serializedKey,
-          serializedValue,
-          GLOBAL_DIV_STATE.getCurrentProtocolVersion(),
-          null);
-    } else {
-      return sendDivMessageNonChunked(
-          partition,
-          serializedKey,
-          serializedValue,
-          GLOBAL_DIV_STATE.getCurrentProtocolVersion(),
-          null);
+    if (isChunkingNeededForRecord(serializedKey.length + serializedValue.length)) {
+      return sendChunkedGlobalRtDivMessage(partition, serializedKey, serializedValue);
     }
+
+    serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, serializedKey);
+
+    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
+    Put putPayload =
+        buildPutPayload(serializedValue, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(), null);
+
+    // TODO: This needs to be implemented later to support Global RT DIV
+    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+    PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
+
+    return sendMessage(
+        producerMetadata -> divKey,
+        MessageType.PUT,
+        putPayload,
+        partition,
+        callback,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS);
   }
 
-  private CompletableFuture<PubSubProduceResult> sendDivMessageChunked(
+  private CompletableFuture<PubSubProduceResult> sendChunkedGlobalRtDivMessage(
       int partition,
       byte[] serializedKey,
-      byte[] serializedValue,
-      int valueSchemaId,
-      PutMetadata putMetadata) {
-    int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
-    final Supplier<String> reportSizeGenerator =
-        () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
-    // TODO: this needs to be changed later to adapt to div purpose.
+      byte[] serializedValue) {
+    final Supplier<String> reportSizeGenerator = () -> getSizeReport(serializedKey.length, serializedValue.length, 0);
+    // TODO: This needs to be implemented later to support Global RT DIV.
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     PubSubProducerCallback callback = new ErrorPropagationCallback(new CompletableFutureCallback(completableFuture));
     BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
@@ -1118,9 +1121,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
-        MessageType.CONTROL_MESSAGE_DIV,
+        MessageType.GLOBAL_RT_DIV,
         true,
-        valueSchemaId,
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         0,
         false,
         reportSizeGenerator,
@@ -1129,44 +1132,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         sendMessageFunction);
 
     final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
-    Put putManifestsPayload =
-        buildManifestPayload(null, putMetadata, valueChunksAndManifest, sizeAvailablePerMessage, reportSizeGenerator);
+    Put manifestPayload =
+        buildManifestPayload(null, null, valueChunksAndManifest, sizeAvailablePerMessage, reportSizeGenerator);
     return sendManifestMessage(
-        putManifestsPayload,
+        manifestPayload,
         serializedKey,
-        MessageType.CONTROL_MESSAGE_DIV,
+        MessageType.GLOBAL_RT_DIV,
         valueChunksAndManifest,
         callback,
         null,
         partition,
         null,
         null,
-        DEFAULT_LEADER_METADATA_WRAPPER,
-        APP_DEFAULT_LOGICAL_TS);
-  }
-
-  private CompletableFuture<PubSubProduceResult> sendDivMessageNonChunked(
-      int partition,
-      byte[] serializedKey,
-      byte[] serializedValue,
-      int valueSchemaId,
-      PutMetadata putMetadata) {
-    serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    KafkaKey divKey = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, serializedKey);
-
-    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
-
-    // TODO: this needs to be changed later to adapt to div purpose.
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
-
-    return sendMessage(
-        producerMetadata -> divKey,
-        MessageType.PUT,
-        putPayload,
-        partition,
-        callback,
         DEFAULT_LEADER_METADATA_WRAPPER,
         APP_DEFAULT_LOGICAL_TS);
   }
@@ -1184,10 +1161,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
     }
     return putPayload;
-  }
-
-  private int calculateTotalRecordSize(byte[] serializedKey, byte[] serializedValue, PutMetadata putMetadata) {
-    return serializedKey.length + serializedValue.length + (putMetadata == null ? 0 : putMetadata.getSerializedSize());
   }
 
   private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
@@ -1683,6 +1656,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
+        MessageType.PUT,
         true,
         valueSchemaId,
         0,
@@ -1696,6 +1670,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         ? WriterChunkingHelper.chunkPayloadAndSend(
             serializedKey,
             putMetadata == null ? EMPTY_BYTE_ARRAY : ByteUtils.extractByteArray(putMetadata.getRmdPayload()),
+            MessageType.PUT,
             false,
             valueSchemaId,
             valueChunkCount,
@@ -1742,7 +1717,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   private CompletableFuture<PubSubProduceResult> sendManifestMessage(
-      Put putManifestsPayload,
+      Object manifestPayload,
       byte[] serializedKey,
       MessageType keyType,
       ChunkedPayloadAndManifest valueChunksAndManifest,
@@ -1774,7 +1749,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(
         manifestKeyProvider,
         MessageType.PUT,
-        putManifestsPayload,
+        manifestPayload,
         partition,
         callback,
         leaderMetadataWrapper,
@@ -1833,7 +1808,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return "Key size: " + serializedKeySize + " bytes, " + "Value size: " + serializedValueSize + " bytes, "
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
-        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes, " + ", Max record size: "
+        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes, " + "Max record size: "
         + ((maxRecordSizeBytes == UNLIMITED_MAX_RECORD_SIZE) ? "unlimited" : maxRecordSizeBytes) + " bytes.";
   }
 

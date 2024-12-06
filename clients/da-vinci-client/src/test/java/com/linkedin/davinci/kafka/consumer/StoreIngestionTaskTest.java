@@ -366,9 +366,8 @@ public abstract class StoreIngestionTaskTest {
   private HostLevelIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedIngestionStats mockVersionedStorageIngestionStats;
-
-  private ChunkAssembler divChunkAssembler;
   private StoreIngestionTask storeIngestionTaskUnderTest;
+  private ChunkAssembler divChunkAssembler;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
   private AggKafkaConsumerService aggKafkaConsumerService;
@@ -5402,7 +5401,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testShouldProcessRecordForDivMessage() throws Exception {
+  public void testShouldProcessRecordForGlobalRtDivMessage() throws Exception {
     // Set up the environment.
     StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
@@ -5437,8 +5436,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
     doReturn(versionTopicName).when(storeConfig).getStoreVersionName();
 
-    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = spy(
+    LeaderFollowerStoreIngestionTask ingestionTask = spy(
         new LeaderFollowerStoreIngestionTask(
+            mock(StorageService.class),
             builder,
             store,
             version,
@@ -5448,51 +5448,50 @@ public abstract class StoreIngestionTaskTest {
             -1,
             false,
             Optional.empty(),
+            null,
             null));
 
     // Create a DIV record.
-    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
+    KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
-    Put put = new Put();
-    value.payloadUnion = put;
+    value.payloadUnion = new Put();
     value.messageType = MessageType.PUT.getValue();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));
 
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
     PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> remoteVTRecord =
-        new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 0, 0, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtRecord =
+        new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 1, 0, 0);
 
-    PartitionConsumptionState pcsFoo = mock(PartitionConsumptionState.class);
-    when(pcsFoo.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
-    doReturn(true).when(pcsFoo).consumeRemotely();
-    doReturn(false).when(pcsFoo).skipKafkaMessage();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
+    doReturn(true).when(pcs).consumeRemotely();
+    doReturn(false).when(pcs).skipKafkaMessage();
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
-    doReturn(offsetRecord).when(pcsFoo).getOffsetRecord();
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
+    ingestionTask.setPartitionConsumptionState(PARTITION_FOO, pcs);
 
-    // 1. Verify LeaderFollowerStoreIngestionTask.shouldProcessRecord() for consuming DIV records from remote VT topic.
-    leaderFollowerStoreIngestionTask.setPartitionConsumptionState(PARTITION_FOO, pcsFoo);
-    // remotely consume a VT topic and get a DIV record, should not process the record.
-    Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(remoteVTRecord));
+    assertFalse(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV From remote VT should not be processed");
 
-    // 2. Verify StoreIngestionTask.shouldProcessRecord() for consuming DIV records from local RT topic.
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
+    doReturn(false).when(pcs).consumeRemotely();
+    assertTrue(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV from local VT should be processed");
+
+    doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
         new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
-    // consume a RT topic and get a DIV record, should process the record.
-    doReturn(false).when(pcsFoo).consumeRemotely();
-    doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
-    Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(rtRecord));
+    assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
+
   }
 
-  @Test
-  public void testDivProcessing() throws Exception {
+  @Test(dataProvider = "aaConfigProvider")
+  public void testProcessGlobalRtDivMessage(AAConfig aaConfig) throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
-
       // Arrange
-      KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
+      KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
       KafkaMessageEnvelope value = new KafkaMessageEnvelope();
       Put put = new Put();
       value.payloadUnion = put;
@@ -5500,11 +5499,11 @@ public abstract class StoreIngestionTaskTest {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO), 0, 0, 0);
       // Act
-      storeIngestionTaskUnderTest.processDivControlMessage(record);
+      storeIngestionTaskUnderTest.processGlobalRtDivMessage(record);
       // Assert
       verify(storeIngestionTaskUnderTest.getDivChunkAssembler())
-          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), any(), anyInt(), any());
-    }, AA_OFF);
+          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), anyInt(), any(), any());
+    }, aaConfig);
   }
 
   @Test
