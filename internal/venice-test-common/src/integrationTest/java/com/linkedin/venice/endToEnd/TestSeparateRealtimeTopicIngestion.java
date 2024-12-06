@@ -8,13 +8,23 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.RmdSerDe;
+import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
+import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -30,17 +40,26 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -48,8 +67,14 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
+import org.apache.avro.util.Utf8;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -116,6 +141,8 @@ public class TestSeparateRealtimeTopicIngestion {
     vpjProperties.put(PUSH_TO_SEPARATE_REALTIME_TOPIC, true);
     vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
     vpjProperties.put(INCREMENTAL_PUSH, true);
+    // Set source region to dc-1.
+    vpjProperties.put(SOURCE_GRID_FABRIC, "dc-1");
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -144,6 +171,17 @@ public class TestSeparateRealtimeTopicIngestion {
           30,
           TimeUnit.SECONDS);
 
+      Schema valueSchema = TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+      Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
+      Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+      ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+      when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
+      when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
+      when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+      StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+          new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+      RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
+
       // Run one time Incremental Push
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
@@ -160,6 +198,17 @@ public class TestSeparateRealtimeTopicIngestion {
           TimeUnit.SECONDS);
 
       validateData(storeName, veniceClusterWrapper);
+      validateRmdData(rmdSerDe, Version.composeKafkaTopic(storeName, 2), String.valueOf(99), rmdWithValueSchemaId -> {
+        GenericRecord rmdRecord = rmdWithValueSchemaId.getRmdRecord();
+        List<Long> offsetVector = RmdUtils.extractOffsetVectorFromRmd(rmdRecord);
+        Assert.assertEquals(offsetVector.size(), 4);
+        // No msg is written to RT regions.
+        Assert.assertEquals(offsetVector.get(0).longValue(), 0L);
+        Assert.assertEquals(offsetVector.get(1).longValue(), 0L);
+        // Since we only have 1 partition and push to 1 region, the last key's offset should be greater or equal to the
+        // total key count.
+        Assert.assertTrue(offsetVector.get(3) >= 100);
+      });
       PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName));
       PubSubTopic separateRealtimeTopic =
           PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName));
@@ -245,6 +294,45 @@ public class TestSeparateRealtimeTopicIngestion {
         }
       });
     }
+  }
+
+  private void validateRmdData(
+      RmdSerDe rmdSerDe,
+      String kafkaTopic,
+      String key,
+      Consumer<RmdWithValueSchemaId> rmdDataValidationFlow) {
+    for (VeniceServerWrapper serverWrapper: multiRegionMultiClusterWrapper.getChildRegions()
+        .get(0)
+        .getClusters()
+        .get("venice-cluster0")
+        .getVeniceServers()) {
+      AbstractStorageEngine storageEngine =
+          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      assertNotNull(storageEngine);
+      ValueRecord result = SingleGetChunkingAdapter
+          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
+      // Avoid assertion failure logging massive RMD record.
+      boolean nullRmd = (result == null);
+      assertFalse(nullRmd);
+      byte[] value = result.serialize();
+      RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+      rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(value, rmdWithValueSchemaId);
+      rmdDataValidationFlow.accept(rmdWithValueSchemaId);
+    }
+  }
+
+  private byte[] serializeStringKeyToByteArray(String key) {
+    Utf8 utf8Key = new Utf8(key);
+    DatumWriter<Utf8> writer = new GenericDatumWriter<>(Schema.create(Schema.Type.STRING));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    BinaryEncoder encoder = AvroCompatibilityHelper.newBinaryEncoder(out);
+    try {
+      writer.write(utf8Key, encoder);
+      encoder.flush();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to write input: " + utf8Key + " to binary encoder", e);
+    }
+    return out.toByteArray();
   }
 
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
