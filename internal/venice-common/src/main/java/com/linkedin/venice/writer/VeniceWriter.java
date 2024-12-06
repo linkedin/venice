@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_DIV_STATE;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -1031,17 +1032,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = new Put();
-    putPayload.putValue = ByteBuffer.wrap(serializedValue);
-    putPayload.schemaId = valueSchemaId;
-
-    if (putMetadata == null) {
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-    } else {
-      putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
-    }
+    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
     CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
@@ -1062,6 +1053,141 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
 
     return produceResultFuture;
+  }
+
+  /**
+   * This is the main method to send DIV messages to a kafka topic through VeniceWriter. The method decides whether to
+   * send the messages in chunked or non-chunked mode based on the size of the message. Today, DIV is the only user of
+   * this method, but it can be extended easily to support other class types in the future.
+   *
+   * All the messages sent through this method are of type {@link MessageType#CONTROL_MESSAGE_DIV} in its KafkaKey and
+   * all their corresponding {@link KafkaMessageEnvelope} uses {@link Put} as the payload. Inside the Put payload, the
+   * actual message is stored in the putValue field and the schema id has 3 cases:
+   *
+   * 1. If the message is non-chunked, the schema id is set to {@link AvroProtocolDefinition#GLOBAL_DIV_STATE}.
+   * 2. If the message is chunk message, the schema id is set to {@link AvroProtocolDefinition#CHUNK}.
+   * 3. If the message is a chunk manifest message, the schema id is set to {@link AvroProtocolDefinition#CHUNKED_VALUE_MANIFEST}.
+   */
+  public CompletableFuture<PubSubProduceResult> sendChunkSupportedDivMessage(int partition, K key, V value) {
+    if (partition < 0 || partition >= numberOfPartitions) {
+      throw new VeniceException("Invalid partition: " + partition);
+    }
+
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    byte[] serializedValue = valueSerializer.serialize(topicName, value);
+    int totalRecordSize = calculateTotalRecordSize(serializedKey, serializedValue, null);
+
+    if (isChunkingNeededForRecord(totalRecordSize)) {
+      return sendDivMessageChunked(
+          partition,
+          serializedKey,
+          serializedValue,
+          GLOBAL_DIV_STATE.getCurrentProtocolVersion(),
+          null);
+    } else {
+      return sendDivMessageNonChunked(
+          partition,
+          serializedKey,
+          serializedValue,
+          GLOBAL_DIV_STATE.getCurrentProtocolVersion(),
+          null);
+    }
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendDivMessageChunked(
+      int partition,
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int valueSchemaId,
+      PutMetadata putMetadata) {
+    int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
+    final Supplier<String> reportSizeGenerator =
+        () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+    // TODO: this needs to be changed later to adapt to div purpose.
+    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+    PubSubProducerCallback callback = new ErrorPropagationCallback(new CompletableFutureCallback(completableFuture));
+    BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
+        keyProvider,
+        MessageType.PUT,
+        putPayload,
+        partition,
+        callback,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        VENICE_DEFAULT_LOGICAL_TS);
+
+    ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
+        serializedKey,
+        serializedValue,
+        MessageType.CONTROL_MESSAGE_DIV,
+        true,
+        valueSchemaId,
+        0,
+        false,
+        reportSizeGenerator,
+        maxSizeForUserPayloadPerMessageInBytes,
+        keyWithChunkingSuffixSerializer,
+        sendMessageFunction);
+
+    final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
+    Put putManifestsPayload =
+        buildManifestPayload(null, putMetadata, valueChunksAndManifest, sizeAvailablePerMessage, reportSizeGenerator);
+    return sendManifestMessage(
+        putManifestsPayload,
+        serializedKey,
+        MessageType.CONTROL_MESSAGE_DIV,
+        valueChunksAndManifest,
+        callback,
+        null,
+        partition,
+        null,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS);
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendDivMessageNonChunked(
+      int partition,
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int valueSchemaId,
+      PutMetadata putMetadata) {
+    serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    KafkaKey divKey = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, serializedKey);
+
+    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
+    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
+
+    // TODO: this needs to be changed later to adapt to div purpose.
+    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+    PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
+
+    return sendMessage(
+        producerMetadata -> divKey,
+        MessageType.PUT,
+        putPayload,
+        partition,
+        callback,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS);
+  }
+
+  private Put buildPutPayload(byte[] serializedValue, int valueSchemaId, PutMetadata putMetadata) {
+    Put putPayload = new Put();
+    putPayload.putValue = ByteBuffer.wrap(serializedValue);
+    putPayload.schemaId = valueSchemaId;
+
+    if (putMetadata == null) {
+      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    } else {
+      putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
+    }
+    return putPayload;
+  }
+
+  private int calculateTotalRecordSize(byte[] serializedKey, byte[] serializedValue, PutMetadata putMetadata) {
+    return serializedKey.length + serializedValue.length + (putMetadata == null ? 0 : putMetadata.getSerializedSize());
   }
 
   private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
@@ -1579,51 +1705,24 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             keyWithChunkingSuffixSerializer,
             sendMessageFunction)
         : EMPTY_CHUNKED_PAYLOAD_AND_MANIFEST;
-    // Now that we've sent all the chunks, we can take care of the final value, the manifest.
-    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(MessageType.PUT, topLevelKey);
 
-    Put putManifestsPayload = new Put();
-    putManifestsPayload.putValue =
-        chunkedValueManifestSerializer.serialize(valueChunksAndManifest.getChunkedValueManifest());
-    putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    if (putMetadata == null) {
-      putManifestsPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putManifestsPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-    } else {
-      putManifestsPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
-      putManifestsPayload.replicationMetadataPayload = isRmdChunkingEnabled
-          ? chunkedValueManifestSerializer.serialize(rmdChunksAndManifest.getChunkedValueManifest())
-          : putMetadata.getRmdPayload();
-    }
     final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
-    if (putManifestsPayload.putValue.remaining()
-        + putManifestsPayload.replicationMetadataPayload.remaining() > sizeAvailablePerMessage) {
-      // This is a very desperate edge case...
-      throw new VeniceException(
-          "This message cannot be chunked, because even its manifest is too big to go through. "
-              + "Please reconsider your life choices. " + reportSizeGenerator.get());
-    }
-    if (callback instanceof ChunkAwareCallback) {
-      /** We leave a handle to the key, chunks and manifests so that the {@link ChunkAwareCallback} can act on them */
-      ((ChunkAwareCallback) callback).setChunkingInfo(
-          topLevelKey,
-          valueChunksAndManifest.getPayloadChunks(),
-          valueChunksAndManifest.getChunkedValueManifest(),
-          rmdChunksAndManifest.getPayloadChunks(),
-          rmdChunksAndManifest.getChunkedValueManifest(),
-          oldValueManifest,
-          oldRmdManifest);
-    }
-
-    // We only return the last future (the one for the manifest) and assume that once this one is finished,
-    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    CompletableFuture<PubSubProduceResult> manifestProduceFuture = sendMessage(
-        manifestKeyProvider,
-        MessageType.PUT,
+    Put putManifestsPayload = buildManifestPayload(
+        rmdChunksAndManifest,
+        putMetadata,
+        valueChunksAndManifest,
+        sizeAvailablePerMessage,
+        reportSizeGenerator);
+    CompletableFuture<PubSubProduceResult> manifestProduceFuture = sendManifestMessage(
         putManifestsPayload,
-        partition,
+        serializedKey,
+        MessageType.PUT,
+        valueChunksAndManifest,
         callback,
+        rmdChunksAndManifest,
+        partition,
+        oldValueManifest,
+        oldRmdManifest,
         leaderMetadataWrapper,
         logicalTs);
 
@@ -1640,6 +1739,75 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
 
     return manifestProduceFuture;
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendManifestMessage(
+      Put putManifestsPayload,
+      byte[] serializedKey,
+      MessageType keyType,
+      ChunkedPayloadAndManifest valueChunksAndManifest,
+      PubSubProducerCallback callback,
+      ChunkedPayloadAndManifest rmdChunksAndManifest,
+      int partition,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs) {
+    // Now that we've sent all the chunks, we can take care of the final value, the manifest.
+    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(keyType, topLevelKey);
+
+    if (callback instanceof ChunkAwareCallback) {
+      /** We leave a handle to the key, chunks and manifests so that the {@link ChunkAwareCallback} can act on them */
+      ((ChunkAwareCallback) callback).setChunkingInfo(
+          topLevelKey,
+          valueChunksAndManifest.getPayloadChunks(),
+          valueChunksAndManifest.getChunkedValueManifest(),
+          rmdChunksAndManifest.getPayloadChunks(),
+          rmdChunksAndManifest.getChunkedValueManifest(),
+          oldValueManifest,
+          oldRmdManifest);
+    }
+
+    // We only return the last future (the one for the manifest) and assume that once this one is finished,
+    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
+    return sendMessage(
+        manifestKeyProvider,
+        MessageType.PUT,
+        putManifestsPayload,
+        partition,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs);
+  }
+
+  private Put buildManifestPayload(
+      ChunkedPayloadAndManifest rmdChunksAndManifest,
+      PutMetadata putMetadata,
+      ChunkedPayloadAndManifest valueChunksAndManifest,
+      int sizeAvailablePerMessage,
+      Supplier<String> reportSizeGenerator) {
+    Put putManifestsPayload = new Put();
+    putManifestsPayload.putValue =
+        chunkedValueManifestSerializer.serialize(valueChunksAndManifest.getChunkedValueManifest());
+    putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    if (putMetadata == null) {
+      putManifestsPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putManifestsPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    } else {
+      putManifestsPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
+      putManifestsPayload.replicationMetadataPayload = isRmdChunkingEnabled
+          ? chunkedValueManifestSerializer.serialize(rmdChunksAndManifest.getChunkedValueManifest())
+          : putMetadata.getRmdPayload();
+    }
+    if (putManifestsPayload.putValue.remaining()
+        + putManifestsPayload.replicationMetadataPayload.remaining() > sizeAvailablePerMessage) {
+      // This is a very desperate edge case...
+      throw new VeniceException(
+          "This message cannot be chunked, because even its manifest is too big to go through. "
+              + "Please reconsider your life choices. " + reportSizeGenerator.get());
+    }
+    return putManifestsPayload;
   }
 
   /**

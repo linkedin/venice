@@ -1922,6 +1922,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               }
             }
           }
+
+          /**
+           * Leader is consuming from remote version topic, and if it read div control messages in the remote version
+           * topic, it should ignore them and not process or apply them to its own div state.
+           */
+          if (record.getKey().isDivControlMessage()) {
+            String msg = String.format(
+                "Leader for replica: %s received a div control message in remote version topic. Skipping the message.",
+                partitionConsumptionState.getReplicaId());
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              LOGGER.info(msg);
+            }
+            return false;
+          }
         }
 
         if (!Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, record.getTopicPartition().getPubSubTopic())

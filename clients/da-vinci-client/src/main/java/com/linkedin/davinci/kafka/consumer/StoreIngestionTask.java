@@ -13,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_DIV_STATE;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
 import static java.util.Comparator.comparingInt;
@@ -49,6 +50,7 @@ import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -247,6 +249,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
+  private final ChunkAssembler divChunkAssembler;
+
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -473,6 +477,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
+    this.divChunkAssembler =
+        builder.getDivChunkAssembler() != null ? builder.getDivChunkAssembler() : new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
@@ -1177,6 +1183,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             record.getTopicPartition().getPartitionNumber(),
             partitionConsumptionStateMap.get(topicPartition.getPartitionNumber()));
       }
+    } else if (record.getKey().isDivControlMessage()) {
+      // This is a control message from the DIV topic, process it and return early.
+      // TODO: This is a placeholder for the actual implementation.
+      if (isGlobalRtDivEnabled) {
+        processDivControlMessage(record);
+      }
+      return 0;
     }
 
     // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
@@ -1219,6 +1232,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.setLatestMessageConsumedTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
 
     return record.getPayloadSize();
+  }
+
+  void processDivControlMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    KafkaKey key = record.getKey();
+    KafkaMessageEnvelope value = record.getValue();
+    Put put = (Put) value.getPayloadUnion();
+
+    Object assembledObject = divChunkAssembler.bufferAndAssembleRecord(
+        record.getTopicPartition(),
+        put.getSchemaId(),
+        key.getKey(),
+        put.getPutValue(),
+        record.getOffset(),
+        GLOBAL_DIV_STATE,
+        put.getSchemaId(),
+        new NoopCompressor());
+
+    // If the assembled object is null, it means that the object is not yet fully assembled, so we can return early.
+    if (assembledObject == null) {
+      return;
+    }
+    // TODO: We will add the code to process DIV control message later in here.
   }
 
   /**
@@ -2469,6 +2504,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
       }
+      return false;
+    }
+
+    /**
+     * Only version topics are used for DIV control messages to be produced to and consumed from. It is unexpected to
+     * read div control messages from real-time topics. Skip them and log a warning.
+     */
+    if (record.getKey().isDivControlMessage() && record.getTopic().isRealTime()) {
+      LOGGER.warn("Skipping control message from real-time topic-partition: {}", record.getTopicPartition());
       return false;
     }
 
@@ -3932,6 +3976,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
+    // Do not need to check schema availability for DIV messages as schema is already known.
+    if (record.getKey().isDivControlMessage()) {
+      return;
+    }
+
     switch (MessageType.valueOf(kafkaValue)) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
@@ -4711,5 +4760,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isHybridAggregateMode()) {
       getReadyToServeChecker().apply(partitionConsumptionState);
     }
+  }
+
+  ChunkAssembler getDivChunkAssembler() {
+    return this.divChunkAssembler;
   }
 }

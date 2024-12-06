@@ -106,6 +106,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
+import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -365,6 +366,8 @@ public abstract class StoreIngestionTaskTest {
   private HostLevelIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedIngestionStats mockVersionedStorageIngestionStats;
+
+  private ChunkAssembler divChunkAssembler;
   private StoreIngestionTask storeIngestionTaskUnderTest;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
@@ -551,6 +554,7 @@ public abstract class StoreIngestionTaskTest {
     mockRemoteKafkaConsumer = mock(PubSubConsumerAdapter.class);
     kafkaUrlToRecordsThrottler = new HashMap<>();
     kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
+    divChunkAssembler = mock(ChunkAssembler.class);
 
     mockTopicManager = mock(TopicManager.class);
     mockTopicManagerRepository = mock(TopicManagerRepository.class);
@@ -1126,6 +1130,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
+        .setDivChunkAssembler(divChunkAssembler)
         .setAAWCWorkLoadProcessingThreadPool(
             Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")))
         .setAAWCIngestionStorageLookupThreadPool(
@@ -5393,6 +5398,112 @@ public abstract class StoreIngestionTaskTest {
       Assert.assertSame(
           mockTopicManagerRemoteKafka,
           storeIngestionTaskUnderTest.getTopicManager(remoteKafkaBootstrapServer + "_sep"));
+    }, AA_OFF);
+  }
+
+  @Test
+  public void testShouldProcessRecordForDivMessage() throws Exception {
+    // Set up the environment.
+    StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
+        .getLocalStorageEngine(anyString());
+    doReturn(mockStorageEngineRepository).when(builder).getStorageEngineRepository();
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getClusterProperties();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(veniceServerConfig).when(builder).getServerConfig();
+    doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
+    doReturn(mock(ReadOnlySchemaRepository.class)).when(builder).getSchemaRepo();
+    doReturn(mock(AggKafkaConsumerService.class)).when(builder).getAggKafkaConsumerService();
+    doReturn(mockAggStoreIngestionStats).when(builder).getIngestionStats();
+    doReturn(pubSubTopicRepository).when(builder).getPubSubTopicRepository();
+
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(null).when(version).getPartitionerConfig();
+    doReturn(VersionStatus.ONLINE).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    doReturn("localhost").when(version).getPushStreamSourceAddress();
+
+    Store store = mock(Store.class);
+    doReturn(version).when(store).getVersion(eq(1));
+
+    String versionTopicName = "testStore_v1";
+    String rtTopicName = "testStore_rt";
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
+    doReturn(versionTopicName).when(storeConfig).getStoreVersionName();
+
+    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            builder,
+            store,
+            version,
+            mock(Properties.class),
+            mock(BooleanSupplier.class),
+            storeConfig,
+            -1,
+            false,
+            Optional.empty(),
+            null));
+
+    // Create a DIV record.
+    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
+    KafkaMessageEnvelope value = new KafkaMessageEnvelope();
+    Put put = new Put();
+    value.payloadUnion = put;
+    value.messageType = MessageType.PUT.getValue();
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));
+
+    PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
+    PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> remoteVTRecord =
+        new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 0, 0, 0);
+
+    PartitionConsumptionState pcsFoo = mock(PartitionConsumptionState.class);
+    when(pcsFoo.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
+    doReturn(true).when(pcsFoo).consumeRemotely();
+    doReturn(false).when(pcsFoo).skipKafkaMessage();
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(pcsFoo).getOffsetRecord();
+    doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
+
+    // 1. Verify LeaderFollowerStoreIngestionTask.shouldProcessRecord() for consuming DIV records from remote VT topic.
+    leaderFollowerStoreIngestionTask.setPartitionConsumptionState(PARTITION_FOO, pcsFoo);
+    // remotely consume a VT topic and get a DIV record, should not process the record.
+    Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(remoteVTRecord));
+
+    // 2. Verify StoreIngestionTask.shouldProcessRecord() for consuming DIV records from local RT topic.
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
+        new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
+    // consume a RT topic and get a DIV record, should process the record.
+    doReturn(false).when(pcsFoo).consumeRemotely();
+    doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
+    Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(rtRecord));
+  }
+
+  @Test
+  public void testDivProcessing() throws Exception {
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+
+      // Arrange
+      KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
+      KafkaMessageEnvelope value = new KafkaMessageEnvelope();
+      Put put = new Put();
+      value.payloadUnion = put;
+      value.messageType = MessageType.PUT.getValue();
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record =
+          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO), 0, 0, 0);
+      // Act
+      storeIngestionTaskUnderTest.processDivControlMessage(record);
+      // Assert
+      verify(storeIngestionTaskUnderTest.getDivChunkAssembler())
+          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), any(), anyInt(), any());
     }, AA_OFF);
   }
 

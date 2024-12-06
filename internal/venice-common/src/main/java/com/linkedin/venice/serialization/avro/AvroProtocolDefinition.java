@@ -12,6 +12,7 @@ import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.state.GlobalDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -180,7 +181,9 @@ public enum AvroProtocolDefinition {
    * Value schema for change capture event.
    * TODO: Figure out a way to pull in protocol from different view class.
    */
-  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class);
+  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class),
+
+  GLOBAL_DIV_STATE(-15, GlobalDivState.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 

@@ -67,6 +67,13 @@ public class KafkaKey implements Measurable {
   }
 
   /**
+   * @return true if this key corresponds to a DIV control message, and false otherwise.
+   */
+  public boolean isDivControlMessage() {
+    return keyHeaderByte == MessageType.CONTROL_MESSAGE_DIV.getKeyHeaderByte();
+  }
+
+  /**
    * @return the content of the key (everything beyond the first byte)
    */
   public byte[] getKey() {
