@@ -288,7 +288,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
         if (shouldLogQuotaExceeded) {
           LOGGER.info(
               "Quota exceeded for store version {} partition {}, paused this partition. Partition disk usage: {} >= partition quota: {}",
-              versionTopic, partition, storagePartitionDiskUsage.getUsage(), diskQuotaPerPartition);
+              versionTopic,
+              partition,
+              storagePartitionDiskUsage.getUsage(),
+              diskQuotaPerPartition);
         }
       }
     } else {
