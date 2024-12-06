@@ -38,7 +38,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.10.2'
-def avroUtilVersion = '0.3.21'
+def avroUtilVersion = '0.4.22'
 def grpcVersion = '1.49.2'
 // N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
 def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
