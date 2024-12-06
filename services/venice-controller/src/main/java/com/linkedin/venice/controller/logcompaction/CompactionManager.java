@@ -43,7 +43,7 @@ public class CompactionManager {
 
   // public for testing
   // TODO: make private or package protected
-  public List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
+  List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
     ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {

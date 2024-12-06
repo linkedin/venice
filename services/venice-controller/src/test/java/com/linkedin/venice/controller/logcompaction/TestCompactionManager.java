@@ -1,11 +1,10 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.controller.logcompaction;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
-import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;

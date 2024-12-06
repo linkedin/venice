@@ -1,8 +1,9 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.controller.logcompaction;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
@@ -57,13 +58,12 @@ public class TestLogCompactionService {
 
     // Testing
     logCompactionService.startInner();
-    latch.await(testDuration, TimeUnit.SECONDS);
-
+    if (latch.await(testDuration, TimeUnit.SECONDS)) {
+      logCompactionService.stopInner();
+    }
     // ensures you have invoked the compact store once
     verify(admin, atLeast(2)).getStoresForCompaction(any());
     verify(admin, times(expectedCompactStoreInvocationCount)).compactStore(storeForCompaction);
-
-    logCompactionService.stopInner();
   }
 
   // TODO: test LogCompactionTask::run() focus on edge cases
