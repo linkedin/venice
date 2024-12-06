@@ -86,7 +86,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeAndVersion.getFirst(),
           storeAndVersion.getSecond().getNumber(),
           partition,
-          storeConfig.getBlobTransferDisabledOffsetLagThreshold());
+          serverConfig.getBlobTransferDisabledOffsetLagThreshold());
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();

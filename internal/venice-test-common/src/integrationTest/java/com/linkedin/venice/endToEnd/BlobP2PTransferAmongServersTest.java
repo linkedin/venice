@@ -49,12 +49,12 @@ public class BlobP2PTransferAmongServersTest {
   private String path2;
   private VeniceClusterWrapper cluster;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     cluster = initializeVeniceCluster();
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void tearDown() {
     Utils.closeQuietlyWithErrorLogged(cluster);
 
@@ -301,7 +301,8 @@ public class BlobP2PTransferAmongServersTest {
             .setHybridOffsetLagThreshold(streamingMessageLag)
             .setBlobTransferEnabled(true));
 
-    controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+    TestUtils.assertCommand(
+        controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, 120000));
     VeniceServerWrapper server1 = cluster.getVeniceServers().get(0);
     VeniceServerWrapper server2 = cluster.getVeniceServers().get(1);
 
