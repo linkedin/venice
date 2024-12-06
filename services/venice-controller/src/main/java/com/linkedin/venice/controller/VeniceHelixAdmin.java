@@ -607,6 +607,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
     // TODO extends interchangeable with implements?
+    // Implementation of the interface RepushOrchestrator depends on the configuration. (see RepushOrchestrator docs)
     Class<? extends RepushOrchestrator> repushOrchestratorClass =
         ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
     RepushOrchestrator repushOrchestrator =
@@ -7478,6 +7479,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     throw new UnsupportedOperationException("This function has not been implemented.");
   }
 
+  /**
+   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and {@link CompactionManager}
+   * - injects the child controller's {@link ControllerClient} into the function {@link CompactionManager#getStoresForCompaction(String, Map)}
+   * - serves as API endpoint to query stores ready for log compaction
+   * @param clusterName
+   * @return a list of <code>StoreInfo</code> of stores in clusterName that are ready for log compaction.
+   */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
     try {
@@ -7488,6 +7496,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * triggers repush for storeName for log compaction of store topic
+   *
+   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and {@link CompactionManager}
+   * - serves as API endpoint to trigger adhoc log compaction
+   * @param storeName
+   */
   @Override
   public void compactStore(String storeName) {
     compactionManager.compactStore(storeName);

@@ -4802,17 +4802,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * This function iterates over all of Helix Parent Admin's child controllers,
-   * in order to obtain the stores and respective store information of each child controller,
-   * and then filter out the stores that are ready for compaction.
-   * @param clusterName, the name of the cluster to search for stores that are ready for compaction
-   * @return a list of StoreInfo objects of stores that are ready for compaction
+   * see {@link Admin#getStoresForCompaction}
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 
+  /**
+   * see {@link Admin#compactStore}
+   */
   @Override
   public void compactStore(String storeName) {
     // TODO

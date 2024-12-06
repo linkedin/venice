@@ -1166,6 +1166,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORES_FOR_COMPACTION, params, MultiStoreInfoResponse.class);
   }
 
+  /**
+   * This method triggers repush for storeName
+   * @param storeName
+   * @return //TODO
+   */
   public ControllerResponse triggerRepush(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.COMPACT_STORE, params, ControllerResponse.class);

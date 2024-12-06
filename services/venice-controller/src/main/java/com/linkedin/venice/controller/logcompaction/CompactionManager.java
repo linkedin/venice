@@ -15,17 +15,30 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class contains functions used by {@link com.linkedin.venice.controller.VeniceHelixAdmin} to:
+ * 1. Get stores ready for compaction based on a set of criteria. These criteria have individual functions if they involve
+ * multiple steps.
+ * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(String)} & processes the status/response of the repush job.
+ */
 public class CompactionManager {
   public static final int DEFAULT_COMPACTION_THRESHOLD_HOURS = 24;
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private RepushOrchestrator repushOrchestrator;
-  // TODO: where to configure implementation of RepushOrchestrator to use?
 
   public CompactionManager(RepushOrchestrator repushOrchestrator) {
     this.repushOrchestrator = repushOrchestrator;
   }
 
+  /**
+   * This function iterates over a list of child controllers,
+   * in order to obtain the list of stores in each child controller,
+   * and then filter out the stores that are ready for compaction with function {@link CompactionManager#filterStoresForCompaction}.
+   * @param clusterName
+   * @param childControllers
+   * @return
+   */
   public List<StoreInfo> getStoresForCompaction(String clusterName, Map<String, ControllerClient> childControllers) {
     ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
 
@@ -42,7 +55,6 @@ public class CompactionManager {
   }
 
   // public for testing
-  // TODO: make private or package protected
   List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
     ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
@@ -84,6 +96,13 @@ public class CompactionManager {
     return hoursSinceLastCompaction > compactionThresholdHours;
   }
 
+  /**
+   * This function triggers a repush job to perform log compaction on the topic of a store.
+   *
+   * intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and {@link RepushOrchestrator#repush}
+   *
+   * @param storeName of the store to be compacted
+   */
   public void compactStore(String storeName) {
     try {
       RepushJobResponse response = repushOrchestrator.repush(storeName);

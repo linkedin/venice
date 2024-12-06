@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.repush;
 
 /**
- * Data model of response from a repush job trigger request
+ * Data model of response from a repush job trigger request for a store
  */
 public class RepushJobResponse {
   private final String storeName;

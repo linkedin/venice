@@ -936,14 +936,16 @@ public interface Admin extends AutoCloseable, Closeable {
   Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
 
   /**
-   * @param clusterName
+   * implemented in {@link VeniceHelixAdmin#getStoresForCompaction}
+   * @param clusterName, the name of the cluster to search for stores that are ready for compaction
    * @return the list of stores ready for compaction
    */
   List<StoreInfo> getStoresForCompaction(String clusterName);
 
   /**
-   * @param storeName
    * triggers repush for storeName for log compaction of store topic
+   * implemented in {@link VeniceHelixAdmin#compactStore}
+   * @param storeName
    */
   void compactStore(String storeName);
 
