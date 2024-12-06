@@ -1672,7 +1672,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testGetIncrementalPushVersion() {
     String incrementalAndHybridEnabledStoreName = Utils.getUniqueString("testHybridStore");
     veniceAdmin.createStore(clusterName, incrementalAndHybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
-    veniceAdmin.getStore(clusterName, incrementalAndHybridEnabledStoreName);
     veniceAdmin.updateStore(
         clusterName,
         incrementalAndHybridEnabledStoreName,

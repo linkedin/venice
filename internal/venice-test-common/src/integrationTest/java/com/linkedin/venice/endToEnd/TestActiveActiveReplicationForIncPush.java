@@ -167,7 +167,7 @@ public class TestActiveActiveReplicationForIncPush {
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
 
-      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
 
       verifyHybridAndIncPushConfig(
           storeName,

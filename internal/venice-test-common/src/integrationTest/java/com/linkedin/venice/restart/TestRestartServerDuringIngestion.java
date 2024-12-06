@@ -122,7 +122,7 @@ public abstract class TestRestartServerDuringIngestion {
               Optional.empty(),
               false,
               -1));
-      storeInfo = controllerClient.getStore(storeName).getStore();
+      storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
     }
 
     String topic = versionCreationResponse.getKafkaTopic();

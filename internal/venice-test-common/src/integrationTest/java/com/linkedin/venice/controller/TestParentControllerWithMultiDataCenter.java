@@ -123,9 +123,9 @@ public class TestParentControllerWithMultiDataCenter {
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
     String rtTopicName = Utils.getRealTimeTopicName(store);
-    PubSubTopic rtPubSubTopic = new PubSubTopicRepository().getTopic(rtTopicName);
+    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
 
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
     updateStoreParams.setIncrementalPushEnabled(true)

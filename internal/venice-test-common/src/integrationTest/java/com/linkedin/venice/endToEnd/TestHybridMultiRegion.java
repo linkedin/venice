@@ -108,7 +108,7 @@ public class TestHybridMultiRegion {
 
       // Create store at parent, make it a hybrid store
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
       controllerClient.updateStore(
           storeName,

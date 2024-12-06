@@ -1539,7 +1539,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     } catch (VeniceException e) {
     }
 
-    doReturn(false).when(internalAdmin).isTopicTruncated(anyString());
+    doReturn(false).when(internalAdmin).isTopicTruncated(eq(Utils.composeRealTimeTopic(storeName)));
     assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);

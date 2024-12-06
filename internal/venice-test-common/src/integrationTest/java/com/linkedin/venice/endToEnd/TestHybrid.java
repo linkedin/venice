@@ -804,7 +804,7 @@ public class TestHybrid {
         Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
       });
 
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
       /**
        * Verify that all messages from {@link tmpTopic2} are in store and no message from {@link tmpTopic1} is in store.
@@ -1164,7 +1164,7 @@ public class TestHybrid {
 
       try (
           ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
-        StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1427,7 +1427,7 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,

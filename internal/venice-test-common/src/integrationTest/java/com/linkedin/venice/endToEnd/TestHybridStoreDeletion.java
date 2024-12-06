@@ -126,8 +126,10 @@ public class TestHybridStoreDeletion {
       createStoresAndVersions(storeNames, streamingRewindSeconds, streamingMessageLag);
 
       veniceCluster.useControllerClient(controllerClient -> {
-        realTimeTopicNames[0] = Utils.getRealTimeTopicName(controllerClient.getStore(storeNameFirst).getStore());
-        realTimeTopicNames[1] = Utils.getRealTimeTopicName(controllerClient.getStore(storeNameSecond).getStore());
+        realTimeTopicNames[0] =
+            Utils.getRealTimeTopicName(TestUtils.assertCommand(controllerClient.getStore(storeNameFirst)).getStore());
+        realTimeTopicNames[1] =
+            Utils.getRealTimeTopicName(TestUtils.assertCommand(controllerClient.getStore(storeNameSecond)).getStore());
       });
 
       // Wait until the rt topic of the first store is fully deleted.

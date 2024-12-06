@@ -148,7 +148,7 @@ public class IngestionHeartBeatTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
-      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)

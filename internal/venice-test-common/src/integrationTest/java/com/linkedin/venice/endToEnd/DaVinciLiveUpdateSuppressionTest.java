@@ -98,7 +98,7 @@ public class DaVinciLiveUpdateSuppressionTest {
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
-      storeInfo.set(client.getStore(storeName).getStore());
+      storeInfo.set(TestUtils.assertCommand(client.getStore(storeName)).getStore());
       cluster.createMetaSystemStore(storeName);
       client.updateStore(
           storeName,

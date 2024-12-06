@@ -67,7 +67,7 @@ public class TestTopicRequestOnHybridDelete {
 
       String storeName = Utils.getUniqueString("hybrid-store");
       venice.getNewStore(storeName);
-      StoreInfo storeInfo = finalControllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(finalControllerClient.getStore(storeName)).getStore();
       makeStoreHybrid(venice, storeName, 100L, 5L);
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
 

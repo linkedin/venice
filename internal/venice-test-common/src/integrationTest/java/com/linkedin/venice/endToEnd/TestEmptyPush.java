@@ -117,7 +117,7 @@ public class TestEmptyPush {
                     venice.getPubSubTopicRepository())
                 .getTopicManager(venice.getPubSubBrokerWrapper().getAddress())) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)

@@ -1202,7 +1202,7 @@ public class PartialUpdateTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
-      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
       String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
       PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
       realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
