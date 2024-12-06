@@ -508,6 +508,7 @@ public class VenicePushJob implements AutoCloseable {
     if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
       pushJobSettingToReturn.deferVersionSwap = true;
       pushJobSettingToReturn.isTargetedRegionPushEnabled = true;
+      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
     }
 
     return pushJobSettingToReturn;
@@ -859,8 +860,7 @@ public class VenicePushJob implements AutoCloseable {
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
-      if (!pushJobSetting.isTargetedRegionPushEnabled
-          || (pushJobSetting.deferVersionSwap && pushJobSetting.isTargetedRegionPushEnabled)) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled || pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
         return;
       }
 

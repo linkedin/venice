@@ -668,7 +668,7 @@ public class AdminExecutionTask implements Callable<Void> {
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
       String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
-      if (skipConsumption && isTargetRegionPushWithDeferredSwap) {
+      if (skipConsumption && !isTargetRegionPushWithDeferredSwap) {
         // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "
