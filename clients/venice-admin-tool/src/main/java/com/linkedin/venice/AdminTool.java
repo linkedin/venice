@@ -1669,6 +1669,10 @@ public class AdminTool {
     String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
     long startTimestamp =
         startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
+    if (startTimestamp != -1 && startingOffset != -1) {
+      throw new VeniceException("Only one of start date and starting offset can be specified");
+    }
+
     String endDatetime = getOptionalArgument(cmd, Arg.END_DATE);
     long endTimestamp =
         endDatetime == null ? -1 : Utils.parseDateTimeToEpoch(endDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
