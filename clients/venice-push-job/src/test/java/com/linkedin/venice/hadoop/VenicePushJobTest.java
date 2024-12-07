@@ -27,6 +27,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -920,6 +921,20 @@ public class VenicePushJobTest {
       final VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = vpj.getVeniceWriter(pushJobSetting);
       Assert.assertNotNull(veniceWriter, "VeniceWriter should've been constructed and returned");
       Assert.assertEquals(veniceWriter, vpj.getVeniceWriter(pushJobSetting), "Second get() should return same object");
+    }
+  }
+
+  @Test
+  public void testTargetRegionPushWithDeferredSwapSettings() {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, getClient())) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertEquals(pushJobSetting.deferVersionSwap, true);
+      Assert.assertEquals(pushJobSetting.isTargetedRegionPushEnabled, true);
     }
   }
 

@@ -43,6 +43,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
@@ -861,6 +862,52 @@ public class TestPushJobWithNativeReplication {
                   .values()) {
                 Assert.assertEquals(version, 2);
               }
+            });
+          }
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testTargetRegionPushWithDeferredVersionSwap() throws Exception {
+    motherOfAllTests(
+        "testTargetRegionPushWithDeferredVersionSwap",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test regular push job", props)) {
+            job.run();
+
+            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 all data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // start target version push with deferred swap
+          props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+          try (VenicePushJob job = new VenicePushJob("Test target region push w. deferred version swap", props)) {
+            job.run();
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
+                  Assert.assertEquals((int) version, 2); // Version should only be swapped in dc-0
+                } else {
+                  Assert.assertEquals((int) version, 1); // The remaining regions shouldn't be swapped
+                }
+              });
             });
           }
         });
