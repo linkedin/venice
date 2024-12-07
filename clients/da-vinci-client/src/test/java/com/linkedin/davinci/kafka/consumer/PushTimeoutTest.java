@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -79,8 +79,7 @@ public class PushTimeoutTest {
         false,
         Optional.empty(),
         null,
-        null,
-        122);
+        null);
 
     leaderFollowerStoreIngestionTask
         .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0));
@@ -156,8 +155,7 @@ public class PushTimeoutTest {
         false,
         Optional.empty(),
         null,
-        null,
-        123);
+        null);
 
     leaderFollowerStoreIngestionTask
         .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0));

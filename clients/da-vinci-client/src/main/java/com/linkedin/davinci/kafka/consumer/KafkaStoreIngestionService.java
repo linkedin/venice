@@ -536,8 +536,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerFunction,
-        zkHelixAdmin,
-        serverConfig.getListenerPort());
+        zkHelixAdmin);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -176,8 +175,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
-        123);
+        null);
 
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
   }

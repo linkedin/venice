@@ -217,8 +217,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      Lazy<ZKHelixAdmin> zkHelixAdmin,
-      int port) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin) {
     super(
         storageService,
         builder,
@@ -232,8 +231,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         recordTransformerFunction,
         builder.getLeaderFollowerNotifiers(),
-        zkHelixAdmin,
-        port);
+        zkHelixAdmin);
     this.version = version;
     this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**

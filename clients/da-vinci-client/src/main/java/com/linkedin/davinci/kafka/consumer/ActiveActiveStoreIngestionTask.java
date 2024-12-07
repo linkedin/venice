@@ -116,8 +116,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      Lazy<ZKHelixAdmin> zkHelixAdmin,
-      int port) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin) {
     super(
         storageService,
         builder,
@@ -130,8 +129,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerFunction,
-        zkHelixAdmin,
-        port);
+        zkHelixAdmin);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 

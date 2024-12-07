@@ -56,8 +56,7 @@ public class StoreIngestionTaskFactory {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      Lazy<ZKHelixAdmin> zkHelixAdmin,
-      int portNum) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           storageService,
@@ -71,8 +70,7 @@ public class StoreIngestionTaskFactory {
           isIsolatedIngestion,
           cacheBackend,
           recordTransformerFunction,
-          zkHelixAdmin,
-          portNum);
+          zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
         storageService,
@@ -86,8 +84,7 @@ public class StoreIngestionTaskFactory {
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerFunction,
-        zkHelixAdmin,
-        portNum);
+        zkHelixAdmin);
   }
 
   /**
