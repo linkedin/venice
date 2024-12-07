@@ -1120,7 +1120,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
-        .setDivChunkAssembler(divChunkAssembler)
+        .setChunkAssembler(divChunkAssembler)
         .setAAWCWorkLoadProcessingThreadPool(
             Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
   }
@@ -5235,6 +5235,7 @@ public abstract class StoreIngestionTaskTest {
 
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = spy(
         new LeaderFollowerStoreIngestionTask(
+            mock(StorageService.class),
             builder,
             store,
             version,
@@ -5286,7 +5287,6 @@ public abstract class StoreIngestionTaskTest {
   @Test
   public void testDivProcessing() throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
-
       // Arrange
       KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
       KafkaMessageEnvelope value = new KafkaMessageEnvelope();
@@ -5298,8 +5298,15 @@ public abstract class StoreIngestionTaskTest {
       // Act
       storeIngestionTaskUnderTest.processDivControlMessage(record);
       // Assert
-      verify(storeIngestionTaskUnderTest.getDivChunkAssembler())
-          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), any(), anyInt(), any());
+      verify(storeIngestionTaskUnderTest.getChunkAssembler()).bufferAndAssembleRecord(
+          any(),
+          anyInt(),
+          any(),
+          any(),
+          anyLong(),
+          any(AvroProtocolDefinition.class),
+          anyInt(),
+          any());
     }, AA_OFF);
   }
 

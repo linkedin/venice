@@ -247,7 +247,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
-  private final ChunkAssembler divChunkAssembler;
 
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
@@ -470,9 +469,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.ingestionNotificationDispatcher =
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
-    this.chunkAssembler = new ChunkAssembler(storeName);
-    this.divChunkAssembler =
-        builder.getDivChunkAssembler() != null ? builder.getDivChunkAssembler() : new ChunkAssembler(storeName);
+    this.chunkAssembler =
+        builder.getChunkAssembler() != null ? builder.getChunkAssembler() : new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
     if (recordTransformerFunction != null) {
@@ -1152,7 +1150,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionStateMap.get(topicPartition.getPartitionNumber()));
       }
     } else if (record.getKey().isDivControlMessage()) {
-      // This is a control message from the DIV topic, process it and return early.
+      // This is a control message DIV, process it and return early.
       // TODO: This is a placeholder for the actual implementation.
       if (isGlobalRtDivEnabled) {
         processDivControlMessage(record);
@@ -1207,7 +1205,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope value = record.getValue();
     Put put = (Put) value.getPayloadUnion();
 
-    Object assembledObject = divChunkAssembler.bufferAndAssembleRecord(
+    Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
         record.getTopicPartition(),
         put.getSchemaId(),
         key.getKey(),
@@ -2437,7 +2435,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * read div control messages from real-time topics. Skip them and log a warning.
      */
     if (record.getKey().isDivControlMessage() && record.getTopic().isRealTime()) {
-      LOGGER.warn("Skipping control message from real-time topic-partition: {}", record.getTopicPartition());
+      LOGGER.warn("Skipping DIV control message from real-time topic-partition: {}", record.getTopicPartition());
       return false;
     }
 
@@ -4611,7 +4609,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isDaVinciClient;
   }
 
-  ChunkAssembler getDivChunkAssembler() {
-    return this.divChunkAssembler;
+  ChunkAssembler getChunkAssembler() {
+    return this.chunkAssembler;
   }
 }
