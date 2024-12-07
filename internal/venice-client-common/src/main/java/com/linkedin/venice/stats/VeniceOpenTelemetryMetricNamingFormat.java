@@ -90,4 +90,8 @@ public enum VeniceOpenTelemetryMetricNamingFormat implements VeniceEnumValue {
     }
     return Character.toUpperCase(word.charAt(0)) + word.substring(1);
   }
+
+  public static VeniceOpenTelemetryMetricNamingFormat getDefaultFormat() {
+    return SNAKE_CASE;
+  }
 }

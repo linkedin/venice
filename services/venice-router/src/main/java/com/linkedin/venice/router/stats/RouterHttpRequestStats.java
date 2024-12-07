@@ -142,27 +142,30 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-    VeniceOpenTelemetryMetricsRepository otelRepository;
+    VeniceOpenTelemetryMetricsRepository otelRepository = null;
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       openTelemetryMetricFormat = veniceMetricsConfig.getMetricNamingFormat();
-      otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-      AttributesBuilder attributesBuilder = Attributes.builder()
-          .put(getDimensionName(VENICE_STORE_NAME), storeName)
-          .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
-          .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName);
-      // add custom dimensions passed in by the user
-      for (Map.Entry<String, String> entry: veniceMetricsConfig.getOtelCustomDimensionsMap().entrySet()) {
-        attributesBuilder.put(entry.getKey(), entry.getValue());
+      if (emitOpenTelemetryMetrics) {
+        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
+        AttributesBuilder attributesBuilder = Attributes.builder()
+            .put(getDimensionName(VENICE_STORE_NAME), storeName)
+            .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
+            .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName);
+        // add custom dimensions passed in by the user
+        for (Map.Entry<String, String> entry: veniceMetricsConfig.getOtelCustomDimensionsMap().entrySet()) {
+          attributesBuilder.put(entry.getKey(), entry.getValue());
+        }
+        commonMetricDimensions = attributesBuilder.build();
+      } else {
+        commonMetricDimensions = null;
       }
-      commonMetricDimensions = attributesBuilder.build();
     } else {
       emitOpenTelemetryMetrics = false;
-      openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+      openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat();
       commonMetricDimensions = null;
-      otelRepository = null;
     }
 
     this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
@@ -673,10 +676,25 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     return Double.isFinite(metric.value()) ? metric.value() > 0.0 : false;
   }
 
+  /** used only for testing */
+  boolean emitOpenTelemetryMetrics() {
+    return this.emitOpenTelemetryMetrics;
+  }
+
+  /** used only for testing */
+  VeniceOpenTelemetryMetricNamingFormat getOpenTelemetryMetricsFormat() {
+    return this.openTelemetryMetricFormat;
+  }
+
+  /** used only for testing */
+  Attributes getCommonMetricDimensions() {
+    return this.commonMetricDimensions;
+  }
+
   /**
    * Metric names for tehuti metrics used in this class
    */
-  private enum RouterTehutiMetricNameEnum implements TehutiMetricNameEnum {
+  enum RouterTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link RouterMetricEntity#INCOMING_CALL_COUNT} */
     REQUEST,
     /** for {@link RouterMetricEntity#CALL_COUNT} */
