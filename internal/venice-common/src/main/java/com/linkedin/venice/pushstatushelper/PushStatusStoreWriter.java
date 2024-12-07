@@ -132,9 +132,10 @@ public class PushStatusStoreWriter implements AutoCloseable {
       String storeName,
       int version,
       ExecutionStatus status,
-      Set<Integer> partitionIds) {
+      Set<Integer> partitionIds,
+      Optional<String> incrementalPushVersion) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, incrementalPushVersion);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setEntriesToAddToMapField("instances", Collections.singletonMap(instanceName, status.getValue()));
     LOGGER.info(
