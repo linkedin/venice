@@ -104,6 +104,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RetryUtils;
@@ -155,6 +156,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -330,9 +332,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected boolean isDataRecovery;
   protected int dataRecoverySourceVersionNumber;
+  protected final boolean readOnlyForBatchOnlyStoreEnabled;
   protected final MetaStoreWriter metaStoreWriter;
   protected final Function<String, String> kafkaClusterUrlResolver;
-  protected final boolean readOnlyForBatchOnlyStoreEnabled;
+  protected final boolean resetErrorReplicaEnabled;
+
   protected final CompressionStrategy compressionStrategy;
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
@@ -351,6 +355,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected final CountDownLatch gracefulShutdownLatch = new CountDownLatch(1);
+  protected Lazy<ZKHelixAdmin> zkHelixAdmin;
+  protected final String hostName;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -364,7 +370,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
-      Queue<VeniceNotifier> notifiers) {
+      Queue<VeniceNotifier> notifiers,
+      Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storeConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -406,12 +413,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
+    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
-    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
+    this.resetErrorReplicaEnabled = storeConfig.isResetErrorReplicaEnabled();
 
     this.storeBufferService = builder.getStoreBufferService();
     this.isCurrentVersion = isCurrentVersion;
@@ -534,6 +542,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
+    this.hostName = Utils.getHostName() + "_" + storeConfig.getListenerPort();
+    this.zkHelixAdmin = zkHelixAdmin;
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -4204,6 +4214,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pcsList.add(partitionConsumptionStateMap.get(userPartition));
     }
     ingestionNotificationDispatcher.reportError(pcsList, message, e);
+    // Set the replica state to ERROR so that the controller can attempt to reset the partition.
+    if (!isDaVinciClient && resetErrorReplicaEnabled) {
+      zkHelixAdmin.get()
+          .setPartitionsToError(
+              serverConfig.getClusterName(),
+              hostName,
+              kafkaVersionTopic,
+              Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, userPartition)));
+    }
   }
 
   public boolean isActiveActiveReplicationEnabled() {

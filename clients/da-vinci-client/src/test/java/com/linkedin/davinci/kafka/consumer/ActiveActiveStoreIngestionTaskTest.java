@@ -249,6 +249,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
     VeniceStoreVersionConfig storeVersionConfig =
         new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
+    int port = 123;
     ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
         storageService,
         builder,
@@ -260,6 +261,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         1,
         false,
         Optional.empty(),
+        null,
         null);
 
     PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);

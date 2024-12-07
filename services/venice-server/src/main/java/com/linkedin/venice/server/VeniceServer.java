@@ -73,6 +73,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -120,6 +121,7 @@ public class VeniceServer {
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -371,6 +373,7 @@ public class VeniceServer {
         serverConfig.getRegionName());
     services.add(heartbeatMonitoringService);
 
+    this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService,
@@ -394,7 +397,8 @@ public class VeniceServer {
         remoteIngestionRepairService,
         pubSubClientsFactory,
         sslFactory,
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        zkHelixAdmin);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
