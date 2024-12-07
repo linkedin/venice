@@ -556,7 +556,7 @@ public class KafkaConsumerServiceDelegatorTest {
     KafkaConsumerServiceDelegator delegator =
         new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
     PubSubTopicPartition realTimeTopicPartition =
-        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName)), 0);
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName)), 0);
 
     CountDownLatch countDownLatch = new CountDownLatch(1);
     List<Thread> infiniteSubUnSubThreads = new ArrayList<>();

@@ -87,7 +87,6 @@ public class CreateVersion extends AbstractRoute {
             && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)))) {
           response.status(HttpStatus.SC_FORBIDDEN);
           String userId = getPrincipalId(request);
-          String storeName = request.queryParams(NAME);
 
           /**
            * When partners have ACL issues for their push, we should provide an accurate and informative messages that

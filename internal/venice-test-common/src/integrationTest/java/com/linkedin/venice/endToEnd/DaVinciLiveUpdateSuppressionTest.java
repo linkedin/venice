@@ -22,7 +22,7 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionMode;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
@@ -93,9 +94,11 @@ public class DaVinciLiveUpdateSuppressionTest {
   @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testLiveUpdateSuppression(IngestionMode ingestionMode) throws Exception {
     final String storeName = Utils.getUniqueString("store");
+    AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
+      storeInfo.set(TestUtils.assertCommand(client.getStore(storeName)).getStore());
       cluster.createMetaSystemStore(storeName);
       client.updateStore(
           storeName,
@@ -146,7 +149,7 @@ public class DaVinciLiveUpdateSuppressionTest {
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
         VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).setKeySerializer(keySerializer)
+            new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo.get())).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)
                 .build())) {
       client.subscribe(Collections.singleton(0)).get();

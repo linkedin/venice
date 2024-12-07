@@ -1717,6 +1717,14 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getRealTimeTopic(clusterName, storeName);
   }
 
+  /**
+   * @see VeniceHelixAdmin#getRealTimeTopic(String, Store)
+   */
+  @Override
+  public String getRealTimeTopic(String clusterName, Store store) {
+    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, store);
+  }
+
   @Override
   public String getSeparateRealTimeTopic(String clusterName, String storeName) {
     return getVeniceHelixAdmin().getSeparateRealTimeTopic(clusterName, storeName);

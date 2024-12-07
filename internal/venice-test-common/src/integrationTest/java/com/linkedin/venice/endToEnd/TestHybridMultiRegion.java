@@ -34,6 +34,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -107,6 +108,8 @@ public class TestHybridMultiRegion {
 
       // Create store at parent, make it a hybrid store
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -142,7 +145,7 @@ public class TestHybridMultiRegion {
       // And real-time topic should exist now.
       assertTrue(
           topicManager.containsTopicAndAllPartitionsAreOnline(
-              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))));
+              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(realTimeTopicName)));
       // Creating a store object with default values since we're not updating bootstrap to online timeout
       StoreProperties storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
       storeProperties.name = storeName;
@@ -150,8 +153,8 @@ public class TestHybridMultiRegion {
       storeProperties.createdTime = System.currentTimeMillis();
       Store store = new ZKStore(storeProperties);
       assertEquals(
-          topicManager.getTopicRetention(
-              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
+          topicManager
+              .getTopicRetention(sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(realTimeTopicName)),
           StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not configured properly");
       // Make sure RT retention is updated when the rewind time is updated
@@ -160,8 +163,8 @@ public class TestHybridMultiRegion {
       controllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(newStreamingRewindSeconds));
       assertEquals(
-          topicManager.getTopicRetention(
-              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
+          topicManager
+              .getTopicRetention(sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(realTimeTopicName)),
           StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not updated properly");
     }

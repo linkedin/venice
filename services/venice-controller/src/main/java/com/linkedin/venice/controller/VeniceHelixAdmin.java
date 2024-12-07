@@ -3142,6 +3142,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return realTimeTopic.getName();
   }
 
+  /**
+   * Get the real time topic name for a given store. If the topic is not created in Kafka, it creates the
+   * real time topic and returns the topic name.
+   * @param clusterName name of the Venice cluster.
+   * @param store store.
+   * @return name of the store's real time topic name.
+   */
+  @Override
+  public String getRealTimeTopic(String clusterName, Store store) {
+    checkControllerLeadershipFor(clusterName);
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+    ensureRealTimeTopicIsReady(clusterName, realTimeTopic);
+    return realTimeTopic.getName();
+  }
+
   @Override
   public String getSeparateRealTimeTopic(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);

@@ -171,6 +171,8 @@ public class TestActiveActiveReplicationForIncPush {
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
 
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+
       verifyHybridAndIncPushConfig(
           storeName,
           false,
@@ -222,7 +224,7 @@ public class TestActiveActiveReplicationForIncPush {
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
       if (isSeparateRealTimeTopicEnabled) {
-        verifyForSeparateIncrementalPushTopic(storeName, propsInc1, 2);
+        verifyForSeparateIncrementalPushTopic(storeName, propsInc1, 2, storeInfo);
       } else {
         verifyForRealTimeIncrementalPushTopic(storeName, propsInc1, propsInc2);
       }
@@ -232,7 +234,8 @@ public class TestActiveActiveReplicationForIncPush {
   private void verifyForSeparateIncrementalPushTopic(
       String storeName,
       Properties propsInc1,
-      int dcIndexForSourceRegion) {
+      int dcIndexForSourceRegion,
+      StoreInfo storeInfo) {
     // Prepare TopicManagers
     List<TopicManager> topicManagers = new ArrayList<>();
     for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
@@ -253,7 +256,7 @@ public class TestActiveActiveReplicationForIncPush {
         PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
         0);
     PubSubTopicPartition realTimeTopicPartition =
-        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName)), 0);
+        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo)), 0);
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
       // TODO: Once server part separate topic ingestion logic is ready, we should avoid runAsync here and add extra
       // check
