@@ -348,4 +348,13 @@ public abstract class AbstractStore implements Store {
       }
     }
   }
+
+  @Override
+  public void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported) {
+    for (StoreVersion version: storeVersionsSupplier.getForUpdate()) {
+      if (version.getNumber() == versionNumber) {
+        version.setIsDaVinciHeartBeatReported(reported);
+      }
+    }
+  }
 }

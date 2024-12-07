@@ -177,8 +177,7 @@ public class PushStatusCollector {
       Store store = storeRepository.getStore(storeName);
       if (!store.getIsDavinciHeartbeatReported() && daVinciStatus.getStatus() != ExecutionStatus.NOT_CREATED) {
         int versionNum = Version.parseVersionFromVersionTopicName(pushStatus.topicName);
-        Version version = store.getVersion(versionNum);
-        version.setIsDavinciHeartbeatReported(true);
+        store.updateVersionForDaVinciHeartbeat(versionNum, true);
         storeRepository.updateStore(store);
       }
 
