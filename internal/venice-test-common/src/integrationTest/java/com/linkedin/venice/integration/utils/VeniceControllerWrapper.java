@@ -60,7 +60,6 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -99,8 +98,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String D2_SERVICE_NAME = "ChildController";
   public static final String PARENT_D2_CLUSTER_NAME = "ParentControllerD2Cluster";
   public static final String PARENT_D2_SERVICE_NAME = "ParentController";
-
-  public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
 
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
 
@@ -354,18 +351,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
-      Optional<SupersetSchemaGenerator> supersetSchemaGenerator = Optional.empty();
-      Object passedSupersetSchemaGenerator = options.getExtraProperties().get(SUPERSET_SCHEMA_GENERATOR);
-      if (passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
-        supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
-      }
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
           .setMetricsRepository(metricsRepository)
           .setServiceDiscoveryAnnouncers(d2ServerList)
           .setAuthorizerService(options.getAuthorizerService())
           .setD2Client(d2Client)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
-          .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
+          .setExternalSupersetSchemaGenerator(options.getSupersetSchemaGenerator())
           .build();
       VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(

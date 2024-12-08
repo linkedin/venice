@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
-import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
@@ -65,23 +64,17 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
-import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -95,7 +88,6 @@ import com.linkedin.venice.authorization.Principal;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizationTask;
 import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.init.SharedInternalRTStoreInitializationRoutine;
@@ -130,7 +122,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
-import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -143,7 +134,10 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
-import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
+import com.linkedin.venice.controller.util.AdminUtils;
+import com.linkedin.venice.controller.util.PrimaryControllerConfigUpdateUtils;
+import com.linkedin.venice.controller.util.UpdateStoreUtils;
+import com.linkedin.venice.controller.util.UpdateStoreWrapper;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -166,7 +160,6 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -179,13 +172,13 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -197,9 +190,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -215,7 +205,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
@@ -231,7 +220,6 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -241,9 +229,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
-import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
-import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -272,13 +258,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
-import org.apache.http.HttpStatus;
+import org.apache.hc.core5.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -1014,7 +999,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       int repushSourceVersion) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
-    final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
+    final int replicationMetadataVersionId = AdminUtils.getRmdVersionID(this, storeName, clusterName);
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
@@ -1025,43 +1010,12 @@ public class VeniceParentHelixAdmin implements Admin {
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
         replicationMetadataVersionId);
-    if (version.isActiveActiveReplicationEnabled()) {
-      updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
-    }
     acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, null, -1);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
-  }
-
-  private int getRmdVersionID(final String storeName, final String clusterName) {
-    final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
-    if (store == null) {
-      LOGGER.warn(
-          "No store found in the store repository. Will get store-level RMD version ID from cluster config. "
-              + "Store name: {}, cluster: {}",
-          storeName,
-          clusterName);
-    } else if (store.getRmdVersion() == ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION) {
-      LOGGER.info("No store-level RMD version ID found for store {} in cluster {}", storeName, clusterName);
-    } else {
-      LOGGER.info(
-          "Found store-level RMD version ID {} for store {} in cluster {}",
-          store.getRmdVersion(),
-          storeName,
-          clusterName);
-      return store.getRmdVersion();
-    }
-
-    final VeniceControllerClusterConfig controllerConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
-    if (controllerConfig == null) {
-      throw new VeniceException("No controller cluster config found for cluster " + clusterName);
-    }
-    final int rmdVersionID = controllerConfig.getReplicationMetadataVersion();
-    LOGGER.info("Use RMD version ID {} for cluster {}", rmdVersionID, clusterName);
-    return rmdVersionID;
   }
 
   /**
@@ -1606,7 +1560,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion) {
-    final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
+    final int replicationMetadataVersionId = AdminUtils.getRmdVersionID(this, storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
         storeName,
@@ -1628,9 +1582,6 @@ public class VeniceParentHelixAdmin implements Admin {
         repushSourceVersion);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
-      if (newVersion.isActiveActiveReplicationEnabled()) {
-        updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
-      }
       // Send admin message if the version is newly created.
       acquireAdminMessageLock(clusterName, storeName);
       try {
@@ -2079,16 +2030,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Unsupported operation in the parent controller.
-   */
-  @Override
-  public void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
-    throw new VeniceUnsupportedOperationException(
-        "setStoreLargestUsedVersion",
-        "This is only supported in the Child Controller.");
-  }
-
-  /**
    * Update the owner of a specified store by sending {@link AdminMessageType#SET_STORE_OWNER SET_STORE_OWNER} admin message
    * to the admin topic.
    */
@@ -2231,316 +2172,235 @@ public class VeniceParentHelixAdmin implements Admin {
   public void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      Optional<String> owner = params.getOwner();
-      Optional<Boolean> readability = params.getEnableReads();
-      Optional<Boolean> writeability = params.getEnableWrites();
-      Optional<Integer> partitionCount = params.getPartitionCount();
-      Optional<String> partitionerClass = params.getPartitionerClass();
-      Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
-      Optional<Integer> amplificationFactor = params.getAmplificationFactor();
-      Optional<Long> storageQuotaInByte = params.getStorageQuotaInByte();
-      Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
-      Optional<Integer> currentVersion = params.getCurrentVersion();
-      Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
-      Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
-      Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
-      Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
-      Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
-      Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-      Optional<String> realTimeTopicName = params.getRealTimeTopicName();
-      Optional<Boolean> accessControlled = params.getAccessControlled();
-      Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
-      Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
-      Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
-      Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
-      Optional<Integer> batchGetLimit = params.getBatchGetLimit();
-      Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
-      Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
-      Optional<Boolean> separateRealTimeTopicEnabled = params.getSeparateRealTimeTopicEnabled();
-      Optional<Boolean> storeMigration = params.getStoreMigration();
-      Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
-      Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
-      Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
-      Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
-      Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
-      Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
-      Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
-      Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
-      Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
-      Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
-      Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
-      Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
-      Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
-      Optional<Integer> replicationFactor = params.getReplicationFactor();
-      Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
-      Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
-      Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
-      Optional<String> regionsFilter = params.getRegionsFilter();
-      Optional<String> personaName = params.getStoragePersona();
-      Optional<Map<String, String>> storeViewConfig = params.getStoreViews();
-      Optional<String> viewName = params.getViewName();
-      Optional<String> viewClassName = params.getViewClassName();
-      Optional<Map<String, String>> viewParams = params.getViewClassParams();
-      Optional<Boolean> removeView = params.getDisableStoreView();
-      Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
-      Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
-
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
        * configs should be replicated to children too.
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
-      Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
-      Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
-      Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
-      Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
-      Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
 
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
-      String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
 
-      Store currStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
-      if (currStore == null) {
-        LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
-        throw new VeniceNoStoreException(storeName, clusterName);
+      UpdateStoreWrapper updateStoreWrapper =
+          UpdateStoreUtils.getStoreUpdate(this, clusterName, storeName, params, false);
+      if (updateStoreWrapper == null) {
+        return;
       }
-      UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
-      setStore.clusterName = clusterName;
-      setStore.storeName = storeName;
-      setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
 
-      boolean isUpdateForStoreMigration = storeMigration.orElse(false);
-      if (!isUpdateForStoreMigration && !currStore.isHybrid()
-          && (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent())) {
-        // Today target colo pushjob cannot handle hybrid stores, so if a batch push is running, fail the request
+      Store originalStore = updateStoreWrapper.originalStore;
+      Set<CharSequence> updatedConfigs = updateStoreWrapper.updatedConfigs;
+      Store updatedStore = updateStoreWrapper.updatedStore;
+
+      if (!replicateAllConfigs && updatedConfigs.isEmpty()) {
+        String errMsg = "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
+            + " store config and didn't specify \"--replicate-all-configs\" flag.";
+        LOGGER.error(errMsg);
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errMsg, ErrorType.BAD_REQUEST);
+      }
+
+      if (!updatedStore.isMigrating() && !originalStore.isHybrid() && updatedStore.isHybrid()) {
+        // Today target colo push job cannot handle hybrid stores, so if a batch push is running, fail the request
         Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, false, false);
         if (currentPushTopic.isPresent()) {
           String errorMessage =
-              "Cannot convert to hybrid as there is already a pushjob running with topic " + currentPushTopic.get();
+              "Cannot convert to hybrid as there is already a push job running with topic " + currentPushTopic.get();
           LOGGER.error(errorMessage);
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
         }
       }
-      // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't
-      // be blocked by retry mechanism.
-      if (currStore.isHybrid() && (partitionerClass.isPresent() || partitionerParams.isPresent())) {
-        String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
-        LOGGER.error(errorMessage);
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
+
+      UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+      setStore.clusterName = clusterName;
+      setStore.storeName = storeName;
+
+      if (updatedConfigs.contains(OWNER)) {
+        setStore.owner = updatedStore.getOwner();
+        updatedConfigsList.add(OWNER);
+      } else {
+        setStore.owner = originalStore.getOwner();
       }
 
-      if (partitionCount.isPresent()) {
-        getVeniceHelixAdmin().preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get());
-        setStore.partitionNum = partitionCount.get();
+      if (updatedConfigs.contains(PARTITION_COUNT)) {
+        setStore.partitionNum = updatedStore.getPartitionCount();
         updatedConfigsList.add(PARTITION_COUNT);
       } else {
-        setStore.partitionNum = currStore.getPartitionCount();
+        setStore.partitionNum = originalStore.getPartitionCount();
       }
 
-      /**
-       * TODO: We should build an UpdateStoreHelper that takes current store config and update command as input, and
-       *       return whether the update command is valid.
-       */
-      validateActiveActiveReplicationEnableConfigs(activeActiveReplicationEnabled, nativeReplicationEnabled, currStore);
-
-      setStore.nativeReplicationEnabled =
-          nativeReplicationEnabled.map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_ENABLED))
-              .orElseGet(currStore::isNativeReplicationEnabled);
-      setStore.pushStreamSourceAddress =
-          pushStreamSourceAddress.map(addToUpdatedConfigList(updatedConfigsList, PUSH_STREAM_SOURCE_ADDRESS))
-              .orElseGet(currStore::getPushStreamSourceAddress);
-
-      if (storeViewConfig.isPresent() && viewName.isPresent()) {
-        throw new VeniceException("Cannot update a store view and overwrite store view setup together!");
+      if (updatedConfigs.contains(NATIVE_REPLICATION_ENABLED)) {
+        setStore.nativeReplicationEnabled = updatedStore.isNativeReplicationEnabled();
+        updatedConfigsList.add(NATIVE_REPLICATION_ENABLED);
+      } else {
+        setStore.nativeReplicationEnabled = originalStore.isNativeReplicationEnabled();
       }
-      if (viewName.isPresent()) {
-        Map<String, StoreViewConfigRecord> updatedViewSettings;
-        if (!removeView.isPresent()) {
-          if (!viewClassName.isPresent()) {
-            throw new VeniceException("View class name is required when configuring a view.");
-          }
-          // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
-          ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
-          ViewConfig validatedViewConfig = validateAndDecorateStoreViewConfig(currStore, viewConfig, viewName.get());
-          updatedViewSettings =
-              VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), validatedViewConfig);
-        } else {
-          updatedViewSettings = VeniceHelixAdmin.removeViewConfigFromStoreViewConfigMap(currStore, viewName.get());
-        }
-        setStore.views = updatedViewSettings;
+
+      if (updatedConfigs.contains(PUSH_STREAM_SOURCE_ADDRESS)) {
+        setStore.pushStreamSourceAddress = updatedStore.getPushStreamSourceAddress();
+        updatedConfigsList.add(PUSH_STREAM_SOURCE_ADDRESS);
+      } else {
+        setStore.pushStreamSourceAddress = originalStore.getPushStreamSourceAddress();
+      }
+
+      if (updatedConfigs.contains(STORE_VIEW)) {
+        setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(updatedStore.getViewConfigs());
         updatedConfigsList.add(STORE_VIEW);
       }
 
-      if (storeViewConfig.isPresent()) {
-        // Validate and overwrite store views if they're getting set
-        Map<String, ViewConfig> validatedViewConfigs =
-            validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
-        setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
-        updatedConfigsList.add(STORE_VIEW);
+      boolean partitionerChange = false;
+
+      if (updatedConfigs.contains(PARTITIONER_CLASS)) {
+        updatedConfigsList.add(PARTITIONER_CLASS);
+        partitionerChange = true;
       }
 
-      // Only update fields that are set, other fields will be read from the original store's partitioner config.
-      PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
-          currStore,
-          partitionerClass,
-          partitionerParams,
-          amplificationFactor);
-      if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-        // Update updatedConfigsList.
-        partitionerClass.ifPresent(p -> updatedConfigsList.add(PARTITIONER_CLASS));
-        partitionerParams.ifPresent(p -> updatedConfigsList.add(PARTITIONER_PARAMS));
-        amplificationFactor.ifPresent(p -> updatedConfigsList.add(AMPLIFICATION_FACTOR));
+      if (updatedConfigs.contains(PARTITIONER_PARAMS)) {
+        updatedConfigsList.add(PARTITIONER_PARAMS);
+        partitionerChange = true;
+      }
+
+      if (updatedConfigs.contains(AMPLIFICATION_FACTOR)) {
+        updatedConfigsList.add(AMPLIFICATION_FACTOR);
+        partitionerChange = true;
+      }
+
+      if (partitionerChange) {
         // Create PartitionConfigRecord for admin channel transmission.
+        PartitionerConfig updatedPartitionerConfig = updatedStore.getPartitionerConfig();
         PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
         partitionerConfigRecord.partitionerClass = updatedPartitionerConfig.getPartitionerClass();
         partitionerConfigRecord.partitionerParams =
             CollectionUtils.getCharSequenceMapFromStringMap(updatedPartitionerConfig.getPartitionerParams());
         partitionerConfigRecord.amplificationFactor = updatedPartitionerConfig.getAmplificationFactor();
-        // Before setting partitioner config, verify the updated partitionerConfig can be built
-        try {
-          PartitionUtils.getVenicePartitioner(
-              partitionerConfigRecord.partitionerClass.toString(),
-              new VeniceProperties(partitionerConfigRecord.partitionerParams),
-              getKeySchema(clusterName, storeName).getSchema());
-        } catch (PartitionerSchemaMismatchException e) {
-          String errorMessage = errorMessagePrefix + e.getMessage();
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_SCHEMA);
-        } catch (Exception e) {
-          String errorMessage = errorMessagePrefix + "Partitioner Configs invalid, please verify that partitioner "
-              + "configs like classpath and parameters are correct!";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-        }
         setStore.partitionerConfig = partitionerConfigRecord;
       }
 
-      setStore.enableReads =
-          readability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_READS)).orElseGet(currStore::isEnableReads);
-      setStore.enableWrites = writeability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_WRITES))
-          .orElseGet(currStore::isEnableWrites);
-
-      setStore.readQuotaInCU = readQuotaInCU.map(addToUpdatedConfigList(updatedConfigsList, READ_QUOTA_IN_CU))
-          .orElseGet(currStore::getReadQuotaInCU);
-
-      // We need to be careful when handling currentVersion.
-      // Since it is not synced between parent and local controller,
-      // It is very likely to override local values unintentionally.
-      setStore.currentVersion =
-          currentVersion.map(addToUpdatedConfigList(updatedConfigsList, VERSION)).orElse(IGNORED_CURRENT_VERSION);
-
-      hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigsList, REWIND_TIME_IN_SECONDS));
-      hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, OFFSET_LAG_TO_GO_ONLINE));
-      hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
-      hybridDataReplicationPolicy.map(addToUpdatedConfigList(updatedConfigsList, DATA_REPLICATION_POLICY));
-      hybridBufferReplayPolicy.map(addToUpdatedConfigList(updatedConfigsList, BUFFER_REPLAY_POLICY));
-      realTimeTopicName.map(addToUpdatedConfigList(updatedConfigsList, REAL_TIME_TOPIC_NAME));
-      HybridStoreConfig updatedHybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
-          currStore,
-          hybridRewindSeconds,
-          hybridOffsetLagThreshold,
-          hybridTimeLagThreshold,
-          hybridDataReplicationPolicy,
-          hybridBufferReplayPolicy,
-          realTimeTopicName);
-
-      // Get VeniceControllerClusterConfig for the cluster
-      VeniceControllerClusterConfig controllerConfig =
-          veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
-      // Check if the store is being converted to a hybrid store
-      boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
-          && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
-      // Check if the store is being converted to a batch store
-      boolean storeBeingConvertedToBatch = currStore.isHybrid() && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
-      if (storeBeingConvertedToBatch && activeActiveReplicationEnabled.orElse(false)) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Cannot convert store to batch-only and enable Active/Active together.",
-            ErrorType.BAD_REQUEST);
-      }
-      if (storeBeingConvertedToBatch && incrementalPushEnabled.orElse(false)) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Cannot convert store to batch-only and enable incremental push together.",
-            ErrorType.BAD_REQUEST);
-      }
-      // Update active-active replication config.
-      setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
-          .orElseGet(currStore::isActiveActiveReplicationEnabled);
-      // Enable active-active replication automatically when batch user store being converted to hybrid store and
-      // active-active replication is enabled for all hybrid store via the cluster config
-      if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
-          && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
-        setStore.activeActiveReplicationEnabled = true;
-        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-      }
-      // When turning off hybrid store, we will also turn off A/A store config.
-      if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
-        setStore.activeActiveReplicationEnabled = false;
-        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-      }
-
-      // Update incremental push config.
-      setStore.incrementalPushEnabled =
-          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
-              .orElseGet(currStore::isIncrementalPushEnabled);
-      // Enable incremental push automatically when batch user store being converted to hybrid store and active-active
-      // replication is enabled or being and the cluster config allows it.
-      if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
-          && setStore.activeActiveReplicationEnabled
-          && controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
-        setStore.incrementalPushEnabled = true;
-        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-      }
-      // Enable separate real-time topic automatically when incremental push is enabled and cluster config allows it.
-      if (setStore.incrementalPushEnabled
-          && controllerConfig.enabledSeparateRealTimeTopicForStoreWithIncrementalPush()) {
-        setStore.separateRealTimeTopicEnabled = true;
-        updatedConfigsList.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
-      }
-
-      // When turning off hybrid store, we will also turn off incremental store config.
-      if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
-        setStore.incrementalPushEnabled = false;
-        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-      }
-
-      if (updatedHybridStoreConfig == null) {
-        setStore.hybridStoreConfig = null;
+      if (updatedConfigs.contains(ENABLE_READS)) {
+        setStore.enableReads = updatedStore.isEnableReads();
+        updatedConfigsList.add(ENABLE_READS);
       } else {
-        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
-        hybridStoreConfigRecord.offsetLagThresholdToGoOnline =
-            updatedHybridStoreConfig.getOffsetLagThresholdToGoOnline();
-        hybridStoreConfigRecord.rewindTimeInSeconds = updatedHybridStoreConfig.getRewindTimeInSeconds();
-        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds =
-            updatedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
-        hybridStoreConfigRecord.dataReplicationPolicy = updatedHybridStoreConfig.getDataReplicationPolicy().getValue();
-        hybridStoreConfigRecord.bufferReplayPolicy = updatedHybridStoreConfig.getBufferReplayPolicy().getValue();
-        hybridStoreConfigRecord.realTimeTopicName = updatedHybridStoreConfig.getRealTimeTopicName();
-        setStore.hybridStoreConfig = hybridStoreConfigRecord;
+        setStore.enableReads = originalStore.isEnableReads();
       }
 
-      if (incrementalPushEnabled.orElse(currStore.isIncrementalPushEnabled())
-          && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
-        LOGGER.info(
-            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
-            storeName);
-        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
-        hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
+      if (updatedConfigs.contains(ENABLE_WRITES)) {
+        setStore.enableWrites = updatedStore.isEnableWrites();
+        updatedConfigsList.add(ENABLE_WRITES);
+      } else {
+        setStore.enableWrites = originalStore.isEnableWrites();
+      }
+
+      if (updatedConfigs.contains(READ_QUOTA_IN_CU)) {
+        setStore.readQuotaInCU = updatedStore.getReadQuotaInCU();
+        updatedConfigsList.add(READ_QUOTA_IN_CU);
+      } else {
+        setStore.readQuotaInCU = originalStore.getReadQuotaInCU();
+      }
+
+      if (updatedConfigsList.contains(VERSION)) {
+        setStore.currentVersion = updatedStore.getCurrentVersion();
+        updatedConfigsList.add(VERSION);
+      } else {
+        setStore.currentVersion = IGNORED_CURRENT_VERSION;
+      }
+
+      if (updatedConfigs.contains(REWIND_TIME_IN_SECONDS)) {
         updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
-        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+      }
+
+      if (updatedConfigs.contains(OFFSET_LAG_TO_GO_ONLINE)) {
         updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
-        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+      }
+
+      if (updatedConfigs.contains(TIME_LAG_TO_GO_ONLINE)) {
         updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
-        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
+      }
+
+      if (updatedConfigs.contains(DATA_REPLICATION_POLICY)) {
         updatedConfigsList.add(DATA_REPLICATION_POLICY);
-        hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
+      }
+
+      if (updatedConfigs.contains(BUFFER_REPLAY_POLICY)) {
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);
-        hybridStoreConfigRecord.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
-        setStore.hybridStoreConfig = hybridStoreConfigRecord;
+      }
+
+      if (updatedConfigs.contains(REAL_TIME_TOPIC_NAME)) {
+        updatedConfigsList.add(REAL_TIME_TOPIC_NAME);
+      }
+
+      HybridStoreConfig updatedHybridStoreConfig = updatedStore.getHybridStoreConfig();
+      setStore.hybridStoreConfig = new HybridStoreConfigRecord();
+      if (updatedHybridStoreConfig == null) {
+        setStore.hybridStoreConfig.offsetLagThresholdToGoOnline = -1;
+        setStore.hybridStoreConfig.rewindTimeInSeconds = -1;
+        setStore.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds = -1;
+        setStore.hybridStoreConfig.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
+        setStore.hybridStoreConfig.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
+        setStore.hybridStoreConfig.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
+      } else {
+        setStore.hybridStoreConfig.offsetLagThresholdToGoOnline =
+            updatedHybridStoreConfig.getOffsetLagThresholdToGoOnline();
+        setStore.hybridStoreConfig.rewindTimeInSeconds = updatedHybridStoreConfig.getRewindTimeInSeconds();
+        setStore.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds =
+            updatedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
+        setStore.hybridStoreConfig.dataReplicationPolicy =
+            updatedHybridStoreConfig.getDataReplicationPolicy().getValue();
+        setStore.hybridStoreConfig.bufferReplayPolicy = updatedHybridStoreConfig.getBufferReplayPolicy().getValue();
+        setStore.hybridStoreConfig.realTimeTopicName = updatedHybridStoreConfig.getRealTimeTopicName();
+      }
+
+      if (updatedConfigs.contains(ACTIVE_ACTIVE_REPLICATION_ENABLED)) {
+        setStore.activeActiveReplicationEnabled = updatedStore.isActiveActiveReplicationEnabled();
+        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+      } else {
+        setStore.activeActiveReplicationEnabled = originalStore.isActiveActiveReplicationEnabled();
+      }
+
+      if (updatedConfigs.contains(INCREMENTAL_PUSH_ENABLED)) {
+        setStore.incrementalPushEnabled = updatedStore.isIncrementalPushEnabled();
+        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+      } else {
+        setStore.incrementalPushEnabled = originalStore.isIncrementalPushEnabled();
+      }
+
+      if (updatedConfigs.contains(SEPARATE_REAL_TIME_TOPIC_ENABLED)) {
+        setStore.separateRealTimeTopicEnabled = updatedStore.isSeparateRealTimeTopicEnabled();
+        updatedConfigsList.add(SEPARATE_REAL_TIME_TOPIC_ENABLED);
+      } else {
+        setStore.separateRealTimeTopicEnabled = originalStore.isSeparateRealTimeTopicEnabled();
+      }
+
+      if (updatedConfigs.contains(NEARLINE_PRODUCER_COMPRESSION_ENABLED)) {
+        setStore.nearlineProducerCompressionEnabled = updatedStore.isNearlineProducerCompressionEnabled();
+        updatedConfigsList.add(NEARLINE_PRODUCER_COMPRESSION_ENABLED);
+      } else {
+        setStore.nearlineProducerCompressionEnabled = originalStore.isNearlineProducerCompressionEnabled();
+      }
+
+      if (updatedConfigs.contains(NEARLINE_PRODUCER_COUNT_PER_WRITER)) {
+        setStore.nearlineProducerCountPerWriter = updatedStore.getNearlineProducerCountPerWriter();
+        updatedConfigsList.add(NEARLINE_PRODUCER_COUNT_PER_WRITER);
+      } else {
+        setStore.nearlineProducerCountPerWriter = originalStore.getNearlineProducerCountPerWriter();
+      }
+
+      if (updatedConfigs.contains(TARGET_SWAP_REGION)) {
+        setStore.targetSwapRegion = updatedStore.getTargetSwapRegion();
+        updatedConfigsList.add(TARGET_SWAP_REGION);
+      } else {
+        setStore.targetSwapRegion = originalStore.getTargetSwapRegion();
+      }
+
+      if (updatedConfigs.contains(TARGET_SWAP_REGION_WAIT_TIME)) {
+        setStore.targetSwapRegionWaitTime = updatedStore.getTargetSwapRegionWaitTime();
+        updatedConfigsList.add(TARGET_SWAP_REGION_WAIT_TIME);
+      } else {
+        setStore.targetSwapRegionWaitTime = originalStore.getTargetSwapRegionWaitTime();
+      }
+
+      if (updatedConfigs.contains(IS_DAVINCI_HEARTBEAT_REPORTED)) {
+        setStore.isDaVinciHeartBeatReported = updatedStore.getIsDavinciHeartbeatReported();
+        updatedConfigsList.add(IS_DAVINCI_HEARTBEAT_REPORTED);
+      } else {
+        setStore.isDaVinciHeartBeatReported = originalStore.getIsDavinciHeartbeatReported();
       }
 
       /**
@@ -2548,233 +2408,256 @@ public class VeniceParentHelixAdmin implements Admin {
        * do append-only and compaction will happen later.
        * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
-      setStore.storageQuotaInByte =
-          storageQuotaInByte.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
-              .orElseGet(currStore::getStorageQuotaInByte);
+      if (updatedConfigs.contains(STORAGE_QUOTA_IN_BYTE)) {
+        setStore.storageQuotaInByte = updatedStore.getStorageQuotaInByte();
+        updatedConfigsList.add(STORAGE_QUOTA_IN_BYTE);
+      } else {
+        setStore.storageQuotaInByte = originalStore.getStorageQuotaInByte();
+      }
 
-      setStore.accessControlled = accessControlled.map(addToUpdatedConfigList(updatedConfigsList, ACCESS_CONTROLLED))
-          .orElseGet(currStore::isAccessControlled);
-      setStore.compressionStrategy =
-          compressionStrategy.map(addToUpdatedConfigList(updatedConfigsList, COMPRESSION_STRATEGY))
-              .map(CompressionStrategy::getValue)
-              .orElse(currStore.getCompressionStrategy().getValue());
-      setStore.clientDecompressionEnabled =
-          clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, CLIENT_DECOMPRESSION_ENABLED))
-              .orElseGet(currStore::getClientDecompressionEnabled);
-      setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
-          .orElseGet(currStore::getBatchGetLimit);
-      setStore.numVersionsToPreserve =
-          numVersionsToPreserve.map(addToUpdatedConfigList(updatedConfigsList, NUM_VERSIONS_TO_PRESERVE))
-              .orElseGet(currStore::getNumVersionsToPreserve);
-      setStore.isMigrating =
-          storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION, ENABLE_STORE_MIGRATION))
+      if (updatedConfigs.contains(ACCESS_CONTROLLED)) {
+        setStore.accessControlled = updatedStore.isAccessControlled();
+        updatedConfigsList.add(ACCESS_CONTROLLED);
+      } else {
+        setStore.accessControlled = originalStore.isAccessControlled();
+      }
 
-              .orElseGet(currStore::isMigrating);
-      setStore.replicationMetadataVersionID = replicationMetadataVersionID
-          .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
-          .orElse(currStore.getRmdVersion());
-      setStore.readComputationEnabled =
-          readComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
-              .orElseGet(currStore::isReadComputationEnabled);
-      setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours
-          .map(addToUpdatedConfigList(updatedConfigsList, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
-          .orElseGet(currStore::getBootstrapToOnlineTimeoutInHours);
+      if (updatedConfigs.contains(COMPRESSION_STRATEGY)) {
+        setStore.compressionStrategy = updatedStore.getCompressionStrategy().getValue();
+        updatedConfigsList.add(COMPRESSION_STRATEGY);
+      } else {
+        setStore.compressionStrategy = originalStore.getCompressionStrategy().getValue();
+      }
+
+      if (updatedConfigs.contains(CLIENT_DECOMPRESSION_ENABLED)) {
+        setStore.clientDecompressionEnabled = updatedStore.getClientDecompressionEnabled();
+        updatedConfigsList.add(CLIENT_DECOMPRESSION_ENABLED);
+      } else {
+        setStore.clientDecompressionEnabled = originalStore.getClientDecompressionEnabled();
+      }
+
+      if (updatedConfigs.contains(BATCH_GET_LIMIT)) {
+        setStore.batchGetLimit = updatedStore.getBatchGetLimit();
+        updatedConfigsList.add(BATCH_GET_LIMIT);
+      } else {
+        setStore.batchGetLimit = originalStore.getBatchGetLimit();
+      }
+
+      if (updatedConfigs.contains(NUM_VERSIONS_TO_PRESERVE)) {
+        setStore.numVersionsToPreserve = updatedStore.getNumVersionsToPreserve();
+        updatedConfigsList.add(NUM_VERSIONS_TO_PRESERVE);
+      } else {
+        setStore.numVersionsToPreserve = originalStore.getNumVersionsToPreserve();
+      }
+
+      if (updatedConfigs.contains(ENABLE_STORE_MIGRATION)) {
+        setStore.isMigrating = updatedStore.isMigrating();
+        updatedConfigsList.add(ENABLE_STORE_MIGRATION);
+        updatedConfigsList.add(STORE_MIGRATION); // Legacy config
+      } else {
+        setStore.isMigrating = originalStore.isMigrating();
+      }
+
+      if (updatedConfigs.contains(REPLICATION_METADATA_PROTOCOL_VERSION_ID)) {
+        setStore.replicationMetadataVersionID = updatedStore.getRmdVersion();
+        updatedConfigsList.add(REPLICATION_METADATA_PROTOCOL_VERSION_ID);
+      } else {
+        setStore.replicationMetadataVersionID = originalStore.getRmdVersion();
+      }
+
+      if (updatedConfigs.contains(READ_COMPUTATION_ENABLED)) {
+        setStore.readComputationEnabled = updatedStore.isReadComputationEnabled();
+        updatedConfigsList.add(READ_COMPUTATION_ENABLED);
+      } else {
+        setStore.readComputationEnabled = originalStore.isReadComputationEnabled();
+      }
+
+      if (updatedConfigs.contains(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS)) {
+        setStore.bootstrapToOnlineTimeoutInHours = updatedStore.getBootstrapToOnlineTimeoutInHours();
+        updatedConfigsList.add(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+      } else {
+        setStore.bootstrapToOnlineTimeoutInHours = originalStore.getBootstrapToOnlineTimeoutInHours();
+      }
+
       setStore.leaderFollowerModelEnabled = true; // do not mess up during upgrades
-      setStore.backupStrategy = (backupStrategy.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_STRATEGY))
-          .orElse(currStore.getBackupStrategy())).ordinal();
 
-      setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED))
-          .orElse(currStore.isSchemaAutoRegisterFromPushJobEnabled());
-
-      setStore.hybridStoreDiskQuotaEnabled =
-          hybridStoreDiskQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, HYBRID_STORE_DISK_QUOTA_ENABLED))
-              .orElse(currStore.isHybridStoreDiskQuotaEnabled());
-
-      regularVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, REGULAR_VERSION_ETL_ENABLED));
-      futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
-      etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
-      setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(
-          currStore,
-          regularVersionETLEnabled,
-          futureVersionETLEnabled,
-          etledUserProxyAccount);
-
-      setStore.largestUsedVersionNumber =
-          largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
-              .orElseGet(currStore::getLargestUsedVersionNumber);
-
-      setStore.backupVersionRetentionMs =
-          backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
-              .orElseGet(currStore::getBackupVersionRetentionMs);
-      setStore.replicationFactor = replicationFactor.map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_FACTOR))
-          .orElseGet(currStore::getReplicationFactor);
-      setStore.migrationDuplicateStore =
-          migrationDuplicateStore.map(addToUpdatedConfigList(updatedConfigsList, MIGRATION_DUPLICATE_STORE))
-              .orElseGet(currStore::isMigrationDuplicateStore);
-      setStore.nativeReplicationSourceFabric = nativeReplicationSourceFabric
-          .map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_SOURCE_FABRIC))
-          .orElseGet((currStore::getNativeReplicationSourceFabric));
-
-      setStore.disableMetaStore =
-          params.disableMetaStore().map(addToUpdatedConfigList(updatedConfigsList, DISABLE_META_STORE)).orElse(false);
-
-      setStore.disableDavinciPushStatusStore = params.disableDavinciPushStatusStore()
-          .map(addToUpdatedConfigList(updatedConfigsList, DISABLE_DAVINCI_PUSH_STATUS_STORE))
-          .orElse(false);
-
-      setStore.storagePersona = personaName.map(addToUpdatedConfigList(updatedConfigsList, PERSONA_NAME)).orElse(null);
-
-      setStore.blobTransferEnabled = params.getBlobTransferEnabled()
-          .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_ENABLED))
-          .orElseGet(currStore::isBlobTransferEnabled);
-
-      setStore.separateRealTimeTopicEnabled =
-          separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
-              .orElseGet(currStore::isSeparateRealTimeTopicEnabled);
-
-      setStore.nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled()
-          .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COMPRESSION_ENABLED))
-          .orElseGet(currStore::isNearlineProducerCompressionEnabled);
-
-      setStore.nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter()
-          .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
-          .orElseGet(currStore::getNearlineProducerCountPerWriter);
-
-      setStore.targetSwapRegion = params.getTargetSwapRegion()
-          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
-          .orElseGet(currStore::getTargetSwapRegion);
-
-      setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
-          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
-          .orElseGet((currStore::getTargetSwapRegionWaitTime));
-
-      setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
-          .map(addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
-          .orElseGet((currStore::getIsDavinciHeartbeatReported));
-
-      // Check whether the passed param is valid or not
-      if (latestSupersetSchemaId.isPresent()) {
-        if (latestSupersetSchemaId.get() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          if (veniceHelixAdmin.getValueSchema(clusterName, storeName, latestSupersetSchemaId.get()) == null) {
-            throw new VeniceException(
-                "Unknown value schema id: " + latestSupersetSchemaId.get() + " in store: " + storeName);
-          }
-        }
-      }
-      setStore.latestSuperSetValueSchemaId =
-          latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
-              .orElseGet(currStore::getLatestSuperSetValueSchemaId);
-      setStore.storageNodeReadQuotaEnabled =
-          storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
-              .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
-      setStore.unusedSchemaDeletionEnabled =
-          unusedSchemaDeletionEnabled.map(addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
-              .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
-      setStore.minCompactionLagSeconds =
-          minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
-              .orElseGet(currStore::getMinCompactionLagSeconds);
-      setStore.maxCompactionLagSeconds =
-          maxCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MAX_COMPACTION_LAG_SECONDS))
-              .orElseGet(currStore::getMaxCompactionLagSeconds);
-      if (setStore.maxCompactionLagSeconds < setStore.minCompactionLagSeconds) {
-        throw new VeniceException(
-            "Store's max compaction lag seconds: " + setStore.maxCompactionLagSeconds + " shouldn't be smaller than "
-                + "store's min compaction lag seconds: " + setStore.minCompactionLagSeconds);
-      }
-      setStore.maxRecordSizeBytes =
-          maxRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_RECORD_SIZE_BYTES))
-              .orElseGet(currStore::getMaxRecordSizeBytes);
-      setStore.maxNearlineRecordSizeBytes =
-          maxNearlineRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
-              .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
-
-      StoragePersonaRepository repository =
-          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
-      StoragePersona personaToValidate = null;
-      StoragePersona existingPersona = repository.getPersonaContainingStore(currStore.getName());
-
-      if (params.getStoragePersona().isPresent()) {
-        personaToValidate = getVeniceHelixAdmin().getStoragePersona(clusterName, params.getStoragePersona().get());
-        if (personaToValidate == null) {
-          String errMsg = "UpdateStore command failed for store " + storeName + ".  The provided StoragePersona "
-              + params.getStoragePersona().get() + " does not exist.";
-          throw new VeniceException(errMsg);
-        }
-      } else if (existingPersona != null) {
-        personaToValidate = existingPersona;
+      if (updatedConfigs.contains(BACKUP_STRATEGY)) {
+        setStore.backupStrategy = updatedStore.getBackupStrategy().getValue();
+        updatedConfigsList.add(BACKUP_STRATEGY);
+      } else {
+        setStore.backupStrategy = originalStore.getBackupStrategy().getValue();
       }
 
-      if (personaToValidate != null) {
-        /**
-         * Create a new copy of the store with an updated quota, and validate this.
-         */
-        Store updatedQuotaStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
-        updatedQuotaStore.setStorageQuotaInByte(setStore.getStorageQuotaInByte());
-        repository.validateAddUpdatedStore(personaToValidate, Optional.of(updatedQuotaStore));
+      if (updatedConfigs.contains(AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED)) {
+        setStore.schemaAutoRegisterFromPushJobEnabled = updatedStore.isSchemaAutoRegisterFromPushJobEnabled();
+        updatedConfigsList.add(AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED);
+      } else {
+        setStore.schemaAutoRegisterFromPushJobEnabled = originalStore.isSchemaAutoRegisterFromPushJobEnabled();
+      }
+
+      if (updatedConfigs.contains(HYBRID_STORE_DISK_QUOTA_ENABLED)) {
+        setStore.hybridStoreDiskQuotaEnabled = updatedStore.isHybridStoreDiskQuotaEnabled();
+        updatedConfigsList.add(HYBRID_STORE_DISK_QUOTA_ENABLED);
+      } else {
+        setStore.hybridStoreDiskQuotaEnabled = originalStore.isHybridStoreDiskQuotaEnabled();
+      }
+
+      if (updatedConfigs.contains(REGULAR_VERSION_ETL_ENABLED)) {
+        updatedConfigsList.add(REGULAR_VERSION_ETL_ENABLED);
+      }
+
+      if (updatedConfigs.contains(FUTURE_VERSION_ETL_ENABLED)) {
+        updatedConfigsList.add(FUTURE_VERSION_ETL_ENABLED);
+      }
+
+      if (updatedConfigs.contains(ETLED_PROXY_USER_ACCOUNT)) {
+        updatedConfigsList.add(ETLED_PROXY_USER_ACCOUNT);
+      }
+
+      ETLStoreConfig etlStoreConfig = updatedStore.getEtlStoreConfig();
+      ETLStoreConfigRecord etlStoreConfigRecord = new ETLStoreConfigRecord();
+      etlStoreConfigRecord.regularVersionETLEnabled = etlStoreConfig.isRegularVersionETLEnabled();
+      etlStoreConfigRecord.futureVersionETLEnabled = etlStoreConfig.isFutureVersionETLEnabled();
+      etlStoreConfigRecord.etledUserProxyAccount = etlStoreConfig.getEtledUserProxyAccount();
+      setStore.ETLStoreConfig = etlStoreConfigRecord;
+
+      if (updatedConfigs.contains(LARGEST_USED_VERSION_NUMBER)) {
+        setStore.largestUsedVersionNumber = updatedStore.getLargestUsedVersionNumber();
+        updatedConfigsList.add(LARGEST_USED_VERSION_NUMBER);
+      } else {
+        setStore.largestUsedVersionNumber = originalStore.getLargestUsedVersionNumber();
+      }
+
+      if (updatedConfigs.contains(BACKUP_VERSION_RETENTION_MS)) {
+        setStore.backupVersionRetentionMs = updatedStore.getBackupVersionRetentionMs();
+        updatedConfigsList.add(BACKUP_VERSION_RETENTION_MS);
+      } else {
+        setStore.backupVersionRetentionMs = originalStore.getBackupVersionRetentionMs();
+      }
+
+      if (updatedConfigs.contains(REPLICATION_FACTOR)) {
+        setStore.replicationFactor = updatedStore.getReplicationFactor();
+        updatedConfigsList.add(REPLICATION_FACTOR);
+      } else {
+        setStore.replicationFactor = originalStore.getReplicationFactor();
+      }
+
+      if (updatedConfigs.contains(MIGRATION_DUPLICATE_STORE)) {
+        setStore.migrationDuplicateStore = updatedStore.isMigrationDuplicateStore();
+        updatedConfigsList.add(MIGRATION_DUPLICATE_STORE);
+      } else {
+        setStore.migrationDuplicateStore = originalStore.isMigrationDuplicateStore();
+      }
+
+      if (updatedConfigs.contains(NATIVE_REPLICATION_SOURCE_FABRIC)) {
+        setStore.nativeReplicationSourceFabric = updatedStore.getNativeReplicationSourceFabric();
+        updatedConfigsList.add(NATIVE_REPLICATION_SOURCE_FABRIC);
+      } else {
+        setStore.nativeReplicationSourceFabric = originalStore.getNativeReplicationSourceFabric();
+      }
+
+      if (updatedConfigs.contains(DISABLE_META_STORE)) {
+        setStore.disableMetaStore = !updatedStore.isStoreMetaSystemStoreEnabled();
+        updatedConfigsList.add(DISABLE_META_STORE);
+      } else {
+        setStore.disableMetaStore = !originalStore.isStoreMetaSystemStoreEnabled();
+      }
+
+      if (updatedConfigs.contains(DISABLE_DAVINCI_PUSH_STATUS_STORE)) {
+        setStore.disableDavinciPushStatusStore = !updatedStore.isDaVinciPushStatusStoreEnabled();
+        updatedConfigsList.add(DISABLE_DAVINCI_PUSH_STATUS_STORE);
+      } else {
+        setStore.disableDavinciPushStatusStore = !originalStore.isDaVinciPushStatusStoreEnabled();
+      }
+
+      if (updatedConfigs.contains(PERSONA_NAME)) {
+        setStore.storagePersona = params.getStoragePersona().get();
+        updatedConfigsList.add(PERSONA_NAME);
+      } else {
+        setStore.storagePersona = null;
+      }
+
+      if (updatedConfigs.contains(BLOB_TRANSFER_ENABLED)) {
+        setStore.blobTransferEnabled = updatedStore.isBlobTransferEnabled();
+        updatedConfigsList.add(BLOB_TRANSFER_ENABLED);
+      } else {
+        setStore.blobTransferEnabled = originalStore.isBlobTransferEnabled();
+      }
+
+      if (updatedConfigs.contains(MAX_RECORD_SIZE_BYTES)) {
+        setStore.maxRecordSizeBytes = updatedStore.getMaxRecordSizeBytes();
+        updatedConfigsList.add(MAX_RECORD_SIZE_BYTES);
+      } else {
+        setStore.maxRecordSizeBytes = originalStore.getMaxRecordSizeBytes();
+      }
+
+      if (updatedConfigs.contains(MAX_NEARLINE_RECORD_SIZE_BYTES)) {
+        setStore.maxNearlineRecordSizeBytes = updatedStore.getMaxNearlineRecordSizeBytes();
+        updatedConfigsList.add(MAX_NEARLINE_RECORD_SIZE_BYTES);
+      } else {
+        setStore.maxNearlineRecordSizeBytes = originalStore.getMaxRecordSizeBytes();
+      }
+
+      if (updatedConfigs.contains(LATEST_SUPERSET_SCHEMA_ID)) {
+        setStore.latestSuperSetValueSchemaId = updatedStore.getLatestSuperSetValueSchemaId();
+        updatedConfigsList.add(LATEST_SUPERSET_SCHEMA_ID);
+      } else {
+        setStore.latestSuperSetValueSchemaId = originalStore.getLatestSuperSetValueSchemaId();
+      }
+
+      if (updatedConfigs.contains(STORAGE_NODE_READ_QUOTA_ENABLED)) {
+        setStore.storageNodeReadQuotaEnabled = updatedStore.isStorageNodeReadQuotaEnabled();
+        updatedConfigsList.add(STORAGE_NODE_READ_QUOTA_ENABLED);
+      } else {
+        setStore.storageNodeReadQuotaEnabled = originalStore.isStorageNodeReadQuotaEnabled();
+      }
+
+      if (updatedConfigs.contains(UNUSED_SCHEMA_DELETION_ENABLED)) {
+        setStore.unusedSchemaDeletionEnabled = updatedStore.isUnusedSchemaDeletionEnabled();
+        updatedConfigsList.add(UNUSED_SCHEMA_DELETION_ENABLED);
+      } else {
+        setStore.unusedSchemaDeletionEnabled = originalStore.isUnusedSchemaDeletionEnabled();
+      }
+
+      if (updatedConfigs.contains(MIN_COMPACTION_LAG_SECONDS)) {
+        setStore.minCompactionLagSeconds = updatedStore.getMinCompactionLagSeconds();
+        updatedConfigsList.add(MIN_COMPACTION_LAG_SECONDS);
+      } else {
+        setStore.minCompactionLagSeconds = originalStore.getMinCompactionLagSeconds();
+      }
+
+      if (updatedConfigs.contains(MAX_COMPACTION_LAG_SECONDS)) {
+        setStore.maxCompactionLagSeconds = updatedStore.getMaxCompactionLagSeconds();
+        updatedConfigsList.add(MAX_COMPACTION_LAG_SECONDS);
+      } else {
+        setStore.maxCompactionLagSeconds = originalStore.getMaxCompactionLagSeconds();
+      }
+
+      if (updatedConfigs.contains(WRITE_COMPUTATION_ENABLED)) {
+        setStore.writeComputationEnabled = updatedStore.isWriteComputationEnabled();
+        updatedConfigsList.add(WRITE_COMPUTATION_ENABLED);
+      } else {
+        setStore.writeComputationEnabled = originalStore.isWriteComputationEnabled();
+      }
+
+      if (updatedConfigs.contains(CHUNKING_ENABLED)) {
+        setStore.chunkingEnabled = updatedStore.isChunkingEnabled();
+        updatedConfigsList.add(CHUNKING_ENABLED);
+      } else {
+        setStore.chunkingEnabled = originalStore.isChunkingEnabled();
+      }
+
+      if (updatedConfigs.contains(RMD_CHUNKING_ENABLED)) {
+        setStore.rmdChunkingEnabled = updatedStore.isRmdChunkingEnabled();
+        updatedConfigsList.add(RMD_CHUNKING_ENABLED);
+      } else {
+        setStore.rmdChunkingEnabled = originalStore.isRmdChunkingEnabled();
       }
 
       /**
        * Fabrics filter is not a store config, so we don't need to add it into {@link UpdateStore#updatedConfigsList}
        */
-      setStore.regionsFilter = regionsFilter.orElse(null);
-
-      // Update Partial Update config.
-      boolean partialUpdateConfigUpdated = ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig(
-          this,
-          clusterName,
-          storeName,
-          writeComputationEnabled,
-          setStore,
-          storeBeingConvertedToHybrid);
-      if (partialUpdateConfigUpdated) {
-        updatedConfigsList.add(WRITE_COMPUTATION_ENABLED);
-      }
-      boolean partialUpdateJustEnabled = setStore.writeComputationEnabled && !currStore.isWriteComputationEnabled();
-      // Update Chunking config.
-      boolean chunkingConfigUpdated = ParentControllerConfigUpdateUtils
-          .checkAndMaybeApplyChunkingConfigChange(this, clusterName, storeName, chunkingEnabled, setStore);
-      if (chunkingConfigUpdated) {
-        updatedConfigsList.add(CHUNKING_ENABLED);
-      }
-
-      // Update RMD Chunking config.
-      boolean rmdChunkingConfigUpdated = ParentControllerConfigUpdateUtils
-          .checkAndMaybeApplyRmdChunkingConfigChange(this, clusterName, storeName, rmdChunkingEnabled, setStore);
-      if (rmdChunkingConfigUpdated) {
-        updatedConfigsList.add(RMD_CHUNKING_ENABLED);
-      }
-
-      // Validate Amplification Factor config based on latest A/A and partial update status.
-      if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())
-          && updatedPartitionerConfig.getAmplificationFactor() > 1) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Non-default amplification factor is not compatible with active-active replication and/or partial update.",
-            ErrorType.BAD_REQUEST);
-      }
-
-      if (!getVeniceHelixAdmin().isHybrid(currStore.getHybridStoreConfig())
-          && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
-        // This is a new hybrid store and partition count is not specified.
-        VeniceControllerClusterConfig config =
-            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
-        setStore.setPartitionNum(
-            PartitionUtils.calculatePartitionCount(
-                storeName,
-                setStore.getStorageQuotaInByte(),
-                0,
-                config.getPartitionSize(),
-                config.getMinNumberOfPartitionsForHybrid(),
-                config.getMaxNumberOfPartitions(),
-                config.isPartitionCountRoundUpEnabled(),
-                config.getPartitionCountRoundUpSize()));
-        LOGGER.info(
-            "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
-            setStore.getPartitionNum(),
-            storeName);
-        updatedConfigsList.add(PARTITION_COUNT);
-      }
+      setStore.regionsFilter = params.getRegionsFilter().orElse(null);
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
@@ -2782,122 +2665,28 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       setStore.replicateAllConfigs = replicateAllConfigs;
       if (!replicateAllConfigs) {
-        if (updatedConfigsList.isEmpty()) {
-          String errMsg =
-              "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
-                  + " store config and didn't specify \"--replicate-all-configs\" flag.";
-          LOGGER.error(errMsg);
-          throw new VeniceException(errMsg);
-        }
         setStore.updatedConfigsList = new ArrayList<>(updatedConfigsList);
       } else {
         setStore.updatedConfigsList = Collections.emptyList();
-      }
-
-      final boolean readComputeJustEnabled =
-          readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-      boolean needToGenerateSupersetSchema =
-          !currStore.isSystemStore() && (readComputeJustEnabled || partialUpdateJustEnabled);
-      if (needToGenerateSupersetSchema) {
-        // dry run to make sure superset schema generation can work
-        getSupersetSchemaGenerator(clusterName)
-            .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
       }
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      if (needToGenerateSupersetSchema) {
-        addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
-      }
-      if (partialUpdateJustEnabled) {
-        LOGGER.info("Enabling partial update for the first time on store: {} in cluster: {}", storeName, clusterName);
-        addUpdateSchemaForStore(this, clusterName, storeName, false);
-      }
-
-      /**
-       * If active-active replication is getting enabled for the store, generate and register the Replication metadata schema
-       * for all existing value schemas.
-       */
-      final boolean activeActiveReplicationJustEnabled =
-          activeActiveReplicationEnabled.orElse(false) && !currStore.isActiveActiveReplicationEnabled();
-      if (activeActiveReplicationJustEnabled) {
-        updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
-      }
+      UpdateStoreUtils.handlePostUpdateActions(this, clusterName, storeName);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
-  private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(Map<String, String> stringMap, Store store) {
-    Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfigMap(stringMap);
-    Map<String, ViewConfig> validatedConfigs = new HashMap<>();
-    for (Map.Entry<String, ViewConfig> viewConfigEntry: configs.entrySet()) {
-      ViewConfig validatedViewConfig =
-          validateAndDecorateStoreViewConfig(store, viewConfigEntry.getValue(), viewConfigEntry.getKey());
-      validatedConfigs.put(viewConfigEntry.getKey(), validatedViewConfig);
-    }
-    return validatedConfigs;
-  }
-
-  private ViewConfig validateAndDecorateStoreViewConfig(Store store, ViewConfig viewConfig, String viewName) {
-    // TODO: Pass a proper properties object here. Today this isn't used in this context
-    if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
-      if (viewName.contains(VERSION_SEPARATOR)) {
-        throw new VeniceException(
-            String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
-      }
-      Map<String, String> viewParams = viewConfig.getViewParameters();
-      viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name(), viewName);
-      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name())) {
-        viewParams.put(
-            ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
-            store.getPartitionerConfig().getPartitionerClass());
-        if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
-          try {
-            viewParams.put(
-                ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name(),
-                ObjectMapperFactory.getInstance()
-                    .writeValueAsString(store.getPartitionerConfig().getPartitionerParams()));
-          } catch (JsonProcessingException e) {
-            throw new VeniceException("Failed to convert store partitioner params to string", e);
-          }
-        }
-      }
-      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
-        viewParams.put(
-            ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
-            Integer.toString(store.getPartitionCount()));
-      }
-      viewConfig.setViewParameters(viewParams);
-    }
-    VeniceView view =
-        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
-    view.validateConfigs();
-    return viewConfig;
-  }
-
-  private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
-    if (externalSupersetSchemaGenerator.isPresent() && getMultiClusterConfigs().getControllerConfig(clusterName)
-        .isParentExternalSupersetSchemaGenerationEnabled()) {
+  @Override
+  public SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
+    if (externalSupersetSchemaGenerator.isPresent()
+        && getMultiClusterConfigs().getControllerConfig(clusterName).isExternalSupersetSchemaGenerationEnabled()) {
       return externalSupersetSchemaGenerator.get();
     }
     return defaultSupersetSchemaGenerator;
-  }
-
-  private void addSupersetSchemaForStore(String clusterName, String storeName, boolean activeActiveReplicationEnabled) {
-    // Generate a superset schema and add it.
-    SchemaEntry supersetSchemaEntry = getSupersetSchemaGenerator(clusterName)
-        .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
-    final Schema supersetSchema = supersetSchemaEntry.getSchema();
-    final int supersetSchemaID = supersetSchemaEntry.getId();
-    addValueSchemaEntry(clusterName, storeName, supersetSchema.toString(), supersetSchemaID, true);
-
-    if (activeActiveReplicationEnabled) {
-      updateReplicationMetadataSchema(clusterName, storeName, supersetSchema, supersetSchemaID);
-    }
   }
 
   /**
@@ -2906,28 +2695,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
     getVeniceHelixAdmin().updateClusterConfig(clusterName, params);
-  }
-
-  private void validateActiveActiveReplicationEnableConfigs(
-      Optional<Boolean> activeActiveReplicationEnabledOptional,
-      Optional<Boolean> nativeReplicationEnabledOptional,
-      Store store) {
-    final boolean activeActiveReplicationEnabled = activeActiveReplicationEnabledOptional.orElse(false);
-    if (!activeActiveReplicationEnabled) {
-      return;
-    }
-
-    final boolean nativeReplicationEnabled = nativeReplicationEnabledOptional.isPresent()
-        ? nativeReplicationEnabledOptional.get()
-        : store.isNativeReplicationEnabled();
-
-    if (!nativeReplicationEnabled) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "Active/Active Replication cannot be enabled for store " + store.getName()
-              + " since Native Replication is not enabled on it.",
-          ErrorType.INVALID_CONFIG);
-    }
   }
 
   /**
@@ -3021,102 +2788,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private SchemaEntry addValueAndSupersetSchemaEntries(
-      String clusterName,
-      String storeName,
-      SchemaEntry newValueSchemaEntry,
-      SchemaEntry newSupersetSchemaEntry,
-      final boolean isWriteComputationEnabled) {
-    validateNewSupersetAndValueSchemaEntries(storeName, clusterName, newValueSchemaEntry, newSupersetSchemaEntry);
-    LOGGER.info(
-        "Adding value schema {} and superset schema {} to store: {} in cluster: {}",
-        newValueSchemaEntry,
-        newSupersetSchemaEntry,
-        storeName,
-        clusterName);
-
-    SupersetSchemaCreation supersetSchemaCreation =
-        (SupersetSchemaCreation) AdminMessageType.SUPERSET_SCHEMA_CREATION.getNewInstance();
-    supersetSchemaCreation.clusterName = clusterName;
-    supersetSchemaCreation.storeName = storeName;
-    SchemaMeta valueSchemaMeta = new SchemaMeta();
-    valueSchemaMeta.definition = newValueSchemaEntry.getSchemaStr();
-    valueSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-    supersetSchemaCreation.valueSchema = valueSchemaMeta;
-    supersetSchemaCreation.valueSchemaId = newValueSchemaEntry.getId();
-
-    SchemaMeta supersetSchemaMeta = new SchemaMeta();
-    supersetSchemaMeta.definition = newSupersetSchemaEntry.getSchemaStr();
-    supersetSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-    supersetSchemaCreation.supersetSchema = supersetSchemaMeta;
-    supersetSchemaCreation.supersetSchemaId = newSupersetSchemaEntry.getId();
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.SUPERSET_SCHEMA_CREATION.getValue();
-    message.payloadUnion = supersetSchemaCreation;
-
-    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    // Need to add RMD schemas for both new value schema and new superset schema.
-    updateReplicationMetadataSchema(
-        clusterName,
-        storeName,
-        newValueSchemaEntry.getSchema(),
-        newValueSchemaEntry.getId());
-    updateReplicationMetadataSchema(
-        clusterName,
-        storeName,
-        newSupersetSchemaEntry.getSchema(),
-        newSupersetSchemaEntry.getId());
-    if (isWriteComputationEnabled) {
-      Schema newValueWriteComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(newValueSchemaEntry.getSchema());
-      Schema newSuperSetWriteComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(newSupersetSchemaEntry.getSchema());
-      addDerivedSchema(clusterName, storeName, newValueSchemaEntry.getId(), newValueWriteComputeSchema.toString());
-      addDerivedSchema(
-          clusterName,
-          storeName,
-          newSupersetSchemaEntry.getId(),
-          newSuperSetWriteComputeSchema.toString());
-    }
-    updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setLatestSupersetSchemaId(newSupersetSchemaEntry.getId()));
-    return newValueSchemaEntry;
-  }
-
-  private void validateNewSupersetAndValueSchemaEntries(
-      String storeName,
-      String clusterName,
-      SchemaEntry newValueSchemaEntry,
-      SchemaEntry newSupersetSchemaEntry) {
-    if (newValueSchemaEntry.getId() == newSupersetSchemaEntry.getId()) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Superset schema ID and value schema ID are expected to be different for store %s in cluster %s. "
-                  + "Got ID: %d",
-              storeName,
-              clusterName,
-              newValueSchemaEntry.getId()));
-    }
-    if (AvroSchemaUtils
-        .compareSchemaIgnoreFieldOrder(newValueSchemaEntry.getSchema(), newSupersetSchemaEntry.getSchema())) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Superset and value schemas are expected to be different for store %s in cluster %s. Got schema: %s",
-              storeName,
-              clusterName,
-              newValueSchemaEntry.getSchema()));
-    }
-  }
-
   private SchemaEntry addValueSchemaEntry(
       String clusterName,
       String storeName,
       String valueSchemaStr,
-      final int newValueSchemaId,
-      final boolean doUpdateSupersetSchemaID) {
+      final int newValueSchemaId) {
     LOGGER.info("Adding value schema: {} to store: {} in cluster: {}", valueSchemaStr, storeName, clusterName);
 
     ValueSchemaCreation valueSchemaCreation =
@@ -3142,25 +2818,71 @@ public class VeniceParentHelixAdmin implements Admin {
               + actualValueSchemaId);
     }
 
-    if (doUpdateSupersetSchemaID) {
-      updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(newValueSchemaId));
-    }
-
     return new SchemaEntry(actualValueSchemaId, valueSchemaStr);
   }
 
-  /**
-   * Unsupported operation in the parent controller.
-   */
   @Override
-  public SchemaEntry addSupersetSchema(
+  public void addSupersetSchema(
       String clusterName,
       String storeName,
       String valueSchemaStr,
       int valueSchemaId,
       String supersetSchemaStr,
       int supersetSchemaId) {
-    throw new VeniceUnsupportedOperationException("addSupersetSchema");
+    acquireAdminMessageLock(clusterName, storeName);
+    try {
+      if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        throw new VeniceException("Invalid superset schema id: " + supersetSchemaId);
+      }
+
+      ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+      final SchemaEntry existingSupersetSchemaEntry = schemaRepository.getValueSchema(storeName, supersetSchemaId);
+      if (existingSupersetSchemaEntry != null) {
+        final Schema newSupersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(supersetSchemaStr);
+        if (!AvroSchemaUtils
+            .compareSchemaIgnoreFieldOrder(existingSupersetSchemaEntry.getSchema(), newSupersetSchema)) {
+          throw new VeniceException(
+              "Existing schema with id " + existingSupersetSchemaEntry.getId() + " does not match with new schema "
+                  + supersetSchemaStr);
+        }
+      }
+
+      if (valueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        LOGGER.info(
+            "Adding superset schema {} with id {} to store: {} in cluster: {}",
+            supersetSchemaStr,
+            supersetSchemaId,
+            storeName,
+            clusterName);
+        valueSchemaStr = "";
+      } else if (StringUtils.isEmpty(valueSchemaStr)) {
+        throw new VeniceException("Invalid value schema string: " + valueSchemaStr);
+      }
+
+      SupersetSchemaCreation supersetSchemaCreation =
+          (SupersetSchemaCreation) AdminMessageType.SUPERSET_SCHEMA_CREATION.getNewInstance();
+      supersetSchemaCreation.clusterName = clusterName;
+      supersetSchemaCreation.storeName = storeName;
+      SchemaMeta valueSchemaMeta = new SchemaMeta();
+      valueSchemaMeta.definition = valueSchemaStr;
+      valueSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+      supersetSchemaCreation.valueSchema = valueSchemaMeta;
+      supersetSchemaCreation.valueSchemaId = valueSchemaId;
+
+      SchemaMeta supersetSchemaMeta = new SchemaMeta();
+      supersetSchemaMeta.definition = supersetSchemaStr;
+      supersetSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+      supersetSchemaCreation.supersetSchema = supersetSchemaMeta;
+      supersetSchemaCreation.supersetSchemaId = supersetSchemaId;
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.SUPERSET_SCHEMA_CREATION.getValue();
+      message.payloadUnion = supersetSchemaCreation;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
+    }
   }
 
   @Override
@@ -3172,78 +2894,14 @@ public class VeniceParentHelixAdmin implements Admin {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-
-      final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
-      Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-
-      final boolean doUpdateSupersetSchemaID;
-      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
-        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
-        String newSuperSetSchemaStr = newSuperSetSchema.toString();
-        if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
-          doUpdateSupersetSchemaID = true;
-
-        } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
-          doUpdateSupersetSchemaID = false;
-
-        } else if (store.isSystemStore()) {
-          /**
-           * Do not register superset schema for system store for now. Because some system stores specify the schema ID
-           * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
-           * could fail.
-           *
-           * TODO: Design a long-term plan.
-           */
-          doUpdateSupersetSchemaID = false;
-
-        } else {
-          // Register superset schema only if it does not match with existing or new schema.
-
-          // validate compatibility of the new superset schema
-          getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-              clusterName,
-              storeName,
-              newSuperSetSchemaStr,
-              expectedCompatibilityType);
-          // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
-          // one.
-          int supersetSchemaId = getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(
-              clusterName,
-              storeName,
-              newSuperSetSchemaStr,
-              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
-          if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-            supersetSchemaId = schemaId + 1;
-          }
-          return addValueAndSupersetSchemaEntries(
-              clusterName,
-              storeName,
-              new SchemaEntry(schemaId, newValueSchema),
-              new SchemaEntry(supersetSchemaId, newSuperSetSchema),
-              store.isWriteComputationEnabled());
-        }
-      } else {
-        doUpdateSupersetSchemaID = false;
+      if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+        return new SchemaEntry(getValueSchemaId(clusterName, storeName, newValueSchemaStr), newValueSchemaStr);
       }
-      SchemaEntry addedSchemaEntry =
-          addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId, doUpdateSupersetSchemaID);
 
-      /**
-       * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
-       * for this newly added value schema.
-       */
-      if (store.isActiveActiveReplicationEnabled()) {
-        Schema latestValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-        final int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
-        updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
-      }
-      if (store.isWriteComputationEnabled()) {
-        Schema newWriteComputeSchema =
-            writeComputeSchemaConverter.convertFromValueRecordSchema(addedSchemaEntry.getSchema());
-        addDerivedSchema(clusterName, storeName, addedSchemaEntry.getId(), newWriteComputeSchema.toString());
-      }
+      SchemaEntry addedSchemaEntry = addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId);
+
+      // Now register all inferred schemas for the store.
+      PrimaryControllerConfigUpdateUtils.registerInferredSchemas(this, clusterName, storeName);
 
       return addedSchemaEntry;
     } finally {
@@ -3369,8 +3027,8 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       RmdSchemaEntry rmdSchemaEntry =
           new RmdSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-      final boolean replicationMetadataSchemaAlreadyPresent = getVeniceHelixAdmin()
-          .checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, rmdSchemaEntry);
+      final boolean replicationMetadataSchemaAlreadyPresent =
+          getVeniceHelixAdmin().checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, rmdSchemaEntry);
       if (replicationMetadataSchemaAlreadyPresent) {
         LOGGER.info(
             "Replication metadata schema already exists for store: {} in cluster: {} metadataSchema: {} "
@@ -3473,36 +3131,6 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       VeniceSystemStoreType veniceSystemStoreType) {
     throw new VeniceUnsupportedOperationException("validateAndMaybeRetrySystemStoreAutoCreation");
-  }
-
-  private void updateReplicationMetadataSchemaForAllValueSchema(String clusterName, String storeName) {
-    final Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
-    for (SchemaEntry valueSchemaEntry: valueSchemas) {
-      updateReplicationMetadataSchema(clusterName, storeName, valueSchemaEntry.getSchema(), valueSchemaEntry.getId());
-    }
-  }
-
-  private void updateReplicationMetadataSchema(
-      String clusterName,
-      String storeName,
-      Schema valueSchema,
-      int valueSchemaId) {
-    final int rmdVersionId = getRmdVersionID(storeName, clusterName);
-    final boolean valueSchemaAlreadyHasRmdSchema = getVeniceHelixAdmin()
-        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
-    if (valueSchemaAlreadyHasRmdSchema) {
-      LOGGER.info(
-          "Store {} in cluster {} already has a replication metadata schema for its value schema with ID {} and "
-              + "replication metadata version ID {}. So skip updating this value schema's RMD schema.",
-          storeName,
-          clusterName,
-          valueSchemaId,
-          rmdVersionId);
-      return;
-    }
-    String replicationMetadataSchemaStr =
-        RmdSchemaGenerator.generateMetadataSchema(valueSchema, rmdVersionId).toString();
-    addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, rmdVersionId, replicationMetadataSchemaStr);
   }
 
   /**
@@ -3947,7 +3575,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public Pair<NodeReplicasReadinessState, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
-    throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
+    throw new VeniceUnsupportedOperationException("nodeReplicaReadiness");
   }
 
   private StoreInfo getStoreInChildRegion(String regionName, String clusterName, String storeName) {
@@ -4591,36 +4219,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Check if etled proxy account is set before enabling any ETL and return a {@link ETLStoreConfigRecord}
-   */
-  private ETLStoreConfigRecord mergeNewSettingIntoOldETLStoreConfig(
-      Store store,
-      Optional<Boolean> regularVersionETLEnabled,
-      Optional<Boolean> futureVersionETLEnabled,
-      Optional<String> etledUserProxyAccount) {
-    ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
-    /**
-     * If etl enabled is true (either current version or future version), then account name must be specified in the command
-     * and it's not empty, or the store metadata already contains a non-empty account name.
-     */
-    if (regularVersionETLEnabled.orElse(false) || futureVersionETLEnabled.orElse(false)) {
-      if ((!etledUserProxyAccount.isPresent() || etledUserProxyAccount.get().isEmpty())
-          && (etlStoreConfig.getEtledUserProxyAccount() == null
-              || etlStoreConfig.getEtledUserProxyAccount().isEmpty())) {
-        throw new VeniceException("Cannot enable ETL for this store because etled user proxy account is not set");
-      }
-    }
-    ETLStoreConfigRecord etlStoreConfigRecord = new ETLStoreConfigRecord();
-    etlStoreConfigRecord.etledUserProxyAccount =
-        etledUserProxyAccount.orElse(etlStoreConfig.getEtledUserProxyAccount());
-    etlStoreConfigRecord.regularVersionETLEnabled =
-        regularVersionETLEnabled.orElse(etlStoreConfig.isRegularVersionETLEnabled());
-    etlStoreConfigRecord.futureVersionETLEnabled =
-        futureVersionETLEnabled.orElse(etlStoreConfig.isFutureVersionETLEnabled());
-    return etlStoreConfigRecord;
-  }
-
-  /**
    * This parses the input accessPermission string to create ACL's and provision them using the authorizerService interface.
    *
    * The json interface to acl API always accepts a list of "principal" which are "ALLOWED" to perform "method"
@@ -4770,7 +4368,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       LOGGER.info("ACLProvisioning: UpdateAcl for store: {} in cluster: {}", storeName, clusterName);
       if (!authorizerService.isPresent()) {
-        throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
+        throw new VeniceUnsupportedOperationException("updateAclForStore");
       }
       Store store = getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName);
       provisionAclsForStore(
@@ -4790,7 +4388,7 @@ public class VeniceParentHelixAdmin implements Admin {
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(regularStoreName)) {
       if (!authorizerService.isPresent()) {
-        throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
+        throw new VeniceUnsupportedOperationException("updateAclForStore");
       }
       getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, regularStoreName);
       authorizerService.get().setAcls(systemStoreAclBinding);
@@ -4806,7 +4404,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       LOGGER.info("ACLProvisioning: GetAcl for store: {} in cluster: {}", storeName, clusterName);
       if (!authorizerService.isPresent()) {
-        throw new VeniceUnsupportedOperationException("getAclForStore is not supported yet!");
+        throw new VeniceUnsupportedOperationException("getAclForStore");
       }
       getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName);
       String accessPerms = fetchAclsForStore(storeName);
@@ -4823,7 +4421,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       LOGGER.info("ACLProvisioning: DeleteAcl for store: {} in cluster: {}", storeName, clusterName);
       if (!authorizerService.isPresent()) {
-        throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported yet!");
+        throw new VeniceUnsupportedOperationException("deleteAclForStore");
       }
       Store store = getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName);
       if (!store.isMigrating()) {
@@ -4989,6 +4587,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * @see Admin#isPrimary()
+   */
+  @Override
+  public boolean isPrimary() {
+    return getVeniceHelixAdmin().isPrimary();
+  }
+
+  /**
    * @see Admin#getParentControllerRegionState()
    */
   @Override
@@ -5088,24 +4694,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public VeniceHelixAdmin getVeniceHelixAdmin() {
     return veniceHelixAdmin;
-  }
-
-  private <T> Function<T, T> addToUpdatedConfigList(List<CharSequence> updatedConfigList, String config) {
-    return (configValue) -> {
-      updatedConfigList.add(config);
-      return configValue;
-    };
-  }
-
-  static private <T> Function<T, T> addToUpdatedConfigList(
-      List<CharSequence> updatedConfigList,
-      String config,
-      String legacyConfigName) {
-    return (configValue) -> {
-      updatedConfigList.add(config);
-      updatedConfigList.add(legacyConfigName);
-      return configValue;
-    };
   }
 
   /**
@@ -5374,7 +4962,8 @@ public class VeniceParentHelixAdmin implements Admin {
     return lingeringStoreVersionChecker;
   }
 
-  VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
+  @Override
+  public VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
 
@@ -5426,6 +5015,13 @@ public class VeniceParentHelixAdmin implements Admin {
       Set<String> owners) {
     getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
 
+    StoragePersonaRepository repository =
+        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+    if (repository.hasPersona(name)) {
+      throw new VeniceException("Persona with name " + name + " already exists");
+    }
+    repository.validatePersona(name, quotaNumber, storesToEnforce, owners);
+
     CreateStoragePersona createStoragePersona =
         (CreateStoragePersona) AdminMessageType.CREATE_STORAGE_PERSONA.getNewInstance();
     createStoragePersona.setClusterName(clusterName);
@@ -5438,12 +5034,6 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.CREATE_STORAGE_PERSONA.getValue();
     message.payloadUnion = createStoragePersona;
 
-    StoragePersonaRepository repository =
-        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
-    if (repository.hasPersona(name)) {
-      throw new VeniceException("Persona with name " + name + " already exists");
-    }
-    repository.validatePersona(name, quotaNumber, storesToEnforce, owners);
     sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
@@ -5480,6 +5070,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateStoragePersona(String clusterName, String name, UpdateStoragePersonaQueryParams queryParams) {
     getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+
+    StoragePersonaRepository repository =
+        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+    repository.validatePersonaUpdate(name, queryParams);
+
     UpdateStoragePersona updateStoragePersona =
         (UpdateStoragePersona) AdminMessageType.UPDATE_STORAGE_PERSONA.getNewInstance();
     updateStoragePersona.setClusterName(clusterName);
@@ -5491,9 +5086,6 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.UPDATE_STORAGE_PERSONA.getValue();
     message.payloadUnion = updateStoragePersona;
 
-    StoragePersonaRepository repository =
-        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
-    repository.validatePersonaUpdate(name, queryParams);
     sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 

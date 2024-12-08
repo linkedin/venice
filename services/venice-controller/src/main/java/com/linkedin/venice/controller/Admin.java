@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
@@ -15,6 +16,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
@@ -398,7 +400,14 @@ public interface Admin extends AutoCloseable, Closeable {
         SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
   }
 
-  SchemaEntry addSupersetSchema(
+  /**
+   * Add a new superset schema for the given store with all specified properties.
+   * <p>
+   *   Generate the superset schema off the current schema and latest superset schema (if any. If not, pick the latest
+   *   value schema) existing in the store.
+   *   If the newly generated superset schema is unique add it to the store and update latestSuperSetValueSchemaId of the store.
+   */
+  void addSupersetSchema(
       String clusterName,
       String storeName,
       String valueSchemaStr,
@@ -458,8 +467,6 @@ public interface Admin extends AutoCloseable, Closeable {
   void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter);
 
   void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter);
-
-  void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 
   void setStoreOwner(String clusterName, String storeName, String owner);
 
@@ -768,6 +775,13 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean isParent();
 
   /**
+   * The "Primary Controller" term is used to refer to whichever controller is the main controller in a Venice set-up.
+   * In a multi-region deployment, the primary controller is the parent controller.
+   * In a single-region deployment, the primary controller is the only controller.
+   */
+  boolean isPrimary();
+
+  /**
    * Return the state of the region of the parent controller.
    * @return {@link ParentControllerRegionState#ACTIVE} which means that the parent controller in the region is serving requests.
    * Otherwise, return {@link ParentControllerRegionState#PASSIVE}
@@ -1022,4 +1036,21 @@ public interface Admin extends AutoCloseable, Closeable {
   HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster);
 
   PubSubTopicRepository getPubSubTopicRepository();
+
+  default Schema getSupersetOrLatestValueSchema(String clusterName, Store store) {
+    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    // If already a superset schema exists, try to generate the new superset from that and the input value schema
+    SchemaEntry existingSchema = schemaRepository.getSupersetOrLatestValueSchema(store.getName());
+    return existingSchema == null ? null : existingSchema.getSchema();
+  }
+
+  /**
+   * Return the current superset schema generator for the given cluster.
+   */
+  SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName);
+
+  /**
+   * Return the multi-cluster configs for the controller.
+   */
+  VeniceControllerMultiClusterConfig getMultiClusterConfigs();
 }

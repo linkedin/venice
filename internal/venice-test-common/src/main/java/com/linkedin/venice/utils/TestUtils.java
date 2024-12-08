@@ -628,10 +628,10 @@ public class TestUtils {
       String storeName,
       ControllerClient parentControllerClient,
       List<ControllerClient> controllerClientList) {
-    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\"").isError());
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client: controllerClientList) {
-        Assert.assertFalse(client.getStore(storeName).isError());
+        assertCommand(client.getStore(storeName));
       }
     });
   }

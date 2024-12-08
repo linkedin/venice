@@ -31,4 +31,9 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
   void setRealTimeTopicName(String realTimeTopicName);
 
   HybridStoreConfig clone();
+
+  default boolean isHybrid() {
+    return getRewindTimeInSeconds() >= 0
+        && (getOffsetLagThresholdToGoOnline() >= 0 || getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
+  }
 }

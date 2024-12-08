@@ -9,6 +9,10 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
@@ -36,7 +40,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
-import static com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper.addKafkaClusterIDMappingToServerConfigs;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -63,12 +66,14 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -101,7 +106,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private final ClientConfig consumerClientConfig;
   private final SSLFactory sslFactory;
   private final File dataDirectory;
-  private String regionName;
+  private final String regionName;
   private final String serverD2ServiceName;
 
   /**
@@ -302,7 +307,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Map<String, Map<String, String>> finalKafkaClusterMap = kafkaClusterMap;
       if (finalKafkaClusterMap == null || finalKafkaClusterMap.isEmpty()) {
         finalKafkaClusterMap = addKafkaClusterIDMappingToServerConfigs(
-            Optional.ofNullable(serverProps.toProperties()),
+            serverProps.toProperties(),
             Collections.singletonList(regionName),
             Arrays.asList(pubSubBrokerWrapper, pubSubBrokerWrapper));
         LOGGER.info("PubSub cluster map was not provided. Constructed the following map: {}", finalKafkaClusterMap);
@@ -500,6 +505,70 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   @Override
   public String getComponentTagForLogging() {
     return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
+  }
+
+  static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
+      Properties serverProperties,
+      List<String> regionNames,
+      List<PubSubBrokerWrapper> kafkaBrokers) {
+    if (serverProperties != null) {
+      PubSubSecurityProtocol baseSecurityProtocol = PubSubSecurityProtocol
+          .valueOf(serverProperties.getProperty(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name()));
+      Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
+      Map<String, String> mapping;
+      for (int i = 1; i <= regionNames.size(); i++) {
+        int clusterId = i - 1;
+        String regionName = regionNames.get(clusterId);
+        PubSubSecurityProtocol securityProtocol = baseSecurityProtocol;
+        if (clusterId > 0) {
+          // Testing mixed security on any 2-layer setup with 2 or more DCs.
+          securityProtocol = PubSubSecurityProtocol.SSL;
+        }
+        PubSubBrokerWrapper pubSubBrokerWrapper = kafkaBrokers.get(i);
+        mapping = prepareKafkaClusterMappingInfo(regionName, pubSubBrokerWrapper, securityProtocol, "");
+        kafkaClusterMap.put(String.valueOf(clusterId), mapping);
+      }
+
+      for (int i = 1 + regionNames.size(); i <= 2 * regionNames.size(); i++) {
+        int clusterId = i - 1;
+        String regionName = regionNames.get(clusterId - regionNames.size());
+        PubSubBrokerWrapper pubSubBrokerWrapper = kafkaBrokers.get(i - regionNames.size());
+        mapping = prepareKafkaClusterMappingInfo(
+            regionName,
+            pubSubBrokerWrapper,
+            baseSecurityProtocol,
+            Utils.SEPARATE_TOPIC_SUFFIX);
+        kafkaClusterMap.put(String.valueOf(clusterId), mapping);
+      }
+
+      LOGGER.info(
+          "addKafkaClusterIDMappingToServerConfigs \n\treceived broker list: \n\t\t{} \n\tand generated cluster map: \n\t\t{}",
+          kafkaBrokers.stream().map(PubSubBrokerWrapper::toString).collect(Collectors.joining("\n\t\t")),
+          kafkaClusterMap.entrySet().stream().map(Objects::toString).collect(Collectors.joining("\n\t\t")));
+      return kafkaClusterMap;
+    } else {
+      return Collections.emptyMap();
+    }
+  }
+
+  private static Map<String, String> prepareKafkaClusterMappingInfo(
+      String regionName,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
+      PubSubSecurityProtocol securityProtocol,
+      String suffix) {
+    Map<String, String> mapping = new HashMap<>();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, regionName + suffix);
+    mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name());
+
+    String kafkaAddress = securityProtocol == PubSubSecurityProtocol.SSL
+        ? pubSubBrokerWrapper.getSSLAddress()
+        : pubSubBrokerWrapper.getAddress();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaAddress + suffix);
+    String otherKafkaAddress = securityProtocol == PubSubSecurityProtocol.PLAINTEXT
+        ? pubSubBrokerWrapper.getSSLAddress()
+        : pubSubBrokerWrapper.getAddress();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS, otherKafkaAddress + suffix);
+    return mapping;
   }
 
   public static void main(String args[]) throws Exception {

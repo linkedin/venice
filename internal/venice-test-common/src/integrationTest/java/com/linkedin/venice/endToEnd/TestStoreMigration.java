@@ -77,12 +77,12 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -378,7 +378,7 @@ public class TestStoreMigration {
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
 
       // Store migration status output via closure PrintFunction
-      Set<String> statusOutput = new HashSet<String>();
+      List<String> statusOutput = new ArrayList<>();
       PrintFunction printFunction = (message) -> {
         statusOutput.add(message.trim());
         System.err.println(message);
@@ -412,21 +412,22 @@ public class TestStoreMigration {
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
 
       // Verify that store and system store only exist in destination cluster after ending migration
-      statusOutput.clear();
       StoreMigrationTestUtil
           .endMigration(parentControllerUrl, childControllerUrl0, storeName, srcClusterName, destClusterName);
-      StoreMigrationTestUtil
-          .checkMigrationStatus(parentControllerUrl, storeName, srcClusterName, destClusterName, printFunction);
 
-      Assert.assertFalse(
-          statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)),
-          statusOutput.toString());
-      Assert
-          .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
-      Assert.assertFalse(
-          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
-      Assert.assertTrue(
-          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        statusOutput.clear();
+        StoreMigrationTestUtil
+            .checkMigrationStatus(parentControllerUrl, storeName, srcClusterName, destClusterName, printFunction);
+        Assert.assertFalse(
+            statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)));
+        Assert.assertTrue(
+            statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
+        Assert.assertFalse(
+            statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
+        Assert.assertTrue(
+            statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
+      });
     } finally {
       Utils.closeQuietlyWithErrorLogged(pushStatusStoreReader);
       D2ClientUtils.shutdownClient(d2Client);
@@ -676,7 +677,7 @@ public class TestStoreMigration {
           () -> assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
 
       // Store migration status output via closure PrintFunction
-      Set<String> statusOutput = new HashSet<String>();
+      List<String> statusOutput = new ArrayList<>();
       AdminTool.PrintFunction printFunction = (message) -> {
         statusOutput.add(message.trim());
         System.err.println(message);
@@ -765,7 +766,7 @@ public class TestStoreMigration {
           () -> assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
 
       // Store migration status output via closure PrintFunction
-      Set<String> statusOutput = new HashSet<String>();
+      List<String> statusOutput = new ArrayList<>();
       AdminTool.PrintFunction printFunction = (message) -> {
         statusOutput.add(message.trim());
         System.err.println(message);

@@ -20,6 +20,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.util.AdminUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -34,7 +35,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -65,8 +69,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -83,7 +87,6 @@ public class IngestionHeartBeatTest {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceControllerWrapper parentController;
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private String storeName;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -110,17 +113,6 @@ public class IngestionHeartBeatTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @AfterTest(alwaysRun = true)
-  public void cleanupStore() {
-    if (this.parentController != null) {
-      String parentControllerUrl = parentController.getControllerUrl();
-      try (ControllerClient parentControllerClient =
-          new ControllerClient(multiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {
-        parentControllerClient.disableAndDeleteStore(storeName);
-      }
-    }
-  }
-
   @DataProvider
   public static Object[][] AAConfigAndIncPushAndDRPProvider() {
     return DataProviderUtils
@@ -132,7 +124,7 @@ public class IngestionHeartBeatTest {
       boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
       DataReplicationPolicy dataReplicationPolicy) throws IOException, InterruptedException {
-    storeName = Utils.getUniqueString("ingestionHeartBeatTest");
+    String storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
@@ -149,22 +141,44 @@ public class IngestionHeartBeatTest {
           parentControllerClient
               .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
       StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+
+      HybridStoreConfig expectedHybridStoreConfig =
+          new HybridStoreConfigImpl(500L, 10L, -1, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
+
+      boolean isIncrementalPushAllowed =
+          AdminUtils.isIncrementalPushSupported(true, isActiveActiveEnabled, expectedHybridStoreConfig);
+
+      // ACTIVE_ACTIVE DRP is only supported for stores with AA enabled
+      boolean isAAConfigSupported =
+          isActiveActiveEnabled || dataReplicationPolicy != DataReplicationPolicy.ACTIVE_ACTIVE;
+
+      boolean isConfigSupported = isAAConfigSupported && (!isIncrementalPushEnabled || isIncrementalPushAllowed);
+
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setIncrementalPushEnabled(isIncrementalPushEnabled)
               .setHybridRewindSeconds(500L)
               .setHybridOffsetLagThreshold(10L)
               .setPartitionCount(2)
               .setReplicationFactor(2)
-              .setNativeReplicationEnabled(true)
+              .setNativeReplicationEnabled(true);
+      assertCommand(parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams)));
+
+      UpdateStoreQueryParams updateStoreParams2 =
+          new UpdateStoreQueryParams().setIncrementalPushEnabled(isIncrementalPushEnabled)
               .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
               .setHybridDataReplicationPolicy(dataReplicationPolicy);
-
       ControllerResponse updateStoreResponse =
-          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams2));
 
-      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+      if (isConfigSupported) {
+        assertCommand(updateStoreResponse);
+      } else {
+        assertTrue(updateStoreResponse.isError());
+      }
+
+      // Batch push should always succeed. Incremental push should succeed if the config update succeeded.
+      boolean shouldPushSucceed = !isIncrementalPushEnabled || isConfigSupported;
 
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
@@ -180,26 +194,43 @@ public class IngestionHeartBeatTest {
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
         runVPJ(vpjProperties, expectedVersionNumber, childControllerClient);
+        if (!shouldPushSucceed) {
+          Assert.fail("Push should have failed");
+        }
+      } catch (Exception e) {
+        if (shouldPushSucceed) {
+          Assert.fail("Push should not fail", e);
+        }
       }
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       veniceClusterWrapper.waitVersion(storeName, expectedVersionNumber);
 
-      // Verify data pushed via full push/inc push using client
-      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-          try {
-            for (int i = 1; i < 100; i++) {
-              String key = String.valueOf(i);
-              GenericRecord value = readValue(storeReader, key);
-              assertNotNull(value, "Key " + key + " should not be missing!");
-              assertEquals(value.get("firstName").toString(), "first_name_" + key);
-              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+      if (shouldPushSucceed) {
+        // Verify data pushed via full push/inc push using client
+        try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+            try {
+              for (int i = 1; i < 100; i++) {
+                String key = String.valueOf(i);
+                GenericRecord value = readValue(storeReader, key);
+                assertNotNull(value, "Key " + key + " should not be missing!");
+                assertEquals(value.get("firstName").toString(), "first_name_" + key);
+                assertEquals(value.get("lastName").toString(), "last_name_" + key);
+              }
+            } catch (Exception e) {
+              throw new VeniceException(e);
             }
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
-        });
+          });
+        }
+      }
+
+      // Since the config combination is not supported, we can either validate the heartbeats using the default values,
+      // or skip the validation. Here, we choose to skip it since the default validation case will be one of the
+      // permutations where the heartbeats will get validated.
+      if (!isConfigSupported) {
+        return;
       }
 
       // create consumer to consume from RT/VT to verify HB and Leader completed header
@@ -250,7 +281,7 @@ public class IngestionHeartBeatTest {
       boolean isRealTime) throws InterruptedException {
     String topicToSubscribeTo = isRealTime
         ? Utils.getRealTimeTopicName(storeInfo)
-        : Version.composeKafkaTopic(storeName, isIncrementalPushEnabled ? 1 : 2);
+        : Version.composeKafkaTopic(storeInfo.getName(), isIncrementalPushEnabled ? 1 : 2);
     pubSubConsumer.subscribe(
         new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topicToSubscribeTo), partition),
         0);
@@ -282,6 +313,7 @@ public class IngestionHeartBeatTest {
           break;
         }
       }
+
       if ((!isIncrementalPushEnabled || isActiveActiveEnabled)
           && (isActiveActiveEnabled || dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)) {
         assertTrue(
