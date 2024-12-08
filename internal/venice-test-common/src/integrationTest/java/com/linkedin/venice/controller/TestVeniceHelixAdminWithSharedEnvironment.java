@@ -483,27 +483,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     veniceAdmin.setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
 
-    veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled());
-
-    veniceAdmin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, 48);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getBootstrapToOnlineTimeoutInHours(), 48);
-
-    veniceAdmin.setHybridStoreDiskQuotaEnabled(clusterName, storeName, true);
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybridStoreDiskQuotaEnabled());
-
-    // test setting per-store RMD (replication metadata) version ID
-    int rmdVersion = veniceAdmin.getStore(clusterName, storeName).getRmdVersion();
-    Assert.assertEquals(rmdVersion, -1);
-
-    veniceAdmin.setReplicationMetadataVersionID(clusterName, storeName, 2);
-    rmdVersion = veniceAdmin.getStore(clusterName, storeName).getRmdVersion();
-    Assert.assertNotEquals(rmdVersion, -1);
-    Assert.assertEquals(rmdVersion, 2);
-
-    // test hybrid config
-    // set incrementalPushEnabled to be false as hybrid and incremental are mutex
-    veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
     veniceAdmin.updateStore(
         clusterName,
@@ -649,26 +628,22 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     Store store = veniceAdmin.getStore(clusterName, storeName);
+
+    // Must not be able to get a real time topic if the store is not hybrid
+    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getRealTimeTopic(clusterName, storeName));
+
     veniceAdmin.updateStore(
         clusterName,
         storeName,
         new UpdateStoreQueryParams().setHybridRewindSeconds(25L).setHybridOffsetLagThreshold(100L)); // make store
                                                                                                      // hybrid
 
-    try {
-      veniceAdmin.getRealTimeTopic(clusterName, storeName);
-      Assert.fail("Must not be able to get a real time topic until the store is initialized with a version");
-    } catch (VeniceException e) {
-      Assert.assertTrue(
-          e.getMessage().contains("is not initialized with a version"),
-          "Got unexpected error message: " + e.getMessage());
-    }
+    Assert.assertEquals(veniceAdmin.getRealTimeTopic(clusterName, storeName), Utils.getRealTimeTopicName(store));
 
     int partitions = 2; // TODO verify partition count for RT topic.
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitions, 1);
 
-    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
-    Assert.assertEquals(rtTopic, Utils.getRealTimeTopicName(store));
+    Assert.assertEquals(veniceAdmin.getRealTimeTopic(clusterName, storeName), Utils.getRealTimeTopicName(store));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -1473,32 +1448,26 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
-  public void testSetLargestUsedVersion() {
-    String storeName = "testSetLargestUsedVersion";
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
-    Store store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
-
-    Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertTrue(version.getNumber() > 0);
-    Assert.assertEquals(store.getLargestUsedVersionNumber(), version.getNumber());
-
-    veniceAdmin.setStoreLargestUsedVersion(clusterName, storeName, 0);
-    store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
-  }
-
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testWriteComputationEnabled() {
     String storeName = Utils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    String VALUE_FIELD_NAME = "int_field";
+    String SECOND_VALUE_FIELD_NAME = "opt_int_field";
+    String VALUE_SCHEMA_V2_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n"
+        + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
+        + VALUE_FIELD_NAME + "\", \"type\": \"int\", \"default\": 10},\n" + "{\"name\": \"" + SECOND_VALUE_FIELD_NAME
+        + "\", \"type\": [\"null\", \"int\"], \"default\": null}]\n" + "}";
+
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", VALUE_SCHEMA_V2_STR);
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isWriteComputationEnabled());
 
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+            .setHybridOffsetLagThreshold(1000)
+            .setWriteComputationEnabled(true));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isWriteComputationEnabled());
   }
@@ -1749,10 +1718,15 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String pushJobId1 = "test-push-job-id-1";
     veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     /**
-     * Enable L/F and Active/Active replication
+     * Enable L/F, NR and Active/Active replication
      */
-    veniceAdmin
-        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setHybridOffsetLagThreshold(1000)
+            .setHybridRewindSeconds(1000));
 
     /**
      * Add version 1
@@ -1902,7 +1876,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+        new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+            .setActiveActiveReplicationEnabled(true)
+            .setChunkingEnabled(true)
+            .setHybridOffsetLagThreshold(1)
             .setHybridRewindSeconds(1)
             .setStoreViews(viewConfig));
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);

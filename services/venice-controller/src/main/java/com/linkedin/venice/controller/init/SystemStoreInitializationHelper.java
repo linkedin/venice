@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.init;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.util.PrimaryControllerConfigUpdateUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -162,6 +163,11 @@ public final class SystemStoreInitializationHelper {
     }
 
     if (updateStoreQueryParams != null && updateStoreCheckSupplier.apply(store)) {
+      if (store.getPartitionCount() == 0 && !updateStoreQueryParams.getPartitionCount().isPresent()) {
+        updateStoreQueryParams
+            .setPartitionCount(multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions());
+      }
+
       admin.updateStore(clusterName, systemStoreName, updateStoreQueryParams);
 
       store = RetryUtils.executeWithMaxAttempt(() -> {
@@ -173,16 +179,31 @@ public final class SystemStoreInitializationHelper {
           throw new VeniceException("Unable to update store " + systemStoreName);
         }
 
+        if (internalStore.getPartitionCount() == 0) {
+          throw new VeniceException("Partition count is still 0 after updating store " + systemStoreName);
+        }
+
         return internalStore;
       }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
 
       LOGGER.info("Updated internal store " + systemStoreName + " in cluster " + clusterName);
     }
 
+    boolean activeActiveReplicationEnabled = false;
+    if (updateStoreQueryParams != null) {
+      activeActiveReplicationEnabled = updateStoreQueryParams.getActiveActiveReplicationEnabled().orElse(false);
+    }
+
+    if (activeActiveReplicationEnabled) {
+      // Now that store has enabled A/A and all value schemas are registered, register RMD schemas
+      PrimaryControllerConfigUpdateUtils
+          .updateReplicationMetadataSchemaForAllValueSchema(admin, clusterName, systemStoreName);
+    }
+
     long onlineVersionCount =
         store.getVersions().stream().filter(version -> version.getStatus() == VersionStatus.ONLINE).count();
     if (onlineVersionCount == 0) {
-      int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions();
+      int partitionCount = store.getPartitionCount();
       int replicationFactor = admin.getReplicationFactor(clusterName, systemStoreName);
       Version version = admin.incrementVersionIdempotent(
           clusterName,
