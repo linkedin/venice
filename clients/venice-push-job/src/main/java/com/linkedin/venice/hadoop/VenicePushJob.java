@@ -400,6 +400,15 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
+
+    // If target region push with deferred version swap is enabled, enable deferVersionSwap and
+    // isTargetedRegionPushEnabled
+    if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
+      pushJobSettingToReturn.deferVersionSwap = true;
+      pushJobSettingToReturn.isTargetedRegionPushEnabled = true;
+      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
+    }
+
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
         pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
@@ -501,14 +510,6 @@ public class VenicePushJob implements AutoCloseable {
       Class objectClass = ReflectUtils.loadClass(dataWriterComputeJobClass);
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
-    }
-
-    // If target region push with deferred version swap is enabled, enable deferVersionSwap and
-    // isTargetedRegionPushEnabled
-    if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
-      pushJobSettingToReturn.deferVersionSwap = true;
-      pushJobSettingToReturn.isTargetedRegionPushEnabled = true;
-      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
     }
 
     return pushJobSettingToReturn;

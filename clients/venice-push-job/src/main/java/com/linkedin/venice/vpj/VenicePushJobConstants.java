@@ -327,7 +327,8 @@ public final class VenicePushJobConstants {
   /**
    * Config to enable target region push with deferred version swap
    * In this mode, the VPJ will push data to all regions and only switch to the new version in a single region.
-   * The single region is decided by the store config in {@link StoreInfo#getNativeReplicationSourceFabric()}}.
+   * The single region is decided by the store config in {@link StoreInfo#getNativeReplicationSourceFabric()}} unless
+   * a list of regions is passed in from targeted.region.push.list
    * After a specified wait time (default 1h), the remaining regions will switch to the new version.
    */
   public static final String TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP = "targeted.region.push.with.deferred.swap";

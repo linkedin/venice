@@ -927,14 +927,17 @@ public class VenicePushJobTest {
   @Test
   public void testTargetRegionPushWithDeferredSwapSettings() {
     Properties props = getVpjRequiredProperties();
+    String regions = "test1, test2";
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, regions);
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, getClient())) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertEquals(pushJobSetting.deferVersionSwap, true);
       Assert.assertEquals(pushJobSetting.isTargetedRegionPushEnabled, true);
+      Assert.assertEquals(pushJobSetting.targetedRegions, regions);
     }
   }
 
