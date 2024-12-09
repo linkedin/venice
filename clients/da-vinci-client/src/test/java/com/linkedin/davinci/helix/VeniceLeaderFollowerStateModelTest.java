@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -144,11 +145,12 @@ public class VeniceLeaderFollowerStateModelTest extends
     verify(mockParticipantStateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(mockParticipantStateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
 
+    reset(mockParticipantStateTransitionStats);
     // if the resource is the current serving version, state transition thread will be blocked. And it will be blocked
     // again for drop partition action if it's done asynchronously via SIT
     when(mockStore.getCurrentVersion()).thenReturn(1);
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
-    verify(mockParticipantStateTransitionStats, times(3)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    verify(mockParticipantStateTransitionStats, times(3)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(mockParticipantStateTransitionStats, times(2)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(mockParticipantStateTransitionStats, times(2)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
   }
 }
