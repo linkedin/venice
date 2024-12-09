@@ -85,7 +85,16 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.*;
+import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1351,11 +1360,10 @@ public class DaVinciClientTest {
 
       DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
       storeBackend = daVinciBackend.getStoreOrThrow(storeName1);
-      List<Integer> partitions = new ArrayList<Integer>();
-      partitions.add(1);
-      partitions.add(2);
-      partitions.add(3);
-      partitions.add(4);
+      List<Integer> partitions = new ArrayList<>();
+      for (int i = 0; i < 5; ++i) {
+        partitions.add(i);
+      }
       ComplementSet<Integer> subscription = ComplementSet.newSet(partitions);
       storeBackend.subscribe(subscription);
 
