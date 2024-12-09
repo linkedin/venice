@@ -291,6 +291,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRepushOrchestratorClassName();
   }
 
+  public boolean isLogCompactionEnabled() {
+    return getCommonConfig().isLogCompactionEnabled();
+  }
+
   public int getScheduledLogCompactionThreadCount() {
     return getCommonConfig().getScheduledLogCompactionThreadCount();
   }

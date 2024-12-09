@@ -192,7 +192,7 @@ public class VeniceController {
     unusedValueSchemaCleanupService = Optional.empty();
 
     Admin admin = controllerService.getVeniceHelixAdmin();
-    if (multiClusterConfigs.getCommonConfig().isLogCompactionEnabled()) {
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
       logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
       LOGGER.info("LogCompactionService is initialised");
     }
@@ -255,7 +255,7 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
-    if (multiClusterConfigs.getCommonConfig().isLogCompactionEnabled()) {
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
       logCompactionService.start();
     }
 
