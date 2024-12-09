@@ -91,10 +91,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         long startTime = System.currentTimeMillis();
         // Copy the previous iteration's reset tracker resources and remove them from the set if they are still relevant
         irrelevantResources.addAll(errorPartitionResetTracker.keySet());
-        readOnlyStoreRepository.getAllStores()
-            .stream()
-            .filter(s -> !s.isSystemStore())
-            .forEach(this::resetApplicableErrorPartitions);
+        readOnlyStoreRepository.getAllStores().forEach(this::resetApplicableErrorPartitions);
 
         // Remove all the irrelevant entries from the error partition reset tracker
         for (String irrelevantResource: irrelevantResources) {

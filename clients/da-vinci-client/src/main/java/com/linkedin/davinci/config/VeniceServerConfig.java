@@ -138,6 +138,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
@@ -492,7 +493,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseForBackupVersionNoReadThresholdMS;
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
   private final boolean unregisterMetricForDeletedStoreEnabled;
-  private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
+  protected final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
+  private final boolean resetErrorReplicaEnabled;
   private final int fastAvroFieldLimitPerMethod;
 
   /**
@@ -652,9 +654,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     remoteIngestionRepairSleepInterval = serverProperties.getInt(
         SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
         RemoteIngestionRepairService.DEFAULT_REPAIR_THREAD_SLEEP_INTERVAL_SECONDS);
-
     readOnlyForBatchOnlyStoreEnabled =
         serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
+    resetErrorReplicaEnabled = serverProperties.getBoolean(SERVER_RESET_ERROR_REPLICA_ENABLED, false);
     databaseSyncBytesIntervalForTransactionalMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024);
     databaseSyncBytesIntervalForDeferredWriteMode =
@@ -1479,6 +1481,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {
     return readOnlyForBatchOnlyStoreEnabled;
+  }
+
+  public boolean isResetErrorReplicaEnabled() {
+    return resetErrorReplicaEnabled;
   }
 
   public int getFastAvroFieldLimitPerMethod() {

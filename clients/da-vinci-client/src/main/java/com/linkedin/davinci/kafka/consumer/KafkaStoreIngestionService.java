@@ -84,6 +84,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -113,6 +114,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.Schema;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -190,6 +192,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
 
+  private VeniceServerConfig serverConfig;
+
+  private Lazy<ZKHelixAdmin> zkHelixAdmin;
+
   public KafkaStoreIngestionService(
       StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
@@ -212,7 +218,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
-      HeartbeatMonitoringService heartbeatMonitoringService) {
+      HeartbeatMonitoringService heartbeatMonitoringService,
+      Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storageService = storageService;
     this.cacheBackend = cacheBackend;
     this.recordTransformerFunction = recordTransformerFunction;
@@ -223,10 +230,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
+    this.zkHelixAdmin = zkHelixAdmin;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
-
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    this.serverConfig = veniceConfigLoader.getVeniceServerConfig();
     Properties veniceWriterProperties =
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
 
@@ -434,9 +441,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
      * remaining disk space state to provide a more accurate alert.
      */
-    DiskUsage diskUsage = new DiskUsage(
-        veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
-        veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
+    DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
 
@@ -530,7 +535,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction);
+        recordTransformerFunction,
+        zkHelixAdmin);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -768,7 +774,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   public boolean isLiveUpdateSuppressionEnabled() {
-    return veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+    return serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
   }
 
   @Override
@@ -1131,7 +1137,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
       Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
