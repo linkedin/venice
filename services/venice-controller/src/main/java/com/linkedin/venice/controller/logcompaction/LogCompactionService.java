@@ -28,8 +28,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class LogCompactionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(LogCompactionService.class);
-  private static final String SCHEDULED_TRIGGER = "Scheduled";
-  private static final String MANUAL_TRIGGER = "Manual";
+  public static final String SCHEDULED_TRIGGER = "Scheduled";
+  public static final String MANUAL_TRIGGER = "Manual";
 
   private static final int SCHEDULED_EXECUTOR_TIMEOUT_S = 60;
   public static final int PRE_EXECUTION_DELAY_MS = 0;
@@ -48,7 +48,7 @@ public class LogCompactionService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     executor.scheduleAtFixedRate(
-        new LogCompactionTask(multiClusterConfigs.getClusters()),
+        new LogCompactionTask(multiClusterConfigs.getClusters(), SCHEDULED_TRIGGER),
         PRE_EXECUTION_DELAY_MS,
         multiClusterConfigs.getScheduledLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
@@ -72,19 +72,24 @@ public class LogCompactionService extends AbstractVeniceService {
 
   private class LogCompactionTask implements Runnable {
     private final Set<String> clusters;
-    // TODO: field: triggerSource
+    private final String triggerSource;
 
-    private LogCompactionTask(Set<String> clusters) {
+    private LogCompactionTask(Set<String> clusters, String triggerSource) {
       this.clusters = clusters;
+      this.triggerSource = triggerSource;
     }
 
     @Override
     public void run() {
       for (String clusterName: clusters) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
-          /*TODO: response =*/admin.compactStore(storeInfo.getName());
-          // TODO: if response is not success, log error
-          LOGGER.info("log compaction triggered for cluster: {} store: {}", clusterName, storeInfo.getName());
+          /*TODO LC: response =*/admin.compactStore(storeInfo.getName());
+          // TODO LC: if response is not success, log error
+          LOGGER.info(
+              "{} log compaction triggered for cluster: {} store: {}",
+              triggerSource,
+              clusterName,
+              storeInfo.getName());
         }
       }
     }
