@@ -40,6 +40,7 @@ public class TestPushJobHeartbeatSender {
     doReturn(partitionerConfig).when(storeInfo).getPartitionerConfig();
     doReturn(storeInfo).when(storeResponse).getStore();
     doReturn(storeResponse).when(controllerClient).getStore(heartbeatStoreName);
+    doReturn(heartbeatStoreName).when(storeInfo).getName();
 
     // Value Schema prepare.
     MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);

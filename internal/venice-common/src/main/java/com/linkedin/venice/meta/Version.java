@@ -303,10 +303,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 
-  static String composeRealTimeTopic(String storeName) {
-    return storeName + REAL_TIME_TOPIC_SUFFIX;
-  }
-
   static String composeSeparateRealTimeTopic(String storeName) {
     return storeName + SEPARATE_REAL_TIME_TOPIC_SUFFIX;
   }
