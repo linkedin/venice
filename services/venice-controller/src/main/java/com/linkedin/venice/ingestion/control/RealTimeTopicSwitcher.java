@@ -191,7 +191,6 @@ public class RealTimeTopicSwitcher {
         getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs);
       }
     }
-
   }
 
   long getRewindStartTime(
