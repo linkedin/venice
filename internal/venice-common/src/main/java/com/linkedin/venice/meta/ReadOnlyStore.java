@@ -893,7 +893,10 @@ public class ReadOnlyStore implements Store {
     storeProperties.setReadQuotaInCU(getReadQuotaInCU());
 
     // Hybrid Config
-    storeProperties.setHybridConfig(convertHybridStoreConfig(getHybridStoreConfig()));
+    StoreHybridConfig storeHybridConfig = convertHybridStoreConfig(getHybridStoreConfig());
+    if (storeHybridConfig != null) {
+      storeProperties.setHybridConfig(storeHybridConfig);
+    }
 
     // View Configs
     Map<String, ViewConfig> viewConfigs = getViewConfigs();
@@ -1029,7 +1032,10 @@ public class ReadOnlyStore implements Store {
     List<Version> versions = getVersions();
     List<StoreVersion> storeVersions = new ArrayList<>();
     for (Version version: versions) {
-      storeVersions.add(convertVersion(version));
+      StoreVersion storeVersion = convertVersion(version);
+      if (storeVersion != null) {
+        storeVersions.add(storeVersion);
+      }
     }
     storeProperties.setVersions(storeVersions);
 
@@ -1050,7 +1056,10 @@ public class ReadOnlyStore implements Store {
       List<Version> systemStoreVersions = systemStoreAttributes.getVersions();
       List<StoreVersion> systemStorePropertiesVersions = new ArrayList<>();
       for (Version version: systemStoreVersions) {
-        systemStorePropertiesVersions.add(convertVersion(version));
+        StoreVersion storeVersion = convertVersion(version);
+        if (storeVersion != null) {
+          systemStorePropertiesVersions.add(storeVersion);
+        }
       }
       systemStoreProperties.setVersions(systemStorePropertiesVersions);
 
@@ -1698,6 +1707,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private StoreVersion convertVersion(Version version) {
+    if (version == null) {
+      return null;
+    }
     StoreVersion storeVersion = new StoreVersion();
 
     // Store Name
@@ -1767,7 +1779,10 @@ public class ReadOnlyStore implements Store {
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
 
     // Hybrid Config
-    storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
+    StoreHybridConfig storeHybridConfig = convertHybridStoreConfig(version.getHybridStoreConfig());
+    if (storeHybridConfig != null) {
+      storeVersion.setHybridConfig(storeHybridConfig);
+    }
 
     // Use Version Level Hybrid Config
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());

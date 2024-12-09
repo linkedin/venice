@@ -88,5 +88,9 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     assertNotNull(record.storeMetaValue.storeValueSchemas);
     assertNotNull(record.helixGroupInfo);
     assertNotNull(record.routingInfo);
+
+    // Close
+    veniceServerWrapper.close();
+    veniceCluster.close();
   }
 }
