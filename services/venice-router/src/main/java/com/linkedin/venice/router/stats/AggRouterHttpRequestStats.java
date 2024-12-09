@@ -129,7 +129,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
    */
   public void recordThrottledRequest(String storeName, HttpResponseStatus httpResponseStatus) {
     totalStats.recordThrottledRequest(httpResponseStatus);
-    getStoreStats(storeName).recordThrottledRequest(httpResponseStatus);
+    recordStoreStats(storeName, stats -> stats.recordThrottledRequest(httpResponseStatus));
   }
 
   public void recordThrottledRequest(String storeName, double latency, HttpResponseStatus httpResponseStatus) {
