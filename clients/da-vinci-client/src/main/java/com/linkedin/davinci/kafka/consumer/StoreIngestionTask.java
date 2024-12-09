@@ -2319,10 +2319,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-        LOGGER.info(
-            "Topic: {} exists: {}",
-            pubSubTopic,
-            getTopicManager(kafkaUrl).containsTopicAndAllPartitionsAreOnline(pubSubTopic, partition));
         long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
         if (offset == UNKNOWN_LATEST_OFFSET) {
           throw new VeniceException("Latest offset is unknown. Check if the topic exists.");

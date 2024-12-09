@@ -17,6 +17,7 @@ public class RequestTopicForPushRequest {
   private boolean sendStartOfPush = false;
   private boolean sorted = false; // an inefficient but safe default
   private boolean isWriteComputeEnabled = false;
+  private boolean separateRealTimeTopicEnabled = false;
   private long rewindTimeInSecondsOverride = -1L;
   private boolean deferVersionSwap = false;
   private String targetedRegions = null;
@@ -174,5 +175,13 @@ public class RequestTopicForPushRequest {
 
   public void setEmergencySourceRegion(String emergencySourceRegion) {
     this.emergencySourceRegion = emergencySourceRegion;
+  }
+
+  public boolean isSeparateRealTimeTopicEnabled() {
+    return separateRealTimeTopicEnabled;
+  }
+
+  public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
+    this.separateRealTimeTopicEnabled = separateRealTimeTopicEnabled;
   }
 }

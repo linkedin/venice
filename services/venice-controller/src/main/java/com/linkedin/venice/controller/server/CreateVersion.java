@@ -94,6 +94,11 @@ public class CreateVersion extends AbstractRoute {
             httpRequest.queryParamOrDefault(IS_WRITE_COMPUTE_ENABLED, "false"),
             IS_WRITE_COMPUTE_ENABLED));
 
+    request.setSeparateRealTimeTopicEnabled(
+        Utils.parseBooleanFromString(
+            httpRequest.queryParamOrDefault(SEPARATE_REAL_TIME_TOPIC_ENABLED, "false"),
+            SEPARATE_REAL_TIME_TOPIC_ENABLED));
+
     /*
      * Version-level rewind time override, and it is only valid for hybrid stores.
      */
@@ -224,11 +229,12 @@ public class CreateVersion extends AbstractRoute {
     return version.getCompressionStrategy();
   }
 
-  static String determineResponseTopic(String storeName, Version version, PushType pushType) {
+  static String determineResponseTopic(String storeName, Version version, RequestTopicForPushRequest request) {
     String responseTopic;
+    PushType pushType = request.getPushType();
     if (pushType == PushType.INCREMENTAL) {
       // If incremental push with a dedicated real-time topic is enabled then use the separate real-time topic
-      if (version.isSeparateRealTimeTopicEnabled()) {
+      if (version.isSeparateRealTimeTopicEnabled() && request.isSeparateRealTimeTopicEnabled()) {
         responseTopic = Version.composeSeparateRealTimeTopic(storeName);
       } else {
         responseTopic = Version.composeRealTimeTopic(storeName);
@@ -283,7 +289,7 @@ public class CreateVersion extends AbstractRoute {
     // Set the version number
     response.setVersion(version.getNumber());
     // Set the response topic
-    response.setKafkaTopic(determineResponseTopic(storeName, version, pushType));
+    response.setKafkaTopic(determineResponseTopic(storeName, version, request));
     // Set the compression strategy
     response.setCompressionStrategy(getCompressionStrategy(version, response.getKafkaTopic()));
     // Set the bootstrap servers

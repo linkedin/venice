@@ -14,9 +14,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
@@ -26,6 +26,7 @@ import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.AGGREGATE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NONE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
+import static com.linkedin.venice.meta.Version.PushType.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -62,7 +63,6 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -122,7 +122,7 @@ public class CreateVersionTest {
     queryMap.put(NAME, new String[] { STORE_NAME });
     queryMap.put(STORE_SIZE, new String[] { "0" });
     queryMap.put(REPUSH_SOURCE_VERSION, new String[] { "0" });
-    queryMap.put(PUSH_TYPE, new String[] { PushType.INCREMENTAL.name() });
+    queryMap.put(PUSH_TYPE, new String[] { INCREMENTAL.name() });
     queryMap.put(PUSH_JOB_ID, new String[] { JOB_ID });
     queryMap.put(HOSTNAME, new String[] { "localhost" });
 
@@ -195,7 +195,7 @@ public class CreateVersionTest {
             JOB_ID,
             0,
             0,
-            PushType.INCREMENTAL,
+            INCREMENTAL,
             false,
             false,
             null,
@@ -254,7 +254,7 @@ public class CreateVersionTest {
             JOB_ID,
             0,
             0,
-            PushType.INCREMENTAL,
+            INCREMENTAL,
             false,
             false,
             null,
@@ -308,7 +308,7 @@ public class CreateVersionTest {
             JOB_ID,
             0,
             0,
-            PushType.INCREMENTAL,
+            INCREMENTAL,
             false,
             false,
             null,
@@ -500,35 +500,35 @@ public class CreateVersionTest {
     // push type is STREAM and store is not hybrid
     Store store1 = mock(Store.class);
     when(store1.isHybrid()).thenReturn(false);
-    Exception e = expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.STREAM, store1));
+    Exception e = expectThrows(VeniceException.class, () -> createVersion.validatePushType(STREAM, store1));
     assertTrue(e.getMessage().contains("which is not configured to be a hybrid store"));
 
     // push type is STREAM and store is AA enabled hybrid
     Store store2 = mock(Store.class);
     when(store2.isHybrid()).thenReturn(true);
     when(store2.isActiveActiveReplicationEnabled()).thenReturn(true);
-    createVersion.validatePushType(PushType.STREAM, store2);
+    createVersion.validatePushType(STREAM, store2);
 
     // push type is STREAM and store is not AA enabled hybrid but has NON_AGGREGATE replication policy
     Store store3 = mock(Store.class);
     when(store3.isHybrid()).thenReturn(true);
     when(store3.isActiveActiveReplicationEnabled()).thenReturn(false);
     when(store3.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NON_AGGREGATE, REWIND_FROM_EOP));
-    createVersion.validatePushType(PushType.STREAM, store3);
+    createVersion.validatePushType(STREAM, store3);
 
     // push type is STREAM and store is not AA enabled hybrid but has AGGREGATE replication policy
     Store store4 = mock(Store.class);
     when(store4.isHybrid()).thenReturn(true);
     when(store4.isActiveActiveReplicationEnabled()).thenReturn(false);
     when(store4.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, AGGREGATE, REWIND_FROM_EOP));
-    createVersion.validatePushType(PushType.STREAM, store4);
+    createVersion.validatePushType(STREAM, store4);
 
     // push type is STREAM and store is not AA enabled hybrid but has NONE replication policy
     Store store5 = mock(Store.class);
     when(store5.isHybrid()).thenReturn(true);
     when(store5.isActiveActiveReplicationEnabled()).thenReturn(false);
     when(store5.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NONE, REWIND_FROM_EOP));
-    Exception e5 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.STREAM, store5));
+    Exception e5 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(STREAM, store5));
     assertTrue(e5.getMessage().contains("which is configured to have a hybrid data replication policy"));
 
     // push type is STREAM and store is not AA enabled hybrid but has ACTIVE_ACTIVE replication policy
@@ -536,7 +536,7 @@ public class CreateVersionTest {
     when(store6.isHybrid()).thenReturn(true);
     when(store6.isActiveActiveReplicationEnabled()).thenReturn(false);
     when(store6.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, ACTIVE_ACTIVE, REWIND_FROM_EOP));
-    Exception e6 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.STREAM, store6));
+    Exception e6 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(STREAM, store6));
     assertTrue(e6.getMessage().contains("which is configured to have a hybrid data replication policy"));
   }
 
@@ -547,16 +547,14 @@ public class CreateVersionTest {
     // push type is INCREMENTAL and store is not hybrid
     Store store1 = mock(Store.class);
     when(store1.isHybrid()).thenReturn(false);
-    Exception e =
-        expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.INCREMENTAL, store1));
+    Exception e = expectThrows(VeniceException.class, () -> createVersion.validatePushType(INCREMENTAL, store1));
     assertTrue(e.getMessage().contains("which does not have hybrid mode enabled"));
 
     // push type is INCREMENTAL and store is hybrid but incremental push is not enabled
     Store store2 = mock(Store.class);
     when(store2.isHybrid()).thenReturn(true);
     when(store2.isIncrementalPushEnabled()).thenReturn(false);
-    Exception e2 =
-        expectThrows(VeniceException.class, () -> createVersion.validatePushType(PushType.INCREMENTAL, store2));
+    Exception e2 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(INCREMENTAL, store2));
     assertTrue(e2.getMessage().contains("which does not have incremental push enabled"));
   }
 
@@ -567,8 +565,7 @@ public class CreateVersionTest {
     doCallRealMethod().when(mockRequest).queryParamOrDefault(anyString(), anyString());
     doReturn(null).when(mockRequest).queryParams(any());
 
-    RequestTopicForPushRequest requestDetails =
-        new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, PushType.BATCH, JOB_ID);
+    RequestTopicForPushRequest requestDetails = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
 
     CreateVersion.extractOptionalParamsFromRequestTopicRequest(mockRequest, requestDetails, false);
 
@@ -605,7 +602,7 @@ public class CreateVersionTest {
     when(mockRequest.queryParams(SOURCE_GRID_FABRIC)).thenReturn("grid-fabric");
     when(mockRequest.queryParams(COMPRESSION_DICTIONARY)).thenReturn("XYZ");
 
-    requestDetails = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, PushType.BATCH, JOB_ID);
+    requestDetails = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
 
     CreateVersion.extractOptionalParamsFromRequestTopicRequest(mockRequest, requestDetails, false);
 
@@ -632,7 +629,7 @@ public class CreateVersionTest {
     when(mockRequest.queryParams(SEND_START_OF_PUSH)).thenReturn("notBoolean");
     when(mockRequest.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE)).thenReturn("invalidLong");
 
-    requestDetails = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, PushType.BATCH, JOB_ID);
+    requestDetails = new RequestTopicForPushRequest(CLUSTER_NAME, STORE_NAME, BATCH, JOB_ID);
     Request finalMockRequest = mockRequest;
     RequestTopicForPushRequest finalRequestDetails = requestDetails;
     VeniceHttpException e = expectThrows(
@@ -696,37 +693,53 @@ public class CreateVersionTest {
     String srTopicName = Version.composeStreamReprocessingTopic(storeName, 1);
     String separateRtName = Version.composeSeparateRealTimeTopic(storeName);
 
-    // Test Case 1: PushType.INCREMENTAL with separate real-time topic enabled
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest("v0", storeName, INCREMENTAL, "JOB_ID");
+
+    // Test Case: PushType.INCREMENTAL with separate real-time topic enabled
     Version mockVersion1 = mock(Version.class);
     when(mockVersion1.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion1.isSeparateRealTimeTopicEnabled()).thenReturn(true);
-    String result1 = CreateVersion.determineResponseTopic(storeName, mockVersion1, PushType.INCREMENTAL);
+    request.setSeparateRealTimeTopicEnabled(true);
+    String result1 = CreateVersion.determineResponseTopic(storeName, mockVersion1, request);
     assertEquals(result1, separateRtName);
 
-    // Test Case 2: PushType.INCREMENTAL without separate real-time topic enabled
+    // Test Case: PushType.INCREMENTAL with separate real-time topic enabled, but the request does not have the separate
+    // real-time topic flag
+    mockVersion1 = mock(Version.class);
+    when(mockVersion1.kafkaTopicName()).thenReturn(vtName);
+    when(mockVersion1.isSeparateRealTimeTopicEnabled()).thenReturn(true);
+    request.setSeparateRealTimeTopicEnabled(false);
+    result1 = CreateVersion.determineResponseTopic(storeName, mockVersion1, request);
+    assertEquals(result1, rtName);
+
+    // Test Case: PushType.INCREMENTAL without separate real-time topic enabled
     Version mockVersion2 = mock(Version.class);
     when(mockVersion2.kafkaTopicName()).thenReturn(vtName);
-    when(mockVersion2.isSeparateRealTimeTopicEnabled()).thenReturn(false);
-    String result2 = CreateVersion.determineResponseTopic(storeName, mockVersion2, PushType.INCREMENTAL);
+    when(mockVersion2.isSeparateRealTimeTopicEnabled()).thenReturn(true);
+    request = new RequestTopicForPushRequest("v0", storeName, INCREMENTAL, "JOB_ID");
+    String result2 = CreateVersion.determineResponseTopic(storeName, mockVersion2, request);
     assertEquals(result2, rtName);
 
-    // Test Case 3: PushType.STREAM
+    // Test Case: PushType.STREAM
     Version mockVersion3 = mock(Version.class);
     when(mockVersion3.kafkaTopicName()).thenReturn(vtName);
-    String result3 = CreateVersion.determineResponseTopic(storeName, mockVersion3, PushType.STREAM);
+    request = new RequestTopicForPushRequest("v0", storeName, STREAM, "JOB_ID");
+    String result3 = CreateVersion.determineResponseTopic(storeName, mockVersion3, request);
     assertEquals(result3, rtName);
 
-    // Test Case 4: PushType.STREAM_REPROCESSING
+    // Test Case: PushType.STREAM_REPROCESSING
     Version mockVersion4 = mock(Version.class);
     when(mockVersion4.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion4.getNumber()).thenReturn(1);
-    String result4 = CreateVersion.determineResponseTopic(storeName, mockVersion4, PushType.STREAM_REPROCESSING);
+    request = new RequestTopicForPushRequest("v0", storeName, STREAM_REPROCESSING, "JOB_ID");
+    String result4 = CreateVersion.determineResponseTopic(storeName, mockVersion4, request);
     assertEquals(result4, srTopicName);
 
-    // Test Case 5: Default case with a Kafka topic
+    // Test Case: Default case with a Kafka topic
     Version mockVersion5 = mock(Version.class);
     when(mockVersion5.kafkaTopicName()).thenReturn(vtName);
-    String result5 = CreateVersion.determineResponseTopic(storeName, mockVersion5, PushType.BATCH);
+    request = new RequestTopicForPushRequest("v0", storeName, BATCH, "JOB_ID");
+    String result5 = CreateVersion.determineResponseTopic(storeName, mockVersion5, request);
     assertEquals(result5, vtName);
   }
 
@@ -758,7 +771,7 @@ public class CreateVersionTest {
     when(mockVersion1.isNativeReplicationEnabled()).thenReturn(true);
     when(mockVersion1.getPushStreamSourceAddress()).thenReturn("bootstrapServer1");
     when(mockVersion1.getNativeReplicationSourceFabric()).thenReturn("sourceFabric1");
-    when(mockRequest1.getPushType()).thenReturn(PushType.BATCH);
+    when(mockRequest1.getPushType()).thenReturn(BATCH);
 
     CreateVersion.configureSourceFabric(mockAdmin1, mockVersion1, mockLazy1, mockRequest1, mockResponse1);
 
@@ -775,7 +788,7 @@ public class CreateVersionTest {
     when(mockVersion2.isNativeReplicationEnabled()).thenReturn(true);
     when(mockVersion2.getPushStreamSourceAddress()).thenReturn(null);
     when(mockVersion2.getNativeReplicationSourceFabric()).thenReturn("sourceFabric2");
-    when(mockRequest2.getPushType()).thenReturn(PushType.BATCH);
+    when(mockRequest2.getPushType()).thenReturn(BATCH);
 
     CreateVersion.configureSourceFabric(mockAdmin2, mockVersion2, mockLazy2, mockRequest2, mockResponse2);
 
@@ -791,7 +804,7 @@ public class CreateVersionTest {
 
     when(mockAdmin3.isParent()).thenReturn(true);
     when(mockVersion3.isNativeReplicationEnabled()).thenReturn(true);
-    when(mockRequest3.getPushType()).thenReturn(PushType.INCREMENTAL);
+    when(mockRequest3.getPushType()).thenReturn(INCREMENTAL);
     when(mockRequest3.getClusterName()).thenReturn("testCluster");
     when(mockRequest3.getStoreName()).thenReturn("testStore");
     when(mockRequest3.getEmergencySourceRegion()).thenReturn("emergencyRegion");
@@ -817,8 +830,7 @@ public class CreateVersionTest {
     when(store.getName()).thenReturn(STORE_NAME);
     HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
     when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-    RequestTopicForPushRequest request =
-        new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, PushType.STREAM, "JOB_ID");
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, STREAM, "JOB_ID");
     VersionCreationResponse response = new VersionCreationResponse();
 
     // Case 1: Parent region; With stream pushes disabled
@@ -879,8 +891,7 @@ public class CreateVersionTest {
     when(store.getName()).thenReturn(STORE_NAME);
     HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
     when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-    RequestTopicForPushRequest request =
-        new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, PushType.STREAM, "JOB_ID");
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, STREAM, "JOB_ID");
     VersionCreationResponse response = new VersionCreationResponse();
     CreateVersion createVersionOk = new CreateVersion(true, Optional.of(accessClient), false, false);
 
