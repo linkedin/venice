@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static org.testng.Assert.*;
 
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -15,6 +16,7 @@ import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
@@ -63,6 +65,10 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
         .getFastAvroSpecificDeserializer(writerSchema, StorePropertiesResponseRecord.class);
     StorePropertiesResponseRecord record = recordDeserializer.deserialize(response.getBody());
 
+    ObjectWriter jsonWriter = ObjectMapperFactory.getInstance().writerWithDefaultPrettyPrinter();
+    Object printObject = ObjectMapperFactory.getInstance().readValue(record.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
+
     // Assert
     Store expectedStore =
         veniceCluster.getLeaderVeniceController().getVeniceAdmin().getStore(veniceCluster.getClusterName(), storeName);
@@ -88,5 +94,9 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     assertNotNull(record.storeMetaValue.storeValueSchemas);
     assertNotNull(record.helixGroupInfo);
     assertNotNull(record.routingInfo);
+
+    // Close
+    veniceServerWrapper.close();
+    veniceCluster.close();
   }
 }

@@ -893,7 +893,10 @@ public class ReadOnlyStore implements Store {
     storeProperties.setReadQuotaInCU(getReadQuotaInCU());
 
     // Hybrid Config
-    storeProperties.setHybridConfig(convertHybridStoreConfig(getHybridStoreConfig()));
+    StoreHybridConfig storeHybridConfig = convertHybridStoreConfig(getHybridStoreConfig());
+    if (storeHybridConfig != null) {
+      storeProperties.setHybridConfig(storeHybridConfig);
+    }
 
     // View Configs
     Map<String, ViewConfig> viewConfigs = getViewConfigs();
@@ -1026,12 +1029,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
 
     // Versions
-    List<Version> versions = getVersions();
-    List<StoreVersion> storeVersions = new ArrayList<>();
-    for (Version version: versions) {
-      storeVersions.add(convertVersion(version));
-    }
-    storeProperties.setVersions(storeVersions);
+    storeProperties.setVersions(convertVersions(getVersions()));
 
     // System Stores
     Map<String, SystemStoreAttributes> systemStoreAttributesMap = getSystemStores();
@@ -1047,12 +1045,7 @@ public class ReadOnlyStore implements Store {
       systemStoreProperties.setLargestUsedVersionNumber(systemStoreAttributes.getLargestUsedVersionNumber());
 
       // Versions
-      List<Version> systemStoreVersions = systemStoreAttributes.getVersions();
-      List<StoreVersion> systemStorePropertiesVersions = new ArrayList<>();
-      for (Version version: systemStoreVersions) {
-        systemStorePropertiesVersions.add(convertVersion(version));
-      }
-      systemStoreProperties.setVersions(systemStorePropertiesVersions);
+      systemStoreProperties.setVersions(convertVersions(systemStoreAttributes.getVersions()));
 
       // Latest Version Promote to Current Timestamp
       systemStoreProperties
@@ -1697,7 +1690,21 @@ public class ReadOnlyStore implements Store {
     return storePartitionerConfig;
   }
 
+  private List<StoreVersion> convertVersions(List<Version> versions) {
+    List<StoreVersion> storeVersions = new ArrayList<>(versions.size());
+    for (Version version: versions) {
+      StoreVersion storeVersion = convertVersion(version);
+      if (storeVersion != null) {
+        storeVersions.add(storeVersion);
+      }
+    }
+    return storeVersions;
+  }
+
   private StoreVersion convertVersion(Version version) {
+    if (version == null) {
+      return null;
+    }
     StoreVersion storeVersion = new StoreVersion();
 
     // Store Name
@@ -1767,7 +1774,10 @@ public class ReadOnlyStore implements Store {
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
 
     // Hybrid Config
-    storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
+    StoreHybridConfig storeHybridConfig = convertHybridStoreConfig(version.getHybridStoreConfig());
+    if (storeHybridConfig != null) {
+      storeVersion.setHybridConfig(storeHybridConfig);
+    }
 
     // Use Version Level Hybrid Config
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
