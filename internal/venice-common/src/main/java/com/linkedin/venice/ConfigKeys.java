@@ -241,6 +241,10 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "repush.orchestrator.class.name";
 
   /**
+   * Whether log compaction is enabled for stores in this Venice controller
+   */
+  public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
+  /**
    * Number of threads to use for scheduled log compaction
    */
   public static final String SCHEDULED_LOG_COMPACTION_THREAD_COUNT = "scheduled.log.compaction.thread.count";

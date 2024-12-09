@@ -192,6 +192,11 @@ public class VeniceController {
     unusedValueSchemaCleanupService = Optional.empty();
 
     Admin admin = controllerService.getVeniceHelixAdmin();
+    if (multiClusterConfigs.getCommonConfig().isLogCompactionEnabled()) {
+      logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
+      LOGGER.info("LogCompactionService is initialised");
+    }
+
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(
           admin,
@@ -204,7 +209,6 @@ public class VeniceController {
             "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
       }
 
-      logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
@@ -251,8 +255,11 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
+    if (multiClusterConfigs.getCommonConfig().isLogCompactionEnabled()) {
+      logCompactionService.start();
+    }
+
     topicCleanupService.start();
-    logCompactionService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);

@@ -124,6 +124,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -547,6 +548,7 @@ public class VeniceControllerClusterConfig {
   /**
    * Configs for log compaction
    */
+  private final boolean isLogCompactionEnabled;
   private final int scheduledLogCompactionThreadCount;
   private final long scheduledLogCompactionIntervalMS;
 
@@ -982,7 +984,8 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
-    this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO: default value?
+    this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO LC: default value?
+    this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
     this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
     this.scheduledLogCompactionIntervalMS =
         props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
@@ -1814,6 +1817,10 @@ public class VeniceControllerClusterConfig {
 
   public String getRepushOrchestratorClassName() {
     return repushOrchestratorClassName;
+  }
+
+  public boolean isLogCompactionEnabled() {
+    return isLogCompactionEnabled;
   }
 
   public int getScheduledLogCompactionThreadCount() {
