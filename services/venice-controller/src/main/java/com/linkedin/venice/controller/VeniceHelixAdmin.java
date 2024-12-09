@@ -641,6 +641,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Participant stores are not read or written in parent colo. Parent controller skips participant store
     // initialization.
     if (!isParent() && multiClusterConfigs.isParticipantMessageStoreEnabled()) {
+      LOGGER.info("Adding PerClusterInternalRTStoreInitializationRoutine for ParticipantMessageStore");
       initRoutines.add(
           new PerClusterInternalRTStoreInitializationRoutine(
               PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE,
@@ -2748,46 +2749,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                 version.setNativeReplicationSourceFabric(sourceFabric);
               }
-              if (isParent() && ((store.isHybrid()
-                  && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
-                  || store.isIncrementalPushEnabled())) {
-                // Create rt topic in parent colo if the store is aggregate mode hybrid store
-                PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-                if (!getTopicManager().containsTopic(realTimeTopic)) {
-                  getTopicManager().createTopic(
-                      realTimeTopic,
-                      numberOfPartitions,
-                      clusterConfig.getKafkaReplicationFactorRTTopics(),
-                      StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
-                      false,
-                      // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-                      clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-                      false);
-                  if (version.isSeparateRealTimeTopicEnabled()) {
-                    getTopicManager().createTopic(
-                        pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
-                        numberOfPartitions,
-                        clusterConfig.getKafkaReplicationFactorRTTopics(),
-                        StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
-                        false,
-                        // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-                        clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-                        false);
-                  }
-                } else {
-                  // If real-time topic already exists, check whether its retention time is correct.
-                  PubSubTopicConfiguration pubSubTopicConfiguration =
-                      getTopicManager().getCachedTopicConfig(realTimeTopic);
-                  long topicRetentionTimeInMs = TopicManager.getTopicRetention(pubSubTopicConfiguration);
-                  long expectedRetentionTimeMs =
-                      StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
-                  if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
-                    getTopicManager()
-                        .updateTopicRetention(realTimeTopic, expectedRetentionTimeMs, pubSubTopicConfiguration);
-                  }
-                }
-              }
             }
+
+            if (shouldCreateRealTimeTopics(store, version)) {
+              createOrUpdateRealTimeTopics(clusterName, store, version);
+            }
+
             /**
              * Version-level rewind time override.
              */
@@ -2974,6 +2941,170 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Determines whether real-time topics should be created for the given store and version.
+   *
+   * <p>Real-time topics are created based on the following conditions:
+   * <ul>
+   *   <li>The store and version must both be hybrid ({@code store.isHybrid()} and {@code version.isHybrid()}).</li>
+   *   <li>If the controller is a child, real-time topics are always created.</li>
+   *   <li>If the controller is a parent, real-time topics are created only if:
+   *     <ul>
+   *       <li>Active-active replication is disabled for the store, and</li>
+   *       <li>Either the store's data replication policy is {@code DataReplicationPolicy.AGGREGATE}, or</li>
+   *       <li>Incremental push is enabled for the store.</li>
+   *     </ul>
+   *   </li>
+   * </ul>
+   *
+   * @param store the store being evaluated
+   * @param version the version being evaluated
+   * @return {@code true} if real-time topics should be created; {@code false} otherwise
+   */
+  boolean shouldCreateRealTimeTopics(Store store, Version version) {
+    if (!store.isHybrid() || !version.isHybrid()) {
+      return false;
+    }
+
+    // Child controllers always create real-time topics for hybrid stores in their region
+    if (!isParent()) {
+      return true;
+    }
+
+    // Parent controllers create real-time topics in the parent region only under certain conditions
+    return !store.isActiveActiveReplicationEnabled()
+        && (store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE
+            || store.isIncrementalPushEnabled());
+  }
+
+  /**
+   * Creates or updates real-time topics for the specified store (using reference hybrid version) in the given cluster.
+   *
+   * <p>This method ensures that real-time topics (primary and separate, if applicable) are configured
+   * correctly for a hybrid store. It creates the topics if they do not exist and updates their retention
+   * time if necessary. For stores with separate real-time topics enabled, the method handles the creation
+   * or update of those topics as well.
+   *
+   * @param clusterName the name of the cluster where the topics are managed
+   * @param store the {@link Store} associated with the topics
+   * @param version the {@link Version} containing the configuration for the topics, including partition count
+   *                and hybrid store settings
+   */
+  void createOrUpdateRealTimeTopics(String clusterName, Store store, Version version) {
+    String storeName = store.getName();
+    if (!version.isHybrid()) {
+      LOGGER.info("Store: {} is not hybrid, no need to create real-time topic", storeName);
+      return;
+    }
+
+    // Create real-time topic if it doesn't exist; otherwise, update the retention time if necessary
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
+    createOrUpdateRealTimeTopic(clusterName, store, version, realTimeTopic);
+
+    // Create separate real-time topic if it doesn't exist; otherwise, update the retention time if necessary
+    if (version.isSeparateRealTimeTopicEnabled()) {
+      // TODO: Add support for repartitioning separate real-time topics, primarily needed for incremental push jobs.
+      createOrUpdateRealTimeTopic(
+          clusterName,
+          store,
+          version,
+          pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName)));
+    }
+  }
+
+  /**
+   * Creates or updates a real-time topic for a given store in the specified cluster.
+   *
+   * <p>This method ensures that the real-time topic matches the expected configuration based on
+   * the store's hybrid settings and the associated version. If the topic already exists:
+   * <ul>
+   *   <li>It validates the partition count against the expected partition count for the version.</li>
+   *   <li>It updates the retention time if necessary.</li>
+   * </ul>
+   * If the topic does not exist, it creates the topic with the required configuration.
+   *
+   * @param clusterName the name of the cluster where the topic resides
+   * @param store the {@link Store} store to which the topic belongs
+   * @param version the reference hybrid {@link Version} containing
+   * @param realTimeTopic the {@link PubSubTopic} representing the real-time topic
+   * @throws VeniceException if the partition count of an existing topic does not match the expected value
+   */
+  void createOrUpdateRealTimeTopic(String clusterName, Store store, Version version, PubSubTopic realTimeTopic) {
+    int expectedNumOfPartitions = version.getPartitionCount();
+    TopicManager topicManager = getTopicManager();
+    if (topicManager.containsTopic(realTimeTopic)) {
+      validateAndUpdateTopic(realTimeTopic, store, version, expectedNumOfPartitions, getTopicManager());
+    } else {
+      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      topicManager.createTopic(
+          realTimeTopic,
+          expectedNumOfPartitions,
+          clusterConfig.getKafkaReplicationFactorRTTopics(),
+          StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
+          false,
+          // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+          clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+          false);
+    }
+    LOGGER.info(
+        "Completed setup for real-time topic: {} for store: {} with reference hybrid version: {} and partition count: {}",
+        realTimeTopic.getName(),
+        store.getName(),
+        version.getNumber(),
+        expectedNumOfPartitions);
+  }
+
+  /**
+   * Validates the real-time topic's configuration and updates its retention time if necessary.
+   *
+   * <p>This method checks if the partition count of the real-time topic matches the expected partition count
+   * for the specified version. If the counts do not match, an exception is thrown. Additionally, it validates
+   * the topic's retention time against the expected retention time and updates it if required.
+   *
+   * @param realTimeTopic the {@link PubSubTopic} representing the real-time topic to validate
+   * @param store the {@link Store} store to which the topic belongs
+   * @param version the reference hybrid {@link Version}
+   * @param expectedNumOfPartitions the expected number of partitions for the real-time topic
+   * @param topicManager the {@link TopicManager} used for topic management operations
+   * @throws VeniceException if the partition count of the topic does not match the expected partition count
+   */
+  private void validateAndUpdateTopic(
+      PubSubTopic realTimeTopic,
+      Store store,
+      Version version,
+      int expectedNumOfPartitions,
+      TopicManager topicManager) {
+    int actualNumOfPartitions = topicManager.getPartitionCount(realTimeTopic);
+    // Validate partition count
+    if (actualNumOfPartitions != expectedNumOfPartitions) {
+      LOGGER.error(
+          "Real-time topic: {} for store: {} has different partition count: {} from version partition count: {}",
+          realTimeTopic.getName(),
+          store.getName(),
+          actualNumOfPartitions,
+          expectedNumOfPartitions);
+      String errorMessage = String.format(
+          "Real-time topic: %s for store: %s has different partition count: %d from version partition count: %d",
+          realTimeTopic.getName(),
+          store.getName(),
+          actualNumOfPartitions,
+          expectedNumOfPartitions);
+      throw new VeniceException(errorMessage);
+    }
+
+    // Validate and update retention time if necessary
+    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+    long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig);
+    boolean isUpdated = topicManager.updateTopicRetentionWithRetries(realTimeTopic, expectedRetentionTimeMs);
+    LOGGER.info(
+        "{} retention time for real-time topic: {} for store: {} (hybrid version: {}, partition count: {})",
+        isUpdated ? "Updated" : "Validated",
+        realTimeTopic.getName(),
+        store.getName(),
+        version.getNumber(),
+        expectedNumOfPartitions);
+  }
+
+  /**
    * During store migration, skip a version if:
    * This is the child controller of the destination cluster
    * And the kafka topic of related store and version is truncated
@@ -3041,7 +3172,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()
-        ? getIncrementalPushVersion(clusterName, storeName)
+        ? getIncrementalPushVersion(clusterName, storeName, pushJobId)
         : addVersion(
             clusterName,
             storeName,
@@ -3134,48 +3265,50 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param storeName name of the store.
    * @return name of the store's real time topic name.
    */
-  @Override
-  public String getRealTimeTopic(String clusterName, String storeName) {
-    checkControllerLeadershipFor(clusterName);
+  public String getRealTimeTopic(String clusterName, String storeName, Integer expectedPartitionCount) {
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-    ensureRealTimeTopicIsReady(clusterName, realTimeTopic);
+    ensureRealTimeTopicIsReady(clusterName, realTimeTopic, expectedPartitionCount);
     return realTimeTopic.getName();
   }
 
-  /**
-   * Get the real time topic name for a given store. If the topic is not created in Kafka, it creates the
-   * real time topic and returns the topic name.
-   * @param clusterName name of the Venice cluster.
-   * @param store store.
-   * @return name of the store's real time topic name.
-   */
-  @Override
-  public String getRealTimeTopic(String clusterName, Store store) {
-    checkControllerLeadershipFor(clusterName);
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-    ensureRealTimeTopicIsReady(clusterName, realTimeTopic);
-    return realTimeTopic.getName();
-  }
-
-  @Override
-  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
-    checkControllerLeadershipFor(clusterName);
+  public String getSeparateRealTimeTopic(String clusterName, String storeName, Integer expectedPartitionCount) {
     PubSubTopic incrementalPushRealTimeTopic =
         pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
-    ensureRealTimeTopicIsReady(clusterName, incrementalPushRealTimeTopic);
+    ensureRealTimeTopicIsReady(clusterName, incrementalPushRealTimeTopic, expectedPartitionCount);
     return incrementalPushRealTimeTopic.getName();
   }
 
-  private void ensureRealTimeTopicIsReady(String clusterName, PubSubTopic realTimeTopic) {
+  private void ensureRealTimeTopicIsReady(
+      String clusterName,
+      PubSubTopic realTimeTopic,
+      Integer expectedPartitionCount) {
+    checkControllerLeadershipFor(clusterName);
     TopicManager topicManager = getTopicManager();
     String storeName = realTimeTopic.getStoreName();
     if (!topicManager.containsTopic(realTimeTopic)) {
       HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-        // The topic might be created by another thread already. Check before creating.
-        if (topicManager.containsTopic(realTimeTopic)) {
+        boolean isRealTimeTopicCreated = topicManager.containsTopic(realTimeTopic);
+        if (isRealTimeTopicCreated && expectedPartitionCount != null) {
+          int actualPartitionCount = topicManager.getPartitionCount(realTimeTopic);
+          if (actualPartitionCount == expectedPartitionCount) {
+            // Topic is already created with the expected partition count
+            return;
+          }
+
+          LOGGER.error(
+              "Real time topic: {} has partition count: {} but expected partition count is: {}",
+              realTimeTopic.getName(),
+              actualPartitionCount,
+              expectedPartitionCount);
+          throw new VeniceException(
+              "Real time topic " + realTimeTopic.getName() + " has partition count " + actualPartitionCount
+                  + " but expected partition count is " + expectedPartitionCount);
+        } else if (isRealTimeTopicCreated) {
+          // real-time topic exists but
           return;
         }
+
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store store = repository.getStore(storeName);
         if (store == null) {
@@ -3198,6 +3331,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               throw new VeniceException("Store: " + storeName + " has partition count set to 0");
             }
           }
+        }
+
+        if (expectedPartitionCount != null && partitionCount != expectedPartitionCount) {
+          LOGGER.error(
+              "Version partition count: {} does not match expected partition count: {} "
+                  + "for store: {}. Will use expected partition count to create real time topic",
+              partitionCount,
+              expectedPartitionCount,
+              storeName);
+          partitionCount = expectedPartitionCount;
         }
 
         VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
@@ -3240,10 +3383,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getIncrementalPushVersion(String, String)
+   * @see Admin#getIncrementalPushVersion(String, String, String)
    */
   @Override
-  public Version getIncrementalPushVersion(String clusterName, String storeName) {
+  public Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId) {
+    boolean requiresVersionToBeOnline = !isParent();
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
@@ -3256,29 +3400,162 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceException("Incremental push is not enabled for store: " + storeName);
       }
 
-      List<Version> versions = store.getVersions();
+      List<Version> versions = new ArrayList<>(store.getVersions());
       if (versions.isEmpty()) {
         throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
       }
 
-      /**
-       * Don't use {@link Store#getCurrentVersion()} here since it is always 0 in parent controller
-       */
-      Version version = versions.get(versions.size() - 1);
-      if (version.getStatus() == ERROR) {
+      Version hybridVersion = null;
+      versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
+      for (Version version: versions) {
+        if (version.getHybridStoreConfig() != null && version.getStatus() == ONLINE) {
+          hybridVersion = version;
+          break;
+        }
+      }
+
+      if (hybridVersion == null) {
+        LOGGER.error(
+            "Could not find an online hybrid store version for incremental push: {} on store: {} in cluster: {}",
+            pushJobId,
+            storeName,
+            clusterName);
         throw new VeniceException(
-            "cannot have incremental push because current version is in error status. " + "Version: "
-                + version.getNumber() + " Store:" + storeName);
+            "No ONLINE hybrid store version found for store: " + storeName + " in cluster: " + clusterName);
+      }
+      LOGGER.info(
+          "Found hybrid version: {} for store: {} in cluster: {}. Will use it as a reference for incremental push: {}",
+          hybridVersion.getNumber(),
+          storeName,
+          clusterName,
+          pushJobId);
+
+      int partitionCount = hybridVersion.getPartitionCount();
+      boolean hasSeparateRt = hybridVersion.isSeparateRealTimeTopicEnabled();
+      if (isParent()) {
+        getRealTimeTopic(clusterName, storeName, partitionCount);
+        if (hasSeparateRt) {
+          getSeparateRealTimeTopic(clusterName, storeName, partitionCount);
+        }
       }
 
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic) || isTopicTruncated(rtTopic.getName())) {
+        LOGGER.error(
+            "Incremental push: {} cannot be started for store: {} in cluster: {} because the topic: {} is either absent or being truncated",
+            pushJobId,
+            storeName,
+            clusterName,
+            rtTopic);
         resources.getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
         throw new VeniceException(
             "Incremental push cannot be started for store: " + storeName + " in cluster: " + clusterName
                 + " because the topic: " + rtTopic + " is either absent or being truncated");
       }
-      return version;
+
+      if (hasSeparateRt) {
+        PubSubTopic separateRtTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+        if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(separateRtTopic)
+            || isTopicTruncated(separateRtTopic.getName())) {
+          LOGGER.error(
+              "Incremental push: {} cannot be started for store: {} in cluster: {} because the topic: {} is either absent or being truncated",
+              pushJobId,
+              storeName,
+              clusterName,
+              separateRtTopic);
+          resources.getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
+          throw new VeniceException(
+              "Incremental push cannot be started for store: " + storeName + " in cluster: " + clusterName
+                  + " because the topic: " + separateRtTopic + " is either absent or being truncated");
+        }
+      }
+      return hybridVersion;
+    }
+  }
+
+  @Override
+  public Version getReferenceVersionForStreamingWrites(String clusterName, String storeName, String pushJobId) {
+    boolean requiresVersionToBeOnline = true;
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      if (store == null) {
+        throwStoreDoesNotExist(clusterName, storeName);
+      }
+      if (!store.isHybrid()) {
+        LOGGER.warn(
+            "Rejecting request for streaming writes with pushJobId: {} for store: {} in cluster: {} because it is not a hybrid store",
+            pushJobId,
+            storeName,
+            clusterName);
+        throw new VeniceException(
+            "Store: " + storeName + " is not a hybrid store and cannot be used for streaming writes");
+      }
+      List<Version> versions = new ArrayList<>(store.getVersions());
+      if (versions.isEmpty()) {
+        LOGGER.warn(
+            "Rejecting request for streaming writes with pushJobId: {} for store: {} in cluster: {} because it is not initialized with a version yet",
+            pushJobId,
+            storeName,
+            clusterName);
+        throw new VeniceException(
+            "Streaming writes cannot be started for store: " + storeName
+                + " because it is not initialized with a version yet");
+      }
+
+      Version hybridVersion = null;
+
+      versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
+      for (Version version: versions) {
+        if (version.getHybridStoreConfig() != null && (!requiresVersionToBeOnline || version.getStatus() == ONLINE)) {
+          hybridVersion = version;
+          break;
+        }
+      }
+      if (hybridVersion == null) {
+        String logMessage = String.format(
+            "Could not find %s hybrid store version for streaming writes with pushJobId: %s on store: %s in cluster: %s",
+            requiresVersionToBeOnline ? "an ONLINE" : "a",
+            pushJobId,
+            storeName,
+            clusterName);
+        LOGGER.error(logMessage);
+        throw new VeniceException(logMessage);
+      }
+
+      LOGGER.info(
+          "Found {} hybrid version: {} for store: {} in cluster: {}. Will use it as a reference for streaming writes with pushJobId: {}",
+          requiresVersionToBeOnline ? "an ONLINE" : "a",
+          hybridVersion.getNumber(),
+          storeName,
+          clusterName,
+          pushJobId);
+
+      int partitionCount = hybridVersion.getPartitionCount();
+      if (isParent()) {
+        /**
+         * Create RT topic here in parent region. For child regions, RT should always be created as part of
+         * {@link RealTimeTopicSwitcher#ensurePreconditions(PubSubTopic, PubSubTopic, Store, Optional)}
+         */
+        getRealTimeTopic(clusterName, storeName, partitionCount);
+      }
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic, partitionCount)
+          || isTopicTruncated(rtTopic.getName())) {
+        LOGGER.error(
+            "Streaming writes: {} cannot be started for store: {} in cluster: {} because the topic: {} is "
+                + "either absent or being truncated or has different partition count than hybrid version partition count",
+            pushJobId,
+            storeName,
+            clusterName,
+            rtTopic);
+        resources.getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
+        throw new VeniceException(
+            "Streaming writes cannot be started for store: " + storeName + " in cluster: " + clusterName
+                + " because the topic: " + rtTopic + " is either absent or being truncated");
+      }
+      return hybridVersion;
     }
   }
 
@@ -3500,7 +3777,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
           cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
-        if (store.isDaVinciPushStatusStoreEnabled()) {
+        if (store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
           ExecutorService executor = Executors.newSingleThreadExecutor();
           Future<?> future = executor.submit(
               () -> getPushStatusStoreWriter().deletePushStatus(
@@ -6144,7 +6421,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
     if (incrementalPushVersion.isPresent()
         && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
-        && store.isDaVinciPushStatusStoreEnabled()) {
+        && store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
       getPushStatusStoreWriter().removeFromSupposedlyOngoingIncrementalPushVersions(
           store.getName(),
           versionNumber,
@@ -7334,7 +7611,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   void checkControllerLeadershipFor(String clusterName) {
     if (!isLeaderControllerFor(clusterName)) {
       throw new VeniceException(
-          "This controller:" + controllerName + " is not the leader controller for " + clusterName);
+          "This controller:" + controllerName + " is not the leader controller for cluster: " + clusterName);
     }
   }
 
@@ -8000,7 +8277,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreDoesNotExist(clusterName, storeName);
     }
     String daVinciPushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-    getRealTimeTopic(clusterName, daVinciPushStatusStoreName);
+
+    if (!isParent()) {
+      // We do not materialize PS3 for parent region. Hence, skip RT topic creation.
+      getRealTimeTopic(clusterName, daVinciPushStatusStoreName, null);
+    }
     if (!store.isDaVinciPushStatusStoreEnabled()) {
       storeMetadataUpdate(clusterName, storeName, (s) -> {
         s.setDaVinciPushStatusStoreEnabled(true);
@@ -8009,6 +8290,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * Set up the meta store and produce snapshot to meta store RT. Should be called in the child controllers.
+   * @param clusterName The cluster name.
+   * @param regularStoreName The regular user store name.
+   */
   void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
@@ -8019,7 +8305,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
     // the RT topic to be consistent in case it was not auto-materialized
-    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
+    if (!isParent()) {
+      // We do not materialize PS3 for parent region. Hence, skip RT topic creation.
+      getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName), null);
+    }
 
     // Update the store flag to enable meta system store.
     if (!store.isStoreMetaSystemStoreEnabled()) {
@@ -8398,6 +8687,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public void sendHeartbeatToSystemStore(String clusterName, String storeName, long heartbeatTimeStamp) {
+    if (isParent()) {
+      return;
+    }
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     String userStoreName = systemStoreType.extractRegularStoreName(storeName);
     long currentTimestamp = System.currentTimeMillis();

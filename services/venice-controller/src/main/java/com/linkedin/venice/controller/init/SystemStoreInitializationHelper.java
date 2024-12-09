@@ -64,6 +64,7 @@ public final class SystemStoreInitializationHelper {
       UpdateStoreQueryParams updateStoreQueryParams,
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs) {
+    LOGGER.info("Setting up system store: {} in cluster: {}", systemStoreName, clusterName);
     Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition);
     Store store = admin.getStore(clusterName, systemStoreName);
     String keySchemaString = keySchema != null ? keySchema.toString() : DEFAULT_KEY_SCHEMA_STR;
@@ -86,7 +87,7 @@ public final class SystemStoreInitializationHelper {
         throw new VeniceException("Unable to create or fetch store " + systemStoreName);
       }
     } else {
-      LOGGER.info("Internal store {} already exists in cluster {}", systemStoreName, clusterName);
+      LOGGER.info("Internal store: {} already exists in cluster: {}", systemStoreName, clusterName);
       if (keySchema != null) {
         /**
          * Only verify the key schema if it is explicitly specified by the caller, and we don't care
@@ -203,6 +204,8 @@ public final class SystemStoreInitializationHelper {
 
       LOGGER.info("Created a version for internal store {} in cluster {}", systemStoreName, clusterName);
     }
+
+    LOGGER.info("System store: {} in cluster: {} is set up", systemStoreName, clusterName);
   }
 
   // Visible for testing
