@@ -1162,18 +1162,20 @@ public class ControllerClient implements Closeable {
    * @return The list of store names that are ready for compaction.
    */
   public MultiStoreInfoResponse getStoresForCompaction(String clusterName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName);
+    QueryParams params = new QueryParams().add(CLUSTER, clusterName);
     return request(ControllerRoute.GET_STORES_FOR_COMPACTION, params, MultiStoreInfoResponse.class);
   }
 
   /**
-   * This method triggers repush for storeName
+   * This method triggers an adhoc repush for storeName
    * @param storeName
-   * @return //TODO
+   * @return //TODO LC:
    */
-  public ControllerResponse triggerRepush(String storeName) {
+  public ControllerResponse triggerRepush(String storeName, byte[] repushJobDetails) {
     QueryParams params = newParams().add(NAME, storeName);
-    return request(ControllerRoute.COMPACT_STORE, params, ControllerResponse.class);
+    // TODO LC: add params from admin tool for repush: e.g. version, fabric etc.
+    // TODO LC: add admin.repush()
+    return request(ControllerRoute.COMPACT_STORE, params, ControllerResponse.class, repushJobDetails);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
