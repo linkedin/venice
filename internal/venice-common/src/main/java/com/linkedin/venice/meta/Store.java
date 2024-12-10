@@ -341,4 +341,6 @@ public interface Store {
   void setIsDavinciHeartbeatReported(boolean isReported);
 
   boolean getIsDavinciHeartbeatReported();
+
+  void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported);
 }
