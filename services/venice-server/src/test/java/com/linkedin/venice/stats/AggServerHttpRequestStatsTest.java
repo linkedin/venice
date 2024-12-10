@@ -13,8 +13,10 @@ import org.testng.annotations.Test;
 
 
 public class AggServerHttpRequestStatsTest {
-  private MetricsRepository metricsRepository, metricsRepositoryForKVProfiling;
-  private MockTehutiReporter reporter, reporterForKVProfiling;
+  private MetricsRepository metricsRepository;
+  private MockTehutiReporter reporter;
+  private MetricsRepository metricsRepositoryForKVProfiling;
+  private MockTehutiReporter reporterForKVProfiling;
   private AggServerHttpRequestStats singleGetStats;
   private AggServerHttpRequestStats singleGetStatsWithKVProfiling;
   private AggServerHttpRequestStats batchGetStats;
