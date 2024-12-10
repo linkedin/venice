@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.HttpConstants.VENICE_SCHEMA_ID;
 import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.utils.TestUtils.getVenicePathParser;
 import static io.netty.handler.codec.http.HttpResponseStatus.MOVED_PERMANENTLY;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -21,6 +22,8 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.NameRepository;
+import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -55,6 +58,7 @@ import org.testng.annotations.Test;
 
 public class TestVeniceResponseAggregator {
   private static final Schema STRING_SCHEMA = Schema.parse("\"string\"");
+  private final NameRepository nameRepository = new NameRepository();
 
   private VenicePath getPath(
       String storeName,
@@ -66,8 +70,10 @@ public class TestVeniceResponseAggregator {
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
     doReturn(null).when(path).getChunkedResponse();
-    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1, compressorFactory)).when(path)
-        .getResponseDecompressor();
+    VenicePathParser pathParser = getVenicePathParser(compressorFactory, false);
+    StoreVersionName storeVersionName = this.nameRepository.getStoreVersionName(storeName, 1);
+    VeniceResponseDecompressor decompressor = pathParser.getDecompressor(storeVersionName, request);
+    doReturn(decompressor).when(path).getResponseDecompressor();
     return path;
   }
 
@@ -158,18 +164,14 @@ public class TestVeniceResponseAggregator {
     when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
 
     Metrics metrics = new Metrics();
-    String headerName = Utils.getUniqueString();
-    String headerValue = Utils.getUniqueString();
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     VenicePath path = getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory);
-    when(path.getResponseHeaders()).thenReturn(Optional.of(Collections.singletonMap(headerName, headerValue)));
     when(path.getChunkedResponse()).thenReturn(null); // non-streaming
     metrics.setPath(path);
 
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
-    Assert.assertEquals(finalResponse.headers().get(headerName), headerValue);
 
     byte[] finalContent;
     if (finalResponse.content() instanceof CompositeByteBuf) {
@@ -268,11 +270,8 @@ public class TestVeniceResponseAggregator {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseAggregator.processMultiGetResponses(
-        Arrays.asList(storageNodeResponse1, storageNodeResponse2),
-        storeName,
-        1,
-        Optional.empty());
+    FullHttpResponse routerResponse = responseAggregator
+        .processMultiGetResponses(Arrays.asList(storageNodeResponse1, storageNodeResponse2), storeName, 1, null);
 
     Assert.assertEquals(routerResponse.status(), OK);
     Assert.assertEquals(
@@ -306,11 +305,8 @@ public class TestVeniceResponseAggregator {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseAggregator.processMultiGetResponses(
-        Arrays.asList(storageNodeResponse1, storageNodeResponse2),
-        storeName,
-        1,
-        Optional.empty());
+    FullHttpResponse routerResponse = responseAggregator
+        .processMultiGetResponses(Arrays.asList(storageNodeResponse1, storageNodeResponse2), storeName, 1, null);
 
     Assert.assertEquals(routerResponse.status(), NOT_FOUND);
     Assert.assertEquals(
@@ -345,11 +341,8 @@ public class TestVeniceResponseAggregator {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseAggregator.processMultiGetResponses(
-        Arrays.asList(storageNodeResponse1, storageNodeResponse2),
-        storeName,
-        1,
-        Optional.empty());
+    FullHttpResponse routerResponse = responseAggregator
+        .processMultiGetResponses(Arrays.asList(storageNodeResponse1, storageNodeResponse2), storeName, 1, null);
 
     Assert.assertEquals(routerResponse.status(), NOT_FOUND);
     Assert.assertEquals(
