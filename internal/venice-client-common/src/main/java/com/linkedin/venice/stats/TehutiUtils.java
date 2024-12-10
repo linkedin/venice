@@ -23,7 +23,7 @@ public class TehutiUtils {
   // metrics. It's likely to degrade critical path performance
   private static final double[] FINE_GRAINED_HISTOGRAM_PERCENTILES =
       new double[] { 0.01, 0.1, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 99, 99.9 };
-  private static final double[] HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY = new double[] { 50, 77, 90, 95, 99, 99.9 };
+  private static final double[] HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY = new double[] { 50, 95, 99, 99.9 };
   private static final String ROUND_NUMBER_SUFFIX = ".0";
 
   /**

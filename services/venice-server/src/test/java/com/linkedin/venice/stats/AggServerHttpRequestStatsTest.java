@@ -33,7 +33,7 @@ public class AggServerHttpRequestStatsTest {
         "test_cluster",
         metricsRepository,
         RequestType.SINGLE_GET,
-        false,
+        true,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
         false);
@@ -63,6 +63,9 @@ public class AggServerHttpRequestStatsTest {
     singleGetServerStatsFoo.recordErrorRequest();
     singleGetServerStatsBar.recordErrorRequest();
 
+    singleGetServerStatsFoo.recordKeySizeInByte(100);
+    singleGetServerStatsFoo.recordValueSizeInByte(1000);
+
     Assert.assertTrue(
         reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
@@ -72,6 +75,16 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
         "success_request_ratio should be positive");
+
+    String[] percentileStrings = new String[] { "0_01", "0_01", "0_1", "1", "2", "3", "4", "5", "10", "20", "30", "40",
+        "50", "60", "70", "80", "90", "95", "99", "99_9" };
+
+    for (int i = 0; i < percentileStrings.length; i++) {
+      Assert.assertTrue(
+          reporter.query(".store_foo--request_key_size." + percentileStrings[i] + "thPercentile").value() > 0);
+      Assert.assertTrue(
+          reporter.query(".store_foo--request_value_size." + percentileStrings[i] + "thPercentile").value() > 0);
+    }
 
     singleGetStats.handleStoreDeleted(STORE_FOO);
     Assert.assertNull(metricsRepository.getMetric("." + STORE_FOO + "--success_request.OccurrenceRate"));
@@ -83,7 +96,7 @@ public class AggServerHttpRequestStatsTest {
     String storeName = "storeName";
     Percentiles percentiles = TehutiUtils.getPercentileStatForNetworkLatency(sensorName, storeName);
     percentiles.stats().stream().map(namedMeasurable -> namedMeasurable.name()).forEach(System.out::println);
-    String[] percentileStrings = new String[] { "50", "77", "90", "95", "99", "99_9" };
+    String[] percentileStrings = new String[] { "50", "95", "99", "99_9" };
 
     for (int i = 0; i < percentileStrings.length; i++) {
       String expectedName = sensorName + "--" + storeName + "." + percentileStrings[i] + "thPercentile";
