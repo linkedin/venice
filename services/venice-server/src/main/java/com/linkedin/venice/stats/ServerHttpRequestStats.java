@@ -445,11 +445,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordKeySizeInByte(int keySize) {
-    requestKeySizeSensor.record(keySize);
+    if (requestKeySizeSensor != null) {
+      requestKeySizeSensor.record(keySize);
+    }
   }
 
   public void recordValueSizeInByte(int valueSize) {
-    requestValueSizeSensor.record(valueSize);
+    if (requestValueSizeSensor != null) {
+      requestValueSizeSensor.record(valueSize);
+    }
   }
 
   public void recordMisroutedStoreVersionRequest() {
