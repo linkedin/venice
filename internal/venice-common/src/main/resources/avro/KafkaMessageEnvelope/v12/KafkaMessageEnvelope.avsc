@@ -317,7 +317,7 @@
           ]
         }, {
           "name": "GlobalRtDiv",
-          "doc": "Reuses the structure of Put messages, but contains producer partition state instead of user data",
+          "doc": "Reuses the structure of Put messages, but contains producer partition state instead of user data and thus should be treated differently",
           "type": "record",
           "fields": [
             {

@@ -178,7 +178,7 @@ public enum AvroProtocolDefinition {
   RECORD_CHANGE_EVENT(1, RecordChangeEvent.class),
 
   /*
-   * Global Realtime Topic Data Integrity Validator state.
+   * Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to followers.
    */
   GLOBAL_RT_DIV_STATE(1, GlobalRtDivState.class);
 

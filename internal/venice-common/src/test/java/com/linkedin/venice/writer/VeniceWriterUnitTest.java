@@ -696,15 +696,11 @@ public class VeniceWriterUnitTest {
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
       ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
 
-      if (size == SMALL_VALUE_SIZE) {
-        // 1 SOS, 1 DivControlMessage
-        verify(mockedProducer, times(2))
-            .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
-      } else { // TOO_LARGE_VALUE_SIZE
-        // 1 SOS, 4 DivChunk, 1 DivManifest
-        verify(mockedProducer, times(6))
-            .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
-      }
+      // SMALL_VALUE_SIZE: 1 SOS, 1 DivControlMessage
+      // TOO_LARGE_VALUE_SIZE: 1 SOS, 4 DivChunk, 1 DivManifest
+      final int invocationCount = (size == SMALL_VALUE_SIZE) ? 2 : 6;
+      verify(mockedProducer, times(invocationCount))
+          .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
 
       for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
         Assert.assertTrue(key.isGlobalRtDiv() || key.isControlMessage());

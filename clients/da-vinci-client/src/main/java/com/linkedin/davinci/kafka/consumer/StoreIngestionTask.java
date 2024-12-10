@@ -1219,7 +1219,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (assembledObject == null) {
       return;
     }
-    // TODO: We will add the code to process DIV control message later in here.
+    // TODO: We will add the code to process Global RT DIV message later in here.
   }
 
   /**
@@ -2431,11 +2431,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     /**
-     * Only version topics are used for DIV control messages to be produced to and consumed from. It is unexpected to
-     * read div control messages from real-time topics. Skip them and log a warning.
+     * Only version topics are used for Global RT DIV messages to be produced to and consumed from. It is unexpected to
+     * read global rt div messages from real-time topics. Skip them and log a warning.
      */
     if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
-      LOGGER.warn("Skipping DIV control message from real-time topic-partition: {}", record.getTopicPartition());
+      LOGGER.warn("Skipping global RT DIV message from real-time topic-partition: {}", record.getTopicPartition());
       return false;
     }
 

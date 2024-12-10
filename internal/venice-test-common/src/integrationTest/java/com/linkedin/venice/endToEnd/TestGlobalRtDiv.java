@@ -1,6 +1,13 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 
@@ -127,7 +134,7 @@ public class TestGlobalRtDiv {
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         sharedVenice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
-    try (VeniceWriter<byte[], byte[], byte[]> verstionTopicWriter =
+    try (VeniceWriter<byte[], byte[], byte[]> versionTopicWriter =
         TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
             .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeKafkaTopic(storeName, 1)).build())) {
 
@@ -135,7 +142,7 @@ public class TestGlobalRtDiv {
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
 
       GlobalRtDivState state = createGlobalRtDivState("localhost:9090", false);
-      verstionTopicWriter
+      versionTopicWriter
           .sendChunkSupportedDivMessage(
               0,
               "NonChunkedKey".getBytes(),
@@ -144,7 +151,7 @@ public class TestGlobalRtDiv {
       LOGGER.info("Sent non-chunked div message");
 
       state = createGlobalRtDivState("localhost:9092", true);
-      verstionTopicWriter
+      versionTopicWriter
           .sendChunkSupportedDivMessage(
               0,
               "ChunkedKey".getBytes(),
@@ -163,16 +170,12 @@ public class TestGlobalRtDiv {
     state.producerStates = new HashMap<>();
     state.setSrcUrl(srcUrl);
 
-    if (isChunked) {
-      // Create a large state with 20k entries.
-      for (int i = 0; i < 20000; i++) {
-        byte[] bytes = new byte[256];
-        random.nextBytes(bytes);
-        GUID guid = new GUID(bytes);
-        state.producerStates.put(guidToUtf8(guid), createProducerPartitionState(i, i));
-      }
-    } else {
-      state.producerStates = Collections.emptyMap();
+    final int entryCount = (isChunked) ? 20000 : 1; // Create a large state with 20k entries to trigger chunking
+    for (int i = 0; i < entryCount; i++) {
+      byte[] bytes = new byte[256];
+      random.nextBytes(bytes);
+      GUID guid = new GUID(bytes);
+      state.producerStates.put(guidToUtf8(guid), createProducerPartitionState(i, i));
     }
     return state;
   }

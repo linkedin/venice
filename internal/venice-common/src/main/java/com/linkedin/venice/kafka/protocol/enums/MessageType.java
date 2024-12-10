@@ -23,7 +23,7 @@ import java.util.List;
 public enum MessageType implements VeniceEnumValue {
   PUT(0, Constants.PUT_KEY_HEADER_BYTE), DELETE(1, Constants.PUT_KEY_HEADER_BYTE),
   CONTROL_MESSAGE(2, Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE), UPDATE(3, Constants.UPDATE_KEY_HEADER_BYTE),
-  GLOBAL_RT_DIV(4, Constants.DIV_KEY_HEADER_BYTE);
+  GLOBAL_RT_DIV(4, Constants.GLOBAL_RT_DIV_KEY_HEADER_BYTE);
 
   private static final List<MessageType> TYPES = EnumUtils.getEnumValuesList(MessageType.class);
 
@@ -92,6 +92,6 @@ public enum MessageType implements VeniceEnumValue {
     public static final byte PUT_KEY_HEADER_BYTE = 0;
     public static final byte CONTROL_MESSAGE_KEY_HEADER_BYTE = 2;
     public static final byte UPDATE_KEY_HEADER_BYTE = 4;
-    public static final byte DIV_KEY_HEADER_BYTE = 8;
+    public static final byte GLOBAL_RT_DIV_KEY_HEADER_BYTE = 8;
   }
 }

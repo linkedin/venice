@@ -84,9 +84,23 @@ public class KafkaKey implements Measurable {
     return key == null ? 0 : key.length;
   }
 
+  private String messageTypeString() {
+    switch (keyHeaderByte) {
+      case MessageType.Constants.PUT_KEY_HEADER_BYTE:
+        return "PUT or DELETE";
+      case MessageType.Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE:
+        return "CONTROL_MESSAGE";
+      case MessageType.Constants.UPDATE_KEY_HEADER_BYTE:
+        return "UPDATE";
+      case MessageType.Constants.GLOBAL_RT_DIV_KEY_HEADER_BYTE:
+        return "GLOBAL_RT_DIV";
+      default:
+        return "UNKNOWN";
+    }
+  }
+
   public String toString() {
-    return getClass().getSimpleName() + "(" + (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE") + ", "
-        + ByteUtils.toHexString(key) + ")";
+    return getClass().getSimpleName() + "(" + messageTypeString() + ", " + ByteUtils.toHexString(key) + ")";
   }
 
   public int getHeapSize() {

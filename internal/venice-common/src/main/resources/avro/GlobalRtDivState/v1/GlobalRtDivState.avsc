@@ -1,7 +1,7 @@
 {
   "name": "GlobalRtDivState",
   "namespace": "com.linkedin.venice.kafka.protocol.state",
-  "doc": "Global Realtime Topic Data Integrity Validator is the RT DIV object propagated from the leader to the followers via local VT",
+  "doc": "Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to the followers via local VT",
   "type": "record",
   "fields": [
     {
