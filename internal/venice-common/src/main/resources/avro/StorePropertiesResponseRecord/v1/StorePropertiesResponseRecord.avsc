@@ -10,7 +10,8 @@
       "type": [
         "null",
         "com.linkedin.venice.systemstore.schemas.StoreMetaValue"
-      ]
+      ],
+      "default": null
     },
     {
       "name": "helixGroupInfo",

@@ -82,6 +82,15 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
     MetadataResponse response = new MetadataResponse();
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
+
+      // Check fast client compatibility
+      if (!store.isStorageNodeReadQuotaEnabled()) {
+        throw new UnsupportedOperationException(
+            String.format(
+                "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
+                storeName));
+      }
+
       checkStore(storeName, store);
 
       // Version metadata
@@ -154,7 +163,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       checkStore(storeName, store);
 
       // Store Properties
-      StoreProperties storeProperties = ((ReadOnlyStore) store).getStoreProperties();
+      StoreProperties storeProperties = ((ReadOnlyStore) store).cloneStoreProperties();
 
       // Key Schemas
       Map<CharSequence, CharSequence> keySchema = getKeySchema(storeName);
@@ -234,14 +243,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   }
 
   private void checkStore(String storeName, Store store) throws VeniceException, UnsupportedOperationException {
-
-    // Check fast client compatibility
-    if (!store.isStorageNodeReadQuotaEnabled()) {
-      throw new UnsupportedOperationException(
-          String.format(
-              "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
-              storeName));
-    }
 
     if (store.isMigrating()) {
       // only obtain store Config when store is migrating and only throw exceptions when dest cluster is ready or

@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.QueryAction;
@@ -18,30 +17,12 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
 import org.apache.avro.Schema;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSetup {
-
-  /*
-   * @{link AbstractClientEndToEndSetup} enables the read quota for stores as part of prepareData and stores are
-   * typically reused at a class level for tests. However, some tests require flows to disable read quota, and
-   * it is important to reset so that these tests don't step on other tests. For now, we choose to add a before
-   * method to class that validates disabled read quota behavior to reset the state to ensure other tests run
-   * successfully.
-   */
-  @BeforeMethod
-  public void enableStoreReadQuota() {
-    veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.assertCommand(
-          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
-    });
-  }
-
   @Test(timeOut = TIME_OUT)
   public void testRequestBasedStoreProperties() throws Exception {
 
