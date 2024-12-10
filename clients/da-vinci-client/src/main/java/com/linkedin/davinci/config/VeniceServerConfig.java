@@ -82,6 +82,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED;
@@ -570,6 +571,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
   private final int zstdDictCompressionLevel;
   private final long maxWaitAfterUnsubscribeMs;
+  private final boolean deleteUnassignedPartitionsOnStartup;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -961,6 +963,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
     maxWaitAfterUnsubscribeMs =
         serverProperties.getLong(SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS, TimeUnit.MINUTES.toMillis(30));
+
+    deleteUnassignedPartitionsOnStartup =
+        serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
   }
 
   long extractIngestionMemoryLimit(
@@ -1749,5 +1754,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getMaxWaitAfterUnsubscribeMs() {
     return maxWaitAfterUnsubscribeMs;
+  }
+
+  public boolean isDeleteUnassignedPartitionsOnStartupEnabled() {
+    return deleteUnassignedPartitionsOnStartup;
   }
 }
