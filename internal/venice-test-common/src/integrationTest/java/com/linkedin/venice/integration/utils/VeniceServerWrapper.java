@@ -95,8 +95,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   public static final String SERVER_ENABLE_SSL = "server_enable_ssl";
   public static final String SERVER_SSL_TO_KAFKA = "server_ssl_to_kafka";
   public static final String CLIENT_CONFIG_FOR_CONSUMER = "client_config_for_consumer";
-  public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_START =
-      "server_delete_unassigned_partitions_on_start";
 
   private TestVeniceServer veniceServer;
   private final VeniceProperties serverProps;
@@ -201,7 +199,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       String serverD2ServiceName) {
     return (serviceName, dataDirectory) -> {
       boolean serverDeleteUnassignedPartitionsOnStartup =
-          Boolean.parseBoolean(featureProperties.getProperty(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_START, "false"));
+          Boolean.parseBoolean(featureProperties.getProperty(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, "false"));
       boolean enableServerAllowlist =
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
