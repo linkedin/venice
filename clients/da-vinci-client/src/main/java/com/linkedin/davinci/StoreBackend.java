@@ -108,6 +108,10 @@ public class StoreBackend {
     return stats;
   }
 
+  public ComplementSet<Integer> getSubscription() {
+    return subscription;
+  }
+
   public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
     return daVinciCurrentVersionRef.get();
   }
@@ -154,6 +158,7 @@ public class StoreBackend {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
     }
+
     subscription.addAll(partitions);
 
     if (daVinciFutureVersion == null) {
