@@ -10,16 +10,25 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
+import com.linkedin.venice.logger.TestLogAppender;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -152,5 +161,41 @@ public class PushStatusStoreWriterTest {
     verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
     verify(veniceWriterMock)
         .update(eq(statusKey), eq(getHeartbeatRecord(-1)), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
+  }
+
+  @Test
+  public void testPushStatusStoreWriterLogging() throws Exception {
+    // Add the test appender to the class
+    TestLogAppender testLogAppender = new TestLogAppender("TestLogAppender", PatternLayout.createDefaultLayout());
+    testLogAppender.start();
+
+    // Add appender to the logger
+    Logger logger = (Logger) LogManager.getLogger(PushStatusStoreWriter.class);
+    logger.addAppender(testLogAppender);
+
+    // Mock the produce callback behavior
+    Field callbackField = PushStatusStoreWriter.class.getDeclaredField("PUSH_STATUS_UPDATE_LOGGER_CALLBACK");
+    callbackField.setAccessible(true);
+    PubSubProducerCallback callback = (PubSubProducerCallback) callbackField.get(null);
+
+    // Mock the produce result
+    PubSubProduceResult produceResult = Mockito.mock(PubSubProduceResult.class);
+    Mockito.when(produceResult.getTopic()).thenReturn("test-topic");
+    Mockito.when(produceResult.getOffset()).thenReturn(12345L);
+
+    // Test successful completion path
+    callback.onCompletion(produceResult, null);
+
+    // Verify logging
+    String capturedLog = testLogAppender.getLog();
+    Assert.assertTrue(capturedLog.contains("Updated push status into topic test-topic at offset 12345"));
+
+    // Test failure path
+    Exception exception = new Exception("Test error");
+    callback.onCompletion(produceResult, exception);
+
+    // Verify logging
+    capturedLog = testLogAppender.getLog();
+    Assert.assertTrue(capturedLog.contains("Failed to update push status"));
   }
 }
