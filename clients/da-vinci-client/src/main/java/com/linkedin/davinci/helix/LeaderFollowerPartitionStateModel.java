@@ -210,6 +210,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       } catch (InterruptedException e) {
         throw new VeniceException("Got interrupted while waiting for drop partition future to complete", e);
       } catch (Exception e) {
+        logger.error(
+            "Exception while waiting for drop partition future during the transition from OFFLINE to DROPPED",
+            e);
         throw new VeniceException("Got exception while waiting for drop partition future to complete", e);
       } finally {
         if (waitForDropPartition) {
