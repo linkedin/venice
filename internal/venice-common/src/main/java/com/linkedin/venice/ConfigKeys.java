@@ -2342,4 +2342,7 @@ public class ConfigKeys {
       "server.nearline.workload.producer.throughput.optimization.enabled";
 
   public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
+
+  public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
+      "server.delete.unassigned.partitions.on.startup";
 }
