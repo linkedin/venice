@@ -1,8 +1,6 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_BOOTSTRAP_SUBSCRIPTION_DISABLED;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
-import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
@@ -468,7 +466,7 @@ public class DaVinciBackend implements Closeable {
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
-    if (!configLoader.getCombinedProperties().getBoolean(DA_VINCI_BOOTSTRAP_SUBSCRIPTION_DISABLED, false)) {
+    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
       // Subscribe all bootstrap version partitions.
       storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
         List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
@@ -477,10 +475,6 @@ public class DaVinciBackend implements Closeable {
         AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
         aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
         StoreBackend storeBackend = getStoreOrThrow(storeName);
-        ComplementSet<Integer> subscription = ComplementSet.newSet(storeBackend.getSubscription());
-        ComplementSet<Integer> unassignedPartitionSet = ComplementSet.newSet(storageEngine.getPersistedPartitionIds());
-        unassignedPartitionSet.removeAll(subscription);
-        storeBackend.unsubscribe(unassignedPartitionSet);
         storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
       });
     }
