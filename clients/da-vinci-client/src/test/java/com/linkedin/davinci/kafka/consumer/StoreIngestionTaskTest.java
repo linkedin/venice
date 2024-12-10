@@ -5248,7 +5248,7 @@ public abstract class StoreIngestionTaskTest {
             null));
 
     // Create a DIV record.
-    KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
+    KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
     Put put = new Put();
     value.payloadUnion = put;
@@ -5288,7 +5288,7 @@ public abstract class StoreIngestionTaskTest {
   public void testDivProcessing() throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       // Arrange
-      KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, "test_key".getBytes());
+      KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
       KafkaMessageEnvelope value = new KafkaMessageEnvelope();
       Put put = new Put();
       value.payloadUnion = put;

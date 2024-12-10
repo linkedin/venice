@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
@@ -22,7 +23,7 @@ import java.util.List;
 public enum MessageType implements VeniceEnumValue {
   PUT(0, Constants.PUT_KEY_HEADER_BYTE), DELETE(1, Constants.PUT_KEY_HEADER_BYTE),
   CONTROL_MESSAGE(2, Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE), UPDATE(3, Constants.UPDATE_KEY_HEADER_BYTE),
-  CONTROL_MESSAGE_DIV(4, Constants.DIV_KEY_HEADER_BYTE);
+  GLOBAL_RT_DIV(4, Constants.DIV_KEY_HEADER_BYTE);
 
   private static final List<MessageType> TYPES = EnumUtils.getEnumValuesList(MessageType.class);
 
@@ -59,6 +60,8 @@ public enum MessageType implements VeniceEnumValue {
    *         - {@link com.linkedin.venice.kafka.protocol.Put}
    *         - {@link com.linkedin.venice.kafka.protocol.Delete}
    *         - {@link com.linkedin.venice.kafka.protocol.ControlMessage}
+   *         - {@link com.linkedin.venice.kafka.protocol.Update}
+   *         - {@link com.linkedin.venice.kafka.protocol.GlobalRtDiv}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
@@ -69,8 +72,9 @@ public enum MessageType implements VeniceEnumValue {
       case CONTROL_MESSAGE:
         return new ControlMessage();
       case UPDATE:
-      case CONTROL_MESSAGE_DIV:
         return new Update();
+      case GLOBAL_RT_DIV:
+        return new GlobalRtDiv();
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }

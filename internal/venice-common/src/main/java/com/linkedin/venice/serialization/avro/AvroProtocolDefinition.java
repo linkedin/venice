@@ -12,7 +12,7 @@ import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.state.GlobalDivState;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -46,7 +46,7 @@ public enum AvroProtocolDefinition {
   /**
    * Used for the Kafka topics, including the main data topics as well as the admin topic.
    */
-  KAFKA_MESSAGE_ENVELOPE(23, 11, KafkaMessageEnvelope.class),
+  KAFKA_MESSAGE_ENVELOPE(23, 12, KafkaMessageEnvelope.class),
 
   /**
    * Used to persist the state of a partition in Storage Nodes, including offset,
@@ -177,7 +177,10 @@ public enum AvroProtocolDefinition {
    */
   RECORD_CHANGE_EVENT(1, RecordChangeEvent.class),
 
-  GLOBAL_DIV_STATE(-15, GlobalDivState.class);
+  /*
+   * Global Realtime Topic Data Integrity Validator state.
+   */
+  GLOBAL_RT_DIV_STATE(1, GlobalRtDivState.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 

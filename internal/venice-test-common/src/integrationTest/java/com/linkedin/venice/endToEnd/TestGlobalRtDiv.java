@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
-import static com.linkedin.venice.utils.Utils.*;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -12,7 +11,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.state.GlobalDivState;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -43,8 +42,8 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestGlobalDiv {
-  private static final Logger LOGGER = LogManager.getLogger(TestGlobalDiv.class);
+public class TestGlobalRtDiv {
+  private static final Logger LOGGER = LogManager.getLogger(TestGlobalRtDiv.class);
 
   private VeniceClusterWrapper sharedVenice;
 
@@ -132,10 +131,10 @@ public class TestGlobalDiv {
         TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
             .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeKafkaTopic(storeName, 1)).build())) {
 
-      InternalAvroSpecificSerializer<GlobalDivState> serializer =
-          AvroProtocolDefinition.GLOBAL_DIV_STATE.getSerializer();
+      InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
 
-      GlobalDivState state = createGlobalDivState("localhost:9090", false);
+      GlobalRtDivState state = createGlobalRtDivState("localhost:9090", false);
       verstionTopicWriter
           .sendChunkSupportedDivMessage(
               0,
@@ -144,7 +143,7 @@ public class TestGlobalDiv {
           .get();
       LOGGER.info("Sent non-chunked div message");
 
-      state = createGlobalDivState("localhost:9092", true);
+      state = createGlobalRtDivState("localhost:9092", true);
       verstionTopicWriter
           .sendChunkSupportedDivMessage(
               0,
@@ -159,8 +158,8 @@ public class TestGlobalDiv {
     }
   }
 
-  private GlobalDivState createGlobalDivState(String srcUrl, boolean isChunked) {
-    GlobalDivState state = new GlobalDivState();
+  private GlobalRtDivState createGlobalRtDivState(String srcUrl, boolean isChunked) {
+    GlobalRtDivState state = new GlobalRtDivState();
     state.producerStates = new HashMap<>();
     state.setSrcUrl(srcUrl);
 

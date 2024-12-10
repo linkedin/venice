@@ -668,7 +668,7 @@ public class VeniceWriterUnitTest {
   }
 
   @Test
-  public void testGlobalDivChunking() {
+  public void testGlobalRtDivChunking() {
     final int maxRecordSizeBytes = BYTES_PER_MB;
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
@@ -707,7 +707,7 @@ public class VeniceWriterUnitTest {
       }
 
       for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
-        Assert.assertTrue(key.isDivControlMessage() || key.isControlMessage());
+        Assert.assertTrue(key.isGlobalRtDiv() || key.isControlMessage());
       }
 
       for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
@@ -721,7 +721,7 @@ public class VeniceWriterUnitTest {
           Assert.assertTrue(
               put.getSchemaId() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
                   || put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()
-                  || put.getSchemaId() == AvroProtocolDefinition.GLOBAL_DIV_STATE.getCurrentProtocolVersion());
+                  || put.getSchemaId() == AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
         }
       }
     }

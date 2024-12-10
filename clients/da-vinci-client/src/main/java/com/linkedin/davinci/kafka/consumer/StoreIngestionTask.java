@@ -12,7 +12,7 @@ import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABL
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
-import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_DIV_STATE;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_RT_DIV_STATE;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
 import static java.util.Comparator.comparingInt;
@@ -1149,8 +1149,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             record.getTopicPartition().getPartitionNumber(),
             partitionConsumptionStateMap.get(topicPartition.getPartitionNumber()));
       }
-    } else if (record.getKey().isDivControlMessage()) {
-      // This is a control message DIV, process it and return early.
+    } else if (record.getKey().isGlobalRtDiv()) {
+      // This is a global realtime topic data integrity validator object, process it and return early.
       // TODO: This is a placeholder for the actual implementation.
       if (isGlobalRtDivEnabled) {
         processDivControlMessage(record);
@@ -1211,7 +1211,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         key.getKey(),
         put.getPutValue(),
         record.getOffset(),
-        GLOBAL_DIV_STATE,
+        GLOBAL_RT_DIV_STATE,
         put.getSchemaId(),
         new NoopCompressor());
 
@@ -2434,7 +2434,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Only version topics are used for DIV control messages to be produced to and consumed from. It is unexpected to
      * read div control messages from real-time topics. Skip them and log a warning.
      */
-    if (record.getKey().isDivControlMessage() && record.getTopic().isRealTime()) {
+    if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
       LOGGER.warn("Skipping DIV control message from real-time topic-partition: {}", record.getTopicPartition());
       return false;
     }
@@ -3833,7 +3833,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Do not need to check schema availability for DIV messages as schema is already known.
-    if (record.getKey().isDivControlMessage()) {
+    if (record.getKey().isGlobalRtDiv()) {
       return;
     }
 

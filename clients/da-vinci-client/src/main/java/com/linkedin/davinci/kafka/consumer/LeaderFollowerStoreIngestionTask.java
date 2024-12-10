@@ -1622,7 +1622,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               int actualSchemaId = ByteUtils.readInt(actualValue, 0);
               Put put = (Put) envelope.payloadUnion;
               if (actualSchemaId == put.schemaId) {
-
                 if (put.putValue.equals(
                     ByteBuffer.wrap(
                         actualValue,

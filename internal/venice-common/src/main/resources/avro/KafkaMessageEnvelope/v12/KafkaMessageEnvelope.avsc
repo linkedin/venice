@@ -315,6 +315,21 @@
               ]
             }
           ]
+        }, {
+          "name": "GlobalRtDiv",
+          "doc": "Reuses the structure of Put messages, but contains producer partition state instead of user data",
+          "type": "record",
+          "fields": [
+            {
+              "name": "putValue",
+              "doc": "The record's value to be persisted in the storage engine.",
+              "type": "bytes"
+            }, {
+              "name": "schemaId",
+              "doc": "An identifier used to determine how the PutValue can be deserialized. Also used, in conjunction with the replicationMetadataVersionId, to deserialize the replicationMetadataPayload.",
+              "type": "int"
+            }
+          ]
         }
       ]
     }, {

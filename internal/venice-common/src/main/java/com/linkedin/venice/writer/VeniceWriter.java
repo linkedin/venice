@@ -5,7 +5,7 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
-import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_DIV_STATE;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.GLOBAL_RT_DIV_STATE;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -981,11 +981,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * send the messages in chunked or non-chunked mode based on the size of the message. Today, DIV is the only user of
    * this method, but it can be extended easily to support other class types in the future.
    *
-   * All the messages sent through this method are of type {@link MessageType#CONTROL_MESSAGE_DIV} in its KafkaKey and
+   * All the messages sent through this method are of type {@link MessageType#GLOBAL_RT_DIV} in its KafkaKey and
    * all their corresponding {@link KafkaMessageEnvelope} uses {@link Put} as the payload. Inside the Put payload, the
    * actual message is stored in the putValue field and the schema id has 3 cases:
    *
-   * 1. If the message is non-chunked, the schema id is set to {@link AvroProtocolDefinition#GLOBAL_DIV_STATE}.
+   * 1. If the message is non-chunked, the schema id is set to {@link AvroProtocolDefinition#GLOBAL_RT_DIV_STATE}.
    * 2. If the message is chunk message, the schema id is set to {@link AvroProtocolDefinition#CHUNK}.
    * 3. If the message is a chunk manifest message, the schema id is set to {@link AvroProtocolDefinition#CHUNKED_VALUE_MANIFEST}.
    */
@@ -1003,14 +1003,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           partition,
           serializedKey,
           serializedValue,
-          GLOBAL_DIV_STATE.getCurrentProtocolVersion(),
+          GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
           null);
     } else {
       return sendDivMessageNonChunked(
           partition,
           serializedKey,
           serializedValue,
-          GLOBAL_DIV_STATE.getCurrentProtocolVersion(),
+          GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
           null);
     }
   }
@@ -1039,7 +1039,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
-        MessageType.CONTROL_MESSAGE_DIV,
+        MessageType.GLOBAL_RT_DIV,
         true,
         valueSchemaId,
         0,
@@ -1055,7 +1055,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendManifestMessage(
         putManifestsPayload,
         serializedKey,
-        MessageType.CONTROL_MESSAGE_DIV,
+        MessageType.GLOBAL_RT_DIV,
         valueChunksAndManifest,
         callback,
         null,
@@ -1073,7 +1073,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int valueSchemaId,
       PutMetadata putMetadata) {
     serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    KafkaKey divKey = new KafkaKey(MessageType.CONTROL_MESSAGE_DIV, serializedKey);
+    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);

@@ -67,10 +67,10 @@ public class KafkaKey implements Measurable {
   }
 
   /**
-   * @return true if this key corresponds to a DIV control message, and false otherwise.
+   * @return true if this key corresponds to a GlobalRtDiv message, and false otherwise.
    */
-  public boolean isDivControlMessage() {
-    return keyHeaderByte == MessageType.CONTROL_MESSAGE_DIV.getKeyHeaderByte();
+  public boolean isGlobalRtDiv() {
+    return keyHeaderByte == MessageType.GLOBAL_RT_DIV.getKeyHeaderByte();
   }
 
   /**
