@@ -1135,11 +1135,19 @@ public abstract class AbstractPushMonitor
            *  after targetSwapRegionWaitTime passes)
            */
           Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
-          boolean isValidTargetRegion = targetRegions.contains(regionName);
-          boolean isTargetRegionPushWithDeferredSwap = version.isVersionSwapDeferred() && isValidTargetRegion;
+          boolean isTargetRegionPushWithDeferredSwap =
+              version.isVersionSwapDeferred() && targetRegions.contains(regionName);
           boolean isNormalPush = !version.isVersionSwapDeferred();
           boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
           if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
+            LOGGER.debug(
+                "Swapping to version {} for store {} in region {}. isTargetRegionPushWithDeferredSwap is {} and"
+                    + "isNormalPush is {}",
+                versionNumber,
+                store.getName(),
+                regionName,
+                isTargetRegionPushWithDeferredSwap,
+                isNormalPush);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
