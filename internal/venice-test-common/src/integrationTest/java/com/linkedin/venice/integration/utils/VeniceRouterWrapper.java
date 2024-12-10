@@ -26,12 +26,9 @@ import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_ENTI
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE;
-import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED;
-import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT;
-import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_EXPORT_TO_LOG;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -165,10 +162,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           // OpenTelemetry configs
           .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
-          .put(OTEL_VENICE_METRICS_EXPORT_TO_LOG, Boolean.TRUE.toString())
-          .put(OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT, Boolean.TRUE.toString())
           .put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, "http/protobuf")
-          .put(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, "http://localhost:4318/v1/metrics")
           .put(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "delta")
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram")
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, 3)

@@ -11,6 +11,7 @@ import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_EXPORT_TO_LOG;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_NAMING_FORMAT;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -42,7 +43,7 @@ public class VeniceMetricsConfigTest {
     assertEquals(config.getOtelEndpoint(), null);
     assertTrue(config.getOtelHeaders().isEmpty());
     assertFalse(config.exportOtelMetricsToLog());
-    assertEquals(config.getMetricNamingFormat(), VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
+    assertEquals(config.getMetricNamingFormat(), SNAKE_CASE);
     assertEquals(config.getOtelAggregationTemporalitySelector(), AggregationTemporalitySelector.deltaPreferred());
     assertEquals(config.useOtelExponentialHistogram(), true);
     assertEquals(config.getOtelExponentialHistogramMaxScale(), 3);
@@ -83,9 +84,10 @@ public class VeniceMetricsConfigTest {
         .build();
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "No enum constant com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.INVALID_FORMAT")
   public void testOtelConfigWithInvalidMetricFormat() {
     Map<String, String> otelConfigs = new HashMap<>();
+    otelConfigs.put(OTEL_VENICE_METRICS_ENABLED, "true");
     otelConfigs.put(OTEL_VENICE_METRICS_NAMING_FORMAT, "INVALID_FORMAT");
 
     new Builder().extractAndSetOtelConfigs(otelConfigs).build();
