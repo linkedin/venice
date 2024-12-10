@@ -7,6 +7,9 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.Utils;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.TehutiException;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
@@ -86,5 +89,44 @@ public class AggRouterHttpRequestStatsTest {
     Assert.assertEquals((int) reporter.query(".total--compute_response_size.2thPercentile").value(), 2);
     Assert.assertEquals((int) reporter.query(".total--compute_response_size.3thPercentile").value(), 3);
     Assert.assertEquals((int) reporter.query(".total--compute_response_size.4thPercentile").value(), 4);
+  }
+
+  @Test
+  public void testDisableMultiGetStoreMetrics() {
+    String clusterName = "test-cluster";
+    AggRouterHttpRequestStats multiGetStats = new AggRouterHttpRequestStats(
+        clusterName,
+        metricsRepository,
+        RequestType.MULTI_GET,
+        storeMetadataRepository,
+        true);
+    AggRouterHttpRequestStats streamingMultiGetStats = new AggRouterHttpRequestStats(
+        clusterName,
+        metricsRepository,
+        RequestType.MULTI_GET_STREAMING,
+        storeMetadataRepository,
+        true);
+    String storeName = Utils.getUniqueString("test-store");
+    multiGetStats.recordRequest(storeName);
+    streamingMultiGetStats.recordRequest(storeName);
+    multiGetStats.recordHealthyRequest(storeName, 10, HttpResponseStatus.OK);
+    streamingMultiGetStats.recordHealthyRequest(storeName, 10, HttpResponseStatus.OK);
+    // Total stats should exist for streaming and non-streaming multi-get
+    Assert.assertEquals((int) reporter.query(".total--multiget_request.Count").value(), 1);
+    Assert.assertEquals((int) reporter.query(".total--multiget_streaming_request.Count").value(), 1);
+    Assert.assertEquals((int) reporter.query(".total--multiget_healthy_request_latency.Max").value(), 10);
+    Assert.assertEquals((int) reporter.query(".total--multiget_streaming_healthy_request_latency.Max").value(), 10);
+    // Store level stats should only exist for streaming multi-get
+    Assert.assertEquals((int) reporter.query("." + storeName + "--multiget_streaming_request.Count").value(), 1);
+    Assert.assertEquals(
+        (int) reporter.query("." + storeName + "--multiget_streaming_healthy_request_latency.Max").value(),
+        10);
+    TehutiException exception =
+        Assert.expectThrows(TehutiException.class, () -> reporter.query("." + storeName + "--multiget_request.Count"));
+    Assert.assertTrue(exception.getMessage().contains("does not exist"));
+    exception = Assert.expectThrows(
+        TehutiException.class,
+        () -> reporter.query("." + storeName + "--multiget_healthy_request_latency.Max"));
+    Assert.assertTrue(exception.getMessage().contains("does not exist"));
   }
 }
