@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.CompletableFuture;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
@@ -62,6 +63,8 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     mockStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
     mockIngestionBackend = Mockito.mock(IngestionBackend.class);
     Mockito.when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
+    Mockito.when(mockIngestionBackend.dropStoragePartitionGracefully(Mockito.any(), Mockito.anyInt(), Mockito.anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
     mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
     Mockito.when(mockStoreConfig.getPartitionGracefulDropDelaySeconds()).thenReturn(1); // 1 second.
     Mockito.when(mockStoreConfig.getStoreVersionName()).thenReturn(resourceName);

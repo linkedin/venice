@@ -934,14 +934,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * This should only be called after {@link #stopConsumptionAndWait} has been called
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
+   * @return a future for the drop partition action.
    */
-  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
+  public CompletableFuture<Void> dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null) {
-        ingestionTask.dropStoragePartitionGracefully(
+        return ingestionTask.dropStoragePartitionGracefully(
             new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
         LOGGER.info(
@@ -949,6 +950,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             veniceStore.getStoreVersionName(),
             partitionId);
         this.storageService.dropStorePartition(veniceStore, partitionId, true);
+        return CompletableFuture.completedFuture(null);
       }
     }
   }
