@@ -3076,11 +3076,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Validate partition count
     if (actualNumOfPartitions != expectedNumOfPartitions) {
       LOGGER.error(
-          "Real-time topic: {} for store: {} has different partition count: {} from version partition count: {}",
+          "Real-time topic: {} for store: {} has different partition count: {} from version partition count: {} version: {} store: {}",
           realTimeTopic.getName(),
           store.getName(),
           actualNumOfPartitions,
-          expectedNumOfPartitions);
+          expectedNumOfPartitions,
+          version,
+          store);
       String errorMessage = String.format(
           "Real-time topic: %s for store: %s has different partition count: %d from version partition count: %d",
           realTimeTopic.getName(),
