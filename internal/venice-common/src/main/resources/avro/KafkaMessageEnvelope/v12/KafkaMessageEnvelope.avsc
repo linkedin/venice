@@ -321,7 +321,7 @@
           "type": "record",
           "fields": [
             {
-              "name": "putValue",
+              "name": "value",
               "doc": "The record's value to be persisted in the storage engine.",
               "type": "bytes"
             }, {

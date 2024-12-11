@@ -32,6 +32,7 @@ import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -687,37 +688,32 @@ public class VeniceWriterUnitTest {
     for (int size: Arrays.asList(SMALL_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
       char[] valueChars = new char[size];
       Arrays.fill(valueChars, '*');
-      try {
-        writer.sendChunkSupportedDivMessage(0, "test-key", new String(valueChars));
-      } catch (Exception e) {
-        Assert.fail("Shouldn't have thrown any exception");
-      }
+      writer.sendGlobalRtDivMessage(0, "test-key", new String(valueChars));
 
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-      ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+      ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
 
       // SMALL_VALUE_SIZE: 1 SOS, 1 GlobalRtDiv Message
       // TOO_LARGE_VALUE_SIZE: 1 SOS, 4 DivChunk, 1 DivManifest
       final int invocationCount = (size == SMALL_VALUE_SIZE) ? 2 : 6;
       verify(mockedProducer, times(invocationCount))
-          .sendMessage(any(), any(), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+          .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
 
-      for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
+      for (KafkaKey key: keyArgumentCaptor.getAllValues()) {
         Assert.assertTrue(key.isGlobalRtDiv() || key.isControlMessage());
       }
 
       for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
         if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
-          Assert.assertTrue(
-              ((ControlMessage) kme.getPayloadUnion()).getControlMessageType() == ControlMessageType.START_OF_SEGMENT
-                  .getValue());
+          ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
+          assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
         } else {
-          Assert.assertTrue(kme.messageType == MessageType.PUT.getValue());
-          Put put = (Put) kme.payloadUnion;
+          Assert.assertEquals(kme.messageType, MessageType.GLOBAL_RT_DIV.getValue());
+          GlobalRtDiv div = (GlobalRtDiv) kme.payloadUnion;
           Assert.assertTrue(
-              put.getSchemaId() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
-                  || put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()
-                  || put.getSchemaId() == AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+              div.getSchemaId() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+                  || div.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()
+                  || div.getSchemaId() == AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
         }
       }
     }

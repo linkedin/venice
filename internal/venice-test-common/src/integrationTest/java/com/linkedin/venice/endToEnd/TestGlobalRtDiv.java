@@ -143,7 +143,7 @@ public class TestGlobalRtDiv {
 
       GlobalRtDivState state = createGlobalRtDivState("localhost:9090", false);
       versionTopicWriter
-          .sendChunkSupportedDivMessage(
+          .sendGlobalRtDivMessage(
               0,
               "NonChunkedKey".getBytes(),
               ByteUtils.extractByteArray(serializer.serialize(state)))
@@ -152,10 +152,7 @@ public class TestGlobalRtDiv {
 
       state = createGlobalRtDivState("localhost:9092", true);
       versionTopicWriter
-          .sendChunkSupportedDivMessage(
-              0,
-              "ChunkedKey".getBytes(),
-              ByteUtils.extractByteArray(serializer.serialize(state)))
+          .sendGlobalRtDivMessage(0, "ChunkedKey".getBytes(), ByteUtils.extractByteArray(serializer.serialize(state)))
           .get();
       LOGGER.info("Sent chunked div message");
 

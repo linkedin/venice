@@ -3,6 +3,8 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -47,7 +49,7 @@ public class WriterChunkingHelper {
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
       KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
-      BiConsumer<VeniceWriter.KeyProvider, Put> sendMessageFunction) {
+      BiConsumer<VeniceWriter.KeyProvider, Object> sendMessageFunction) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(maxSizeForUserPayloadPerMessageInBytes, sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
@@ -103,22 +105,37 @@ public class WriterChunkingHelper {
         chunks[chunkIndex] = chunk;
       }
 
-      Put putPayload = new Put();
-      putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      if (isValuePayload) {
-        putPayload.putValue = chunk;
-        putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-      } else {
-        putPayload.putValue = EMPTY_BYTE_BUFFER;
-        putPayload.replicationMetadataPayload = chunk;
+      Object outputPayload;
+      switch (keyType) {
+        case PUT:
+          Put putPayload = new Put();
+          putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+          putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+          if (isValuePayload) {
+            putPayload.putValue = chunk;
+            putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+          } else {
+            putPayload.putValue = EMPTY_BYTE_BUFFER;
+            putPayload.replicationMetadataPayload = chunk;
+          }
+          outputPayload = putPayload;
+          break;
+        case GLOBAL_RT_DIV:
+          GlobalRtDiv div = new GlobalRtDiv();
+          div.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+          div.value = chunk;
+          outputPayload = div;
+          break;
+        default:
+          throw new VeniceMessageException("Invalid message type: " + keyType);
       }
+
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex + chunkedKeySuffixStartingIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 
       try {
         /** Non-blocking */
-        sendMessageFunction.accept(keyProvider, putPayload);
+        sendMessageFunction.accept(keyProvider, outputPayload);
       } catch (Exception e) {
         throw new VeniceException(
             "Caught an exception while attempting to produce a chunk of a large value into Kafka... "

@@ -114,6 +114,7 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -5198,7 +5199,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testShouldProcessRecordForDivMessage() throws Exception {
+  public void testShouldProcessRecordForGlobalRtDivMessage() throws Exception {
     // Set up the environment.
     StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
@@ -5250,9 +5251,8 @@ public abstract class StoreIngestionTaskTest {
     // Create a DIV record.
     KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
-    Put put = new Put();
-    value.payloadUnion = put;
-    value.messageType = MessageType.PUT.getValue();
+    value.payloadUnion = new GlobalRtDiv();
+    value.messageType = MessageType.GLOBAL_RT_DIV.getValue();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));
 
@@ -5270,22 +5270,20 @@ public abstract class StoreIngestionTaskTest {
     doReturn(offsetRecord).when(pcsFoo).getOffsetRecord();
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
 
-    // 1. Verify LeaderFollowerStoreIngestionTask.shouldProcessRecord() for consuming DIV records from remote VT topic.
+    // 1. GlobalRtDiv messages from remote VT topics should be processed
     leaderFollowerStoreIngestionTask.setPartitionConsumptionState(PARTITION_FOO, pcsFoo);
-    // remotely consume a VT topic and get a DIV record, should not process the record.
-    Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(remoteVTRecord));
+    Assert.assertTrue(leaderFollowerStoreIngestionTask.shouldProcessRecord(remoteVTRecord));
 
-    // 2. Verify StoreIngestionTask.shouldProcessRecord() for consuming DIV records from local RT topic.
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
-        new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
-    // consume a RT topic and get a DIV record, should process the record.
+    // 2. GlobalRtDiv messages from RT topics should not be processed
     doReturn(false).when(pcsFoo).consumeRemotely();
     doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
+        new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
     Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(rtRecord));
   }
 
   @Test
-  public void testDivProcessing() throws Exception {
+  public void testProcessGlobalRtDivMessage() throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       // Arrange
       KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
@@ -5299,7 +5297,7 @@ public abstract class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.processGlobalRtDivMessage(record);
       // Assert
       verify(storeIngestionTaskUnderTest.getChunkAssembler())
-          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), any(), anyInt(), any());
+          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), anyInt(), any(), any());
     }, AA_OFF);
   }
 
