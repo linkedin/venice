@@ -256,8 +256,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       // store cluster has changed so throw exception to enforce client to do a new service discovery
       if (!storeCluster.equals(serverCluster)) {
         throw new VeniceException(
-            "Store: " + storeName + " is migrating. Failing the request to allow fast "
-                + "client refresh service discovery.");
+            "Store: " + storeName + " is migrating. Failing the request to allow clients refresh cluster discovery.");
       }
     }
   }

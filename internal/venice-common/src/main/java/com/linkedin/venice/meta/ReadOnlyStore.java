@@ -954,6 +954,9 @@ public class ReadOnlyStore implements Store {
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
+    storeProperties.setTargetSwapRegion(getTargetSwapRegion());
+    storeProperties.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
+    storeProperties.setIsDaVinciHeartBeatReported(getIsDavinciHeartbeatReported());
 
     return storeProperties;
   }
@@ -1630,6 +1633,7 @@ public class ReadOnlyStore implements Store {
         hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
     storeHybridConfig.setDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy().getValue());
     storeHybridConfig.setBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy().getValue());
+    storeHybridConfig.setRealTimeTopicName(hybridStoreConfig.getRealTimeTopicName());
 
     return storeHybridConfig;
   }
@@ -1690,6 +1694,9 @@ public class ReadOnlyStore implements Store {
     storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
     storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
+    storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
+    storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
+    storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
 
     // Views
     Map<String, ViewConfig> versionViewConfigs = version.getViewConfigs();
