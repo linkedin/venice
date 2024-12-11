@@ -68,6 +68,7 @@ import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterMetricEntity;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -79,10 +80,11 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -107,6 +109,8 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,6 +125,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -193,8 +198,10 @@ public class RouterServer extends AbstractVeniceService {
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
 
-  private static final String ROUTER_SERVICE_NAME = "venice-router";
-
+  public static final String ROUTER_SERVICE_NAME = "venice-router";
+  public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
+  public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES = Collections.unmodifiableList(
+      Arrays.stream(RouterMetricEntity.values()).map(RouterMetricEntity::getMetricEntity).collect(Collectors.toList()));
   /**
    * Thread number used to monitor the listening port;
    */
@@ -272,7 +279,11 @@ public class RouterServer extends AbstractVeniceService {
         serviceDiscoveryAnnouncers,
         accessController,
         sslFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        VeniceMetricsRepository.getVeniceMetricsRepository(
+            ROUTER_SERVICE_NAME,
+            ROUTER_SERVICE_METRIC_PREFIX,
+            ROUTER_SERVICE_METRIC_ENTITIES,
+            properties.getAsMap()),
         null,
         "venice-discovery");
   }
@@ -322,6 +333,7 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterName());
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
+            config.getClusterName(),
             metricsRepository,
             requestType,
             config.isKeyValueProfilingEnabled(),
@@ -381,7 +393,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = Optional.empty();
     this.metricsRepository = metricsRepository;
 
-    this.aggHostHealthStats = new AggHostHealthStats(metricsRepository);
+    this.aggHostHealthStats = new AggHostHealthStats(config.getClusterName(), metricsRepository);
 
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     this.accessController = accessController;
@@ -409,12 +421,23 @@ public class RouterServer extends AbstractVeniceService {
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor) {
-    this(properties, serviceDiscoveryAnnouncers, Optional.empty(), sslFactory, new MetricsRepository(), false);
+    this(
+        properties,
+        serviceDiscoveryAnnouncers,
+        Optional.empty(),
+        sslFactory,
+        VeniceMetricsRepository.getVeniceMetricsRepository(
+            ROUTER_SERVICE_NAME,
+            ROUTER_SERVICE_METRIC_PREFIX,
+            ROUTER_SERVICE_METRIC_ENTITIES,
+            properties.getAsMap()),
+        false);
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;
     this.routerStats = new RouterStats<>(
         requestType -> new AggRouterHttpRequestStats(
+            config.getClusterName(),
             metricsRepository,
             requestType,
             config.isKeyValueProfilingEnabled(),

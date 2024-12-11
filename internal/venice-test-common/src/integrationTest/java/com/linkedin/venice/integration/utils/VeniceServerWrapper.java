@@ -22,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
@@ -36,6 +37,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper.addKafkaClusterIDMappingToServerConfigs;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -196,6 +198,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Map<String, Map<String, String>> kafkaClusterMap,
       String serverD2ServiceName) {
     return (serviceName, dataDirectory) -> {
+      boolean serverDeleteUnassignedPartitionsOnStartup =
+          Boolean.parseBoolean(featureProperties.getProperty(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, "false"));
       boolean enableServerAllowlist =
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
@@ -256,7 +260,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
               pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
           .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
           .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000)
-          .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
+          .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)
+          .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
@@ -298,8 +303,17 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       List<ServiceDiscoveryAnnouncer> d2Servers =
           new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
 
+      Map<String, Map<String, String>> finalKafkaClusterMap = kafkaClusterMap;
+      if (finalKafkaClusterMap == null || finalKafkaClusterMap.isEmpty()) {
+        finalKafkaClusterMap = addKafkaClusterIDMappingToServerConfigs(
+            Optional.ofNullable(serverProps.toProperties()),
+            Collections.singletonList(regionName),
+            Arrays.asList(pubSubBrokerWrapper, pubSubBrokerWrapper));
+        LOGGER.info("PubSub cluster map was not provided. Constructed the following map: {}", finalKafkaClusterMap);
+      }
+
       // generate the kafka cluster map in config directory
-      VeniceConfigLoader.storeKafkaClusterMap(configDirectory, kafkaClusterMap);
+      VeniceConfigLoader.storeKafkaClusterMap(configDirectory, finalKafkaClusterMap);
 
       if (!forkServer) {
         VeniceConfigLoader veniceConfigLoader =

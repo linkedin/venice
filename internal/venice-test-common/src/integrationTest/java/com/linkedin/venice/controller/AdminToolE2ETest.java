@@ -13,23 +13,27 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class AdminToolBackfillTest {
+public class AdminToolE2ETest {
   private static final int TEST_TIMEOUT = 300_000; // empty push on push status store takes a long time to finish
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2; // DO NOT CHANGE
@@ -260,5 +264,66 @@ public class AdminToolBackfillTest {
     assertTrue(
         allStores.contains(pushStatusStoreName),
         pushStatusStoreName + " is not present in list store response with " + clientName);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateStoreMigrationStatus() throws Exception {
+    String storeName = Utils.getUniqueString("testUpdateStoreMigrationStatus");
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = clusterNames[0];
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      TestUtils.assertCommand(
+          parentControllerClient
+              .retryableRequest(5, c -> c.createNewStore(storeName, "test", "\"string\"", "\"string\"")));
+
+      // Ensure store migration status is false
+      validateStoreMigrationStatus(parentControllerClient, storeName, false, "parentController");
+      validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, false);
+
+      // Update store migration status to true
+      String[] adminToolArgs = new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster",
+          clusterName, "--store", storeName, "--update-store", "--enable-store-migration", "true" };
+      AdminTool.main(adminToolArgs);
+      validateStoreMigrationStatus(parentControllerClient, storeName, true, "parentController");
+      validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, true);
+
+      // Set back status to false and validate
+      adminToolArgs = new String[] { "--url", parentControllerClient.getLeaderControllerUrl(), "--cluster", clusterName,
+          "--store", storeName, "--update-store", "--enable-store-migration", "false" };
+      AdminTool.main(adminToolArgs);
+      validateStoreMigrationStatus(parentControllerClient, storeName, false, "parentController");
+      validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, false);
+    }
+  }
+
+  private void validateStoreMigrationStatusAcrossChildRegions(
+      String storeName,
+      String clusterName,
+      boolean expectedStatus) {
+    for (VeniceMultiClusterWrapper childRegion: childDatacenters) {
+      try (ControllerClient childControllerClient =
+          new ControllerClient(clusterName, childRegion.getControllerConnectString())) {
+        validateStoreMigrationStatus(childControllerClient, storeName, expectedStatus, childRegion.getRegionName());
+      }
+    }
+  }
+
+  private void validateStoreMigrationStatus(
+      ControllerClient controllerClient,
+      String storeName,
+      boolean expectedStatus,
+      String region) {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      StoreInfo storeInfo = Objects.requireNonNull(storeResponse.getStore(), "Store not found in " + region);
+      if (expectedStatus) {
+        assertTrue(storeInfo.isMigrating(), "Store::isMigrating should be true in " + region);
+      } else {
+        assertFalse(storeInfo.isMigrating(), "Store::isMigrating should be false in " + region);
+      }
+    });
   }
 }

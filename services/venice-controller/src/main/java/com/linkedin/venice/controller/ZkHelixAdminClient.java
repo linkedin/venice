@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
@@ -332,5 +333,27 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   @Override
   public void close() {
     helixAdmin.close();
+  }
+
+  /**
+   * @see HelixAdminClient#manuallyEnableMaintenanceMode(String, boolean, String, Map<String, String>)
+   */
+  public void manuallyEnableMaintenanceMode(
+      String clusterName,
+      boolean enabled,
+      String reason,
+      Map<String, String> customFields) {
+    helixAdmin.manuallyEnableMaintenanceMode(clusterName, enabled, reason, customFields);
+  }
+
+  /**
+   * @see HelixAdminClient#setInstanceOperation(String, String, InstanceConstants.InstanceOperation, String)
+   */
+  public void setInstanceOperation(
+      String clusterName,
+      String instanceName,
+      InstanceConstants.InstanceOperation instanceOperation,
+      String reason) {
+    helixAdmin.setInstanceOperation(clusterName, instanceName, instanceOperation, reason);
   }
 }

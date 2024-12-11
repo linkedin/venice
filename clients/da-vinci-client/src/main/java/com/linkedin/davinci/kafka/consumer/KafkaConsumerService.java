@@ -25,6 +25,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,6 +36,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -76,12 +78,19 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
+  /**
+    * This read-only per consumer lock is for protecting the partition unsubscription and data receiver setting operations.
+    * Using consumer intrinsic lock may cause race condition, refer https://github.com/linkedin/venice/pull/1308
+   */
+  protected final Map<SharedKafkaConsumer, ReentrantLock> consumerToLocks = new HashMap<>();
+
   private RandomAccessDaemonThreadFactory threadFactory;
   private final Logger LOGGER;
   private final ExecutorService consumerExecutor;
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
+  // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
+      new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -107,7 +116,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final boolean isUnregisterMetricForDeletedStoreEnabled) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
-    this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
+    this.LOGGER = LogManager.getLogger(
+        KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "-" + poolType.getStatSuffix() + "]");
     this.poolType = poolType;
 
     // Initialize consumers and consumerExecutor
@@ -167,6 +177,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           this.aggStats,
           cleaner);
       consumerToConsumptionTask.putByIndex(pubSubConsumer, consumptionTask, i);
+      consumerToLocks.put(pubSubConsumer, new ReentrantLock());
     }
 
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
@@ -229,7 +240,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
            * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
            * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
            */
-          synchronized (sharedConsumer) {
+          try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(sharedConsumer))) {
             sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
           }
@@ -243,14 +254,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    * Stop specific subscription associated with the given version topic.
    */
   @Override
-  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
+    SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       /**
        * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
-      synchronized (consumer) {
+      try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(consumer))) {
         consumer.unSubscribe(pubSubTopicPartition);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
@@ -267,8 +278,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   @Override
   public void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
-    Map<PubSubConsumerAdapter, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
-    PubSubConsumerAdapter consumer;
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
+    SharedKafkaConsumer consumer;
     for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
       consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
       if (consumer != null) {
@@ -286,7 +297,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
-      synchronized (sharedConsumer) {
+      try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(sharedConsumer))) {
         sharedConsumer.batchUnsubscribe(tpSet);
         tpSet.forEach(task::removeDataReceiver);
       }
@@ -385,15 +396,24 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
          * are zero-based and ConsumptionTasks are submitted to the executor in order.
          */
         Thread slowestThread = threadFactory.getThread(slowestTaskId);
-
+        SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(slowestTaskId).getKey();
+        Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+            getIngestionInfoFromConsumer(consumer);
+        // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+            .entrySet()) {
+          sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+        }
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
-            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}",
+            "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}, consumer info:\n{}",
             kafkaUrl,
             slowestTaskId,
             maxElapsedTimeSinceLastPollInConsumerPool,
             slowestThread != null ? slowestThread.getName() : null,
-            ExceptionUtils.threadToThrowableToString(slowestThread));
+            ExceptionUtils.threadToThrowableToString(slowestThread),
+            sb.toString());
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
@@ -418,7 +438,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
      * topic partition before subscription. As {@link ConsumptionTask} does not allow 2 different data receivers for
      * the same topic partition, it will throw exception.
      */
-    synchronized (consumer) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(consumer))) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       if (consumptionTask == null) {
         // Defensive coding. Should never happen except in case of a regression.
@@ -520,10 +540,17 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
-  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+        getIngestionInfoFromConsumer(consumer);
+    return topicPartitionIngestionInfoMap;
+  }
+
+  private Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      SharedKafkaConsumer consumer) {
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);

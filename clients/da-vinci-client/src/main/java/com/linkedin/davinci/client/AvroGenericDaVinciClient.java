@@ -842,19 +842,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   @Override
   public synchronized void close() {
-    throwIfNotReady();
-    try {
-      logger.info("Closing client, storeName=" + getStoreName());
-      ready.set(false);
-      if (cacheBackend != null) {
-        cacheBackend.close();
-      }
-      daVinciBackend.release();
-      logger.info("Client is closed successfully, storeName=" + getStoreName());
-    } catch (Throwable e) {
-      String msg = "Unable to close Da Vinci client, storeName=" + getStoreName();
-      logger.error(msg, e);
-      throw new VeniceClientException(msg, e);
+    if (isReady()) {
+      closeInner();
+    } else {
+      getClientLogger()
+          .warn("Client is not ready or already closed, will ignore close request, storeName=" + getStoreName());
     }
   }
 
@@ -862,4 +854,26 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   public String toString() {
     return this.getClass().getSimpleName();
   }
+
+  // Visible for testing
+  void closeInner() {
+    try {
+      logger.info("Closing client, storeName=" + getStoreName());
+      ready.set(false);
+      if (cacheBackend != null) {
+        cacheBackend.close();
+      }
+      daVinciBackend.release();
+      logger.info("Client is closed successfully, storeName={}", getStoreName());
+    } catch (Throwable e) {
+      String msg = "Unable to close Da Vinci client, storeName=" + getStoreName();
+      logger.error(msg, e);
+      throw new VeniceClientException(msg, e);
+    }
+  }
+
+  Logger getClientLogger() {
+    return logger;
+  }
+
 }

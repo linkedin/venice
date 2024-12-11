@@ -48,8 +48,10 @@ public class TestVeniceHelixAdminWithoutCluster {
     Optional<Long> timeLag = Optional.of(300L);
     Optional<DataReplicationPolicy> dataReplicationPolicy = Optional.of(DataReplicationPolicy.AGGREGATE);
     Optional<BufferReplayPolicy> bufferReplayPolicy = Optional.of(BufferReplayPolicy.REWIND_FROM_EOP);
+    Optional<String> realTimeTopicName = Optional.of("storeName_rt");
     HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
         store,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -65,7 +67,8 @@ public class TestVeniceHelixAdminWithoutCluster {
         lagOffset,
         timeLag,
         dataReplicationPolicy,
-        bufferReplayPolicy);
+        bufferReplayPolicy,
+        realTimeTopicName);
     Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
     Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
@@ -77,6 +80,7 @@ public class TestVeniceHelixAdminWithoutCluster {
         store,
         rewind,
         lagOffset,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty());
@@ -147,7 +151,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
     Set<PubSubTopic> topics = new HashSet<>();
-    topics.add(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)));
+    topics.add(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName)));
     topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
@@ -166,7 +170,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     Set<PubSubTopic> topics = new HashSet<>();
     topics.add(
         pubSubTopicRepository
-            .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))));
+            .getTopic(Utils.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))));
     topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
@@ -233,6 +237,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topics).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(store.orElse(null)).when(admin).getStore(clusterName, storeName);
 
     doReturn(helixResources).when(admin).getAllLiveHelixResources(clusterName);
 

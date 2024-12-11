@@ -7,11 +7,13 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.AssertJUnit.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -20,17 +22,20 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -91,6 +96,125 @@ public class TestParentControllerWithMultiDataCenter {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRTTopicDeletionWithHybridAndIncrementalVersions() {
+    String storeName = Utils.getUniqueString("testRTTopicDeletion");
+    String clusterName = CLUSTER_NAMES[0];
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
+
+    List<TopicManager> topicManagers = new ArrayList<>(2);
+    topicManagers
+        .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+    topicManagers
+        .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    String rtTopicName = Utils.getRealTimeTopicName(store);
+    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(2)
+        .setHybridRewindSeconds(1000)
+        .setHybridOffsetLagThreshold(1000);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    // create new version by doing an empty push
+    ControllerResponse response = parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+    PubSubTopic versionPubsubTopic = getVersionPubsubTopic(storeName, response);
+
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
+      Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+    }
+
+    // create new version by doing an empty push
+    response = parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+    versionPubsubTopic = getVersionPubsubTopic(storeName, response);
+
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
+      Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
+    }
+
+    // change store from hybrid to batch-only
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setHybridRewindSeconds(-1).setHybridTimeLagThreshold(-1).setHybridOffsetLagThreshold(-1);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, params);
+
+    // create new version by doing an empty push
+    response = parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
+    // at this point, the current version should be batch-only, but the older version should be hybrid, so rt topic
+    // should not get deleted
+    versionPubsubTopic = getVersionPubsubTopic(storeName, response);
+
+    for (ControllerClient controllerClient: childControllerClients) {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      int currentVersion = storeInfo.getCurrentVersion();
+      Assert.assertEquals(currentVersion, 3);
+      Assert.assertNull(storeInfo.getVersion(currentVersion).get().getHybridStoreConfig());
+      Assert.assertNotNull(storeInfo.getVersion(currentVersion - 1).get().getHybridStoreConfig());
+    }
+
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
+      Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
+    }
+
+    // create new version by doing an empty push
+    response = parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+    versionPubsubTopic = getVersionPubsubTopic(storeName, response);
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4);
+    }
+
+    // now both the versions should be batch-only, so rt topic should get deleted by TopicCleanupService
+    for (TopicManager topicManager: topicManagers) {
+      Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> Assert.assertFalse(topicManager.containsTopic(rtPubSubTopic)));
+    }
+
+    /*
+     todo - RT topics are not used in parent controller in the current architecture, so we can ignore any RT topics in parent
+     controller that exist because they are still on old architecture.
+    
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true,  true, () -> {
+        Assert.assertFalse(parentTopicManager.containsTopic(rtPubSubTopic));
+      }
+     );
+    */
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -495,13 +619,13 @@ public class TestParentControllerWithMultiDataCenter {
       childDatacenterTopicManagers
           .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
       String pushStatusSystemStoreRT =
-          Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
-      String metaSystemStoreRT = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName));
+          Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+      String metaSystemStoreRT = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName));
       // Ensure all the RT topics are created in all child datacenters
       TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, true, () -> {
         for (TopicManager topicManager: childDatacenterTopicManagers) {
           Assert.assertTrue(
-              topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName))));
+              topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName))));
           Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
           Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
@@ -512,7 +636,7 @@ public class TestParentControllerWithMultiDataCenter {
       TestUtils.waitForNonDeterministicAssertion(600, TimeUnit.SECONDS, false, true, () -> {
         for (TopicManager topicManager: childDatacenterTopicManagers) {
           Assert.assertFalse(
-              topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName))));
+              topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName))));
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
@@ -564,5 +688,16 @@ public class TestParentControllerWithMultiDataCenter {
         assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
       });
     }
+  }
+
+  static PubSubTopic getVersionPubsubTopic(String storeName, ControllerResponse response) {
+    assertFalse(response.isError(), "Failed to perform empty push on test store");
+    String versionTopic = null;
+    if (response instanceof VersionCreationResponse) {
+      versionTopic = ((VersionCreationResponse) response).getKafkaTopic();
+    } else if (response instanceof JobStatusQueryResponse) {
+      versionTopic = Version.composeKafkaTopic(storeName, ((JobStatusQueryResponse) response).getVersion());
+    }
+    return new PubSubTopicRepository().getTopic(versionTopic);
   }
 }

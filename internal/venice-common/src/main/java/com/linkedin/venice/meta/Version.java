@@ -174,6 +174,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
 
+  boolean isHybrid();
+
   HybridStoreConfig getHybridStoreConfig();
 
   void setHybridStoreConfig(HybridStoreConfig hybridConfig);
@@ -193,6 +195,18 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   DataRecoveryVersionConfig getDataRecoveryVersionConfig();
 
   void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig);
+
+  void setTargetSwapRegion(String targetRegion);
+
+  String getTargetSwapRegion();
+
+  void setTargetSwapRegionWaitTime(int waitTime);
+
+  int getTargetSwapRegionWaitTime();
+
+  void setIsDavinciHeartbeatReported(boolean isReported);
+
+  boolean getIsDavinciHeartbeatReported();
 
   /**
    * Get the replication metadata version id.

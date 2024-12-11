@@ -401,6 +401,19 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
       tableConfig.setFormatVersion(rocksDBServerConfig.getBlockBaseFormatVersion());
       options.setTableFormatConfig(tableConfig);
+
+      /**
+       * Only enable blob files for block-based format.
+       */
+      if (rocksDBServerConfig.isBlobFilesEnabled()) {
+        options.setEnableBlobFiles(true);
+        options.setEnableBlobGarbageCollection(true);
+        options.setMinBlobSize(rocksDBServerConfig.getMinBlobSizeInBytes());
+        options.setBlobFileSize(rocksDBServerConfig.getBlobFileSizeInBytes());
+        options.setBlobGarbageCollectionAgeCutoff(rocksDBServerConfig.getBlobGarbageCollectionAgeCutOff());
+        options.setBlobGarbageCollectionForceThreshold(rocksDBServerConfig.getBlobGarbageCollectionForceThreshold());
+        options.setBlobFileStartingLevel(rocksDBServerConfig.getBlobFileStartingLevel());
+      }
     }
 
     if (storagePartitionConfig.isWriteOnlyConfig()) {

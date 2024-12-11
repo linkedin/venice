@@ -28,6 +28,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -116,6 +117,7 @@ public class TestEmptyPush {
                     venice.getPubSubTopicRepository())
                 .getTopicManager(venice.getPubSubBrokerWrapper().getAddress())) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -135,7 +137,7 @@ public class TestEmptyPush {
           dictForVersion1,
           "Dict shouldn't be null for the empty push to a hybrid store without any records in RT");
       PubSubTopic storeRealTimeTopic =
-          venice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName));
+          venice.getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(storeInfo));
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
       // One time refresh of router metadata.
       venice.refreshAllRouterMetaData();

@@ -9,6 +9,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
@@ -45,6 +46,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.Utils;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
@@ -145,8 +147,10 @@ public class CreateVersionTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
-  public void testRequestTopicForHybridIncPushEnabled(boolean isSeparateTopicEnabled) throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
+  public void testRequestTopicForHybridIncPushEnabled(
+      boolean isSeparateTopicEnabled,
+      boolean pushToSeparateTopicEnabled) throws Exception {
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
@@ -182,15 +186,16 @@ public class CreateVersionTest {
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
-
+    doReturn(Boolean.toString(pushToSeparateTopicEnabled)).when(request)
+        .queryParamOrDefault(SEPARATE_REAL_TIME_TOPIC_ENABLED, "false");
     Object result = createVersionRoute.handle(request, response);
     assertNotNull(result);
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    if (isSeparateTopicEnabled) {
+    if (isSeparateTopicEnabled && pushToSeparateTopicEnabled) {
       assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeSeparateRealTimeTopic(STORE_NAME));
     } else {
-      assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeRealTimeTopic(STORE_NAME));
+      assertEquals(versionCreateResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     }
   }
 

@@ -26,7 +26,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -52,6 +51,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
@@ -309,7 +309,8 @@ public class ControllerClient implements Closeable {
         rewindTimeInSecondsOverride,
         false,
         null,
-        -1);
+        -1,
+        false);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -341,7 +342,8 @@ public class ControllerClient implements Closeable {
         rewindTimeInSecondsOverride,
         deferVersionSwap,
         null,
-        -1);
+        -1,
+        false);
   }
 
   /**
@@ -384,7 +386,8 @@ public class ControllerClient implements Closeable {
       long rewindTimeInSecondsOverride,
       boolean deferVersionSwap,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      boolean pushToSeparateRealtimeTopic) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -399,7 +402,8 @@ public class ControllerClient implements Closeable {
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
-        .add(REPUSH_SOURCE_VERSION, repushSourceVersion);
+        .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
+        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic);
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }
@@ -893,8 +897,8 @@ public class ControllerClient implements Closeable {
   }
 
   public NodeStatusResponse isNodeRemovable(String instanceId, List<String> lockedNodeIds) {
-    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId)
-        .add(TO_BE_STOPPED_INSTANCES, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
+    QueryParams params =
+        newParams().add(STORAGE_NODE_ID, instanceId).add(TO_BE_STOPPED_INSTANCES, String.join(",", lockedNodeIds));
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 

@@ -23,6 +23,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -111,6 +112,7 @@ public class DaVinciBackend implements Closeable {
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private BlobTransferManager<Void> blobTransferManager;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private final boolean writeBatchingPushStatus;
 
   public DaVinciBackend(
@@ -252,7 +254,7 @@ public class DaVinciBackend implements Closeable {
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
       ingestionService = new KafkaStoreIngestionService(
-          storageService.getStorageEngineRepository(),
+          storageService,
           configLoader,
           storageMetadataService,
           clusterInfoProvider,
@@ -275,6 +277,7 @@ public class DaVinciBackend implements Closeable {
           pubSubClientsFactory,
           Optional.empty(),
           // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
+          null,
           null);
 
       ingestionService.start();
@@ -294,6 +297,9 @@ public class DaVinciBackend implements Closeable {
           throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
         }
 
+        aggVersionedBlobTransferStats =
+            new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
+
         blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
@@ -303,8 +309,11 @@ public class DaVinciBackend implements Closeable {
             readOnlyStoreRepository,
             storageService.getStorageEngineRepository(),
             backendConfig.getMaxConcurrentSnapshotUser(),
-            backendConfig.getSnapshotRetentionTimeInMin());
+            backendConfig.getSnapshotRetentionTimeInMin(),
+            backendConfig.getBlobTransferMaxTimeoutInMin(),
+            aggVersionedBlobTransferStats);
       } else {
+        aggVersionedBlobTransferStats = null;
         blobTransferManager = null;
       }
 
@@ -616,10 +625,10 @@ public class DaVinciBackend implements Closeable {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
-      if (writeBatchingPushStatus && !incrementalPushVersion.isPresent()) {
-        // Batching the push statuses from all partitions for batch pushes;
+      if (writeBatchingPushStatus) {
+        // Batching the push statuses from all partitions;
         // VersionBackend will handle the push status update to Venice backend
-        versionBackend.updatePartitionStatus(partition, status);
+        versionBackend.updatePartitionStatus(partition, status, incrementalPushVersion);
       } else {
         pushStatusStoreWriter
             .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);

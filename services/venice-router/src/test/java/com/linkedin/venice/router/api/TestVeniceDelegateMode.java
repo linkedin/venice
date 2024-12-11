@@ -39,10 +39,10 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpMethod;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -225,7 +225,8 @@ public class TestVeniceDelegateMode {
     RouterExceptionAndTrackingUtils.setRouterStats(
         new RouterStats<>(
             requestType -> new AggRouterHttpRequestStats(
-                new MetricsRepository(),
+                "test-cluster",
+                new VeniceMetricsRepository(),
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));
@@ -378,7 +379,8 @@ public class TestVeniceDelegateMode {
         config,
         new RouterStats<>(
             requestType -> new AggRouterHttpRequestStats(
-                new MetricsRepository(),
+                "test-cluster",
+                new VeniceMetricsRepository(),
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)),
@@ -702,7 +704,7 @@ public class TestVeniceDelegateMode {
     doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance4.getNodeId());
 
     HelixGroupSelector helixGroupSelector = new HelixGroupSelector(
-        new MetricsRepository(),
+        new VeniceMetricsRepository(),
         helixInstanceConfigRepository,
         HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
         mock(TimeoutProcessor.class));

@@ -221,7 +221,6 @@ public class TestHAASController {
               controllerClient
                   .sendEmptyPushAndWait(response.getName(), Utils.getUniqueString(), 100, 30 * Time.MS_PER_MINUTE)));
       List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
-      List<VeniceControllerWrapper> newControllers = new ArrayList<>();
       LiveInstance clusterLeader = helixAsAServiceWrapper.getClusterLeader(venice.getClusterName());
       assertNotNull(clusterLeader, "Could not find the cluster leader from HAAS!");
       assertFalse(
@@ -232,7 +231,7 @@ public class TestHAASController {
       for (VeniceControllerWrapper oldController: oldControllers) {
         venice.stopVeniceController(oldController.getPort());
         oldController.close();
-        newControllers.add(venice.addVeniceController(enableControllerAndStorageClusterHAASProperties));
+        venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
       }
 
       waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -339,8 +338,12 @@ public class TestHAASController {
 
       when(commonConfig.isControllerClusterHelixCloudEnabled()).thenReturn(true);
       when(commonConfig.isStorageClusterHelixCloudEnabled()).thenReturn(true);
-      CloudConfig cloudConfig =
-          HelixUtils.getCloudConfig(CloudProvider.CUSTOMIZED, "NA", cloudInfoSources, "TestProcessor");
+      CloudConfig cloudConfig = HelixUtils.getCloudConfig(
+          CloudProvider.CUSTOMIZED,
+          "NA",
+          cloudInfoSources,
+          "com.linkedin.venice.controller.helix",
+          "TestProcessor");
       when(commonConfig.getHelixCloudConfig()).thenReturn(cloudConfig);
 
       doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();

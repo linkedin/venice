@@ -14,8 +14,17 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProduce
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithLogicalTimestamp;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V10_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V11_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V4_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V5_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V6_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V7_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V8_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V9_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -105,6 +114,22 @@ public class TestChangelogConsumer {
   private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
   private ControllerClient parentControllerClient;
+
+  List<Schema> SCHEMA_HISTORY = new ArrayList<Schema>() {
+    {
+      add(NAME_RECORD_V1_SCHEMA);
+      add(NAME_RECORD_V2_SCHEMA);
+      add(NAME_RECORD_V3_SCHEMA);
+      add(NAME_RECORD_V4_SCHEMA);
+      add(NAME_RECORD_V5_SCHEMA);
+      add(NAME_RECORD_V6_SCHEMA);
+      add(NAME_RECORD_V7_SCHEMA);
+      add(NAME_RECORD_V8_SCHEMA);
+      add(NAME_RECORD_V9_SCHEMA);
+      add(NAME_RECORD_V10_SCHEMA);
+      add(NAME_RECORD_V11_SCHEMA);
+    }
+  };
 
   protected boolean isAAWCParallelProcessingEnabled() {
     return false;
@@ -241,8 +266,7 @@ public class TestChangelogConsumer {
           .setControllerD2ServiceName(D2_SERVICE_NAME)
           .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
           .setLocalD2ZkHosts(localZkServer.getAddress())
-          .setControllerRequestRetryCount(3)
-          .setVersionSwapDetectionIntervalTimeInMs(10L);
+          .setControllerRequestRetryCount(3);
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
@@ -661,6 +685,7 @@ public class TestChangelogConsumer {
     setupControllerClient.retryableRequest(
         5,
         controllerClient1 -> setupControllerClient.addValueSchema(storeName, NAME_RECORD_V1_SCHEMA.toString()));
+
     TestWriteUtils.runPushJob("Run push job", props);
 
     TestMockTime testMockTime = new TestMockTime();
@@ -771,9 +796,12 @@ public class TestChangelogConsumer {
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
     // Registering real data schema as schema v2.
-    setupControllerClient.retryableRequest(
-        5,
-        controllerClient1 -> setupControllerClient.addValueSchema(storeName, NAME_RECORD_V1_SCHEMA.toString()));
+
+    for (Schema schema: SCHEMA_HISTORY) {
+      setupControllerClient
+          .retryableRequest(5, controllerClient1 -> setupControllerClient.addValueSchema(storeName, schema.toString()));
+    }
+
     TestWriteUtils.runPushJob("Run push job", props);
     TestMockTime testMockTime = new TestMockTime();
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();

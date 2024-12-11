@@ -13,6 +13,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -64,6 +67,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final Set<Integer> pausedPartitions;
   private final boolean isHybridQuotaEnabledInServer;
   private final boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
+  private final boolean isSeparateRealtimeTopicEnabled;
   private final IngestionNotificationDispatcher ingestionNotificationDispatcher;
   private final TopicPartitionConsumerFunction pausePartition;
   private final TopicPartitionConsumerFunction resumePartition;
@@ -96,6 +100,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
       boolean isHybridQuotaEnabledInServer,
       boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled,
+      boolean isSeparateRealtimeTopicEnabled,
       IngestionNotificationDispatcher ingestionNotificationDispatcher,
       TopicPartitionConsumerFunction pausePartition,
       TopicPartitionConsumerFunction resumePartition) {
@@ -115,6 +120,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.isHybridQuotaEnabledInServer = isHybridQuotaEnabledInServer;
     this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
         isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
+    this.isSeparateRealtimeTopicEnabled = isSeparateRealtimeTopicEnabled;
     this.ingestionNotificationDispatcher = ingestionNotificationDispatcher;
     this.pausePartition = pausePartition;
     this.resumePartition = resumePartition;
@@ -248,7 +254,6 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
     storagePartitionDiskUsage.add(additionalRecordSizeUsed);
 
-    String consumingTopic = getConsumingTopic(pcs);
     /**
      * Check if the current partition violates the partition-level quota.
      * It's possible to pause an already-paused partition or resume an un-paused partition. The reason that
@@ -275,24 +280,29 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
        * but the notification to storage node gets delayed, the quota exceeding issue will put this partition of current version to be ERROR,
        * which will break the production.
        */
-      pausePartition(partition, consumingTopic);
-      String msgIdentifier = consumingTopic + "_" + partition + "_quota_exceeded";
-      // Log quota exceeded info only once a minute per partition.
-      boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
-      if (shouldLogQuotaExceeded) {
-        LOGGER.info(
-            "Quota exceeded for store {} partition {}, paused this partition. {}",
-            storeName,
-            partition,
-            versionTopic);
+      for (String consumingTopic: getConsumingTopics(pcs)) {
+        pausePartition(partition, consumingTopic);
+        String msgIdentifier = consumingTopic + "_" + partition + "_quota_exceeded";
+        // Log quota exceeded info only once a minute per partition.
+        boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
+        if (shouldLogQuotaExceeded) {
+          LOGGER.info(
+              "Quota exceeded for store version {} partition {}, paused this partition. Partition disk usage: {} >= partition quota: {}",
+              versionTopic,
+              partition,
+              storagePartitionDiskUsage.getUsage(),
+              diskQuotaPerPartition);
+        }
       }
-    } else { /** we have free space for this partition */
+    } else {
       /**
-       *  Paused partitions could be resumed
+       *  We have free space for this partition, paused partitions could be resumed
        */
       ingestionNotificationDispatcher.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
-        resumePartition(partition, consumingTopic);
+        for (String consumingTopic: getConsumingTopics(pcs)) {
+          resumePartition(partition, consumingTopic);
+        }
         LOGGER.info("Quota available for store {} partition {}, resumed this partition.", storeName, partition);
       }
     }
@@ -324,8 +334,9 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
   private void resumeAllPartitions() {
     partitionConsumptionStateMap.forEach((key, value) -> {
-      String consumingTopic = getConsumingTopic(value);
-      resumePartition(key, consumingTopic);
+      for (String consumingTopic: getConsumingTopics(value)) {
+        resumePartition(key, consumingTopic);
+      }
     });
   }
 
@@ -336,15 +347,21 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   /**
    * Check the topic which is currently consumed topic for this partition
    */
-  private String getConsumingTopic(PartitionConsumptionState pcs) {
-    String consumingTopic = versionTopic;
+  private List<String> getConsumingTopics(PartitionConsumptionState pcs) {
+    List<String> consumingTopics = Collections.singletonList(versionTopic);
+
     if (pcs.getLeaderFollowerState().equals(LEADER)) {
       OffsetRecord offsetRecord = pcs.getOffsetRecord();
       if (offsetRecord.getLeaderTopic() != null) {
-        consumingTopic = offsetRecord.getLeaderTopic();
+        consumingTopics = new ArrayList<>();
+        consumingTopics.add(offsetRecord.getLeaderTopic());
+        // For separate RT topic enabled SIT, we should include separate RT topic, if leader topic is a RT topic.
+        if (isSeparateRealtimeTopicEnabled && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
+          consumingTopics.add(Version.composeSeparateRealTimeTopic(storeName));
+        }
       }
     }
-    return consumingTopic;
+    return consumingTopics;
   }
 
   protected boolean isPartitionPausedIngestion(int partition) {

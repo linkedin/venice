@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
@@ -288,7 +289,15 @@ public interface Admin extends AutoCloseable, Closeable {
       String targetedRegions,
       int repushSourceVersion);
 
-  String getRealTimeTopic(String clusterName, String storeName);
+  String getRealTimeTopic(String clusterName, Store store);
+
+  default String getRealTimeTopic(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    return getRealTimeTopic(clusterName, store);
+  }
 
   String getSeparateRealTimeTopic(String clusterName, String storeName);
 
@@ -538,6 +547,8 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName);
+
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
    * either a parent controller or a child controller since a cluster must have a leader child controller and a leader
@@ -569,18 +580,11 @@ public interface Admin extends AutoCloseable, Closeable {
    * This instance should not be removed out of cluster, otherwise Venice will lose data.
    * For detail criteria please refer to {@link InstanceStatusDecider}
    *
+   * @param clusterName The cluster were the hosts belong.
    * @param helixNodeId nodeId of helix participant. HOST_PORT.
    * @param lockedNodes A list of helix nodeIds whose resources are assumed to be unusable (stopped).
-   * @param isFromInstanceView If the value is true, it means we will only check the partitions this instance hold.
-   *                           E.g. if all replicas of a partition are error, but this instance does not hold any
-   *                           replica in this partition, we will skip this partition in the checking.
-   *                           If the value is false, we will check all partitions of resources this instance hold.
    */
-  NodeRemovableResult isInstanceRemovable(
-      String clusterName,
-      String helixNodeId,
-      List<String> lockedNodes,
-      boolean isFromInstanceView);
+  NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, List<String> lockedNodes);
 
   /**
    * Get instance of leader controller. If there is no leader controller for the given cluster, throw a

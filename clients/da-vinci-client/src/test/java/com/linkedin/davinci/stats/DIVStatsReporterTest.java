@@ -19,7 +19,7 @@ public class DIVStatsReporterTest {
     metricsRepository.addReporter(reporter);
 
     String storeName = Utils.getUniqueString("store");
-    DIVStatsReporter divStatsReporter = new DIVStatsReporter(metricsRepository, storeName);
+    DIVStatsReporter divStatsReporter = new DIVStatsReporter(metricsRepository, storeName, null);
 
     assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsGauge").value(), (double) NULL_DIV_STATS.code);
 

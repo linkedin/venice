@@ -36,6 +36,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -147,6 +148,7 @@ public class IngestionHeartBeatTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
@@ -215,7 +217,7 @@ public class IngestionHeartBeatTest {
             // RT: verify HB is received
             verifyHBinKafkaTopic(
                 pubSubConsumer,
-                storeName,
+                storeInfo,
                 partition,
                 isActiveActiveEnabled,
                 isIncrementalPushEnabled,
@@ -226,7 +228,7 @@ public class IngestionHeartBeatTest {
             // header to all VT.
             verifyHBinKafkaTopic(
                 pubSubConsumer,
-                storeName,
+                storeInfo,
                 partition,
                 isActiveActiveEnabled,
                 isIncrementalPushEnabled,
@@ -240,14 +242,14 @@ public class IngestionHeartBeatTest {
 
   private void verifyHBinKafkaTopic(
       PubSubConsumerAdapter pubSubConsumer,
-      String storeName,
+      StoreInfo storeInfo,
       int partition,
       boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
       DataReplicationPolicy dataReplicationPolicy,
       boolean isRealTime) throws InterruptedException {
     String topicToSubscribeTo = isRealTime
-        ? Version.composeRealTimeTopic(storeName)
+        ? Utils.getRealTimeTopicName(storeInfo)
         : Version.composeKafkaTopic(storeName, isIncrementalPushEnabled ? 1 : 2);
     pubSubConsumer.subscribe(
         new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topicToSubscribeTo), partition),

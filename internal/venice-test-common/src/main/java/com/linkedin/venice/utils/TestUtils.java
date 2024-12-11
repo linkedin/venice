@@ -80,6 +80,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -89,6 +90,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
@@ -104,6 +106,7 @@ import java.util.stream.Stream;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -814,7 +817,7 @@ public class TestUtils {
     } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version);
     } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
-      return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+      return PubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
           + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
@@ -872,12 +875,12 @@ public class TestUtils {
   public static List<String> searchForFileExtension(File directory, String fileExtension) {
     List<String> result = new ArrayList<>();
     if (!directory.canRead()) {
-      LOGGER.error("Cannot read directory: ", directory.getAbsolutePath());
+      LOGGER.error("Cannot read directory: {}", directory.getAbsolutePath());
       return result;
     }
     File[] files = directory.listFiles();
     if (files == null) {
-      LOGGER.error("Error reading directory ", directory.getAbsolutePath());
+      LOGGER.error("Error reading directory: {}", directory.getAbsolutePath());
       return result;
     }
     for (File file: files) {
@@ -911,6 +914,17 @@ public class TestUtils {
       FileUtils.deleteDirectory(fileToDelete);
     } catch (IOException e) {
       throw new VeniceException("Could not delete directory: " + fileToDelete, e);
+    }
+  }
+
+  public static String loadFileAsString(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      LOGGER.error(e);
+      return null;
     }
   }
 }

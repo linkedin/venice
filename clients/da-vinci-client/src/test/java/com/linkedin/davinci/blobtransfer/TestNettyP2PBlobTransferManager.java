@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
@@ -49,6 +50,7 @@ public class TestNettyP2PBlobTransferManager {
   NettyP2PBlobTransferManager manager;
   StorageMetadataService storageMetadataService;
   BlobSnapshotManager blobSnapshotManager;
+  AggVersionedBlobTransferStats blobTransferStats;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
   String TEST_STORE = "test_store";
@@ -66,21 +68,24 @@ public class TestNettyP2PBlobTransferManager {
   @BeforeMethod
   public void setUp() throws Exception {
     int port = TestUtils.getFreePort();
+    int blobTransferMaxTimeoutInMin = 30;
     tmpSnapshotDir = Files.createTempDirectory(TMP_SNAPSHOT_DIR);
     tmpPartitionDir = Files.createTempDirectory(TMP_PARTITION_DIR);
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     storageMetadataService = mock(StorageMetadataService.class);
 
+    blobTransferStats = mock(AggVersionedBlobTransferStats.class);
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
-    server = new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobSnapshotManager);
+    server =
+        new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
     finder = mock(BlobFinder.class);
 
-    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString());
+    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);
     manager.start();
   }
 
@@ -165,7 +170,7 @@ public class TestNettyP2PBlobTransferManager {
   public void testLocalFileTransferInBatchStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString());
+    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
 
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
@@ -281,7 +286,7 @@ public class TestNettyP2PBlobTransferManager {
   public void testLocalFileTransferInHybridStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     // Preparation:
-    Mockito.doReturn(true).when(blobSnapshotManager).isStoreHybrid(anyString());
+    Mockito.doReturn(true).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
@@ -313,8 +318,7 @@ public class TestNettyP2PBlobTransferManager {
 
     // Verify the concurrent user of this partition is 0 as it should firstly be 1 and after the file is sent,
     // it should decrease to 0
-    long concurrentUser = blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0);
-    Assert.assertEquals(concurrentUser, 0);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0), 0);
   }
 
   /**

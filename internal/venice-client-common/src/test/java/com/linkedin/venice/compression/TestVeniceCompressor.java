@@ -1,6 +1,11 @@
 package com.linkedin.venice.compression;
 
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
+
 import com.github.luben.zstd.Zstd;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -14,6 +19,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -173,7 +179,7 @@ public class TestVeniceCompressor {
 
   @Test
   public void testZSTDThrowsExceptionOnNullDictionary() {
-    Assert.assertThrows(
+    assertThrows(
         () -> new CompressorFactory()
             .createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "foo_v1", null));
   }
@@ -204,5 +210,16 @@ public class TestVeniceCompressor {
         }
       }
     }
+  }
+
+  @Test
+  public void testCompressorClose() throws IOException {
+    VeniceCompressor compressor = new ZstdWithDictCompressor("abc".getBytes(), Zstd.maxCompressionLevel());
+    String largePayload = RandomStringUtils.randomAlphabetic(500000);
+    compressor.compress(largePayload.getBytes());
+    compressor.close();
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> compressor.compress(ByteBuffer.wrap(largePayload.getBytes()), 4));
+    assertTrue(exception.getMessage().contains("has been closed"));
   }
 }

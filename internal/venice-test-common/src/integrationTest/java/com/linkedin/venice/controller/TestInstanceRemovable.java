@@ -326,7 +326,7 @@ public class TestInstanceRemovable {
             .equals(ExecutionStatus.COMPLETED));
     int serverPort1 = cluster.getVeniceServers().get(0).getPort();
     String nodeID = Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1);
-    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, nodeID, new ArrayList<>(), false).isRemovable());
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, nodeID, new ArrayList<>()).isRemovable());
     // Add a new node and increase the replica count to 2.
     cluster.addVeniceServer(new Properties(), new Properties());
     TestUtils.waitForNonDeterministicCompletion(
@@ -357,7 +357,7 @@ public class TestInstanceRemovable {
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
     // The old instance should now be removable because its replica is no longer the current version.
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeID, new ArrayList<>(), false).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeID, new ArrayList<>()).isRemovable());
   }
 
   @Test
@@ -407,10 +407,8 @@ public class TestInstanceRemovable {
     storeRepository.updateStore(store);
 
     // Enough number of replicas, any of instance is able to moved out.
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, nodeId1, Collections.emptyList(), false).isRemovable());
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, nodeId2, Collections.emptyList(), false).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId1, Collections.emptyList()).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId2, Collections.emptyList()).isRemovable());
 
     // Shutdown one instance
     cluster.stopVeniceServer(serverPort1);
@@ -424,9 +422,9 @@ public class TestInstanceRemovable {
     });
 
     Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, nodeId1, new ArrayList<>(), false).isRemovable(),
+        veniceAdmin.isInstanceRemovable(clusterName, nodeId1, new ArrayList<>()).isRemovable(),
         "Instance is shutdown.");
-    NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, nodeId2, new ArrayList<>(), false);
+    NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, nodeId2, new ArrayList<>());
     Assert.assertFalse(result.isRemovable(), "Only one instance is alive, can not be moved out.");
     Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA.toString());
   }

@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -12,11 +13,13 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.LeaderErrorNotifier;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -27,6 +30,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -49,6 +53,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.InstanceConfig;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
@@ -78,6 +83,7 @@ public class TestLeaderReplicaFailover {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    serverProperties.put(SERVER_RESET_ERROR_REPLICA_ENABLED, true);
     serverProperties.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
     Properties parent = new Properties();
@@ -97,7 +103,7 @@ public class TestLeaderReplicaFailover {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testLeaderReplicaFailover() throws Exception {
+  public void testLeaderReplicaFailoverFutureVersion() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
     TestUtils.assertCommand(
@@ -213,6 +219,105 @@ public class TestLeaderReplicaFailover {
         InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
       });
+    } finally {
+      if (admin != null) {
+        admin.close();
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testLeaderReplicaFailoverCurrentVersion() throws Exception {
+    ControllerClient parentControllerClient =
+        new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
+    props.setProperty(
+        DEFAULT_OFFLINE_PUSH_STRATEGY,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    createStoreForJob(
+        clusterName,
+        keySchemaStr,
+        valueSchemaStr,
+        props,
+        new UpdateStoreQueryParams().setPartitionCount(3)).close();
+    // Create a new version
+    VersionCreationResponse versionCreationResponse = TestUtils.assertCommand(
+        parentControllerClient.requestTopicForWrites(
+            storeName,
+            10 * 1024,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
+
+    String topic = versionCreationResponse.getKafkaTopic();
+    PubSubBrokerWrapper pubSubBrokerWrapper = clusterWrapper.getPubSubBrokerWrapper();
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
+      veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
+      Map<byte[], byte[]> sortedInputRecords = generateData(1000, true, 0, serializer);
+      for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
+        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
+      }
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+    }
+    HelixBaseRoutingRepository routingDataRepo = clusterWrapper.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
+        .getRoutingDataRepository();
+    TestUtils.waitForNonDeterministicCompletion(
+        3,
+        TimeUnit.SECONDS,
+        () -> clusterWrapper.getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
+            .getExecutionStatus()
+            .equals(ExecutionStatus.COMPLETED));
+    Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+    KafkaStoreIngestionService storeIngestionService = null;
+    for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
+      assertNotNull(serverWrapper);
+      // Add error notifier which will report leader to be in ERROR instead of COMPLETE
+      if (serverWrapper.getPort() == leader.getPort()) {
+        HelixParticipationService participationService = serverWrapper.getVeniceServer().getHelixParticipationService();
+        storeIngestionService = participationService.getKafkaStoreIngestionService();
+      }
+    }
+    if (storeIngestionService != null) {
+      storeIngestionService.getStoreIngestionTask(topic)
+          .reportError("error message", 0, new VeniceException("Error happened!"));
+    }
+
+    // Verify the leader is disabled.
+    HelixAdmin admin = null;
+    try {
+      admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
+      final HelixAdmin finalAdmin = admin;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ExternalView externalView = finalAdmin.getResourceExternalView(clusterName, topic);
+        Assert.assertEquals(externalView.getStateMap(topic + "_0").get(leader.getNodeId()), "ERROR");
+      });
+
     } finally {
       if (admin != null) {
         admin.close();

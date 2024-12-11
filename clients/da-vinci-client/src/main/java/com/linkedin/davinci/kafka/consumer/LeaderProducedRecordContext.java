@@ -3,11 +3,14 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.CONTROL_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.DELETE;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
+import static com.linkedin.venice.memory.InstanceSizeEstimator.getSize;
 
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.memory.Measurable;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -25,7 +28,9 @@ import java.util.concurrent.CompletableFuture;
  * drainer thread completes the persistedToDBFuture.
  */
 
-public class LeaderProducedRecordContext {
+public class LeaderProducedRecordContext implements Measurable {
+  private static final int PARTIAL_CLASS_OVERHEAD =
+      getClassOverhead(LeaderProducedRecordContext.class) + getClassOverhead(CompletableFuture.class);
   private static final int NO_UPSTREAM = -1;
   /**
    * Kafka cluster ID where the source kafka consumer record was consumed from.
@@ -234,5 +239,27 @@ public class LeaderProducedRecordContext {
     if (consumedOffset < 0) {
       throw new IllegalArgumentException("consumedOffset cannot be negative");
     }
+  }
+
+  @Override
+  public int getHeapSize() {
+    int size = PARTIAL_CLASS_OVERHEAD + getSize(this.keyBytes);
+    switch (this.messageType) {
+      case PUT:
+        size += getSize((Put) this.valueUnion);
+        break;
+      case CONTROL_MESSAGE:
+        size += getSize((ControlMessage) this.valueUnion);
+        break;
+      default:
+        /**
+         * Only the above two cases contribute any size.
+         *
+         * {@link DELETE} contributes nothing, and {@link com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE}
+         * should never happen.
+         */
+        break;
+    }
+    return size;
   }
 }

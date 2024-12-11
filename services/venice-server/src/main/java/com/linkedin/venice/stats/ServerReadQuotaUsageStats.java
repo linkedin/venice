@@ -66,16 +66,25 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
 
   public void setCurrentVersion(int version) {
     int oldCurrentVersion = currentVersion.get();
-    if (version == oldCurrentVersion) {
+    if (version != oldCurrentVersion) {
       // Defensive coding since set current version can be called multiple times with the same current version
-      return;
+      currentVersion.compareAndSet(oldCurrentVersion, version);
     }
-    if (currentVersion.compareAndSet(oldCurrentVersion, version)) {
-      // Old current version becomes the backup. This should work even if:
-      // a) we rolled back current version
-      // b) current version used to be 0
-      backupVersion.set(oldCurrentVersion);
+  }
+
+  public void setBackupVersion(int version) {
+    int oldBackupVersion = backupVersion.get();
+    if (version != oldBackupVersion) {
+      backupVersion.compareAndSet(oldBackupVersion, version);
     }
+  }
+
+  public int getCurrentVersion() {
+    return currentVersion.get();
+  }
+
+  public int getBackupVersion() {
+    return backupVersion.get();
   }
 
   public void removeVersion(int version) {
@@ -114,24 +123,26 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
     return versionedStats.computeIfAbsent(version, (ignored) -> new ServerReadQuotaVersionedStats(time, metricConfig));
   }
 
-  private Double getVersionedRequestedQPS(int version) {
+  // Package private for testing purpose
+  final Double getVersionedRequestedQPS(int version) {
     if (version < 1) {
       return Double.NaN;
     }
-    return versionedStats.get(version).getRequestedQPS();
+    return getVersionedStats(version).getRequestedQPS();
   }
 
-  private Double getVersionedRequestedKPS(int version) {
+  // Package private for testing purpose
+  final Double getVersionedRequestedKPS(int version) {
     if (version < 1) {
       return Double.NaN;
     }
-    return versionedStats.get(version).getRequestedKPS();
+    return getVersionedStats(version).getRequestedKPS();
   }
 
   /**
    * @return the ratio of the read quota usage to the node's quota responsibility
    */
-  private Double getReadQuotaUsageRatio() {
+  final Double getReadQuotaUsageRatio() {
     int version = currentVersion.get();
     if (version < 1 || !versionedStats.containsKey(version)) {
       return Double.NaN;

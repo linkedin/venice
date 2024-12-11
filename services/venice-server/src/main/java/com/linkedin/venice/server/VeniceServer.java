@@ -11,6 +11,7 @@ import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -72,6 +73,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -118,6 +120,8 @@ public class VeniceServer {
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -326,7 +330,8 @@ public class VeniceServer {
     services.add(storageService);
 
     // Create stats for RocksDB
-    storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
+    storageService.getRocksDBAggregatedStatistics()
+        .ifPresent(stat -> new AggRocksDBStats(serverConfig.getClusterName(), metricsRepository, stat));
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
@@ -356,6 +361,11 @@ public class VeniceServer {
       return helixData;
     });
 
+    managerFuture.thenApply(manager -> {
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+      return true;
+    });
+
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
@@ -363,9 +373,10 @@ public class VeniceServer {
         serverConfig.getRegionName());
     services.add(heartbeatMonitoringService);
 
+    this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        storageService.getStorageEngineRepository(),
+        storageService,
         veniceConfigLoader,
         storageMetadataService,
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
@@ -386,7 +397,8 @@ public class VeniceServer {
         remoteIngestionRepairService,
         pubSubClientsFactory,
         sslFactory,
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        zkHelixAdmin);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
@@ -449,6 +461,7 @@ public class VeniceServer {
      * Initialize Blob transfer manager for Service
      */
     if (serverConfig.isBlobTransferManagerEnabled()) {
+      aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
       blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
@@ -458,8 +471,11 @@ public class VeniceServer {
           metadataRepo,
           storageService.getStorageEngineRepository(),
           serverConfig.getMaxConcurrentSnapshotUser(),
-          serverConfig.getSnapshotRetentionTimeInMin());
+          serverConfig.getSnapshotRetentionTimeInMin(),
+          serverConfig.getBlobTransferMaxTimeoutInMin(),
+          aggVersionedBlobTransferStats);
     } else {
+      aggVersionedBlobTransferStats = null;
       blobTransferManager = null;
     }
 

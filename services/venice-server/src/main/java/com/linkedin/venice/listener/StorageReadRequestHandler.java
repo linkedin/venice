@@ -702,8 +702,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       this.valueSchemaEntry = handler.getComputeValueSchema(request);
       this.resultSchema = handler.getComputeResultSchema(request.getComputeRequest(), valueSchemaEntry.getSchema());
       this.resultSerializer = handler.genericSerializerGetter.apply(resultSchema);
-      this.compressor = handler.compressorFactory
-          .getCompressor(storeVersion.storageEngine.getCompressionStrategy(), request.getResourceName());
+      this.compressor = handler.compressorFactory.getCompressor(
+          storeVersion.storageEngine.getCompressionStrategy(),
+          request.getResourceName(),
+          handler.serverConfig.getZstdDictCompressionLevel());
       this.operations = request.getComputeRequest().getOperations();
       this.operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
     }

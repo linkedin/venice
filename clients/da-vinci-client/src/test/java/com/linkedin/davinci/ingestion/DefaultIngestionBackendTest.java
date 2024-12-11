@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
@@ -16,6 +17,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -24,6 +26,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import java.io.InputStream;
 import java.time.Duration;
@@ -42,6 +45,8 @@ public class DefaultIngestionBackendTest {
   @Mock
   private StorageService storageService;
   @Mock
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  @Mock
   private BlobTransferManager blobTransferManager;
   @Mock
   private DefaultIngestionBackend ingestionBackend;
@@ -59,6 +64,8 @@ public class DefaultIngestionBackendTest {
   private Version version;
   @Mock
   private StoreVersionState storeVersionState;
+  @Mock
+  private OffsetRecord offsetRecord;
 
   private static final int VERSION_NUMBER = 1;
   private static final int PARTITION = 1;
@@ -80,6 +87,13 @@ public class DefaultIngestionBackendTest {
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
 
+    when(offsetRecord.getOffsetLag()).thenReturn(0L);
+    when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(-1L);
+    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
+        .thenReturn(offsetRecord);
+
+    when(blobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(aggVersionedBlobTransferStats);
+
     // Create the DefaultIngestionBackend instance with mocked dependencies
     ingestionBackend = new DefaultIngestionBackend(
         storageMetadataService,
@@ -89,17 +103,20 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
   }
 
-  // verify that blobTransferManager was called given it is a hybrid & blob enabled
+  // verify that blobTransferManager was called given it is blob enabled
   @Test
   public void testStartConsumptionWithBlobTransfer() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
-    when(store.isHybrid()).thenReturn(false);
+    when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
 
     ingestionBackend.startConsumption(storeConfig, PARTITION);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
   }
 
   @Test
@@ -111,8 +128,33 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION))).thenReturn(errorFuture);
 
     CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION).toCompletableFuture();
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, 100L).toCompletableFuture();
     assertTrue(future.isDone());
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
+  }
+
+  @Test
+  public void testNotStartBootstrapFromBlobTransferWhenNotLagging() {
+    long laggingThreshold = 1000L;
+    when(offsetRecord.getOffsetLag()).thenReturn(-10L);
+    when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(10L);
+    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
+        .thenReturn(offsetRecord);
+
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(false);
+    CompletableFuture<InputStream> future = new CompletableFuture<>();
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION))).thenReturn(future);
+
+    CompletableFuture<Void> result =
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, laggingThreshold).toCompletableFuture();
+    assertTrue(result.isDone());
+    verify(blobTransferManager, never()).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
   }
 
   @Test

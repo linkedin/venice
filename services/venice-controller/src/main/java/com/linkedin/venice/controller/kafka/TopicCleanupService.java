@@ -76,12 +76,8 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final AtomicBoolean stopped = new AtomicBoolean(false);
-  private final Set<String> childRegions;
-  private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicCleanupServiceStats topicCleanupServiceStats;
-  private String localDatacenter;
-  private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
 
@@ -109,23 +105,13 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.multiClusterConfigs = multiClusterConfigs;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.topicCleanupServiceStats = topicCleanupServiceStats;
-    this.childRegions = multiClusterConfigs.getCommonConfig().getChildDatacenters();
-    if (!admin.isParent()) {
-      // Only perform cross fabric VT check for RT deletion in child fabrics.
-      this.multiDataCenterStoreToVersionTopicCount = new HashMap<>(childRegions.size());
-      for (String datacenter: childRegions) {
-        multiDataCenterStoreToVersionTopicCount.put(datacenter, new HashMap<>());
-      }
-    } else {
-      this.multiDataCenterStoreToVersionTopicCount = Collections.emptyMap();
-    }
 
     this.danglingTopicCleanupIntervalMs =
         Time.MS_PER_SECOND * multiClusterConfigs.getDanglingTopicCleanupIntervalSeconds();
 
-    PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory =
+    PubSubAdminAdapterFactory<?> sourceOfTruthAdminAdapterFactory =
         multiClusterConfigs.getSourceOfTruthAdminAdapterFactory();
-    PubSubAdminAdapterFactory pubSubAdminAdapterFactory = pubSubClientsFactory.getAdminAdapterFactory();
+    PubSubAdminAdapterFactory<?> pubSubAdminAdapterFactory = pubSubClientsFactory.getAdminAdapterFactory();
     this.danglingTopicOccurrenceCounter = new HashMap<>();
     this.danglingTopicOccurrenceThresholdForCleanup =
         multiClusterConfigs.getDanglingTopicOccurrenceThresholdForCleanup();
@@ -138,7 +124,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   private PubSubAdminAdapter constructSourceOfTruthPubSubAdminAdapter(
-      PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory) {
+      PubSubAdminAdapterFactory<?> sourceOfTruthAdminAdapterFactory) {
     VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
     return sourceOfTruthAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
   }
@@ -180,7 +166,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     return this.stopped.get();
   }
 
-  TopicManager getTopicManager() {
+  final TopicManager getTopicManager() {
     return admin.getTopicManager();
   }
 
@@ -239,45 +225,33 @@ public class TopicCleanupService extends AbstractVeniceService {
     populateDeprecatedTopicQueue(allTopics);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
+
     while (!allTopics.isEmpty()) {
       PubSubTopic topic = allTopics.poll();
+      String storeName = topic.getStoreName();
+      String clusterDiscovered;
       try {
-        if (topic.isRealTime() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
-          // Only delete realtime topic in child fabrics if all version topics are deleted in all child fabrics.
-          if (isRTTopicDeletionBlocked) {
-            LOGGER.warn(
-                "Topic deletion for topic: {} is blocked due to unable to fetch version topic info",
-                topic.getName());
-            topicCleanupServiceStats.recordTopicDeletionError();
-            continue;
-          }
-          boolean canDelete = true;
-          for (Map.Entry<String, Map<String, Integer>> mapEntry: multiDataCenterStoreToVersionTopicCount.entrySet()) {
-            if (mapEntry.getValue().containsKey(topic.getStoreName())) {
-              canDelete = false;
-              LOGGER.info(
-                  "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
-                  topic.getName(),
-                  mapEntry.getValue().get(topic.getStoreName()),
-                  mapEntry.getKey());
-              break;
-            }
-          }
-          if (!canDelete) {
-            continue;
-          }
-        }
-        getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
-        topicCleanupServiceStats.recordTopicDeleted();
-      } catch (VeniceException e) {
-        LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
-        topicCleanupServiceStats.recordTopicDeletionError();
-        // No op, will try again in the next cleanup cycle.
+        clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+      } catch (VeniceNoStoreException e) {
+        LOGGER.warn(
+            "Store {} not found. Exception when trying to delete topic: {} - {}",
+            storeName,
+            topic.getName(),
+            e.toString());
+        deleteTopic(topic);
+        continue;
+      }
+
+      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, storeName)) {
+        // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
+        deleteTopic(topic);
+      } else {
+        LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
       }
 
       if (!topic.isRealTime()) {
         // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
-        // delete
+        // delete. Some new RT topics might have become eligible for deletion in this period.
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
           allTopics.clear();
           populateDeprecatedTopicQueue(allTopics);
@@ -290,20 +264,35 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
   }
 
+  private void deleteTopic(PubSubTopic topic) {
+    try {
+      getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+      topicCleanupServiceStats.recordTopicDeleted();
+    } catch (VeniceException e) {
+      LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
+      topicCleanupServiceStats.recordTopicDeletionError();
+      // No op, will try again in the next cleanup cycle.
+    }
+  }
+
   private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics) {
     Map<PubSubTopic, Long> topicsWithRetention = getTopicManager().getAllTopicRetentions();
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
-    AtomicBoolean realTimeTopicDeletionNeeded = new AtomicBoolean(false);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
-      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-      if (topicRetentions.containsKey(realTimeTopic)) {
-        if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
-          topics.offer(realTimeTopic);
-          minNumOfUnusedVersionTopicsOverride = 0;
-          realTimeTopicDeletionNeeded.set(true);
+      List<PubSubTopic> realTimeTopics = topicRetentions.keySet()
+          .stream()
+          .filter(topic -> Version.isRealTimeTopic(topic.getName()))
+          .collect(Collectors.toList());
+
+      for (PubSubTopic realTimeTopic: realTimeTopics) {
+        if (topicRetentions.containsKey(realTimeTopic)) {
+          if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
+            topics.offer(realTimeTopic);
+            minNumOfUnusedVersionTopicsOverride = 0;
+          }
+          topicRetentions.remove(realTimeTopic);
         }
-        topicRetentions.remove(realTimeTopic);
       }
       List<PubSubTopic> oldTopicsToDelete =
           extractVersionTopicsToCleanup(admin, topicRetentions, minNumOfUnusedVersionTopicsOverride, delayFactor);
@@ -311,9 +300,6 @@ public class TopicCleanupService extends AbstractVeniceService {
         topics.addAll(oldTopicsToDelete);
       }
     });
-    if (realTimeTopicDeletionNeeded.get() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
-      refreshMultiDataCenterStoreToVersionTopicCountMap(topicsWithRetention.keySet());
-    }
 
     // Check if there are dangling topics to be deleted.
     if (sourceOfTruthPubSubAdminAdapter != null
@@ -324,60 +310,6 @@ public class TopicCleanupService extends AbstractVeniceService {
       }
       recentDanglingTopicCleanupTime = System.currentTimeMillis();
       topics.addAll(pubSubTopics);
-    }
-  }
-
-  private void refreshMultiDataCenterStoreToVersionTopicCountMap(Set<PubSubTopic> localTopics) {
-    if (localDatacenter == null) {
-      String localPubSubBootstrapServer = getTopicManager().getPubSubClusterAddress();
-      for (String childFabric: childRegions) {
-        if (localPubSubBootstrapServer.equals(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric))) {
-          localDatacenter = childFabric;
-          break;
-        }
-      }
-      if (localDatacenter == null) {
-        String childFabrics = String.join(",", childRegions);
-        LOGGER.error(
-            "Blocking RT topic deletion. Cannot find local datacenter in child datacenter list: {}",
-            childFabrics);
-        isRTTopicDeletionBlocked = true;
-        return;
-      }
-    }
-    clearAndPopulateStoreToVersionTopicCountMap(
-        localTopics,
-        multiDataCenterStoreToVersionTopicCount.get(localDatacenter));
-    if (childRegions.size() > 1) {
-      for (String childFabric: childRegions) {
-        try {
-          if (childFabric.equals(localDatacenter)) {
-            continue;
-          }
-          String pubSubBootstrapServer = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric);
-          Set<PubSubTopic> remoteTopics = getTopicManager(pubSubBootstrapServer).listTopics();
-          clearAndPopulateStoreToVersionTopicCountMap(
-              remoteTopics,
-              multiDataCenterStoreToVersionTopicCount.get(childFabric));
-        } catch (Exception e) {
-          LOGGER.error("Failed to refresh store to version topic count map for fabric {}", childFabric, e);
-          isRTTopicDeletionBlocked = true;
-          return;
-        }
-      }
-    }
-    isRTTopicDeletionBlocked = false;
-  }
-
-  private static void clearAndPopulateStoreToVersionTopicCountMap(
-      Set<PubSubTopic> topics,
-      Map<String, Integer> storeToVersionTopicCountMap) {
-    storeToVersionTopicCountMap.clear();
-    for (PubSubTopic topic: topics) {
-      String storeName = topic.getStoreName();
-      if (!storeName.isEmpty() && topic.isVersionTopic()) {
-        storeToVersionTopicCountMap.merge(storeName, 1, Integer::sum);
-      }
     }
   }
 
@@ -452,11 +384,18 @@ public class TopicCleanupService extends AbstractVeniceService {
         /** Consider only truncated topics */
         .filter(t -> admin.isTopicTruncatedBasedOnRetention(t.getName(), topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
-        .filter(t -> Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete)
+        .filter(t -> {
+          try {
+            return Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete;
+          } catch (Exception e) {
+            LOGGER.error("Could not parse version from kafka topic " + t.getName());
+            return false;
+          }
+        })
         /**
          * Filter out resources, which haven't been fully removed in child fabrics yet. This is only performed in the
          * child fabric because parent fabric don't have storage node helix resources.
-         *
+         * <p>
          * The reason to filter out still-alive resource is to avoid triggering the non-existing topic issue
          * of Kafka consumer happening in Storage Node.
          */

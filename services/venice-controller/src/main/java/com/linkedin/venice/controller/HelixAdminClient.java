@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.RESTConfig;
 
@@ -133,4 +134,28 @@ public interface HelixAdminClient {
    * Release resources.
    */
   void close();
+
+  /**
+   * Manually enable maintenance mode. To be called by the REST client that accepts KV mappings as
+   * the payload.
+   */
+  void manuallyEnableMaintenanceMode(
+      String clusterName,
+      boolean enabled,
+      String reason,
+      Map<String, String> customFields);
+
+  /**
+   * Set the instanceOperation of and instance with {@link InstanceConstants.InstanceOperation}.
+   *
+   * @param clusterName       The cluster name
+   * @param instanceName      The instance name
+   * @param instanceOperation The instance operation type
+   * @param reason            The reason for the operation
+   */
+  void setInstanceOperation(
+      String clusterName,
+      String instanceName,
+      InstanceConstants.InstanceOperation instanceOperation,
+      String reason);
 }

@@ -83,6 +83,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
 
     this.singleGetStats = new AggServerHttpRequestStats(
+        serverConfig.getClusterName(),
         metricsRepository,
         RequestType.SINGLE_GET,
         isKeyValueProfilingEnabled,
@@ -90,6 +91,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient);
     this.multiGetStats = new AggServerHttpRequestStats(
+        serverConfig.getClusterName(),
         metricsRepository,
         RequestType.MULTI_GET,
         isKeyValueProfilingEnabled,
@@ -97,6 +99,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient);
     this.computeStats = new AggServerHttpRequestStats(
+        serverConfig.getClusterName(),
         metricsRepository,
         RequestType.COMPUTE,
         isKeyValueProfilingEnabled,
@@ -127,7 +130,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     if (serverConfig.isQuotaEnforcementEnabled()) {
       String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
-      this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
+      this.quotaUsageStats = new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository);
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig,
           storeMetadataRepository,

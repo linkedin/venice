@@ -498,7 +498,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     boolean skipOffsetCommandHasBeenProcessed = false;
     for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
-        if (checkOffsetToSkip(entry.getValue().peek().getOffset(), false)) {
+        long adminMessageOffset = entry.getValue().peek().getOffset();
+        if (checkOffsetToSkip(adminMessageOffset, false)) {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
@@ -517,6 +518,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             storeToScheduledTask);
         // Check if there is previously created scheduled task still occupying one thread from the pool.
         if (storeToScheduledTask.putIfAbsent(entry.getKey(), newTask) == null) {
+          // Log the store name and the offset of the task being added into the task list
+          LOGGER.info(
+              "Adding admin message from store {} with offset {} to the task list",
+              entry.getKey(),
+              adminMessageOffset);
           tasks.add(newTask);
           stores.add(entry.getKey());
         }
@@ -575,6 +581,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
               problematicStores.put(storeName, errorInfo);
             }
+          } catch (Throwable e) {
+            long errorMsgOffset = -1;
+            try {
+              errorMsgOffset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
+            } catch (Exception ex) {
+              LOGGER.error("Could not get the offset of the problematic admin message for store {}", storeName, ex);
+            }
+            LOGGER.error(
+                "Unexpected exception thrown while processing admin message for store {} at offset {}",
+                storeName,
+                errorMsgOffset,
+                e);
+            // Throw it above to have the consistent behavior as before
+            throw e;
           }
         }
         if (problematicStores.isEmpty() && internalQueuesEmptied) {
@@ -748,12 +768,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long incomingExecutionId = message.executionId;
     if (checkOffsetToSkipDIV(record.getOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
+      LOGGER.info(
+          "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
+          lastDelegatedExecutionId);
       updateProducerInfo(record.getValue().producerMetadata);
       return;
     }
     if (incomingExecutionId == lastDelegatedExecutionId + 1) {
       // Expected behavior
       lastDelegatedExecutionId++;
+      LOGGER.info("Updated lastDelegatedExecutionId to {}", lastDelegatedExecutionId);
       updateProducerInfo(record.getValue().producerMetadata);
     } else if (incomingExecutionId <= lastDelegatedExecutionId) {
       updateProducerInfo(record.getValue().producerMetadata);
@@ -859,6 +883,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     lastPersistedOffset = lastOffset;
     lastPersistedExecutionId = lastDelegatedExecutionId;
+    LOGGER.info("Updated lastPersistedOffset to {}", lastPersistedOffset);
     stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
   }
 

@@ -113,4 +113,11 @@ public class TopicPartitionIngestionInfo {
     result = 31 * result + versionTopicName.hashCode();
     return result;
   }
+
+  @Override
+  public String toString() {
+    return "{" + "latestOffset:" + latestOffset + ", offsetLag:" + offsetLag + ", msgRate:" + msgRate + ", byteRate:"
+        + byteRate + ", consumerIdStr:" + consumerIdStr + ", elapsedTimeSinceLastPollInMs:"
+        + elapsedTimeSinceLastPollInMs + ", versionTopicName:" + versionTopicName + '}';
+  }
 }

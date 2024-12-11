@@ -16,7 +16,7 @@ public class AggServerReadQuotaUsageStatsTest {
     long start = System.currentTimeMillis();
     doReturn(start).when(mockTime).milliseconds();
     MetricsRepository metricsRepository = new MetricsRepository();
-    AggServerQuotaUsageStats aggServerQuotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
+    AggServerQuotaUsageStats aggServerQuotaUsageStats = new AggServerQuotaUsageStats("test_cluster", metricsRepository);
     String storeName = "testStore";
     String storeName2 = "testStore2";
     String currentReadQuotaRequestedQPSString = "." + storeName + "--current_quota_request.Gauge";
@@ -30,7 +30,7 @@ public class AggServerReadQuotaUsageStatsTest {
     String totalReadQuotaRequestedKPSString = ".total--current_quota_request_key_count.Gauge";
     long batchSize = 100;
     long batchSize2 = 200;
-    aggServerQuotaUsageStats.setCurrentVersion(storeName, 1);
+    aggServerQuotaUsageStats.setBackupVersion(storeName, 1);
     aggServerQuotaUsageStats.setCurrentVersion(storeName, 2);
     aggServerQuotaUsageStats.setCurrentVersion(storeName2, 1);
     aggServerQuotaUsageStats.recordAllowed(storeName, 1, batchSize);

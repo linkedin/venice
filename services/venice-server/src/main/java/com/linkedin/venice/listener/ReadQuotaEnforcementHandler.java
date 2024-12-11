@@ -173,6 +173,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       for (Version version: versions) {
         customizedViewRepository.subscribeRoutingDataChange(version.kafkaTopicName(), this);
       }
+      // also invoke handle store change to ensure corresponding token bucket and stats are initialized.
+      handleStoreChanged(store);
     }
     this.initializedVolatile = true;
   }
@@ -413,9 +415,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
     List<String> topics =
         store.getVersions().stream().map((version) -> version.kafkaTopicName()).collect(Collectors.toList());
+    int currentVersion = store.getCurrentVersion();
+    int backupVersion = 0;
     for (String topic: topics) {
       toBeRemovedTopics.remove(topic);
       customizedViewRepository.subscribeRoutingDataChange(topic, this);
+      int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
       try {
         /**
          * make sure we're up-to-date after registering as a listener
@@ -427,8 +432,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          *
          */
         this.onCustomizedViewChange(customizedViewRepository.getPartitionAssignments(topic));
+        if (versionNumber != currentVersion && versionNumber > backupVersion
+            && VersionStatus.isBootstrapCompleted(store.getVersionStatus(versionNumber))) {
+          backupVersion = versionNumber;
+        }
       } catch (VeniceNoHelixResourceException e) {
-        Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+        Version version = store.getVersion(versionNumber);
         if (version != null && version.getStatus().equals(VersionStatus.ONLINE)) {
           /**
            * The store metadata believes this version is online, but the partition assignment is not in the
@@ -462,7 +471,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
-    stats.setCurrentVersion(store.getName(), store.getCurrentVersion());
+    if (currentVersion > 0) {
+      stats.setCurrentVersion(store.getName(), currentVersion);
+    }
+    if (backupVersion > 0) {
+      stats.setBackupVersion(store.getName(), backupVersion);
+    }
   }
 
   private Set<String> getStoreTopics(String storeName) {

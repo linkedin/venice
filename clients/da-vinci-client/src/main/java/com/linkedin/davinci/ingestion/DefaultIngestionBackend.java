@@ -11,6 +11,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -55,9 +56,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     Pair<Store, Version> storeAndVersion =
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+    Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
+    syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
+
     Runnable runnable = () -> {
-      Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
-      syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
       AbstractStorageEngine storageEngine =
           storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
       topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
@@ -79,8 +81,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
-      CompletionStage<Void> bootstrapFuture =
-          bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
+      storageService.openStore(storeConfig, svsSupplier);
+      CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
+          storeAndVersion.getFirst(),
+          storeAndVersion.getSecond().getNumber(),
+          partition,
+          serverConfig.getBlobTransferDisabledOffsetLagThreshold());
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();
@@ -93,13 +99,24 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs.
    */
-  CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
+  CompletionStage<Void> bootstrapFromBlobs(
+      Store store,
+      int versionNumber,
+      int partitionId,
+      long blobTransferDisabledOffsetLagThreshold) {
     if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
+      return CompletableFuture.completedFuture(null);
+    }
+
+    // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
+    // can bootstrap from Kafka.
+    if (!isOffsetLagged(store.getName(), versionNumber, partitionId, blobTransferDisabledOffsetLagThreshold)) {
       return CompletableFuture.completedFuture(null);
     }
 
     String storeName = store.getName();
     return blobTransferManager.get(storeName, versionNumber, partitionId).handle((inputStream, throwable) -> {
+      updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
       if (throwable != null) {
         LOGGER.error(
             "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}",
@@ -111,6 +128,56 @@ public class DefaultIngestionBackend implements IngestionBackend {
       }
       return null;
     });
+  }
+
+  /**
+   * A helper method to check if the offset lag is within the allowed threshold.
+   * If the offset lag is smaller than the `blobTransferDisabledOffsetLagThreshold`,
+   * bootstrapping from Kafka firstly, even if blob transfer is enabled.
+   *
+   * @param store the store name
+   * @param versionNumber the version number
+   * @param partition the partition number
+   * @param blobTransferDisabledOffsetLagThreshold the maximum allowed offset lag threshold.
+   *        If the offset lag is within this threshold, bootstrapping from Kafka is allowed, even if blob transfer is enabled.
+   *        If the lag exceeds this threshold, bootstrapping should happen from blobs transfer firstly.
+   *
+   * @return true if the offset lag exceeds the threshold or if the lag is 0, indicating bootstrapping should happen from blobs transfer.
+   *         false otherwise
+   */
+  public boolean isOffsetLagged(
+      String store,
+      int versionNumber,
+      int partition,
+      long blobTransferDisabledOffsetLagThreshold) {
+    String topicName = Version.composeKafkaTopic(store, versionNumber);
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partition);
+
+    if (offsetRecord == null || (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1)) {
+      LOGGER.info(
+          "Offset record is null or offset lag is 0 and topic offset is -1 for store {} partition {}.",
+          store,
+          partition);
+      return true;
+    }
+
+    if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
+      LOGGER.info(
+          "Offset lag {} for store {} partition {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
+          offsetRecord.getOffsetLag(),
+          store,
+          partition,
+          blobTransferDisabledOffsetLagThreshold);
+      return false;
+    }
+
+    LOGGER.info(
+        "Store {} partition {} topic offset is {}, offset lag is {}",
+        store,
+        partition,
+        offsetRecord.getLocalVersionTopicOffset(),
+        offsetRecord.getOffsetLag());
+    return true;
   }
 
   @Override
@@ -134,7 +201,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void dropStoragePartitionGracefully(
+  public CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds,
@@ -143,8 +210,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
-    // Drops corresponding data partition from storage.
-    this.storageService.dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
+    return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
   }
 
   @Override
@@ -189,6 +255,30 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private void syncStoreVersionConfig(Store store, VeniceStoreVersionConfig storeConfig) {
     if (store.isBlobTransferEnabled()) {
       storeConfig.setBlobTransferEnabled(true);
+    }
+  }
+
+  /**
+   * Update the blob transfer response stats based on the blob transfer success.
+   * @param isBlobTransferSuccess true if the blob transfer is successful, false otherwise.
+   */
+  private void updateBlobTransferResponseStats(boolean isBlobTransferSuccess, String storeName, int version) {
+    if (blobTransferManager.getAggVersionedBlobTransferStats() == null) {
+      LOGGER.error(
+          "Blob transfer stats is not initialized. Skip updating blob transfer response stats for store {} version {}",
+          storeName,
+          version);
+      return;
+    }
+
+    try {
+      // Record the blob transfer request count.
+      blobTransferManager.getAggVersionedBlobTransferStats().recordBlobTransferResponsesCount(storeName, version);
+      // Record the blob transfer response based on the blob transfer status.
+      blobTransferManager.getAggVersionedBlobTransferStats()
+          .recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, version, isBlobTransferSuccess);
+    } catch (Exception e) {
+      LOGGER.error("Failed to update blob transfer response stats for store {} version {}", storeName, version, e);
     }
   }
 }

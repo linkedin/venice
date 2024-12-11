@@ -1,7 +1,9 @@
 package com.linkedin.venice.utils.collections;
 
-import com.linkedin.venice.common.Measurable;
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
+
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.memory.Measurable;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -46,11 +48,9 @@ import org.apache.logging.log4j.Logger;
 public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQueue<T> {
   private static final Logger LOGGER = LogManager.getLogger(MemoryBoundBlockingQueue.class);
   /**
-   * Considering the node implementation: {@link java.util.LinkedList.Node}, the overhead
-   * is three references, which could be about 24 bytes, and the 'Node' object type itself could take 24 bytes.
-   * We can adjust this value later if necessary.
+   * Considering the node implementation: {@link java.util.LinkedList.Node}, the overhead is three references.
    */
-  public static final int LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE = 48;
+  public static final int LINKED_LIST_NODE_SHALLOW_OVERHEAD = getClassOverhead(LinkedListQueueNodeSimulation.class);
 
   private final Queue<T> queue;
   private final long memoryCapacityInByte;
@@ -87,7 +87,7 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
   }
 
   private long getRecordSize(T record) {
-    return record.getSize() + LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE;
+    return record.getHeapSize() + LINKED_LIST_NODE_SHALLOW_OVERHEAD;
   }
 
   @Override
@@ -251,5 +251,12 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
   @Override
   public int drainTo(Collection<? super T> c, int maxElements) {
     throw new VeniceException("Operation is not supported yet!");
+  }
+
+  /**
+   * Only used to measure the size on heap of a class with three references.
+   */
+  private static final class LinkedListQueueNodeSimulation {
+    private Object field1, field2, field3;
   }
 }

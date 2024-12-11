@@ -2,6 +2,7 @@ package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -33,6 +34,20 @@ public class PushStatusStoreWriter implements AutoCloseable {
   private final int valueSchemaId;
   private final int derivedSchemaId;
   private final Schema updateSchema;
+
+  private static final PubSubProducerCallback PUSH_STATUS_UPDATE_LOGGER_CALLBACK = new PubSubProducerCallback() {
+    @Override
+    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+      if (exception != null) {
+        LOGGER.error("Failed to update push status. Error: ", exception);
+      } else {
+        LOGGER.info(
+            "Updated push status into topic {} at offset {}.",
+            produceResult.getTopic(),
+            produceResult.getOffset());
+      }
+    }
+  };
 
   public PushStatusStoreWriter(
       VeniceWriterFactory writerFactory,
@@ -132,9 +147,10 @@ public class PushStatusStoreWriter implements AutoCloseable {
       String storeName,
       int version,
       ExecutionStatus status,
-      Set<Integer> partitionIds) {
+      Set<Integer> partitionIds,
+      Optional<String> incrementalPushVersion) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, incrementalPushVersion);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setEntriesToAddToMapField("instances", Collections.singletonMap(instanceName, status.getValue()));
     LOGGER.info(
@@ -144,7 +160,12 @@ public class PushStatusStoreWriter implements AutoCloseable {
         storeName,
         version,
         partitionIds);
-    writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
+    writer.update(
+        pushStatusKey,
+        updateBuilder.build(),
+        valueSchemaId,
+        derivedSchemaId,
+        PUSH_STATUS_UPDATE_LOGGER_CALLBACK);
   }
 
   // For storing ongoing incremental push versions, we are (re)using 'instances' field of the PushStatusValue record.

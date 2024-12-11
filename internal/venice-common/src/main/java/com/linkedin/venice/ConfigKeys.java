@@ -118,6 +118,12 @@ public class ConfigKeys {
   public static final String PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE =
       "pubsub.topic.manager.metadata.fetcher.thread.pool.size";
 
+  /**
+   * During a state transition, it is unsafe to proceed without waiting for all inflight messages to be processed.
+   * This controls how long to wait for inflight messages after unsubscribing from a topic during a state transition.
+   */
+  public static final String SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS = "server.max.wait.after.unsubscribe.ms";
+
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
 
@@ -331,7 +337,7 @@ public class ConfigKeys {
       "controller.storage.cluster.helix.cloud.enabled";
 
   /**
-   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider} Default is empty string.
+   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider}. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
 
@@ -346,7 +352,13 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";
 
   /**
-   * Name of the function that processes the fetching and parsing of cloud information. Default is empty string.
+   * Package name of the class that processes the fetching and parsing of cloud information. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE =
+      "controller.helix.cloud.info.processor.package";
+
+  /**
+   * Name of the class that processes the fetching and parsing of cloud information. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 
@@ -746,6 +758,7 @@ public class ConfigKeys {
 
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
+  public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
@@ -1767,9 +1780,16 @@ public class ConfigKeys {
       "davinci.push.status.scan.max.offline.instance.ratio";
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  // this is a config to decide whether the snapshot is expired and need to be recreated.
   public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
       "blob.transfer.snapshot.retention.time.in.min";
+  // this is a config to decide the max allowed concurrent snapshot user
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+  // this is a config to decide max file transfer timeout time in minutes
+  public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
+  // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
+  public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
+      "blob.transfer.disabled.offset.lag.threshold";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
@@ -2188,6 +2208,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
       "server.consumer.pool.size.for.current.version.aa.wc.leader";
+
+  /**
+   * Consumer Pool for separate realtime leader of current version, the traffic we need to isolate due to
+   * it is more costly than normal leader processing and current version should be allocated more resources to prioritize.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.consumer.pool.size.for.current.version.separate.rt.leader";
+
   /**
    * Consumer Pool for active-active or write computer leader of future or backup version, the traffic we need to isolate
    * due to it is still more costly than normal leader processing and it has less priority than current version.
@@ -2295,6 +2323,8 @@ public class ConfigKeys {
    */
   public static final String SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.current.version.separate.rt.leader.quota.records.per.second";
   public static final String SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.non.aa.wc.leader.quota.records.per.second";
   public static final String SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
@@ -2321,4 +2351,9 @@ public class ConfigKeys {
    */
   public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
       "server.nearline.workload.producer.throughput.optimization.enabled";
+
+  public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
+
+  public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
+      "server.delete.unassigned.partitions.on.startup";
 }
