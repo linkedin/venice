@@ -8,7 +8,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
@@ -292,6 +291,7 @@ public class Segment {
                     + controlMessage.getControlMessageType());
         }
       case PUT:
+      case GLOBAL_RT_DIV:
         updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
         Put putPayload = (Put) messageEnvelope.getPayloadUnion();
@@ -311,14 +311,6 @@ public class Segment {
       case DELETE:
         updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
-        return true;
-      case GLOBAL_RT_DIV:
-        updateCheckSum(messageEnvelope.getMessageType()); // TODO: will this make the checksum differ from using PUT?
-        updateCheckSum(key.getKey());
-        GlobalRtDiv div = (GlobalRtDiv) messageEnvelope.getPayloadUnion();
-        updateCheckSum(div.getSchemaId());
-        ByteBuffer value = div.getValue();
-        updateCheckSum(value.array(), value.position(), value.remaining());
         return true;
       default:
         throw new UnsupportedMessageTypeException(

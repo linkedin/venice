@@ -19,7 +19,6 @@ import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -953,16 +952,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = new Put();
-    putPayload.putValue = ByteBuffer.wrap(serializedValue);
-    putPayload.schemaId = valueSchemaId;
-    if (putMetadata == null) {
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-    } else {
-      putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
-    }
+    Put putPayload = buildPutPayload(serializedKey, valueSchemaId, putMetadata);
     CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
@@ -1015,9 +1005,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    GlobalRtDiv divPayload = new GlobalRtDiv();
-    divPayload.value = ByteBuffer.wrap(serializedValue);
-    divPayload.schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+    Put putPayload =
+        buildPutPayload(serializedValue, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(), null);
 
     // TODO: This needs to be implemented later to support Global RT DIV
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
@@ -1026,7 +1015,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(
         producerMetadata -> divKey,
         MessageType.GLOBAL_RT_DIV,
-        divPayload,
+        putPayload,
         partition,
         callback,
         DEFAULT_LEADER_METADATA_WRAPPER,
@@ -1064,18 +1053,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         sendMessageFunction);
 
     final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
-    GlobalRtDiv divManifestPayload = new GlobalRtDiv();
-    divManifestPayload.value =
-        chunkedValueManifestSerializer.serialize(valueChunksAndManifest.getChunkedValueManifest());
-    // This schemaId is for the chunking framework. payload.value will have the real schemaId of the GlobalRtDivState
-    divManifestPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    if (divManifestPayload.value.remaining() > sizeAvailablePerMessage) {
-      throw new VeniceException(
-          "This message cannot be chunked, because even its manifest is too big to go through. "
-              + "Please reconsider your life choices. " + reportSizeGenerator.get());
-    }
+    Put manifestPayload =
+        buildManifestPayload(null, null, valueChunksAndManifest, sizeAvailablePerMessage, reportSizeGenerator);
     return sendManifestMessage(
-        divManifestPayload,
+        manifestPayload,
         serializedKey,
         MessageType.GLOBAL_RT_DIV,
         valueChunksAndManifest,
@@ -1086,6 +1067,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         null,
         DEFAULT_LEADER_METADATA_WRAPPER,
         APP_DEFAULT_LOGICAL_TS);
+  }
+
+  private Put buildPutPayload(byte[] serializedValue, int valueSchemaId, PutMetadata putMetadata) {
+    Put putPayload = new Put();
+    putPayload.putValue = ByteBuffer.wrap(serializedValue);
+    putPayload.schemaId = valueSchemaId;
+
+    if (putMetadata == null) {
+      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    } else {
+      putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
+    }
+    return putPayload;
   }
 
   /**

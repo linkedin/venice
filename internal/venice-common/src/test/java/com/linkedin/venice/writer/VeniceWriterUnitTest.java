@@ -33,7 +33,6 @@ import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -716,9 +715,9 @@ public class VeniceWriterUnitTest {
           ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
           assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
         } else {
-          GlobalRtDiv div = (GlobalRtDiv) kme.payloadUnion;
+          Put put = (Put) kme.payloadUnion;
           assertEquals(kme.messageType, MessageType.GLOBAL_RT_DIV.getValue());
-          assertTrue(validSchemaIds.contains(div.getSchemaId()));
+          assertTrue(validSchemaIds.contains(put.getSchemaId()));
         }
       }
     }

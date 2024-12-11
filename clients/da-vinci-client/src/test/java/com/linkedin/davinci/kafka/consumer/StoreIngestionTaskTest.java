@@ -114,7 +114,6 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -5252,7 +5251,7 @@ public abstract class StoreIngestionTaskTest {
     // Create a DIV record.
     KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
-    value.payloadUnion = new GlobalRtDiv();
+    value.payloadUnion = new Put();
     value.messageType = MessageType.GLOBAL_RT_DIV.getValue();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));

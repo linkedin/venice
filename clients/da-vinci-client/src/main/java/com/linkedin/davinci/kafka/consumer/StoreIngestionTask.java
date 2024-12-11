@@ -68,7 +68,6 @@ import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
-import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
@@ -1209,15 +1208,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void processGlobalRtDivMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     KafkaKey key = record.getKey();
     KafkaMessageEnvelope value = record.getValue();
-    GlobalRtDiv div = (GlobalRtDiv) value.getPayloadUnion();
+    Put put = (Put) value.getPayloadUnion();
 
     Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
         record.getTopicPartition(),
-        div.getSchemaId(),
+        put.getSchemaId(),
         key.getKey(),
-        div.getValue(),
+        put.getPutValue(),
         record.getOffset(),
-        div.getSchemaId(),
+        put.getSchemaId(),
         new NoopCompressor(),
         (valueBytes) -> globalRtDivStateSerializer
             .deserialize(ByteUtils.extractByteArray(valueBytes), GLOBAL_RT_DIV_STATE_SCHEMA_ID));

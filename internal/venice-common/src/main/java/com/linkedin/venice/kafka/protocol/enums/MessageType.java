@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
@@ -61,11 +60,11 @@ public enum MessageType implements VeniceEnumValue {
    *         - {@link com.linkedin.venice.kafka.protocol.Delete}
    *         - {@link com.linkedin.venice.kafka.protocol.ControlMessage}
    *         - {@link com.linkedin.venice.kafka.protocol.Update}
-   *         - {@link com.linkedin.venice.kafka.protocol.GlobalRtDiv}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
       case PUT:
+      case GLOBAL_RT_DIV:
         return new Put();
       case DELETE:
         return new Delete();
@@ -73,8 +72,6 @@ public enum MessageType implements VeniceEnumValue {
         return new ControlMessage();
       case UPDATE:
         return new Update();
-      case GLOBAL_RT_DIV:
-        return new GlobalRtDiv();
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
