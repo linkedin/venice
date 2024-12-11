@@ -1570,14 +1570,10 @@ public class DaVinciClientTest {
 
     try (ControllerClient controllerClient = cluster.getControllerClient()) {
       StoreInfo store = controllerClient.getStore(storeName).getStore();
-      TestUtils.waitForNonDeterministicAssertion(
-          2,
-          TimeUnit.MILLISECONDS,
-          () -> Assert.assertEquals(store.getIsDavinciHeartbeatReported(), true));
-      TestUtils.waitForNonDeterministicAssertion(
-          2,
-          TimeUnit.MILLISECONDS,
-          () -> Assert.assertEquals(store.getVersion(2).get().getIsDavinciHeartbeatReported(), true));
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertTrue(store.getIsDavinciHeartbeatReported());
+        Assert.assertTrue(store.getVersion(2).get().getIsDavinciHeartbeatReported());
+      });
     }
   }
 

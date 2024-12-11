@@ -1140,7 +1140,7 @@ public abstract class AbstractPushMonitor
           boolean isNormalPush = !version.isVersionSwapDeferred();
           boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
           if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
-            LOGGER.debug(
+            LOGGER.info(
                 "Swapping to version {} for store {} in region {}. isTargetRegionPushWithDeferredSwap is {} and"
                     + "isNormalPush is {}",
                 versionNumber,
@@ -1158,10 +1158,11 @@ public abstract class AbstractPushMonitor
                 versionNumber);
           } else {
             LOGGER.info(
-                "Version swap is deferred for store {} on version {} in region {} due to target region push w/ deferred swap",
+                "Version swap is deferred for store {} on version {} in region {} because it is not in the target regions: {}",
                 store.getName(),
                 versionNumber,
-                regionName);
+                regionName,
+                targetRegions);
           }
         } else {
           LOGGER.info(
