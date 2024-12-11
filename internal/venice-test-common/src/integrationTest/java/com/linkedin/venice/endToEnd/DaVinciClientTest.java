@@ -1548,7 +1548,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIsDavinciHeartbeatReported() throws Exception {
     String storeName = Utils.getUniqueString("testIsDavinviHeartbeatReported");
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setTargetRegionSwap("test");
@@ -1558,7 +1558,14 @@ public class DaVinciClientTest {
       client.subscribeAll().get();
     }
 
-    Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+    File inputDirectory = getTempDataDirectory();
+    String inputDirectoryPath = "file://" + inputDirectory.getAbsolutePath();
+    try {
+      writeSimpleAvroFileWithIntToStringSchema(inputDirectory);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    Properties vpjProperties = defaultVPJProps(cluster, inputDirectoryPath, storeName);
     runVPJ(vpjProperties, 2, cluster);
 
     try (ControllerClient controllerClient = cluster.getControllerClient()) {
