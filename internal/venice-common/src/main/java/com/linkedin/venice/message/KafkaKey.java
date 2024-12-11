@@ -87,7 +87,7 @@ public class KafkaKey implements Measurable {
   private String messageTypeString() {
     switch (keyHeaderByte) {
       case MessageType.Constants.PUT_KEY_HEADER_BYTE:
-        return "PUT or DELETE";
+        return "PUT or DELETE"; // PUT_KEY_HEADER_BYTE corresponds to both PUT or DELETE
       case MessageType.Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE:
         return "CONTROL_MESSAGE";
       case MessageType.Constants.UPDATE_KEY_HEADER_BYTE:

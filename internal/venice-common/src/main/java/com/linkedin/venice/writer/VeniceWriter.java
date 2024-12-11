@@ -956,7 +956,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(serializedValue);
     putPayload.schemaId = valueSchemaId;
-
     if (putMetadata == null) {
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
@@ -964,7 +963,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
       putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
     }
-
     CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
@@ -973,6 +971,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         callback,
         leaderMetadataWrapper,
         logicalTs);
+
     DeleteMetadata deleteMetadata =
         new DeleteMetadata(valueSchemaId, putPayload.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
     PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
@@ -1020,7 +1019,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     divPayload.value = ByteBuffer.wrap(serializedValue);
     divPayload.schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
-    // TODO: this needs to be changed later to adapt to div purpose.
+    // TODO: This needs to be implemented later to support Global RT DIV
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
@@ -1039,7 +1038,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       byte[] serializedKey,
       byte[] serializedValue) {
     final Supplier<String> reportSizeGenerator = () -> getSizeReport(serializedKey.length, serializedValue.length, 0);
-    // TODO: this needs to be changed later to adapt to div purpose.
+    // TODO: This needs to be implemented later to support Global RT DIV.
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     PubSubProducerCallback callback = new ErrorPropagationCallback(new CompletableFutureCallback(completableFuture));
     BiConsumer<KeyProvider, Object> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(

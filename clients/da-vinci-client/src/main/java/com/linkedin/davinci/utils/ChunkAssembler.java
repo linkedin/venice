@@ -57,7 +57,7 @@ public class ChunkAssembler {
       long recordOffset,
       int readerSchemaId,
       VeniceCompressor compressor,
-      Function<ByteBuffer, T> deserializerFunction) {
+      Function<ByteBuffer, T> deserializationFunction) {
     ByteBuffer assembledRecord = bufferAndAssembleRecord(
         pubSubTopicPartition,
         schemaId,
@@ -66,20 +66,16 @@ public class ChunkAssembler {
         recordOffset,
         readerSchemaId,
         compressor);
-    T decompressedAndDeserializedRecord = null;
 
-    // Record is a chunk. Return null
     if (assembledRecord == null) {
-      return decompressedAndDeserializedRecord;
+      return null; // the value is a chunk, and the full record cannot yet be assembled until the manifest is reached
     }
 
     try {
-      decompressedAndDeserializedRecord = decompressAndDeserialize(deserializerFunction, compressor, assembledRecord);
+      return decompressAndDeserialize(deserializationFunction, compressor, assembledRecord);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-
-    return decompressedAndDeserializedRecord;
   }
 
   /**
@@ -108,16 +104,16 @@ public class ChunkAssembler {
       inMemoryStorageEngine.put(
           pubSubTopicPartition.getPartitionNumber(),
           keyBytes,
-          // We need to extract data from valueBytes, otherwise it could contain non-data in the array.
+          // We need to extract data from valueBytes, otherwise the array could contain non-data
           ValueRecord.create(schemaId, ByteUtils.extractByteArray(valueBytes)).serialize());
     };
 
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-      // If this is a record chunk, store the chunk and return null for processing this record
+      // If this is a chunk, store the chunk and return null because the full record cannot yet be assembled
       putRecordToInMemoryStorageEngine.run();
       return null;
     } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
+      // This is the last value. Store it and read it from the in-memory store as a fully assembled record
       putRecordToInMemoryStorageEngine.run();
       try {
         assembledRecord = RawBytesChunkingAdapter.INSTANCE.get(
@@ -164,10 +160,10 @@ public class ChunkAssembler {
    * Decompresses the value bytes using the input compressor and applies the provided deserialization function.
    */
   protected <T> T decompressAndDeserialize(
-      Function<ByteBuffer, T> deserializerFunction,
+      Function<ByteBuffer, T> deserializationFunction,
       VeniceCompressor compressor,
       ByteBuffer value) throws IOException {
-    return deserializerFunction.apply(compressor.decompress(value));
+    return deserializationFunction.apply(compressor.decompress(value));
   }
 
   public void clearInMemoryDB() {

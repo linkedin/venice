@@ -17,7 +17,7 @@
       "name": "producerStates",
       "type": {
         "type": "map",
-        "doc": "A map that maps producer GUID -> producer state for real-time data.",
+        "doc": "A map that maps producer GUID -> producer state for realtime data.",
         "values": {
           "name": "ProducerPartitionState",
           "namespace": "com.linkedin.venice.kafka.protocol.state",

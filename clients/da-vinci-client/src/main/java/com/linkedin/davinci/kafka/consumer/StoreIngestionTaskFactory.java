@@ -127,7 +127,6 @@ public class StoreIngestionTaskFactory {
     private PubSubTopicRepository pubSubTopicRepository;
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
-
     private ChunkAssembler chunkAssembler;
 
     private interface Setter {

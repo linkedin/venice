@@ -68,6 +68,7 @@ import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.GlobalRtDiv;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
@@ -1156,10 +1157,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionStateMap.get(topicPartition.getPartitionNumber()));
       }
     } else if (record.getKey().isGlobalRtDiv()) {
-      // This is a global realtime topic data integrity validator object, process it and return early.
       // TODO: This is a placeholder for the actual implementation.
       if (isGlobalRtDivEnabled) {
-        processGlobalRtDivMessage(record);
+        processGlobalRtDivMessage(record); // This is a global realtime topic data integrity validator snapshot
       }
       return 0;
     }
@@ -1209,22 +1209,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void processGlobalRtDivMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     KafkaKey key = record.getKey();
     KafkaMessageEnvelope value = record.getValue();
-    Put put = (Put) value.getPayloadUnion();
+    GlobalRtDiv div = (GlobalRtDiv) value.getPayloadUnion();
 
     Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
         record.getTopicPartition(),
-        put.getSchemaId(),
+        div.getSchemaId(),
         key.getKey(),
-        put.getPutValue(),
+        div.getValue(),
         record.getOffset(),
-        put.getSchemaId(),
+        div.getSchemaId(),
         new NoopCompressor(),
         (valueBytes) -> globalRtDivStateSerializer
             .deserialize(ByteUtils.extractByteArray(valueBytes), GLOBAL_RT_DIV_STATE_SCHEMA_ID));
 
-    // If the assembled object is null, it means that the object is not yet fully assembled, so we can return early.
     if (assembledObject == null) {
-      return;
+      return; // the message value only contained a chunk, and the Global RT DIV cannot yet be fully assembled
     }
     // TODO: We will add the code to process Global RT DIV message later in here.
   }
@@ -2437,12 +2436,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    /**
-     * Only version topics are used for Global RT DIV messages to be produced to and consumed from. It is unexpected to
-     * read global rt div messages from real-time topics. Skip them and log a warning.
-     */
+    // Global RT DIV messages should only be in version topics, not realtime topics. Skip it and log a warning.
     if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
-      LOGGER.warn("Skipping global RT DIV message from real-time topic-partition: {}", record.getTopicPartition());
+      LOGGER.warn("Skipping Global RT DIV message from realtime topic partition: {}", record.getTopicPartition());
       return false;
     }
 
@@ -3835,12 +3831,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
       throws InterruptedException {
     KafkaMessageEnvelope kafkaValue = record.getValue();
-    if (record.getKey().isControlMessage() || kafkaValue == null) {
-      return;
-    }
-
-    // Do not need to check schema availability for DIV messages as schema is already known.
-    if (record.getKey().isGlobalRtDiv()) {
+    if (record.getKey().isControlMessage() || record.getKey().isGlobalRtDiv() || kafkaValue == null) {
       return;
     }
 

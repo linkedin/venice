@@ -2283,11 +2283,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
       String kafkaUrl,
       PubSubTopicPartition topicPartition) {
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
+    final PartitionConsumptionState pcs = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     if (pcs == null) {
       // The partition is likely unsubscribed, will skip these messages.
       LOGGER.warn(
-          "No partition consumption state for store version: {}, partition:{}, will filter out all the messages",
+          "No partition consumption state for store version: {}, partition: {}, will filter out all the messages",
           kafkaVersionTopic,
           topicPartition.getPartitionNumber());
       return Collections.emptyList();
@@ -2308,7 +2308,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        TopicType topicType = (isGlobalRtDivEnabled)
+        final TopicType topicType = (isGlobalRtDivEnabled)
             ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
             : PartitionTracker.VERSION_TOPIC;
         validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs);

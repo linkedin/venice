@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
@@ -63,7 +64,9 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
@@ -527,7 +530,7 @@ public class VeniceWriterUnitTest {
         pubSubMessageHeadersArgumentCaptor.capture(),
         any());
     for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
-      Assert.assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
+      assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
     }
     for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
       assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
@@ -662,7 +665,7 @@ public class VeniceWriterUnitTest {
           Assert.fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
         }
       } catch (Exception e) {
-        Assert.assertTrue(e instanceof RecordTooLargeException);
+        assertTrue(e instanceof RecordTooLargeException);
         Assert.assertNotEquals(size, SMALL_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
       }
     }
@@ -700,20 +703,22 @@ public class VeniceWriterUnitTest {
           .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
 
       for (KafkaKey key: keyArgumentCaptor.getAllValues()) {
-        Assert.assertTrue(key.isGlobalRtDiv() || key.isControlMessage());
+        assertTrue(key.isGlobalRtDiv() || key.isControlMessage());
       }
 
+      final Set<Integer> validSchemaIds = new HashSet<>(
+          Arrays.asList(
+              AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+              AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+              AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion()));
       for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
         if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
           ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
           assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
         } else {
-          Assert.assertEquals(kme.messageType, MessageType.GLOBAL_RT_DIV.getValue());
           GlobalRtDiv div = (GlobalRtDiv) kme.payloadUnion;
-          Assert.assertTrue(
-              div.getSchemaId() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
-                  || div.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()
-                  || div.getSchemaId() == AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+          assertEquals(kme.messageType, MessageType.GLOBAL_RT_DIV.getValue());
+          assertTrue(validSchemaIds.contains(div.getSchemaId()));
         }
       }
     }
