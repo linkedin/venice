@@ -1442,7 +1442,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           if (!partitionConsumptionState.isCompletionReported()) {
             reportError(partitionException.getMessage(), exceptionPartition, partitionException);
-
+          } else if (resetErrorReplicaEnabled && !isDaVinciClient) {
+            zkHelixAdmin.get()
+                .setPartitionsToError(
+                    serverConfig.getClusterName(),
+                    hostName,
+                    kafkaVersionTopic,
+                    Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, exceptionPartition)));
+            LOGGER.error(
+                "Marking replica status to ERROR for replica: {}",
+                Utils.getReplicaId(kafkaVersionTopic, exceptionPartition),
+                partitionException);
           } else {
             LOGGER.error(
                 "Ignoring exception for replica: {} since it is already online. The replica will continue serving reads, but the data may be stale as it is not actively ingesting data. Please engage the Venice DEV team immediately.",
