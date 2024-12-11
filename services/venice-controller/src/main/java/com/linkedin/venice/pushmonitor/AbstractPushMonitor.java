@@ -1141,8 +1141,8 @@ public abstract class AbstractPushMonitor
           boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
           if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
-                "Swapping to version {} for store {} in region {}. isTargetRegionPushWithDeferredSwap is {} and"
-                    + "isNormalPush is {}",
+                "Swapping to version {} for store {} in region {} during "
+                    + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
                 versionNumber,
                 store.getName(),
                 regionName,
