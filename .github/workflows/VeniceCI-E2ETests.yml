@@ -13,8 +13,8 @@ name: E2ETests
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
-  IntegrationTests_1000:
-    name: IntegrationTests_1000
+  IntegrationTests_A:
+    name: IntegrationTests_A
     strategy:
       fail-fast: false
       matrix:
@@ -26,7 +26,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1000
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_A
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1000
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_A
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -80,8 +80,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1010:
-    name: IntegrationTests_1010
+  IntegrationTests_B:
+    name: IntegrationTests_B
     strategy:
       fail-fast: false
       matrix:
@@ -93,7 +93,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1010
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_B
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -113,7 +113,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1010
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_B
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -147,8 +147,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1020:
-    name: IntegrationTests_1020
+  IntegrationTests_C:
+    name: IntegrationTests_C
     strategy:
       fail-fast: false
       matrix:
@@ -160,7 +160,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1020
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_C
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -180,7 +180,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1020
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_C
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -214,8 +214,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1030:
-    name: IntegrationTests_1030
+  IntegrationTests_D:
+    name: IntegrationTests_D
     strategy:
       fail-fast: false
       matrix:
@@ -227,7 +227,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1030
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_D
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -247,7 +247,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1030
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_D
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -281,8 +281,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1040:
-    name: IntegrationTests_1040
+  IntegrationTests_E:
+    name: IntegrationTests_E
     strategy:
       fail-fast: false
       matrix:
@@ -294,7 +294,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1040
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_E
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -314,7 +314,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1040
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_E
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -348,8 +348,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1050:
-    name: IntegrationTests_1050
+  IntegrationTests_F:
+    name: IntegrationTests_F
     strategy:
       fail-fast: false
       matrix:
@@ -361,7 +361,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1050
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_F
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -381,7 +381,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1050
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_F
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -415,8 +415,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1060:
-    name: IntegrationTests_1060
+  IntegrationTests_G:
+    name: IntegrationTests_G
     strategy:
       fail-fast: false
       matrix:
@@ -428,7 +428,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1060
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_G
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -448,7 +448,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1060
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_G
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -482,8 +482,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1070:
-    name: IntegrationTests_1070
+  IntegrationTests_H:
+    name: IntegrationTests_H
     strategy:
       fail-fast: false
       matrix:
@@ -495,7 +495,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1070
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_H
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -515,7 +515,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1070
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_H
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -549,8 +549,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1080:
-    name: IntegrationTests_1080
+  IntegrationTests_I:
+    name: IntegrationTests_I
     strategy:
       fail-fast: false
       matrix:
@@ -562,7 +562,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1080
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_I
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -582,7 +582,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1080
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_I
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -616,8 +616,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1090:
-    name: IntegrationTests_1090
+  IntegrationTests_J:
+    name: IntegrationTests_J
     strategy:
       fail-fast: false
       matrix:
@@ -629,7 +629,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1090
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_J
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -649,7 +649,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1090
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_J
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -683,8 +683,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1100:
-    name: IntegrationTests_1100
+  IntegrationTests_K:
+    name: IntegrationTests_K
     strategy:
       fail-fast: false
       matrix:
@@ -696,7 +696,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1100
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_K
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -716,7 +716,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1100
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_K
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -750,8 +750,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1110:
-    name: IntegrationTests_1110
+  IntegrationTests_L:
+    name: IntegrationTests_L
     strategy:
       fail-fast: false
       matrix:
@@ -763,7 +763,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1110
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_L
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -783,7 +783,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1110
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_L
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -817,8 +817,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1120:
-    name: IntegrationTests_1120
+  IntegrationTests_M:
+    name: IntegrationTests_M
     strategy:
       fail-fast: false
       matrix:
@@ -830,7 +830,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1120
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_M
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -850,7 +850,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1120
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_M
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -884,8 +884,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1130:
-    name: IntegrationTests_1130
+  IntegrationTests_N:
+    name: IntegrationTests_N
     strategy:
       fail-fast: false
       matrix:
@@ -897,7 +897,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1130
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_N
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -917,7 +917,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1130
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_N
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -951,8 +951,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1200:
-    name: IntegrationTests_1200
+  IntegrationTests_O:
+    name: IntegrationTests_O
     strategy:
       fail-fast: false
       matrix:
@@ -964,7 +964,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1200
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_O
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -984,7 +984,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1200
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_O
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1018,8 +1018,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1210:
-    name: IntegrationTests_1210
+  IntegrationTests_P:
+    name: IntegrationTests_P
     strategy:
       fail-fast: false
       matrix:
@@ -1031,7 +1031,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1210
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_P
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1051,7 +1051,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1210
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_P
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1085,8 +1085,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1220:
-    name: IntegrationTests_1220
+  IntegrationTests_Q:
+    name: IntegrationTests_Q
     strategy:
       fail-fast: false
       matrix:
@@ -1098,7 +1098,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1220
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_Q
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1118,7 +1118,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1220
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_Q
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1152,8 +1152,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1230:
-    name: IntegrationTests_1230
+  IntegrationTests_R:
+    name: IntegrationTests_R
     strategy:
       fail-fast: false
       matrix:
@@ -1165,7 +1165,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1230
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_R
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1185,7 +1185,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1230
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_R
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1219,8 +1219,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1240:
-    name: IntegrationTests_1240
+  IntegrationTests_S:
+    name: IntegrationTests_S
     strategy:
       fail-fast: false
       matrix:
@@ -1232,7 +1232,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1240
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_S
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1252,7 +1252,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1240
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_S
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1286,8 +1286,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1250:
-    name: IntegrationTests_1250
+  IntegrationTests_T:
+    name: IntegrationTests_T
     strategy:
       fail-fast: false
       matrix:
@@ -1299,7 +1299,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1250
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_T
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1319,7 +1319,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1250
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_T
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1353,8 +1353,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1260:
-    name: IntegrationTests_1260
+  IntegrationTests_U:
+    name: IntegrationTests_U
     strategy:
       fail-fast: false
       matrix:
@@ -1366,7 +1366,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1260
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_U
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1386,7 +1386,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1260
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_U
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1420,8 +1420,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1270:
-    name: IntegrationTests_1270
+  IntegrationTests_V:
+    name: IntegrationTests_V
     strategy:
       fail-fast: false
       matrix:
@@ -1433,7 +1433,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1270
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_V
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1453,7 +1453,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1270
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_V
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1487,8 +1487,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1280:
-    name: IntegrationTests_1280
+  IntegrationTests_W:
+    name: IntegrationTests_W
     strategy:
       fail-fast: false
       matrix:
@@ -1500,7 +1500,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1280
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_W
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1520,7 +1520,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1280
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_W
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1554,8 +1554,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1400:
-    name: IntegrationTests_1400
+  IntegrationTests_X:
+    name: IntegrationTests_X
     strategy:
       fail-fast: false
       matrix:
@@ -1567,7 +1567,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1400
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_X
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1587,7 +1587,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1400
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_X
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1621,8 +1621,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1410:
-    name: IntegrationTests_1410
+  IntegrationTests_Y:
+    name: IntegrationTests_Y
     strategy:
       fail-fast: false
       matrix:
@@ -1634,7 +1634,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1410
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_Y
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1654,7 +1654,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1410
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_Y
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1688,8 +1688,8 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTests_1420:
-    name: IntegrationTests_1420
+  IntegrationTests_Z:
+    name: IntegrationTests_Z
     strategy:
       fail-fast: false
       matrix:
@@ -1701,7 +1701,7 @@ jobs:
      checks: write
     timeout-minutes: 120
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1420
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_Z
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
@@ -1721,342 +1721,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1420
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  IntegrationTests_1430:
-    name: IntegrationTests_1430
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [17]
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-    timeout-minutes: 120
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1430
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1430
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  IntegrationTests_1440:
-    name: IntegrationTests_1440
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [17]
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-    timeout-minutes: 120
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1440
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1440
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  IntegrationTests_1500:
-    name: IntegrationTests_1500
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [17]
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-    timeout-minutes: 120
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1500
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1500
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  IntegrationTests_1550:
-    name: IntegrationTests_1550
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [17]
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-    timeout-minutes: 120
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1550
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1550
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  IntegrationTests_9999:
-    name: IntegrationTests_9999
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [17]
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-    timeout-minutes: 120
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_9999
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9999
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_Z
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -2096,7 +1761,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    needs: [IntegrationTests_1000, IntegrationTests_1010, IntegrationTests_1020, IntegrationTests_1030, IntegrationTests_1040, IntegrationTests_1050, IntegrationTests_1060, IntegrationTests_1070, IntegrationTests_1080, IntegrationTests_1090, IntegrationTests_1100, IntegrationTests_1110, IntegrationTests_1120, IntegrationTests_1130, IntegrationTests_1200, IntegrationTests_1210, IntegrationTests_1220, IntegrationTests_1230, IntegrationTests_1240, IntegrationTests_1250, IntegrationTests_1260, IntegrationTests_1270, IntegrationTests_1280, IntegrationTests_1400, IntegrationTests_1410, IntegrationTests_1420, IntegrationTests_1430, IntegrationTests_1440, IntegrationTests_1500, IntegrationTests_1550, IntegrationTests_9999]
+    needs: [IntegrationTests_A, IntegrationTests_B, IntegrationTests_C, IntegrationTests_D, IntegrationTests_E, IntegrationTests_F, IntegrationTests_G, IntegrationTests_H, IntegrationTests_I, IntegrationTests_J, IntegrationTests_K, IntegrationTests_L, IntegrationTests_M, IntegrationTests_N, IntegrationTests_O, IntegrationTests_P, IntegrationTests_Q, IntegrationTests_R, IntegrationTests_S, IntegrationTests_T, IntegrationTests_U, IntegrationTests_V, IntegrationTests_W, IntegrationTests_X, IntegrationTests_Y, IntegrationTests_Z]
     timeout-minutes: 20
     steps:
     - name: NoOp
