@@ -5246,6 +5246,7 @@ public abstract class StoreIngestionTaskTest {
             -1,
             false,
             Optional.empty(),
+            null,
             null));
 
     // Create a DIV record.
@@ -5282,8 +5283,8 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(rtRecord));
   }
 
-  @Test
-  public void testProcessGlobalRtDivMessage() throws Exception {
+  @Test(dataProvider = "aaConfigProvider")
+  public void testProcessGlobalRtDivMessage(AAConfig aaConfig) throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       // Arrange
       KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
@@ -5298,7 +5299,7 @@ public abstract class StoreIngestionTaskTest {
       // Assert
       verify(storeIngestionTaskUnderTest.getChunkAssembler())
           .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), anyInt(), any(), any());
-    }, AA_OFF);
+    }, aaConfig);
   }
 
   @Test
