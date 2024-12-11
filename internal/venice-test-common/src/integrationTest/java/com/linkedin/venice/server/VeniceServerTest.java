@@ -447,7 +447,6 @@ public class VeniceServerTest {
 
       StorageService storageService = server.getVeniceServer().getStorageService();
       Assert.assertTrue(server.getVeniceServer().isStarted());
-      final StorageEngineRepository repository = storageService.getStorageEngineRepository();
 
       // Create a new store
       String storeName = cluster.createStore(1);

@@ -2778,7 +2778,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             constructViewResources(veniceViewProperties, store, version.getNumber());
 
             repository.updateStore(store);
-            if (shouldCreateRealTimeTopics(store, version)) {
+            if (isRealTimeTopicRequired(store, version)) {
               createOrUpdateRealTimeTopics(clusterName, store, version);
             }
             LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
@@ -2959,7 +2959,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param version the version being evaluated
    * @return {@code true} if real-time topics should be created; {@code false} otherwise
    */
-  boolean shouldCreateRealTimeTopics(Store store, Version version) {
+  boolean isRealTimeTopicRequired(Store store, Version version) {
     if (!store.isHybrid() || !version.isHybrid()) {
       return false;
     }
@@ -3388,12 +3388,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId) {
-    boolean requiresVersionToBeOnline = !isParent();
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       Store store = resources.getStoreMetadataRepository().getStore(storeName);
       if (store == null) {
+        LOGGER.error(
+            "Unable to locate version for incremental push: {}. Store: {} does not exist in cluster: {}",
+            pushJobId,
+            storeName,
+            clusterName);
         throwStoreDoesNotExist(clusterName, storeName);
       }
 
@@ -3431,16 +3435,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           pushJobId);
 
-      int partitionCount = hybridVersion.getPartitionCount();
-      boolean hasSeparateRt = hybridVersion.isSeparateRealTimeTopicEnabled();
-      // if (isParent()) {
-      // getRealTimeTopic(clusterName, storeName, partitionCount);
-      // if (hasSeparateRt) {
-      // getSeparateRealTimeTopic(clusterName, storeName, partitionCount);
-      // }
-      // }
-
-      if (!shouldCreateRealTimeTopics(store, hybridVersion)) {
+      // If real-time topic is not required, no need to check for its presence
+      if (!isRealTimeTopicRequired(store, hybridVersion)) {
         return hybridVersion;
       }
 
@@ -3458,7 +3454,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " because the topic: " + rtTopic + " is either absent or being truncated");
       }
 
-      if (hasSeparateRt) {
+      if (hybridVersion.isSeparateRealTimeTopicEnabled()) {
         PubSubTopic separateRtTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
         if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(separateRtTopic)
             || isTopicTruncated(separateRtTopic.getName())) {

@@ -289,7 +289,7 @@ public class RealTimeTopicSwitcher {
     } else {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
-    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
+    // ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
     long rewindStartTimestamp = getRewindStartTime(version, hybridStoreConfig, version.getCreatedTime());
     PubSubTopic finalTopicWhereToSendTheTopicSwitch = version.getPushType().isStreamReprocessing()
         ? pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()))
