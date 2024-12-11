@@ -37,7 +37,7 @@ public class CompactionManager {
    * and then filter out the stores that are ready for compaction with function {@link CompactionManager#filterStoresForCompaction}.
    * @param clusterName
    * @param childControllers
-   * @return
+   * @return list of StoreInfo of stores ready for log compaction in clusterName
    */
   public List<StoreInfo> getStoresForCompaction(String clusterName, Map<String, ControllerClient> childControllers) {
     ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
@@ -50,7 +50,7 @@ public class CompactionManager {
       storeInfoList.addAll(response.getStoreInfoList());
     }
 
-    // filter out
+    // filter for stores ready for log compaction
     return filterStoresForCompaction(storeInfoList);
   }
 
@@ -70,6 +70,7 @@ public class CompactionManager {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
     return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(DEFAULT_COMPACTION_THRESHOLD_HOURS, storeInfo);
+    // TODO LC: get compaction threshold hours from config
   }
 
   /**
@@ -99,11 +100,13 @@ public class CompactionManager {
   /**
    * This function triggers a repush job to perform log compaction on the topic of a store.
    *
-   * intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and {@link RepushOrchestrator#repush}
+   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and {@link RepushOrchestrator#repush}
+   * - a wrapper around repush()
+   * - handles repush job status/response
    *
    * @param storeName of the store to be compacted
    */
-  public void compactStore(String storeName) {
+  public RepushJobResponse compactStore(String storeName) {
     try {
       RepushJobResponse response = repushOrchestrator.repush(storeName);
       LOGGER.info(
@@ -111,8 +114,10 @@ public class CompactionManager {
           response.getStoreName(),
           response.getJobName(),
           response.getJobExecId());
+      return response;
     } catch (Exception e) {
       LOGGER.error("Failed to compact store: {}", storeName, e);
+      throw e;
     }
   }
 }

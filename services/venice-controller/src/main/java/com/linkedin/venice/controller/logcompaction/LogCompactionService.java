@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.logcompaction;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Set;
@@ -83,13 +84,22 @@ public class LogCompactionService extends AbstractVeniceService {
     public void run() {
       for (String clusterName: clusters) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
-          /*TODO LC: response =*/admin.compactStore(storeInfo.getName());
-          // TODO LC: if response is not success, log error
-          LOGGER.info(
-              "{} log compaction triggered for cluster: {} store: {}",
-              triggerSource,
-              clusterName,
-              storeInfo.getName());
+          try {
+            RepushJobResponse response = admin.compactStore(storeInfo.getName());
+            LOGGER.info(
+                "{} log compaction triggered for cluster: {} store: {} | execution URL: {}",
+                triggerSource,
+                clusterName,
+                response.getStoreName(),
+                response.getJobExecUrl());
+          } catch (Exception e) {
+            LOGGER.error(
+                "Error checking if store is ready for log compaction for cluster: {} store: {}",
+                clusterName,
+                storeInfo.getName(),
+                e);
+            // TODO LC: handle error? e.g. retry compaction
+          }
         }
       }
     }
