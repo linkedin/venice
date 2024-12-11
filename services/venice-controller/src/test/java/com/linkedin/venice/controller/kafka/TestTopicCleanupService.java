@@ -473,8 +473,9 @@ public class TestTopicCleanupService {
   @Test
   public void testExtractVersionTopicsToCleanupIgnoresInputWithNonVersionTopics() {
     String storeName = Utils.getUniqueString("test_store");
+    String realTimeTopicName = Utils.composeRealTimeTopic(storeName);
     Map<PubSubTopic, Long> topicRetentions = new HashMap<>();
-    topicRetentions.put(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName)), Long.MAX_VALUE);
+    topicRetentions.put(pubSubTopicRepository.getTopic(realTimeTopicName), Long.MAX_VALUE);
     topicRetentions
         .put(pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(storeName, 1)), Long.MAX_VALUE);
     topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1)), 1000L);

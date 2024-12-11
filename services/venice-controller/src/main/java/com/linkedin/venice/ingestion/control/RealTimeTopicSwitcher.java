@@ -20,6 +20,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -238,13 +239,13 @@ public class RealTimeTopicSwitcher {
     // if a previous version didn't have an RT, then there will be no
     // version consuming the topic switch message. We'll transmit the version switch
     // message so long as there exists some RT
-    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store.getName())))) {
+    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(previousStoreVersion)))) {
       // NoOp
       return;
     }
     // Write the thing!
     try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-        new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(store.getName())).setTime(getTimer())
+        new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(store)).setTime(getTimer())
             .setPartitionCount(previousStoreVersion.getPartitionCount())
             .build())) {
       veniceWriter.broadcastVersionSwap(
