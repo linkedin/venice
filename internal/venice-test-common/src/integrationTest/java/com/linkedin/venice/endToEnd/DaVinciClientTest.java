@@ -46,9 +46,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.DaVinciUserApp;
-import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -85,7 +83,6 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -1302,7 +1299,6 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    StoreBackend storeBackend;
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
@@ -1358,16 +1354,15 @@ public class DaVinciClientTest {
         Optional.of(Collections.singleton(storeName1)))) {
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
 
-      DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
-      storeBackend = daVinciBackend.getStoreOrThrow(storeName1);
-      List<Integer> partitions = new ArrayList<>();
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+
+      Set<Integer> partitions = new HashSet<>();
       for (int i = 0; i < 5; ++i) {
         partitions.add(i);
       }
-      ComplementSet<Integer> subscription = ComplementSet.newSet(partitions);
-      storeBackend.subscribe(subscription);
 
-      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+      client1.subscribe(partitions);
+
       client1.subscribeAll().get();
       client1.unsubscribeAll();
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {

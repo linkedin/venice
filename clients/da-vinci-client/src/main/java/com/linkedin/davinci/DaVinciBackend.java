@@ -1,6 +1,6 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_BOOTSTRAP_SUBSCRIPTION_DISABLED;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
@@ -468,7 +468,7 @@ public class DaVinciBackend implements Closeable {
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
-    if (!configLoader.getCombinedProperties().getBoolean(DA_VINCI_BOOTSTRAP_SUBSCRIPTION_DISABLED, false)) {
+    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
       // Subscribe all bootstrap version partitions.
       storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
         List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
