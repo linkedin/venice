@@ -2312,8 +2312,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * written to, the end offset is 0.
    */
   protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
-    long offsetFromConsumer = aggKafkaConsumerService
-        .getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, new PubSubTopicPartitionImpl(pubSubTopic, partition));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    long offsetFromConsumer =
+        aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, topicPartition);
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
@@ -2321,7 +2322,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
         if (offset == UNKNOWN_LATEST_OFFSET) {
-          throw new VeniceException("Latest offset is unknown. Check if the topic exists.");
+          throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
         }
         return offset;
       },
