@@ -76,6 +76,7 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
@@ -186,6 +187,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  private static final int GLOBAL_RT_DIV_STATE_SCHEMA_ID =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -286,6 +289,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected int writeComputeFailureCode = 0;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+  private final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer;
 
   // Do not convert it to a local variable because it is used in test.
   private boolean purgeTransientRecordBuffer = true;
@@ -448,6 +452,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isSeparatedRealtimeTopicEnabled = version.isSeparateRealTimeTopicEnabled();
 
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
+
+    this.globalRtDivStateSerializer = GLOBAL_RT_DIV_STATE.getSerializer();
 
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
@@ -1153,7 +1159,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // This is a global realtime topic data integrity validator object, process it and return early.
       // TODO: This is a placeholder for the actual implementation.
       if (isGlobalRtDivEnabled) {
-        processDivControlMessage(record);
+        processGlobalRtDivMessage(record);
       }
       return 0;
     }
@@ -1200,7 +1206,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return record.getPayloadSize();
   }
 
-  void processDivControlMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  void processGlobalRtDivMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     KafkaKey key = record.getKey();
     KafkaMessageEnvelope value = record.getValue();
     Put put = (Put) value.getPayloadUnion();
@@ -1211,9 +1217,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         key.getKey(),
         put.getPutValue(),
         record.getOffset(),
-        GLOBAL_RT_DIV_STATE,
         put.getSchemaId(),
-        new NoopCompressor());
+        new NoopCompressor(),
+        (valueBytes) -> globalRtDivStateSerializer
+            .deserialize(ByteUtils.extractByteArray(valueBytes), GLOBAL_RT_DIV_STATE_SCHEMA_ID));
 
     // If the assembled object is null, it means that the object is not yet fully assembled, so we can return early.
     if (assembledObject == null) {

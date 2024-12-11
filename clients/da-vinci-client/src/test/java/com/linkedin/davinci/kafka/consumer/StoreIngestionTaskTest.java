@@ -5296,17 +5296,10 @@ public abstract class StoreIngestionTaskTest {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO), 0, 0, 0);
       // Act
-      storeIngestionTaskUnderTest.processDivControlMessage(record);
+      storeIngestionTaskUnderTest.processGlobalRtDivMessage(record);
       // Assert
-      verify(storeIngestionTaskUnderTest.getChunkAssembler()).bufferAndAssembleRecord(
-          any(),
-          anyInt(),
-          any(),
-          any(),
-          anyLong(),
-          any(AvroProtocolDefinition.class),
-          anyInt(),
-          any());
+      verify(storeIngestionTaskUnderTest.getChunkAssembler())
+          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), any(), anyInt(), any());
     }, AA_OFF);
   }
 
