@@ -2308,10 +2308,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        TopicType topicType = PartitionTracker.VERSION_TOPIC;
-        if (isGlobalRtDivEnabled) {
-          topicType = TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl);
-        }
+        TopicType topicType = (isGlobalRtDivEnabled)
+            ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
+            : PartitionTracker.VERSION_TOPIC;
         validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {

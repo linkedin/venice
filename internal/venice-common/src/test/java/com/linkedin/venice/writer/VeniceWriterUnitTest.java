@@ -696,7 +696,7 @@ public class VeniceWriterUnitTest {
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
       ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
 
-      // SMALL_VALUE_SIZE: 1 SOS, 1 DivControlMessage
+      // SMALL_VALUE_SIZE: 1 SOS, 1 GlobalRtDiv Message
       // TOO_LARGE_VALUE_SIZE: 1 SOS, 4 DivChunk, 1 DivManifest
       final int invocationCount = (size == SMALL_VALUE_SIZE) ? 2 : 6;
       verify(mockedProducer, times(invocationCount))

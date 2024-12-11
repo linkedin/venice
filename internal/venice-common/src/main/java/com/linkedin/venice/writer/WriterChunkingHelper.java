@@ -39,31 +39,6 @@ public class WriterChunkingHelper {
   public static ChunkedPayloadAndManifest chunkPayloadAndSend(
       byte[] serializedKey,
       byte[] payload,
-      boolean isValuePayload,
-      int schemaId,
-      int chunkedKeySuffixStartingIndex,
-      boolean isChunkAwareCallback,
-      Supplier<String> sizeReport,
-      int maxSizeForUserPayloadPerMessageInBytes,
-      KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
-      BiConsumer<VeniceWriter.KeyProvider, Put> sendMessageFunction) {
-    return chunkPayloadAndSend(
-        serializedKey,
-        payload,
-        MessageType.PUT,
-        isValuePayload,
-        schemaId,
-        chunkedKeySuffixStartingIndex,
-        isChunkAwareCallback,
-        sizeReport,
-        maxSizeForUserPayloadPerMessageInBytes,
-        keyWithChunkingSuffixSerializer,
-        sendMessageFunction);
-  }
-
-  public static ChunkedPayloadAndManifest chunkPayloadAndSend(
-      byte[] serializedKey,
-      byte[] payload,
       MessageType keyType,
       boolean isValuePayload,
       int schemaId,

@@ -152,7 +152,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * The default for {@link #maxRecordSizeBytes} is unlimited / unset (-1) just to be safe. A more specific default value
-   * should be set using {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
+   * should be set using {@link com.linkedin.venice.ConfigKeys#DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
    * config on the cluster level.
    */
   public static final int UNLIMITED_MAX_RECORD_SIZE = -1;
@@ -999,19 +999,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int totalRecordSize = calculateTotalRecordSize(serializedKey, serializedValue, null);
 
     if (isChunkingNeededForRecord(totalRecordSize)) {
-      return sendDivMessageChunked(
-          partition,
-          serializedKey,
-          serializedValue,
-          GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
-          null);
+      return sendDivMessageChunked(partition, serializedKey, serializedValue, null);
     } else {
-      return sendDivMessageNonChunked(
-          partition,
-          serializedKey,
-          serializedValue,
-          GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
-          null);
+      return sendDivMessageNonChunked(partition, serializedKey, serializedValue, null);
     }
   }
 
@@ -1019,7 +1009,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       byte[] serializedKey,
       byte[] serializedValue,
-      int valueSchemaId,
       PutMetadata putMetadata) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
@@ -1041,7 +1030,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         serializedValue,
         MessageType.GLOBAL_RT_DIV,
         true,
-        valueSchemaId,
+        GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         0,
         false,
         reportSizeGenerator,
@@ -1070,13 +1059,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       byte[] serializedKey,
       byte[] serializedValue,
-      int valueSchemaId,
       PutMetadata putMetadata) {
     serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
+    Put putPayload = buildPutPayload(serializedValue, GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(), putMetadata);
 
     // TODO: this needs to be changed later to adapt to div purpose.
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
@@ -1633,6 +1621,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
+        MessageType.PUT,
         true,
         valueSchemaId,
         0,
@@ -1646,6 +1635,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         ? WriterChunkingHelper.chunkPayloadAndSend(
             serializedKey,
             putMetadata == null ? EMPTY_BYTE_ARRAY : ByteUtils.extractByteArray(putMetadata.getRmdPayload()),
+            MessageType.PUT,
             false,
             valueSchemaId,
             valueChunkCount,
