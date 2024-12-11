@@ -26,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPE
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.COMPACT_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
@@ -40,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
@@ -933,6 +935,37 @@ public class StoresRoutes extends AbstractRoute {
         ArrayList<StoreInfo> response = admin.getClusterStores(cluster);
         veniceResponse.setStoreInfoList(response);
         veniceResponse.setCluster(cluster);
+      }
+    };
+  }
+
+  /**
+   * @see Admin#getStoresForCompaction(String)
+   */
+  public Route getStoresForCompaction(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreInfoResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_STORES_FOR_COMPACTION.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        List<StoreInfo> response = admin.getStoresForCompaction(cluster);
+        veniceResponse.setStoreInfoList(response);
+        veniceResponse.setCluster(cluster);
+      }
+    };
+  }
+
+  /**
+   * @see Admin#compactStore(String)
+   */
+  public Route compactStore(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, COMPACT_STORE.getParams(), admin);
+        String storeName = request.queryParams(NAME);
+        admin.compactStore(storeName);
+        veniceResponse.setName(storeName);
       }
     };
   }

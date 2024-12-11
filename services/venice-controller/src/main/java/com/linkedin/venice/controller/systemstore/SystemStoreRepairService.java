@@ -79,5 +79,4 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     }
     LOGGER.info("SystemStoreRepairService is shutdown.");
   }
-
 }

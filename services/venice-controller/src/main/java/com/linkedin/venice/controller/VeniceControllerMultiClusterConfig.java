@@ -286,4 +286,20 @@ public class VeniceControllerMultiClusterConfig {
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
   }
+
+  public String getRepushOrchestratorClassName() {
+    return getCommonConfig().getRepushOrchestratorClassName();
+  }
+
+  public boolean isLogCompactionEnabled() {
+    return getCommonConfig().isLogCompactionEnabled();
+  }
+
+  public int getScheduledLogCompactionThreadCount() {
+    return getCommonConfig().getScheduledLogCompactionThreadCount();
+  }
+
+  public long getScheduledLogCompactionIntervalMS() {
+    return getCommonConfig().getScheduledLogCompactionIntervalMS();
+  }
 }
