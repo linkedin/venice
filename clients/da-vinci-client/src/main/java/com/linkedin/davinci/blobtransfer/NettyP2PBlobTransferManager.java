@@ -212,6 +212,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * Get the blob transfer stats
    * @return the blob transfer stats
    */
+  @Override
   public AggVersionedBlobTransferStats getAggVersionedBlobTransferStats() {
     return aggVersionedBlobTransferStats;
   }
