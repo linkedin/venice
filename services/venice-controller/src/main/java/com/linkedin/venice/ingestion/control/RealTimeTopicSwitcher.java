@@ -20,6 +20,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -244,7 +245,7 @@ public class RealTimeTopicSwitcher {
     }
     // Write the thing!
     try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-        new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(store.getName())).setTime(getTimer())
+        new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(store)).setTime(getTimer())
             .setPartitionCount(previousStoreVersion.getPartitionCount())
             .build())) {
       veniceWriter.broadcastVersionSwap(

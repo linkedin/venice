@@ -71,6 +71,7 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -814,7 +815,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     responseObject.setCluster(clusterName);
     responseObject.setName(storeName);
     responseObject.setPartitions(currentVersion.getPartitionCount());
-    responseObject.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+    responseObject.setKafkaTopic(Utils.getRealTimeTopicName(store));
 
     // RT topic only supports NO_OP compression
     responseObject.setCompressionStrategy(CompressionStrategy.NO_OP);
