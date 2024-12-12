@@ -1057,7 +1057,7 @@ public class Utils {
       PubSubTopic pubSubTopic) {
     if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.REALTIME_TOPIC)
         && pubSubTopic.getName().endsWith(SEPARATE_TOPIC_SUFFIX)) {
-      return pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(pubSubTopic.getStoreName()));
+      return pubSubTopicRepository.getTopic(composeRealTimeTopic(pubSubTopic.getStoreName()));
     }
     return pubSubTopic;
   }

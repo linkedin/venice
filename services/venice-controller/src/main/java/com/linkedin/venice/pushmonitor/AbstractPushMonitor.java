@@ -33,6 +33,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -935,7 +936,7 @@ public abstract class AbstractPushMonitor
         try {
           String newStatusDetails;
           realTimeTopicSwitcher.switchToRealTimeTopic(
-              Version.composeRealTimeTopic(storeName),
+              Utils.getRealTimeTopicName(store),
               offlinePushStatus.getKafkaTopic(),
               store,
               aggregateRealTimeSourceKafkaUrl,
