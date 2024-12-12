@@ -410,7 +410,7 @@ public class VenicePushJob implements AutoCloseable {
 
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled
-          || pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+          || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
         pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
       } else {
         throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");

@@ -936,7 +936,7 @@ public class VenicePushJobTest {
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, getClient())) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertEquals(pushJobSetting.deferVersionSwap, true);
-      Assert.assertEquals(pushJobSetting.isTargetedRegionPushEnabled, true);
+      Assert.assertEquals(pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled, true);
       Assert.assertEquals(pushJobSetting.targetedRegions, regions);
     }
   }
