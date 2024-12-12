@@ -1151,18 +1151,18 @@ public abstract class AbstractPushMonitor
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
-          } else if (isDeferredSwap) {
-            LOGGER.info(
-                "Version swap is deferred for store {} on version {}. Skipping version swap.",
+          } else {
+            String deferredSwapLog = String.format(
+                "Version swap is deferred for store %s on version %d. Skipping version swap",
                 store.getName(),
                 versionNumber);
-          } else {
-            LOGGER.info(
-                "Version swap is deferred for store {} on version {} in region {} because it is not in the target regions: {}",
+            String targetRegionSwapDeferredLog = String.format(
+                "Version swap is deferred for store %s on version %d in region %s because it is not in the target regions: %s",
                 store.getName(),
                 versionNumber,
                 regionName,
-                targetRegions);
+                version.getTargetSwapRegion());
+            LOGGER.info(isDeferredSwap ? deferredSwapLog : targetRegionSwapDeferredLog);
           }
         } else {
           LOGGER.info(
