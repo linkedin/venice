@@ -1908,6 +1908,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         }
 
+        // Global RT DIV messages should be completely ignored when leader is consuming from remote version topic
+        if (record.getKey().isGlobalRtDiv()) {
+          return false;
+        }
+
         if (!Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, record.getTopicPartition().getPubSubTopic())
             .equals(currentLeaderTopic)) {
           String errorMsg =
