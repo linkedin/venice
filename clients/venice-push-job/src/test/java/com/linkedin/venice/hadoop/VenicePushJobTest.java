@@ -941,7 +941,7 @@ public class VenicePushJobTest {
     }
   }
 
-  @Test
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*cannot be enabled at the same time.*")
   public void testEnableBothTargetRegionConfigs() {
     Properties props = getVpjRequiredProperties();
     String regions = "test1, test2";
@@ -951,14 +951,7 @@ public class VenicePushJobTest {
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(TARGETED_REGION_PUSH_LIST, regions);
 
-    try {
-      getSpyVenicePushJob(props, getClient());
-    } catch (Exception e) {
-      assertEquals(
-          e.getMessage(),
-          "Target region push and target region push with deferred version swap cannot be enabled"
-              + " at the same time");
-    }
+    getSpyVenicePushJob(props, getClient());
   }
 
   private JobStatusQueryResponse mockJobStatusQuery() {
