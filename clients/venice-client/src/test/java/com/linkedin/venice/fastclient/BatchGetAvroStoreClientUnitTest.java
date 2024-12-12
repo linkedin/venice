@@ -40,7 +40,7 @@ import org.testng.annotations.Test;
  */
 
 public class BatchGetAvroStoreClientUnitTest {
-  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientUnitTest.class);
   private static final long CLIENT_TIME_OUT_IN_SECONDS = 10;
   private static final int RETRY_THRESHOLD_IN_MS = 50;

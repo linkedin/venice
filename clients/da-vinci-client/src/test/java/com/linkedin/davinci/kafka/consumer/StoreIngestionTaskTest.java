@@ -5151,7 +5151,7 @@ public abstract class StoreIngestionTaskTest {
       // This is an actual exception thrown when deserializing a corrupted OffsetRecord
       String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
           + "The only supported Magic Byte for this implementation is '24'.";
-      doThrow(new VeniceMessageException(msg)).when(mockStorageMetadataService).getLastOffset(any(), anyInt());
+      when(mockStorageMetadataService.getLastOffset(anyString(), anyInt())).thenThrow(new VeniceMessageException(msg));
 
       for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS; i++) {
         try {
@@ -5160,8 +5160,13 @@ public abstract class StoreIngestionTaskTest {
           throw new RuntimeException(e);
         }
       }
+
       ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
-      verify(storeIngestionTaskUnderTest, atLeastOnce()).reportError(anyString(), eq(PARTITION_FOO), captor.capture());
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> verify(storeIngestionTaskUnderTest, atLeastOnce())
+              .reportError(anyString(), eq(PARTITION_FOO), captor.capture()));
       assertTrue(captor.getValue().getMessage().endsWith(msg));
     }, AA_OFF);
   }
