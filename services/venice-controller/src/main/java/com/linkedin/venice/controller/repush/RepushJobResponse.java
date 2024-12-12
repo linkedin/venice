@@ -5,32 +5,32 @@ package com.linkedin.venice.controller.repush;
  */
 public class RepushJobResponse {
   private final String storeName;
-  private final String jobName;
-  private final String jobExecId;
-  private final String jobExecUrl;
+  private final String execId;
+  private final String execUrl;
+  private final String execDate;
 
   // TODO LC: airflow: storeName from conf, jobName from dag_id, jobExecId from dag_run_id
 
-  public RepushJobResponse(String storeName, String jobName, String jobId, String jobExecUrl) {
+  public RepushJobResponse(String storeName, String jobName, String jobId, String jobExecUrl, String execDate) {
     this.storeName = storeName;
-    this.jobName = jobName;
-    this.jobExecId = jobId;
-    this.jobExecUrl = jobExecUrl;
+    this.execId = jobId;
+    this.execUrl = jobExecUrl;
+    this.execDate = execDate;
   }
 
   public String getStoreName() {
     return storeName;
   }
 
-  public String getJobName() {
-    return jobName;
+  public String getExecId() {
+    return execId;
   }
 
-  public String getJobExecId() {
-    return jobExecId;
+  public String getExecUrl() {
+    return execUrl;
   }
 
-  public String getJobExecUrl() {
-    return jobExecUrl;
+  public String getExecDate() {
+    return execDate;
   }
 }

@@ -110,10 +110,10 @@ public class CompactionManager {
     try {
       RepushJobResponse response = repushOrchestrator.repush(storeName);
       LOGGER.info(
-          "Repush job triggered for store: {} with job name: {} and job exec id: {}",
+          "Repush job triggered for store: {} | exec id: {} | exec url: {}",
           response.getStoreName(),
-          response.getJobName(),
-          response.getJobExecId());
+          response.getExecId(),
+          response.getExecUrl());
       return response;
     } catch (Exception e) {
       LOGGER.error("Failed to compact store: {}", storeName, e);
