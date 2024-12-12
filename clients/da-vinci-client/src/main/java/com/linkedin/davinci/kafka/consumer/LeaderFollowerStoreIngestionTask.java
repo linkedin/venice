@@ -7,6 +7,8 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRA
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.davinci.validation.PartitionTracker.TopicType.REALTIME_TOPIC_TYPE;
+import static com.linkedin.davinci.validation.PartitionTracker.TopicType.VERSION_TOPIC_TYPE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
@@ -33,6 +35,7 @@ import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
+import com.linkedin.davinci.validation.PartitionTracker.TopicType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -1479,7 +1482,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         upstreamTopic = versionTopic;
       }
       if (upstreamTopic.isRealTime()) {
-        offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+        offsetRecord.mergeUpstreamOffsets(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
       } else {
         offsetRecord.setCheckpointUpstreamVersionTopicOffset(
             partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset());
@@ -1619,7 +1622,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               int actualSchemaId = ByteUtils.readInt(actualValue, 0);
               Put put = (Put) envelope.payloadUnion;
               if (actualSchemaId == put.schemaId) {
-
                 if (put.putValue.equals(
                     ByteBuffer.wrap(
                         actualValue,
@@ -1904,6 +1906,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               }
             }
           }
+        }
+
+        // Global RT DIV messages should be completely ignored when leader is consuming from remote version topic
+        if (record.getKey().isGlobalRtDiv()) {
+          return false;
         }
 
         if (!Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, record.getTopicPartition().getPubSubTopic())
@@ -2281,18 +2288,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
       String kafkaUrl,
       PubSubTopicPartition topicPartition) {
-    PartitionConsumptionState partitionConsumptionState =
-        partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
-    if (partitionConsumptionState == null) {
+    final PartitionConsumptionState pcs = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
+    if (pcs == null) {
       // The partition is likely unsubscribed, will skip these messages.
       LOGGER.warn(
-          "No partition consumption state for store version: {}, partition:{}, will filter out all the messages",
+          "No partition consumption state for store version: {}, partition: {}, will filter out all the messages",
           kafkaVersionTopic,
           topicPartition.getPartitionNumber());
       return Collections.emptyList();
     }
-    boolean isEndOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-    if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
+    boolean isEndOfPushReceived = pcs.isEndOfPushReceived();
+    if (!shouldProduceToVersionTopic(pcs)) {
       return records;
     }
     /**
@@ -2302,30 +2308,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
     while (iter.hasNext()) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
-      boolean isRealTimeMsg = record.getTopicPartition().getPubSubTopic().isRealTime();
+      boolean isRealTimeTopic = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        if (!isGlobalRtDivEnabled) {
-          validateMessage(
-              PartitionTracker.VERSION_TOPIC,
-              this.kafkaDataIntegrityValidatorForLeaders,
-              record,
-              isEndOfPushReceived,
-              partitionConsumptionState);
-        } else {
-          validateMessage(
-              PartitionTracker.TopicType.of(
-                  isRealTimeMsg
-                      ? PartitionTracker.TopicType.REALTIME_TOPIC_TYPE
-                      : PartitionTracker.TopicType.VERSION_TOPIC_TYPE,
-                  kafkaUrl),
-              this.kafkaDataIntegrityValidatorForLeaders,
-              record,
-              isEndOfPushReceived,
-              partitionConsumptionState);
-        }
+        final TopicType topicType = (isGlobalRtDivEnabled)
+            ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
+            : PartitionTracker.VERSION_TOPIC;
+        validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
@@ -2342,7 +2333,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             "Skipping a duplicate record from: {} offset: {} for replica: {}",
             record.getTopicPartition(),
             record.getOffset(),
-            partitionConsumptionState.getReplicaId());
+            pcs.getReplicaId());
         iter.remove();
       }
     }

@@ -39,6 +39,7 @@ public class WriterChunkingHelper {
   public static ChunkedPayloadAndManifest chunkPayloadAndSend(
       byte[] serializedKey,
       byte[] payload,
+      MessageType keyType,
       boolean isValuePayload,
       int schemaId,
       int chunkedKeySuffixStartingIndex,
@@ -46,7 +47,7 @@ public class WriterChunkingHelper {
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
       KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
-      BiConsumer<VeniceWriter.KeyProvider, Put> sendMessageFunction) {
+      BiConsumer<VeniceWriter.KeyProvider, Object> sendMessageFunction) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(maxSizeForUserPayloadPerMessageInBytes, sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
@@ -75,7 +76,7 @@ public class WriterChunkingHelper {
     subsequentKeyProvider = producerMetadata -> {
       ByteBuffer keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
       chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
-      return new KafkaKey(MessageType.PUT, keyWithSuffix.array());
+      return new KafkaKey(keyType, keyWithSuffix.array());
     };
     firstKeyProvider = producerMetadata -> {
       chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
@@ -83,6 +84,7 @@ public class WriterChunkingHelper {
       chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
       return subsequentKeyProvider.getKey(producerMetadata);
     };
+
     for (int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++) {
       int chunkStartByteIndex = chunkIndex * sizeAvailablePerMessage;
       int chunkEndByteIndex = Math.min((chunkIndex + 1) * sizeAvailablePerMessage, payload.length);
@@ -111,6 +113,7 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
+
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex + chunkedKeySuffixStartingIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 

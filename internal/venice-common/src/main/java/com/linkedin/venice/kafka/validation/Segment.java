@@ -291,6 +291,7 @@ public class Segment {
                     + controlMessage.getControlMessageType());
         }
       case PUT:
+      case GLOBAL_RT_DIV:
         updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
         Put putPayload = (Put) messageEnvelope.getPayloadUnion();
