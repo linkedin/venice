@@ -82,6 +82,18 @@ public class LogCompactionService extends AbstractVeniceService {
 
     @Override
     public void run() {
+      errorHandlingWrapper();
+    }
+
+    private void errorHandlingWrapper() {
+      try {
+        compactStoresInClusters();
+      } catch (Throwable e) {
+        LOGGER.error("Non-Exception Throwable caught", e);
+      }
+    }
+
+    private void compactStoresInClusters() {
       for (String clusterName: clusters) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
           try {
@@ -91,14 +103,13 @@ public class LogCompactionService extends AbstractVeniceService {
                 triggerSource,
                 clusterName,
                 response.getStoreName(),
-                response.getJobExecUrl());
+                response.getExecUrl());
           } catch (Exception e) {
             LOGGER.error(
                 "Error checking if store is ready for log compaction for cluster: {} store: {}",
                 clusterName,
                 storeInfo.getName(),
                 e);
-            // TODO LC: handle error? e.g. retry compaction
           }
         }
       }
