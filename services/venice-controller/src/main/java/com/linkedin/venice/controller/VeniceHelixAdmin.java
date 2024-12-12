@@ -1986,11 +1986,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  /**
-   * This is a wrapper for VeniceHelixAdmin#addVersion but performs additional operations needed for add version invoked
-   * from the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an add
-   * version message.
-   */
   @Override
   public void addVersionAndStartIngestion(
       String clusterName,
@@ -2003,6 +1998,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
+      int repushSourceVersion) {
+    addVersionAndStartIngestion(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNumber,
+        numberOfPartitions,
+        pushType,
+        remoteKafkaBootstrapServers,
+        rewindTimeInSecondsOverride,
+        replicationMetadataVersionId,
+        versionSwapDeferred,
+        null,
+        repushSourceVersion);
+  }
+
+  /**
+   * This is a wrapper for VeniceHelixAdmin#addVersion but performs additional operations needed for add version invoked
+   * from the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an add
+   * version message.
+   */
+  public void addVersionAndStartIngestion(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int versionNumber,
+      int numberOfPartitions,
+      PushType pushType,
+      String remoteKafkaBootstrapServers,
+      long rewindTimeInSecondsOverride,
+      int replicationMetadataVersionId,
+      boolean versionSwapDeferred,
+      String targetedRegions,
       int repushSourceVersion) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
@@ -2053,6 +2081,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         Optional.empty(),
         versionSwapDeferred,
+        targetedRegions,
         repushSourceVersion);
   }
 
@@ -2802,6 +2831,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (repushSourceVersion > NON_EXISTING_VERSION) {
               version.setRepushSourceVersion(repushSourceVersion);
+            }
+
+            if (versionSwapDeferred && StringUtils.isNotEmpty(targetedRegions)) {
+              version.setTargetSwapRegion(targetedRegions);
             }
 
             Properties veniceViewProperties = new Properties();

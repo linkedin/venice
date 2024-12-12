@@ -79,6 +79,7 @@ public class PushJobSetting implements Serializable {
   public boolean d2Routing;
   public String targetedRegions;
   public boolean isTargetedRegionPushEnabled;
+  public boolean isTargetRegionPushWithDeferredSwapEnabled;
   public boolean isSystemSchemaReaderEnabled;
   public String systemSchemaClusterD2ServiceName;
   public String systemSchemaClusterD2ZKHost;
