@@ -941,6 +941,26 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testEnableBothTargetRegionConfigs() {
+    Properties props = getVpjRequiredProperties();
+    String regions = "test1, test2";
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(TARGETED_REGION_PUSH_LIST, regions);
+
+    try {
+      getSpyVenicePushJob(props, getClient());
+    } catch (Exception e) {
+      assertEquals(
+          e.getMessage(),
+          "Target region push and target region push with deferred version swap cannot be enabled"
+              + " at the same time");
+    }
+  }
+
   private JobStatusQueryResponse mockJobStatusQuery() {
     JobStatusQueryResponse response = new JobStatusQueryResponse();
     response.setStatus(ExecutionStatus.COMPLETED.toString());
