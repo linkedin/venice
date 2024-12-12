@@ -408,6 +408,13 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
     }
 
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled
+        && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+      throw new VeniceException(
+          "Target region push and target region push with deferred version swap cannot be enabled"
+              + " at the same time");
+    }
+
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled
           || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
