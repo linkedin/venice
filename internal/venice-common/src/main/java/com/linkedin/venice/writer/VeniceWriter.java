@@ -952,7 +952,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = buildPutPayload(serializedKey, valueSchemaId, putMetadata);
+    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
     CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
