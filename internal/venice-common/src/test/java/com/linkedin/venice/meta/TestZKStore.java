@@ -436,4 +436,13 @@ public class TestZKStore {
         1);
     Assert.assertTrue(store.isAccessControlled());
   }
+
+  @Test
+  public void testUpdateVersionForDaVinciHeartbeat() {
+    String storeName = "testUpdateVersionForDaVinciHeartbeat";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "test"));
+    store.updateVersionForDaVinciHeartbeat(1, true);
+    Assert.assertTrue(store.getVersion(1).getIsDavinciHeartbeatReported());
+  }
 }

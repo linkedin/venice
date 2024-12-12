@@ -76,6 +76,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -1604,6 +1605,35 @@ public class DaVinciClientTest {
     for (int i = 0; i < 3; i++) {
       String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
       Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testIsDavinciHeartbeatReported() throws Exception {
+    String storeName = Utils.getUniqueString("testIsDavinviHeartbeatReported");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setTargetRegionSwap("test");
+    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribeAll().get();
+    }
+
+    File inputDirectory = getTempDataDirectory();
+    String inputDirectoryPath = "file://" + inputDirectory.getAbsolutePath();
+    try {
+      writeSimpleAvroFileWithIntToStringSchema(inputDirectory);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    Properties vpjProperties = defaultVPJProps(cluster, inputDirectoryPath, storeName);
+    runVPJ(vpjProperties, 2, cluster);
+
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertTrue(store.getIsDavinciHeartbeatReported());
+        Assert.assertTrue(store.getVersion(2).get().getIsDavinciHeartbeatReported());
+      });
     }
   }
 
