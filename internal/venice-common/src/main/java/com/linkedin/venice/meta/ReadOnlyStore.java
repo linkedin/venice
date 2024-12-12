@@ -930,6 +930,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
     storeProperties.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
     storeProperties.setHybridStoreDiskQuotaEnabled(isHybridStoreDiskQuotaEnabled());
+    storeProperties.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
     storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetadataSystemStoreEnabled());
     storeProperties.setEtlConfig(convertETLStoreConfig(getEtlStoreConfig()));
     storeProperties.setPartitionerConfig(convertPartitionerConfig(getPartitionerConfig()));
@@ -940,7 +941,6 @@ public class ReadOnlyStore implements Store {
     storeProperties.setMigrationDuplicateStore(isMigrationDuplicateStore());
     storeProperties.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
-    storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
     storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
@@ -1594,7 +1594,7 @@ public class ReadOnlyStore implements Store {
     return this.delegate.equals(store.delegate);
   }
 
-  private StoreETLConfig convertETLStoreConfig(ETLStoreConfig etlStoreConfig) {
+  private static StoreETLConfig convertETLStoreConfig(ETLStoreConfig etlStoreConfig) {
     StoreETLConfig storeETLConfig = new StoreETLConfig();
 
     storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
@@ -1604,7 +1604,7 @@ public class ReadOnlyStore implements Store {
     return storeETLConfig;
   }
 
-  private StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
+  private static StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
     StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
 
     // Partitioner Class
@@ -1621,7 +1621,7 @@ public class ReadOnlyStore implements Store {
     return storePartitionerConfig;
   }
 
-  private StoreHybridConfig convertHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+  private static StoreHybridConfig convertHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
     if (hybridStoreConfig == null) {
       return null;
     }
@@ -1638,17 +1638,34 @@ public class ReadOnlyStore implements Store {
     return storeHybridConfig;
   }
 
-  private Map<CharSequence, StoreViewConfig> convertViewConfigs(Map<String, ViewConfig> viewConfigs) {
-
+  private static Map<CharSequence, StoreViewConfig> convertViewConfigs(Map<String, ViewConfig> viewConfigs) {
     Map<CharSequence, StoreViewConfig> storeViewConfigs = new HashMap<>();
+
     for (Map.Entry<String, ViewConfig> entry: viewConfigs.entrySet()) {
-      storeViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
+      ViewConfig viewConfig = entry.getValue();
+      StoreViewConfig storeViewConfig = new StoreViewConfig();
+
+      storeViewConfig.setViewClassName(viewConfig.getViewClassName());
+      storeViewConfig.setViewParameters(new HashMap<>(viewConfig.getViewParameters()));
+
+      storeViewConfigs.put(entry.getKey(), storeViewConfig);
     }
 
     return storeViewConfigs;
   }
 
-  private List<StoreVersion> convertVersions(List<Version> versions) {
+  private static Map<String, StoreViewConfig> convertViewConfigsStringMap(Map<String, ViewConfig> viewConfigs) {
+    Map<String, StoreViewConfig> storeViewConfigsStringMap = new HashMap<>();
+
+    Map<CharSequence, StoreViewConfig> storeViewConfigs = convertViewConfigs(viewConfigs);
+    for (Map.Entry<CharSequence, StoreViewConfig> entry: storeViewConfigs.entrySet()) {
+      storeViewConfigsStringMap.put(entry.getKey().toString(), entry.getValue());
+    }
+
+    return storeViewConfigsStringMap;
+  }
+
+  private static List<StoreVersion> convertVersions(List<Version> versions) {
     List<StoreVersion> storeVersions = new ArrayList<>(versions.size());
     for (Version version: versions) {
       StoreVersion storeVersion = convertVersion(version);
@@ -1659,7 +1676,7 @@ public class ReadOnlyStore implements Store {
     return storeVersions;
   }
 
-  private StoreVersion convertVersion(Version version) {
+  private static StoreVersion convertVersion(Version version) {
     if (version == null) {
       return null;
     }
@@ -1697,19 +1714,12 @@ public class ReadOnlyStore implements Store {
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
-
-    // Views
-    Map<String, ViewConfig> versionViewConfigs = version.getViewConfigs();
-    Map<String, StoreViewConfig> versionStoreViewConfigs = new HashMap<>();
-    for (Map.Entry<String, ViewConfig> entry: versionViewConfigs.entrySet()) {
-      versionStoreViewConfigs.put(entry.getKey(), (StoreViewConfig) entry.getValue());
-    }
-    storeVersion.setViews(versionStoreViewConfigs);
+    storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
 
     return storeVersion;
   }
 
-  private Map<CharSequence, SystemStoreProperties> convertSystemStores(
+  private static Map<CharSequence, SystemStoreProperties> convertSystemStores(
       Map<String, SystemStoreAttributes> systemStoreAttributesMap) {
 
     Map<CharSequence, SystemStoreProperties> systemStorePropertiesMap = new HashMap<>();
@@ -1728,5 +1738,4 @@ public class ReadOnlyStore implements Store {
 
     return systemStorePropertiesMap;
   }
-
 }

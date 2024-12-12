@@ -2,6 +2,10 @@ package com.linkedin.venice.meta;
 
 import static org.testng.Assert.*;
 
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.TestUtils;
+import java.util.Random;
 import org.testng.annotations.Test;
 
 
@@ -9,95 +13,148 @@ public class ReadOnlyStoreTest {
   @Test
   public void testCloneStoreProperties() {
 
-    //
-    // ZKStore zkStore = TestUtils.createTestStore("s1", "o1", System.currentTimeMillis());
-    //
-    //// = new ZKStore(
-    //// "store_name",
-    //// "store_owner",
-    //// System.currentTimeMillis(),
-    //// PersistenceType.IN_MEMORY,
-    //// RoutingStrategy.CONSISTENT_HASH,
-    //// ReadStrategy.ANY_OF_ONLINE,
-    //// OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-    //// 1);
-    //
-    // zkStore.setCurrentVersion(1);
-    // zkStore.setPartitionCount(new Random().nextInt());
-    // zkStore.setLowWatermark(new Random().nextLong());
-    // zkStore.setEnableWrites(false);
-    // zkStore.setEnableReads(true);
-    // zkStore.setStorageQuotaInByte(new Random().nextLong());
-    // zkStore.setReadQuotaInCU(new Random().nextLong());
-    //
-    // HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-    // new Random().nextLong(),
-    // new Random().nextLong(),
-    // new Random().nextLong(),
-    // DataReplicationPolicy.AGGREGATE,
-    // BufferReplayPolicy.REWIND_FROM_EOP
-    // );
-    // zkStore.setHybridStoreConfig(hybridStoreConfig);
-    //
-    // zkStore.setViewConfigs();
-    // zkStore.setViews(convertViewConfigs(getViewConfigs()));
-    // zkStore.setAccessControlled(isAccessControlled());
-    // zkStore.setCompressionStrategy(getCompressionStrategy().getValue());
-    // zkStore.setClientDecompressionEnabled(getClientDecompressionEnabled());
-    // zkStore.setChunkingEnabled(isChunkingEnabled());
-    // zkStore.setRmdChunkingEnabled(isRmdChunkingEnabled());
-    // zkStore.setBatchGetLimit(getBatchGetLimit());
-    // zkStore.setNumVersionsToPreserve(getNumVersionsToPreserve());
-    // zkStore.setIncrementalPushEnabled(isIncrementalPushEnabled());
-    // zkStore.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
-    // zkStore.setMigrating(isMigrating());
-    // zkStore.setWriteComputationEnabled(isWriteComputationEnabled());
-    // zkStore.setReadComputationEnabled(isReadComputationEnabled());
-    // zkStore.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
-    // zkStore.setNativeReplicationEnabled(isNativeReplicationEnabled());
-    // zkStore.setPushStreamSourceAddress(getPushStreamSourceAddress());
-    // zkStore.setBackupStrategy(getBackupStrategy().getValue());
-    // zkStore.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
-    // zkStore.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
-    // zkStore.setHybridStoreDiskQuotaEnabled(isHybridStoreDiskQuotaEnabled());
-    // zkStore.setStoreMetadataSystemStoreEnabled(isStoreMetadataSystemStoreEnabled());
-    // zkStore.setEtlConfig(convertETLStoreConfig(getEtlStoreConfig()));
-    // zkStore.setPartitionerConfig(convertPartitionerConfig(getPartitionerConfig()));
-    // zkStore.setLatestVersionPromoteToCurrentTimestamp(getLatestVersionPromoteToCurrentTimestamp());
-    // zkStore.setBackupVersionRetentionMs(getBackupVersionRetentionMs());
-    // zkStore.setMigrationDuplicateStore(isMigrationDuplicateStore());
-    // zkStore.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
-    // zkStore.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
-    // zkStore.setStoreMetadataSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
-    // zkStore.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
-    // zkStore.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
-    // zkStore.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
-    // zkStore.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
-    // zkStore.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
-    // zkStore.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
-    //
-    // // Version
-    // List<Version> versions = new ArrayList<>();
-    // versions.add(new VersionImpl(zkStore.getName(), 0, "push_job_0"));
-    // versions.add(new VersionImpl(zkStore.getName(), 1, "push_job_1"));
-    // versions.add(new VersionImpl(zkStore.getName(), 2, "push_job_2"));
-    // zkStore.setVersions(versions);
-    //
-    // zkStore.setSystemStores(convertSystemStores(getSystemStores()));
-    // zkStore.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
-    // zkStore.setBlobTransferEnabled(isBlobTransferEnabled());
-    // zkStore.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
-    // zkStore.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
-    //
-    // StoreProperties storeProperties = new StoreProperties();
-    // storeProperties.
-    //
-    //
-    // ReadOnlyStore readOnlyStore = new ReadOnlyStore(zkStore);
-    //
-    // StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
-    //
-    // System.out.println(storeProperties.toString());
-    return;
+    Random random = new Random();
+
+    ZKStore store = populateZKStore(
+        (ZKStore) TestUtils.createTestStore(
+            Long.toString(random.nextLong()),
+            Long.toString(random.nextLong()),
+            System.currentTimeMillis()));
+
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
+
+    // Assert
+    assertEquals(storeProperties.getName(), store.getName());
+    assertEquals(storeProperties.getOwner(), store.getOwner());
+    assertEquals(storeProperties.getCreatedTime(), store.getCreatedTime());
+    assertEquals(storeProperties.getCurrentVersion(), store.getCurrentVersion());
+    assertEquals(storeProperties.getPartitionCount(), store.getPartitionCount());
+    assertEquals(storeProperties.getLowWatermark(), store.getLowWatermark());
+    assertEquals(storeProperties.getEnableWrites(), store.isEnableWrites());
+    assertEquals(storeProperties.getEnableReads(), store.isEnableReads());
+    assertEquals(storeProperties.getStorageQuotaInByte(), store.getStorageQuotaInByte());
+    assertEquals(storeProperties.getPersistenceType(), store.getPersistenceType().value);
+    assertEquals(storeProperties.getRoutingStrategy(), store.getRoutingStrategy().value);
+    assertEquals(storeProperties.getReadStrategy(), store.getReadStrategy().value);
+    assertEquals(storeProperties.getOfflinePushStrategy(), store.getOffLinePushStrategy().value);
+    assertEquals(storeProperties.getLargestUsedVersionNumber(), store.getLargestUsedVersionNumber());
+    assertEquals(storeProperties.getReadQuotaInCU(), store.getReadQuotaInCU());
+
+    // TODO Hybrid Config
+    assertEquals(storeProperties.getName(), store.getName());
+
+    // TODO Views
+    assertEquals(storeProperties.getName(), store.getName());
+
+    assertEquals(storeProperties.getAccessControlled(), store.isAccessControlled());
+    assertEquals(storeProperties.getCompressionStrategy(), store.getCompressionStrategy().getValue());
+    assertEquals(storeProperties.getClientDecompressionEnabled(), store.getClientDecompressionEnabled());
+    assertEquals(storeProperties.getChunkingEnabled(), store.isChunkingEnabled());
+    assertEquals(storeProperties.getRmdChunkingEnabled(), store.isRmdChunkingEnabled());
+    assertEquals(storeProperties.getBatchGetLimit(), store.getBatchGetLimit());
+    assertEquals(storeProperties.getNumVersionsToPreserve(), store.getNumVersionsToPreserve());
+    assertEquals(storeProperties.getIncrementalPushEnabled(), store.isIncrementalPushEnabled());
+    assertEquals(storeProperties.getSeparateRealTimeTopicEnabled(), store.isSeparateRealTimeTopicEnabled());
+    assertEquals(storeProperties.getMigrating(), store.isMigrating());
+    assertEquals(storeProperties.getWriteComputationEnabled(), store.isWriteComputationEnabled());
+    assertEquals(storeProperties.getReadComputationEnabled(), store.isReadComputationEnabled());
+    assertEquals(storeProperties.getBootstrapToOnlineTimeoutInHours(), store.getBootstrapToOnlineTimeoutInHours());
+    assertEquals(storeProperties.getNativeReplicationEnabled(), store.isNativeReplicationEnabled());
+    assertEquals(storeProperties.getPushStreamSourceAddress(), store.getPushStreamSourceAddress());
+    assertEquals(storeProperties.getBackupStrategy(), store.getBackupStrategy().getValue());
+    assertEquals(
+        storeProperties.getSchemaAutoRegisteFromPushJobEnabled(),
+        store.isSchemaAutoRegisterFromPushJobEnabled());
+    assertEquals(storeProperties.getLatestSuperSetValueSchemaId(), store.getLatestSuperSetValueSchemaId());
+    assertEquals(storeProperties.getHybridStoreDiskQuotaEnabled(), store.isHybridStoreDiskQuotaEnabled());
+    assertEquals(storeProperties.getStoreMetaSystemStoreEnabled(), store.isStoreMetaSystemStoreEnabled());
+
+    // TODO ETL Store Config
+    assertEquals(storeProperties.getName(), store.getName());
+
+    // TODO Create Test Partitioner Config
+    assertEquals(storeProperties.getName(), store.getName());
+
+    assertEquals(
+        storeProperties.getLatestVersionPromoteToCurrentTimestamp(),
+        store.getLatestVersionPromoteToCurrentTimestamp());
+    assertEquals(storeProperties.getBackupVersionRetentionMs(), store.getBackupVersionRetentionMs());
+    assertEquals(storeProperties.getMigrationDuplicateStore(), store.isMigrationDuplicateStore());
+    assertEquals(storeProperties.getNativeReplicationEnabled(), store.isNativeReplicationEnabled());
+    assertEquals(storeProperties.getDaVinciPushStatusStoreEnabled(), store.isDaVinciPushStatusStoreEnabled());
+    assertEquals(storeProperties.getStoreMetadataSystemStoreEnabled(), store.isStoreMetadataSystemStoreEnabled());
+    assertEquals(storeProperties.getActiveActiveReplicationEnabled(), store.isActiveActiveReplicationEnabled());
+    assertEquals(storeProperties.getMinCompactionLagSeconds(), store.getMinCompactionLagSeconds());
+    assertEquals(storeProperties.getMaxCompactionLagSeconds(), store.getMaxCompactionLagSeconds());
+    assertEquals(storeProperties.getMaxRecordSizeBytes(), store.getMaxRecordSizeBytes());
+    assertEquals(storeProperties.getMaxNearlineRecordSizeBytes(), store.getMaxNearlineRecordSizeBytes());
+    assertEquals(storeProperties.getUnusedSchemaDeletionEnabled(), store.isUnusedSchemaDeletionEnabled());
+
+    // TODO Versions
+    assertEquals(storeProperties.getName(), store.getName());
+
+    // TODO System Stores
+    assertEquals(storeProperties.getName(), store.getName());
+
+    assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
+    assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
+    assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
+    assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
+
+    System.out.println(storeProperties.toString());
+  }
+
+  private static ZKStore populateZKStore(ZKStore store) {
+    Random random = new Random();
+    store.setCurrentVersion(random.nextInt());
+    store.setPartitionCount(random.nextInt());
+    store.setLowWatermark(random.nextLong());
+    store.setEnableWrites(false);
+    store.setEnableReads(true);
+    store.setStorageQuotaInByte(random.nextLong());
+    store.setReadQuotaInCU(random.nextLong());
+    store.setHybridStoreConfig(TestUtils.createTestHybridStoreConfig());
+    store.setViewConfigs(TestUtils.createTestViewConfigs());
+    store.setCompressionStrategy(CompressionStrategy.GZIP);
+    store.setClientDecompressionEnabled(true);
+    store.setChunkingEnabled(true);
+    store.setRmdChunkingEnabled(true);
+    store.setBatchGetLimit(random.nextInt());
+    store.setNumVersionsToPreserve(random.nextInt());
+    store.setIncrementalPushEnabled(true);
+    store.setSeparateRealTimeTopicEnabled(true);
+    store.setMigrating(true);
+    store.setWriteComputationEnabled(true);
+    store.setReadComputationEnabled(true);
+    store.setBootstrapToOnlineTimeoutInHours(random.nextInt());
+    store.setNativeReplicationEnabled(true);
+    store.setPushStreamSourceAddress("push_stream_source");
+    store.setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START);
+    store.setSchemaAutoRegisterFromPushJobEnabled(true);
+    store.setLatestSuperSetValueSchemaId(random.nextInt());
+    store.setHybridStoreDiskQuotaEnabled(true);
+    store.setStoreMetaSystemStoreEnabled(true);
+    store.setEtlStoreConfig(TestUtils.createTestETLStoreConfig());
+    store.setPartitionerConfig(TestUtils.createTestPartitionerConfig());
+    store.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
+    store.setBackupVersionRetentionMs(random.nextLong());
+    store.setMigrationDuplicateStore(true);
+    store.setNativeReplicationSourceFabric("native_replication_source_fabric");
+    store.setDaVinciPushStatusStoreEnabled(true);
+    store.setStoreMetadataSystemStoreEnabled(true);
+    store.setActiveActiveReplicationEnabled(true);
+    store.setMinCompactionLagSeconds(random.nextLong());
+    store.setMaxCompactionLagSeconds(random.nextLong());
+    store.setMaxRecordSizeBytes(random.nextInt());
+    store.setMaxNearlineRecordSizeBytes(random.nextInt());
+    store.setUnusedSchemaDeletionEnabled(true);
+    store.setVersions(TestUtils.createTestVersions(store.getName()));
+    store.setSystemStores(TestUtils.createTestSystemStores(store.getName()));
+    store.setStorageNodeReadQuotaEnabled(true);
+    store.setBlobTransferEnabled(true);
+    store.setNearlineProducerCompressionEnabled(true);
+    store.setNearlineProducerCountPerWriter(random.nextInt());
+    return store;
   }
 }
