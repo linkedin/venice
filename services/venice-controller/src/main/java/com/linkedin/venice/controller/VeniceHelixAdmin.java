@@ -427,7 +427,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int defaultMaxRecordSizeBytes;
 
   private DataRecoveryManager dataRecoveryManager;
-  private final CompactionManager compactionManager;
+  private CompactionManager compactionManager;
   private ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
@@ -607,13 +607,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
-    // TODO extends interchangeable with implements?
-    // Implementation of the interface RepushOrchestrator depends on the configuration. (see RepushOrchestrator docs)
-    Class<? extends RepushOrchestrator> repushOrchestratorClass =
-        ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-    RepushOrchestrator repushOrchestrator =
-        ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
-    compactionManager = new CompactionManager(repushOrchestrator);
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      // TODO extends interchangeable with implements?
+      // Implementation of the interface RepushOrchestrator depends on the configuration. (see RepushOrchestrator docs)
+      Class<? extends RepushOrchestrator> repushOrchestratorClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+      RepushOrchestrator repushOrchestrator =
+          ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
+      compactionManager = new CompactionManager(repushOrchestrator);
+    }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
