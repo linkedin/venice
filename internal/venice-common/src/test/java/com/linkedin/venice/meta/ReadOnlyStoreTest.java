@@ -3,8 +3,14 @@ package com.linkedin.venice.meta;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
+import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
+import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
+import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Map;
 import java.util.Random;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,13 +58,8 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getOfflinePushStrategy(), store.getOffLinePushStrategy().value);
     assertEquals(storeProperties.getLargestUsedVersionNumber(), store.getLargestUsedVersionNumber());
     assertEquals(storeProperties.getReadQuotaInCU(), store.getReadQuotaInCU());
-
-    // TODO Hybrid Config
-    assertEquals(storeProperties.getName(), store.getName());
-
-    // TODO Views
-    assertEquals(storeProperties.getName(), store.getName());
-
+    assertEqualHybridConfig(storeProperties.getHybridConfig(), store.getHybridStoreConfig());
+    assertEqualViewConfig(storeProperties.getViews(), store.getViewConfigs());
     assertEquals(storeProperties.getAccessControlled(), store.isAccessControlled());
     assertEquals(storeProperties.getCompressionStrategy(), store.getCompressionStrategy().getValue());
     assertEquals(storeProperties.getClientDecompressionEnabled(), store.getClientDecompressionEnabled());
@@ -81,13 +82,8 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getLatestSuperSetValueSchemaId(), store.getLatestSuperSetValueSchemaId());
     assertEquals(storeProperties.getHybridStoreDiskQuotaEnabled(), store.isHybridStoreDiskQuotaEnabled());
     assertEquals(storeProperties.getStoreMetaSystemStoreEnabled(), store.isStoreMetaSystemStoreEnabled());
-
-    // TODO ETL Store Config
-    assertEquals(storeProperties.getName(), store.getName());
-
-    // TODO Create Test Partitioner Config
-    assertEquals(storeProperties.getName(), store.getName());
-
+    assertEqualsETLStoreConfig(storeProperties.getEtlConfig(), store.getEtlStoreConfig());
+    assertEqualsPartitionerConfig(storeProperties.getPartitionerConfig(), store.getPartitionerConfig());
     assertEquals(
         storeProperties.getLatestVersionPromoteToCurrentTimestamp(),
         store.getLatestVersionPromoteToCurrentTimestamp());
@@ -102,19 +98,12 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getMaxRecordSizeBytes(), store.getMaxRecordSizeBytes());
     assertEquals(storeProperties.getMaxNearlineRecordSizeBytes(), store.getMaxNearlineRecordSizeBytes());
     assertEquals(storeProperties.getUnusedSchemaDeletionEnabled(), store.isUnusedSchemaDeletionEnabled());
-
-    // TODO Versions
-    assertEquals(storeProperties.getName(), store.getName());
-
-    // TODO System Stores
-    assertEquals(storeProperties.getName(), store.getName());
-
+    assertEquals(storeProperties.getVersions().size(), store.getVersions().size());
+    assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
-
-    System.out.println(storeProperties);
   }
 
   private static ZKStore populateZKStore(ZKStore store) {
@@ -167,5 +156,75 @@ public class ReadOnlyStoreTest {
     store.setNearlineProducerCompressionEnabled(true);
     store.setNearlineProducerCountPerWriter(RANDOM.nextInt());
     return store;
+  }
+
+  private static void assertEqualHybridConfig(StoreHybridConfig actual, HybridStoreConfig expected) {
+    assertEquals(actual.getRewindTimeInSeconds(), expected.getRewindTimeInSeconds());
+    assertEquals(actual.getOffsetLagThresholdToGoOnline(), expected.getOffsetLagThresholdToGoOnline());
+    assertEquals(
+        actual.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
+        expected.getProducerTimestampLagThresholdToGoOnlineInSeconds());
+    assertEquals(actual.getDataReplicationPolicy(), expected.getDataReplicationPolicy().getValue());
+    assertEquals(actual.getBufferReplayPolicy(), expected.getBufferReplayPolicy().getValue());
+    assertEquals(actual.getRealTimeTopicName(), expected.getRealTimeTopicName());
+  }
+
+  private static void assertEqualViewConfig(
+      Map<CharSequence, StoreViewConfig> actual,
+      Map<String, ViewConfig> expected) {
+
+    for (Map.Entry<CharSequence, StoreViewConfig> viewConfigEntry: actual.entrySet()) {
+      StoreViewConfig actualViewConfig = viewConfigEntry.getValue();
+      ViewConfig expectedViewConfig = expected.get(viewConfigEntry.getKey().toString());
+
+      assertEquals(actualViewConfig.getViewClassName().toString(), expectedViewConfig.getViewClassName());
+
+      for (Map.Entry<String, CharSequence> viewParamsEntry: actualViewConfig.getViewParameters().entrySet()) {
+        CharSequence actualViewParam = viewParamsEntry.getValue();
+        String expectedViewParam = expectedViewConfig.getViewParameters().get(viewParamsEntry.getKey());
+
+        assertEquals(actualViewParam.toString(), expectedViewParam);
+      }
+    }
+  }
+
+  private static void assertEqualsETLStoreConfig(StoreETLConfig actual, ETLStoreConfig expected) {
+    assertEquals(actual.getEtledUserProxyAccount(), expected.getEtledUserProxyAccount());
+    assertEquals(actual.getFutureVersionETLEnabled(), expected.isFutureVersionETLEnabled());
+    assertEquals(actual.getRegularVersionETLEnabled(), expected.isFutureVersionETLEnabled());
+  }
+
+  private static void assertEqualsPartitionerConfig(StorePartitionerConfig actual, PartitionerConfig expected) {
+
+    assertEquals(actual.getPartitionerClass(), expected.getPartitionerClass());
+    assertEquals(actual.getAmplificationFactor(), expected.getAmplificationFactor());
+
+    for (Map.Entry<CharSequence, CharSequence> entry: actual.getPartitionerParams().entrySet()) {
+      CharSequence actualPartitionerParam = entry.getValue();
+      String expectedPartitionerParam = expected.getPartitionerParams().get(entry.getKey().toString());
+
+      assertEquals(actualPartitionerParam.toString(), expectedPartitionerParam);
+    }
+  }
+
+  private static void assertEqualsSystemStores(
+      Map<CharSequence, SystemStoreProperties> actual,
+      Map<String, SystemStoreAttributes> expected) {
+
+    for (Map.Entry<CharSequence, SystemStoreProperties> entry: actual.entrySet()) {
+      SystemStoreProperties actualSystemStoreProperties = entry.getValue();
+      SystemStoreAttributes expectedSystemStoreAttributes = expected.get(entry.getKey().toString());
+
+      assertEquals(actualSystemStoreProperties.getCurrentVersion(), expectedSystemStoreAttributes.getCurrentVersion());
+      assertEquals(
+          actualSystemStoreProperties.getVersions().size(),
+          expectedSystemStoreAttributes.getVersions().size());
+      assertEquals(
+          actualSystemStoreProperties.getLatestVersionPromoteToCurrentTimestamp(),
+          expectedSystemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp());
+      assertEquals(
+          actualSystemStoreProperties.getLargestUsedVersionNumber(),
+          expectedSystemStoreAttributes.getLargestUsedVersionNumber());
+    }
   }
 }
