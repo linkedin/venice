@@ -506,8 +506,7 @@ public class TestUtils {
     return store;
   }
 
-  public static HybridStoreConfig createTestHybridStoreConfig() {
-    Random random = new Random();
+  public static HybridStoreConfig createTestHybridStoreConfig(Random random) {
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
         random.nextLong(),
         random.nextLong(),
@@ -518,17 +517,16 @@ public class TestUtils {
     return hybridStoreConfig;
   }
 
-  public static Map<String, ViewConfig> createTestViewConfigs() {
+  public static Map<String, ViewConfig> createTestViewConfigs(Random random) {
     Map<String, ViewConfig> viewConfigs = new HashMap<>();
-    viewConfigs.put("vc1", new ViewConfigImpl("vc1", createTestViewParams()));
-    viewConfigs.put("vc2", new ViewConfigImpl("vc2", createTestViewParams()));
-    viewConfigs.put("vc3", new ViewConfigImpl("vc3", createTestViewParams()));
+    viewConfigs.put("vc1", new ViewConfigImpl("vc1", createTestViewParams(random)));
+    viewConfigs.put("vc2", new ViewConfigImpl("vc2", createTestViewParams(random)));
+    viewConfigs.put("vc3", new ViewConfigImpl("vc3", createTestViewParams(random)));
     return viewConfigs;
   }
 
-  public static Map<String, String> createTestViewParams() {
+  public static Map<String, String> createTestViewParams(Random random) {
     Map<String, String> viewParams = new HashMap<>();
-    Random random = new Random();
     viewParams.put("k1", Long.toString(random.nextLong()));
     viewParams.put("k2", Long.toString(random.nextLong()));
     viewParams.put("k3", Long.toString(random.nextLong()));
@@ -543,36 +541,34 @@ public class TestUtils {
     return etlStoreConfig;
   }
 
-  public static PartitionerConfig createTestPartitionerConfig() {
+  public static PartitionerConfig createTestPartitionerConfig(Random random) {
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass("partitioner_class");
     partitionerConfig.setPartitionerParams(new HashMap<>());
-    partitionerConfig.setAmplificationFactor(new Random().nextInt());
+    partitionerConfig.setAmplificationFactor(random.nextInt());
     return partitionerConfig;
   }
 
-  public static List<Version> createTestVersions(String storeName) {
+  public static List<Version> createTestVersions(String storeName, Random random) {
     List<Version> versions = new ArrayList<>();
-    Random random = new Random();
     versions.add(new VersionImpl(storeName, 0, Long.toString(random.nextLong())));
     versions.add(new VersionImpl(storeName, 1, Long.toString(random.nextLong())));
     versions.add(new VersionImpl(storeName, 2, Long.toString(random.nextLong())));
     return versions;
   }
 
-  public static Map<String, SystemStoreAttributes> createTestSystemStores(String storeName) {
+  public static Map<String, SystemStoreAttributes> createTestSystemStores(String storeName, Random random) {
     Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
-    systemStores.put("ss1", createTestSystemStoreAttributes(storeName));
-    systemStores.put("ss2", createTestSystemStoreAttributes(storeName));
-    systemStores.put("ss3", createTestSystemStoreAttributes(storeName));
+    systemStores.put("ss1", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss2", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss3", createTestSystemStoreAttributes(storeName, random));
     return systemStores;
   }
 
-  public static SystemStoreAttributes createTestSystemStoreAttributes(String storeName) {
+  public static SystemStoreAttributes createTestSystemStoreAttributes(String storeName, Random random) {
     SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
-    Random random = new Random();
     systemStoreAttributes.setCurrentVersion(random.nextInt());
-    systemStoreAttributes.setVersions(createTestVersions(storeName));
+    systemStoreAttributes.setVersions(createTestVersions(storeName, random));
     systemStoreAttributes.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
     systemStoreAttributes.setLargestUsedVersionNumber(random.nextInt());
     return systemStoreAttributes;
