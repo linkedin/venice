@@ -3539,7 +3539,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * Create RT topic here in parent region. For child regions, RT should always be created as part of
          * {@link RealTimeTopicSwitcher#ensurePreconditions(PubSubTopic, PubSubTopic, Store, Optional)}
          */
-        getRealTimeTopic(clusterName, storeName, partitionCount);
+        // getRealTimeTopic(clusterName, storeName, partitionCount);
+        System.out.println("getRealTimeTopic");
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic, partitionCount)
