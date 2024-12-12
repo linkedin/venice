@@ -66,3 +66,13 @@
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
