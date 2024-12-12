@@ -127,7 +127,7 @@ public class StoreIngestionTaskFactory {
     private PubSubTopicRepository pubSubTopicRepository;
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
-    private ChunkAssembler chunkAssembler;
+    private ChunkAssembler divChunkAssembler;
 
     private interface Setter {
       void apply();
@@ -339,12 +339,12 @@ public class StoreIngestionTaskFactory {
       return this.aaWCWorkLoadProcessingThreadPool;
     }
 
-    public Builder setChunkAssembler(ChunkAssembler chunkAssembler) {
-      return set(() -> this.chunkAssembler = chunkAssembler);
+    public Builder setDivChunkAssembler(ChunkAssembler divChunkAssembler) {
+      return set(() -> this.divChunkAssembler = divChunkAssembler);
     }
 
-    public ChunkAssembler getChunkAssembler() {
-      return chunkAssembler;
+    public ChunkAssembler getDivChunkAssembler() {
+      return divChunkAssembler;
     }
   }
 }

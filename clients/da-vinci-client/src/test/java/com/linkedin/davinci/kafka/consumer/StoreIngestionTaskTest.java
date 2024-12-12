@@ -1120,7 +1120,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
-        .setChunkAssembler(divChunkAssembler)
+        .setDivChunkAssembler(divChunkAssembler)
         .setAAWCWorkLoadProcessingThreadPool(
             Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
   }
@@ -5233,7 +5233,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
     doReturn(versionTopicName).when(storeConfig).getStoreVersionName();
 
-    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = spy(
+    LeaderFollowerStoreIngestionTask ingestionTask = spy(
         new LeaderFollowerStoreIngestionTask(
             mock(StorageService.class),
             builder,
@@ -5258,28 +5258,30 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
     PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> remoteVTRecord =
-        new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 0, 0, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtRecord =
+        new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 1, 0, 0);
 
-    PartitionConsumptionState pcsFoo = mock(PartitionConsumptionState.class);
-    when(pcsFoo.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
-    doReturn(true).when(pcsFoo).consumeRemotely();
-    doReturn(false).when(pcsFoo).skipKafkaMessage();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
+    doReturn(true).when(pcs).consumeRemotely();
+    doReturn(false).when(pcs).skipKafkaMessage();
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
-    doReturn(offsetRecord).when(pcsFoo).getOffsetRecord();
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
+    ingestionTask.setPartitionConsumptionState(PARTITION_FOO, pcs);
 
-    // 1. GlobalRtDiv messages from remote VT topics should be processed
-    leaderFollowerStoreIngestionTask.setPartitionConsumptionState(PARTITION_FOO, pcsFoo);
-    Assert.assertTrue(leaderFollowerStoreIngestionTask.shouldProcessRecord(remoteVTRecord));
+    assertFalse(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV From remote VT should not be processed");
 
-    // 2. GlobalRtDiv messages from RT topics should not be processed
-    doReturn(false).when(pcsFoo).consumeRemotely();
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
+    doReturn(false).when(pcs).consumeRemotely();
+    assertTrue(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV from local VT should be processed");
+
     doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
         new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
-    Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldProcessRecord(rtRecord));
+    assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
+
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -5296,7 +5298,7 @@ public abstract class StoreIngestionTaskTest {
       // Act
       storeIngestionTaskUnderTest.processGlobalRtDivMessage(record);
       // Assert
-      verify(storeIngestionTaskUnderTest.getChunkAssembler())
+      verify(storeIngestionTaskUnderTest.getDivChunkAssembler())
           .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), anyInt(), any(), any());
     }, aaConfig);
   }

@@ -76,7 +76,6 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
@@ -289,7 +288,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected int writeComputeFailureCode = 0;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
-  private final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer;
 
   // Do not convert it to a local variable because it is used in test.
   private boolean purgeTransientRecordBuffer = true;
@@ -324,6 +322,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
   protected final ChunkAssembler chunkAssembler;
+  protected final ChunkAssembler divChunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private DaVinciRecordTransformer recordTransformer;
 
@@ -453,8 +452,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
 
-    this.globalRtDivStateSerializer = GLOBAL_RT_DIV_STATE.getSerializer();
-
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     this.storeVersionPartitionCount = version.getPartitionCount();
@@ -475,8 +472,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.ingestionNotificationDispatcher =
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
-    this.chunkAssembler =
-        builder.getChunkAssembler() != null ? builder.getChunkAssembler() : new ChunkAssembler(storeName);
+    this.chunkAssembler = new ChunkAssembler(storeName);
+    this.divChunkAssembler =
+        builder.getDivChunkAssembler() != null ? builder.getDivChunkAssembler() : new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
     if (recordTransformerFunction != null) {
@@ -1210,7 +1208,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope value = record.getValue();
     Put put = (Put) value.getPayloadUnion();
 
-    Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+    Object assembledObject = divChunkAssembler.bufferAndAssembleRecord(
         record.getTopicPartition(),
         put.getSchemaId(),
         key.getKey(),
@@ -1218,11 +1216,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         record.getOffset(),
         put.getSchemaId(),
         new NoopCompressor(),
-        (valueBytes) -> globalRtDivStateSerializer
+        (valueBytes) -> GLOBAL_RT_DIV_STATE.getSerializer()
             .deserialize(ByteUtils.extractByteArray(valueBytes), GLOBAL_RT_DIV_STATE_SCHEMA_ID));
 
     if (assembledObject == null) {
-      return; // the message value only contained a chunk, and the Global RT DIV cannot yet be fully assembled
+      return; // the message value only contained one data chunk, so the Global RT DIV cannot yet be fully assembled
     }
     // TODO: We will add the code to process Global RT DIV message later in here.
   }
@@ -4606,7 +4604,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isDaVinciClient;
   }
 
-  ChunkAssembler getChunkAssembler() {
-    return this.chunkAssembler;
+  ChunkAssembler getDivChunkAssembler() {
+    return this.divChunkAssembler;
   }
 }
