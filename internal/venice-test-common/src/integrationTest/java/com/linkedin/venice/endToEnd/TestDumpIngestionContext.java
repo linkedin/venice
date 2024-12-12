@@ -35,6 +35,7 @@ import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -76,6 +77,11 @@ public class TestDumpIngestionContext {
     this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     this.parentController = parentControllers.get(0);
+  }
+
+  @AfterClass(alwaysRun = true)
+  public void tearDown() {
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)

@@ -295,23 +295,33 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         () -> totalStats.earlyTerminatedEarlyRequestCountSensor,
         new OccurrenceRate());
 
-    if (isKeyValueProfilingEnabled) {
-      // size profiling is expensive
+    if (isKeyValueProfilingEnabled || requestType == RequestType.SINGLE_GET) {
+      final MeasurableStat[] valueSizeStats;
+      final MeasurableStat[] keySizeStats;
       String requestValueSizeSensorName = "request_value_size";
+      String requestKeySizeSensorName = "request_key_size";
+      if (isKeyValueProfilingEnabled) {
+        valueSizeStats = TehutiUtils
+            .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestValueSizeSensorName));
+        keySizeStats = TehutiUtils
+            .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestKeySizeSensorName));
+      } else {
+        valueSizeStats = new MeasurableStat[] { new Avg(), new Max() };
+        keySizeStats = new MeasurableStat[] { new Avg(), new Max() };
+      }
+
       requestValueSizeSensor = registerPerStoreAndTotal(
           requestValueSizeSensorName,
           totalStats,
           () -> totalStats.requestValueSizeSensor,
-          TehutiUtils
-              .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestValueSizeSensorName)));
-      String requestKeySizeSensorName = "request_key_size";
+          valueSizeStats);
       requestKeySizeSensor = registerPerStoreAndTotal(
           requestKeySizeSensorName,
           totalStats,
           () -> totalStats.requestKeySizeSensor,
-          TehutiUtils
-              .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestKeySizeSensorName)));
+          keySizeStats);
     }
+
     misroutedStoreVersionSensor = registerPerStoreAndTotal(
         "misrouted_store_version_request_count",
         totalStats,

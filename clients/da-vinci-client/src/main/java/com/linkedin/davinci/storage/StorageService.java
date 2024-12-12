@@ -376,6 +376,10 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
+    if (!serverConfig.isDeleteUnassignedPartitionsOnStartupEnabled()) {
+      return;
+    }
+
     if (manager == null) {
       return;
     }

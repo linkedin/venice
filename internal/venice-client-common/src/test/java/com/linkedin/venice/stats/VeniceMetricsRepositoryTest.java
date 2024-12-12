@@ -1,19 +1,66 @@
 package com.linkedin.venice.stats;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.tehuti.metrics.MetricConfig;
+import java.util.ArrayList;
+import java.util.Collection;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
 public class VeniceMetricsRepositoryTest {
   @Test
-  public void testDefaultConstructor() throws Exception {
+  public void testDefaultConstructor() {
     VeniceMetricsRepository repository = new VeniceMetricsRepository();
     assertNotNull(repository.getVeniceMetricsConfig(), "VeniceMetricsConfig should not be null.");
-    assertNotNull(repository.getOpenTelemetryMetricsRepository(), "OpenTelemetryMetricsRepository should not be null.");
+    assertFalse(repository.getVeniceMetricsConfig().emitOtelMetrics());
+    assertNull(
+        repository.getOpenTelemetryMetricsRepository(),
+        "OpenTelemetryMetricsRepository should be null if not enabled explicitly");
+    repository.close();
+  }
+
+  @Test
+  public void testConstructorWithMetricConfig() {
+    VeniceMetricsConfig metricsConfig = new VeniceMetricsConfig.Builder().build();
+    VeniceMetricsRepository repository = new VeniceMetricsRepository(metricsConfig);
+    assertFalse(metricsConfig.emitOtelMetrics());
+
+    assertEquals(
+        repository.getVeniceMetricsConfig(),
+        metricsConfig,
+        "VeniceMetricsConfig should match the provided config.");
+    assertNull(
+        repository.getOpenTelemetryMetricsRepository(),
+        "OpenTelemetryMetricsRepository should be null if not enabled explicitly");
+    repository.close();
+  }
+
+  @Test
+  public void testConstructorWithMetricConfigAndOtelEnabled() {
+    Collection<MetricEntity> metricEntities = new ArrayList<>();
+    metricEntities
+        .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
+    VeniceMetricsConfig metricsConfig =
+        new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true).setMetricEntities(metricEntities).build();
+    VeniceMetricsRepository repository = new VeniceMetricsRepository(metricsConfig);
+
+    assertEquals(
+        repository.getVeniceMetricsConfig(),
+        metricsConfig,
+        "VeniceMetricsConfig should match the provided config.");
+    assertTrue(metricsConfig.emitOtelMetrics());
+    assertNotNull(
+        repository.getOpenTelemetryMetricsRepository(),
+        "OpenTelemetryMetricsRepository should not be null if enabled explicitly");
     repository.close();
   }
 

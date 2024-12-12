@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
@@ -203,6 +204,7 @@ public class VeniceServerTest {
       Properties featureProperties = new Properties();
       featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
       featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
+      featureProperties.setProperty(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, Boolean.toString(true));
       cluster.addVeniceServer(featureProperties, new Properties());
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
       Assert.assertTrue(server.getVeniceServer().isStarted());
@@ -218,6 +220,7 @@ public class VeniceServerTest {
       Assert.assertEquals(storageService.getStorageEngine(storeName).getPartitionIds().size(), 3);
 
       cluster.stopVeniceServer(server.getPort());
+      Assert.assertFalse(server.getVeniceServer().isStarted());
 
       // Create new servers so partition assignment is removed for the offline participant
       cluster.addVeniceServer(featureProperties, new Properties());

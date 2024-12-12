@@ -214,6 +214,12 @@ public class StorageServiceTest {
     configLoaderField.setAccessible(true);
     configLoaderField.set(mockStorageService, mockVeniceConfigLoader);
 
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    when(mockServerConfig.isDeleteUnassignedPartitionsOnStartupEnabled()).thenReturn(true);
+    Field serverConfigField = StorageService.class.getDeclaredField("serverConfig");
+    serverConfigField.setAccessible(true);
+    serverConfigField.set(mockStorageService, mockServerConfig);
+
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     verify(abstractStorageEngine).dropPartition(0);

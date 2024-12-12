@@ -1,10 +1,9 @@
-package com.linkedin.venice.router;
+package com.linkedin.venice.router.stats;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
