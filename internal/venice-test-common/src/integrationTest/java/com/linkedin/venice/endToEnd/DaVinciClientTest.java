@@ -1330,7 +1330,7 @@ public class DaVinciClientTest {
    * Key: Integer
    * Value: String
    */
-  protected void setUpStore(
+  private void setUpStore(
       String storeName,
       Consumer<UpdateStoreQueryParams> paramsConsumer,
       Consumer<Properties> propertiesConsumer) throws Exception {
