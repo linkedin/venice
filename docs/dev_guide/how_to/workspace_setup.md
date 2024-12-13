@@ -40,11 +40,12 @@ To set up IntelliJ, run:
 ```
 
 ### Disable wildcard imports
-1. In IntelliJ, click the gear icon in the top right and select settings.
-2. Go to Editor -> Code Style -> Java and selects Imports from the tabs.
+1. In IntelliJ, click the gear icon in the top right and select settings
+2. Go to Editor -> Code Style -> Java and select Imports from the tabs
 3. Next to Scheme, select the gear icon and hit duplicate
-4. Use these settings:
-![code_style.png](code_style.png)
+4. Only check `Use single class import`
+5. Set `Class count to use import with *` to 1000
+6. Set `Names count to use static import with *` to 1000
 
 ## Setting up your system
 ### Set the maximum number of open files limit
