@@ -84,6 +84,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
@@ -177,8 +178,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
-
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -191,6 +190,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
+  private final Map<String, DaVinciRecordTransformerFunctionalInterface> storeToRecordTransformerFunctionMap =
+      new VeniceConcurrentHashMap<>();
 
   private VeniceServerConfig serverConfig;
 
@@ -213,7 +214,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
@@ -222,7 +222,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storageService = storageService;
     this.cacheBackend = cacheBackend;
-    this.recordTransformerFunction = recordTransformerFunction;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -535,7 +534,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction,
+        getRecordTransformerFunctionForStore(storeName),
         zkHelixAdmin);
   }
 
@@ -775,6 +774,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public boolean isLiveUpdateSuppressionEnabled() {
     return serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
+  }
+
+  public void registerRecordTransformerFunctionForStore(
+      String storeName,
+      DaVinciRecordTransformerFunctionalInterface fn) {
+    storeToRecordTransformerFunctionMap.putIfAbsent(storeName, fn);
+  }
+
+  public DaVinciRecordTransformerFunctionalInterface getRecordTransformerFunctionForStore(String storeName) {
+    return storeToRecordTransformerFunctionMap.get(storeName);
   }
 
   @Override

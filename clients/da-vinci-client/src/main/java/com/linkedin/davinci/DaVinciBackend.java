@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.DAVINCI_SUBSCRIBE_RESOURCES_DURING_BOOTSTRAP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
@@ -120,8 +121,7 @@ public class DaVinciBackend implements Closeable {
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+      Optional<ObjectCacheConfig> cacheConfig) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -270,7 +270,6 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          recordTransformerFunction,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
@@ -293,10 +292,6 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
-        if (recordTransformerFunction != null) {
-          throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
-        }
-
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
 
@@ -474,16 +469,18 @@ public class DaVinciBackend implements Closeable {
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
-    // Subscribe all bootstrap version partitions.
-    storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
-      List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-      String versionTopic = version.kafkaTopicName();
-      LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-      AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
-      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
-      StoreBackend storeBackend = getStoreOrThrow(storeName);
-      storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
-    });
+    if (autoSubscribeExistingResourcesDuringBootstrap()) {
+      // Subscribe all bootstrap version partitions.
+      storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
+        List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
+        String versionTopic = version.kafkaTopicName();
+        LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
+        AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
+        aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
+        StoreBackend storeBackend = getStoreOrThrow(storeName);
+        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+      });
+    }
   }
 
   @Override
@@ -846,6 +843,14 @@ public class DaVinciBackend implements Closeable {
 
   public boolean hasCurrentVersionBootstrapping() {
     return ingestionBackend.hasCurrentVersionBootstrapping();
+  }
+
+  public void registerRecordTransformerFunction(String storeName, DaVinciRecordTransformerFunctionalInterface fn) {
+    ingestionService.registerRecordTransformerFunctionForStore(storeName, fn);
+  }
+
+  public boolean autoSubscribeExistingResourcesDuringBootstrap() {
+    return configLoader.getCombinedProperties().getBoolean(DAVINCI_SUBSCRIBE_RESOURCES_DURING_BOOTSTRAP_ENABLED, true);
   }
 
   static class BootstrappingAwareCompletableFuture {

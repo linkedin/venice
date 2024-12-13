@@ -27,6 +27,7 @@ import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
@@ -45,6 +46,7 @@ import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
@@ -184,12 +186,23 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.recordTransformerConfig = daVinciConfig.getRecordTransformerConfig();
     this.readChunkExecutorForLargeRequest =
         readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
+    if (recordTransformerConfig != null) {
+      if (daVinciConfig.isIsolated()) {
+        // When both are enabled, this causes the storage engine to be deleted everytime the client starts,
+        // since the record transformer config is never persisted to disk. Additionally, this will spawn multiple
+        // transformers per version, and if the user's transformer is stateful this could cause issues.
+        throw new VeniceClientException("Isolated client is not supported with DaVinciRecordTransformer");
+      }
+      // Ingestion isolation service does not take in record transformer.
+      if (backendConfig.getString(ConfigKeys.SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString())
+          .equals(IngestionMode.ISOLATED.toString())) {
+        throw new VeniceClientException("Ingestion isolation is not compatible with DaVinciRecordTransformer");
+      }
 
-    if (daVinciConfig.isIsolated() && recordTransformerConfig != null) {
-      // When both are enabled, this causes the storage engine to be deleted everytime the client starts,
-      // since the record transformer config is never persisted to disk. Additionally, this will spawn multiple
-      // transformers per version, and if the user's transformer is stateful this could cause issues.
-      throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
+      if (backendConfig.getBoolean(ConfigKeys.DAVINCI_SUBSCRIBE_RESOURCES_DURING_BOOTSTRAP_ENABLED, true)) {
+        throw new VeniceClientException(
+            "DaVinciRecordTransformer requires turn off auto-subscribe existing resources during bootstrap");
+      }
     }
 
     preValidation.run();
@@ -738,13 +751,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(
-                clientConfig,
-                configLoader,
-                managedClients,
-                icProvider,
-                cacheConfig,
-                recordTransformerFunction),
+            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -829,7 +836,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       } else {
         this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
       }
-
+      // Register store specific record transformer upon client start-up.
+      if (daVinciConfig.isRecordTransformerEnabled()) {
+        daVinciBackend.get()
+            .registerRecordTransformerFunction(getStoreName(), daVinciConfig.getRecordTransformerFunction());
+      }
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());
     } catch (Throwable e) {

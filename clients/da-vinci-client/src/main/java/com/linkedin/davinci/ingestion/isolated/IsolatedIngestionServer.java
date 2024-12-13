@@ -711,7 +711,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         true,
         compressorFactory,
         Optional.empty(),
-        null,
         isDaVinciClient,
         repairService,
         pubSubClientsFactory,
