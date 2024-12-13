@@ -593,6 +593,7 @@ public class AdminTool {
           break;
         case DUMP_HOST_HEARTBEAT:
           dumpHostHeartbeat(cmd);
+          break;
         case CLUSTER_BATCH_TASK:
           runClusterCommand(cmd);
           break;
