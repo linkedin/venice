@@ -262,8 +262,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put put = new Put();
     put.schemaId = 1;
     when(mockResult.getNewPut()).thenReturn(put);
-    CompletableFuture[] futures = leaderFollowerStoreIngestionTask
-        .processViewWriters(mockPartitionConsumptionState, new byte[1], null, mockResult);
+    CompletableFuture[] futures =
+        leaderFollowerStoreIngestionTask.processViewWriters(mockPartitionConsumptionState, new byte[1], mockResult);
     assertEquals(futures.length, 2);
     verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
     verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt());

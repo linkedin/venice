@@ -652,7 +652,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         long preprocessingTime = System.currentTimeMillis();
         CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
         CompletableFuture[] viewWriterFutures =
-            processViewWriters(partitionConsumptionState, keyBytes, mergeConflictResultWrapper, null);
+            processViewWriters(partitionConsumptionState, keyBytes, mergeConflictResultWrapper);
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
           hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
@@ -1426,12 +1426,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return false;
   }
 
-  @Override
-  protected CompletableFuture[] processViewWriters(
+  CompletableFuture[] processViewWriters(
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes,
-      MergeConflictResultWrapper mergeConflictResultWrapper,
-      WriteComputeResultWrapper writeComputeResultWrapper) {
+      MergeConflictResultWrapper mergeConflictResultWrapper) {
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     int index = 0;

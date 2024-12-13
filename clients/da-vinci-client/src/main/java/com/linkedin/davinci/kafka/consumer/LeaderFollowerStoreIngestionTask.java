@@ -334,8 +334,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
-        }
-        if (tmpValueForHasChangeCaptureViewWriter) {
           break;
         }
       }
@@ -2502,7 +2500,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
              */
           case END_OF_PUSH:
-            // CMs that are produced with DIV pass-through mode can break DIV without synchronization with view writers
+            // CMs that are produced with DIV pass-through mode can break DIV without synchronization with view writers.
+            // This is because for data (PUT) records we queue their produceToLocalKafka behind the completion of view
+            // writers. The main SIT will move on to subsequent messages and for CMs we are producing them directly
+            // because we don't need to replicate these CMs to view topics. If we don't synchronize before producing the
+            // CMs then in the VT we might get out of order messages and with pass-through DIV that's going to be an
+            // issue. e.g. a PUT record belonging to seg:0 can come after the EOS of seg:0 due to view writer delays.
             checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
             /**
              * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
@@ -3360,7 +3363,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long preprocessingTime = System.currentTimeMillis();
       CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
       CompletableFuture[] viewWriterFutures =
-          processViewWriters(partitionConsumptionState, keyBytes, null, writeComputeResultWrapper);
+          processViewWriters(partitionConsumptionState, keyBytes, writeComputeResultWrapper);
       CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
         hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
         if (exception == null) {
@@ -3946,10 +3949,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  protected CompletableFuture[] processViewWriters(
+  CompletableFuture[] processViewWriters(
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes,
-      MergeConflictResultWrapper mergeConflictResultWrapper,
       WriteComputeResultWrapper writeComputeResultWrapper) {
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
     int index = 0;
