@@ -1453,18 +1453,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               partitionException);
           // No need to reset again, clearing out the exception.
           partitionIngestionExceptionList.set(exceptionPartition, null);
-        } else if (!partitionConsumptionState.isCompletionReported()) {
-          reportError(partitionException.getMessage(), exceptionPartition, partitionException);
         } else {
-          LOGGER.error(
-              "Ignoring exception for replica: {} since it is already online. The replica will continue serving reads, but the data may be stale as it is not actively ingesting data. Please engage the Venice DEV team immediately.",
-              Utils.getReplicaId(kafkaVersionTopic, exceptionPartition),
-              partitionException);
-        }
-        // Unsubscribe the partition to avoid more damages.
-        if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-          // This is not an unsubscribe action from Helix
-          unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition), false);
+          if (!partitionConsumptionState.isCompletionReported()) {
+            reportError(partitionException.getMessage(), exceptionPartition, partitionException);
+          } else {
+            LOGGER.error(
+                "Ignoring exception for replica: {} since it is already online. The replica will continue serving reads, but the data may be stale as it is not actively ingesting data. Please engage the Venice DEV team immediately.",
+                Utils.getReplicaId(kafkaVersionTopic, exceptionPartition),
+                partitionException);
+          }
+          // Unsubscribe the partition to avoid more damages.
+          if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
+            // This is not an unsubscribe action from Helix
+            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition), false);
+          }
         }
       }
     });
