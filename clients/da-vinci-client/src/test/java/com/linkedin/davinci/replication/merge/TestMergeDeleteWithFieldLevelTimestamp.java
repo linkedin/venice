@@ -1,12 +1,15 @@
 package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdUtils.getRmdTimestampType;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -44,6 +47,41 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
         0,
         0);
     Assert.assertTrue(mergeResult.isUpdateIgnored());
+  }
+
+  @Test
+  public void testNewDeleteConvertsRmdFormat() {
+    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(new SchemaEntry(2, userSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            storeName,
+            true,
+            true);
+
+    GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(userRmdSchemaV1, 10L);
+    final int oldValueSchemaID = 1;
+
+    MergeConflictResult mergeResult = mergeConflictResolver.delete(
+        Lazy.of(() -> null),
+        new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord),
+        11L,
+        1L,
+        0,
+        0);
+    Assert.assertFalse(mergeResult.isUpdateIgnored());
+    Object timestampObject = mergeResult.getRmdRecord().get(TIMESTAMP_FIELD_POS);
+    RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
+    Assert.assertEquals(rmdTimestampType, RmdTimestampType.PER_FIELD_TIMESTAMP);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("id"), 11L);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("name"), 11L);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("age"), 11L);
   }
 
   @Test
