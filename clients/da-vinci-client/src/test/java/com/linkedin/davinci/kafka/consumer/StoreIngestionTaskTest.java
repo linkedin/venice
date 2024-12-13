@@ -5249,6 +5249,25 @@ public abstract class StoreIngestionTaskTest {
     verify(storeIngestionTask, times(2)).consumerUnSubscribeForStateTransition(versionTopic, pcs);
   }
 
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testStoreIngestionInternalClose() throws Exception {
+    AtomicReference<CompletableFuture<Void>> dropPartitionFuture = new AtomicReference<>();
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      dropPartitionFuture.set(storeIngestionTaskUnderTest.dropStoragePartitionGracefully(fooTopicPartition));
+    }, AA_OFF);
+    // Mock out processConsumerActions to ensure the consumer action queue is not processed
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        doNothing().when(storeIngestionTaskUnderTest).processConsumerActions(any());
+      } catch (InterruptedException e) {
+        // ignored
+      }
+    });
+    runTest(config);
+    // The drop partition consumer action should still be handled as part of internalClose
+    dropPartitionFuture.get().get();
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config

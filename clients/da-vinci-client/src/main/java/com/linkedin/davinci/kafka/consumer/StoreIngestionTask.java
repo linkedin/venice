@@ -1803,26 +1803,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
-    try {
-      this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
-      for (ConsumerAction message: consumerActionsQueue) {
-        ConsumerActionType opType = message.getType();
-        String topic = message.getTopic();
-        int partition = message.getPartition();
-        String replica = Utils.getReplicaId(message.getTopic(), message.getPartition());
+    this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
+    for (ConsumerAction message: consumerActionsQueue) {
+      ConsumerActionType opType = message.getType();
+      String topic = message.getTopic();
+      int partition = message.getPartition();
+      String replica = Utils.getReplicaId(message.getTopic(), message.getPartition());
+      try {
         if (opType == ConsumerActionType.RESET_OFFSET) {
           LOGGER.info("Cleanup Reset OffSet. Replica: {}", replica);
           storageMetadataService.clearOffset(topic, partition);
+          message.getFuture().complete(null);
         } else if (opType == DROP_PARTITION) {
           PubSubTopicPartition topicPartition = message.getTopicPartition();
           LOGGER.info("Processing DROP_PARTITION message for {} in internalClose", topicPartition);
           dropPartitionSynchronously(topicPartition);
+          message.getFuture().complete(null);
         } else {
           LOGGER.info("Cleanup ignoring the Message: {} Replica: {}", message, replica);
         }
+      } catch (Exception e) {
+        LOGGER.error(
+            "{} Error while handling consumer action: {} replica: {} in internalClose",
+            ingestionTaskName,
+            message,
+            replica,
+            e);
+        message.getFuture().completeExceptionally(e);
       }
-    } catch (Exception e) {
-      LOGGER.error("{} Error while handling message in internalClose", ingestionTaskName, e);
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
     aggKafkaConsumerService.unsubscribeAll(versionTopic);
