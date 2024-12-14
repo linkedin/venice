@@ -10,15 +10,6 @@ import javax.annotation.Nonnull;
  * @author Antony T Curtis {@literal <acurtis@linkedin.com>}
  */
 public interface ResourcePath<K> {
-  default boolean hasMultiplePartitionKeys() {
-    Iterator<K> it = getPartitionKeys().iterator();
-    if (it.hasNext()) {
-      it.next();
-      return it.hasNext();
-    }
-    return false;
-  }
-
   default K getPartitionKey() {
     Iterator<K> it = getPartitionKeys().iterator();
     K key = it.next();

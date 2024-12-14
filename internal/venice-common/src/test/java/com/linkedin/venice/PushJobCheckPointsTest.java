@@ -3,7 +3,7 @@ package com.linkedin.venice;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -16,7 +16,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
 
   @Override
   protected Map<Integer, PushJobCheckpoints> expectedMapping() {
-    return CollectionUtil.<Integer, PushJobCheckpoints>mapBuilder()
+    return CollectionUtils.<Integer, PushJobCheckpoints>mapBuilder()
         .put(0, PushJobCheckpoints.INITIALIZE_PUSH_JOB)
         .put(1, PushJobCheckpoints.NEW_VERSION_CREATED)
         .put(2, PushJobCheckpoints.START_DATA_WRITER_JOB)

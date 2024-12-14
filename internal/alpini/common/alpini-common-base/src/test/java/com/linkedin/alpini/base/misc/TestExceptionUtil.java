@@ -114,9 +114,4 @@ public class TestExceptionUtil {
       throw new IOException();
     }, "Used"));
   }
-
-  @Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Test Successful")
-  public void simpleThrowTest() {
-    ExceptionUtil.throwException(new IOException("Test Successful"));
-  }
 }
