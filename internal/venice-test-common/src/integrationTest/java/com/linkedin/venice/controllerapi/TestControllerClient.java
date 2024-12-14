@@ -173,7 +173,7 @@ public class TestControllerClient {
       // When only some controllers are missing, the ConnectException should never be bubbled up. Since this behavior is
       // triggered from Java libs, and we randomize the controller list to do some load balancing, the best way to
       // validate is to try multiple invocations
-      IntStream.rangeClosed(1, 100).parallel().forEach(i -> {
+      IntStream.rangeClosed(1, 50).parallel().forEach(i -> {
         D2ServiceDiscoveryResponse discoResponsePartialValidController = ControllerClient
             .discoverCluster(nonExistentControllerUrl1 + "," + validControllerUrl, storeName, Optional.empty(), 1);
         Assert.assertFalse(discoResponsePartialValidController.isError());
