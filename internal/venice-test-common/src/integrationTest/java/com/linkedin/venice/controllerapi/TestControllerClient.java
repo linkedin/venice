@@ -22,6 +22,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.util.Optional;
+import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -170,9 +171,9 @@ public class TestControllerClient {
           discoResponseInvalidControllers.getError());
 
       // When only some controllers are missing, the ConnectException should never be bubbled up. Since this behavior is
-      // triggered from Java libs, and we randomise the controller list to do some load balancing, the best way to
+      // triggered from Java libs, and we randomize the controller list to do some load balancing, the best way to
       // validate is to try multiple invocations
-      for (int i = 0; i < 100; i++) {
+      IntStream.rangeClosed(1, 50).parallel().forEach(i -> {
         D2ServiceDiscoveryResponse discoResponsePartialValidController = ControllerClient
             .discoverCluster(nonExistentControllerUrl1 + "," + validControllerUrl, storeName, Optional.empty(), 1);
         Assert.assertFalse(discoResponsePartialValidController.isError());
@@ -217,7 +218,7 @@ public class TestControllerClient {
             1);
         Assert.assertTrue(errorDiscoResponseInvalidAndLegacy.isError());
         Assert.assertEquals(errorDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.BAD_REQUEST);
-      }
+      });
 
       try (ControllerClient controllerClient =
           ControllerClientFactory.getControllerClient(clusterName, validControllerUrl, Optional.empty())) {
