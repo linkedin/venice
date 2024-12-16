@@ -158,7 +158,6 @@ public class StoreBackend {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
     }
-
     subscription.addAll(partitions);
 
     if (daVinciFutureVersion == null) {

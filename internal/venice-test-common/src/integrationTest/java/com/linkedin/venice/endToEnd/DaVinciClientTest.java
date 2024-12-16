@@ -86,7 +86,16 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.*;
+import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1341,7 +1350,7 @@ public class DaVinciClientTest {
       }
     }
 
-    // Test managed clients & data cleanup
+    // Test managed clients
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
@@ -1350,6 +1359,15 @@ public class DaVinciClientTest {
         Optional.of(Collections.singleton(storeName1)))) {
 
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
+
+      Set<Integer> partitions = new HashSet<>();
+
+      for (int i = 0; i < 5; i++) {
+        partitions.add(i);
+      }
+
+      client1.subscribe(partitions);
+      client1.unsubscribeAll();
 
       DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
       if (daVinciBackend != null) {
