@@ -65,8 +65,7 @@ jobs:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: clients
-    arg: :clients:da-vinci-client:jacocoTestCoverageVerification :clients:da-vinci-client:diffCoverage
-      :clients:venice-admin-tool:jacocoTestCoverageVerification :clients:venice-admin-tool:diffCoverage
+    arg: :clients:venice-admin-tool:jacocoTestCoverageVerification :clients:venice-admin-tool:diffCoverage
       :clients:venice-producer:jacocoTestCoverageVerification :clients:venice-producer:diffCoverage
       :integrations:venice-pulsar:jacocoTestCoverageVerification :integrations:venice-pulsar:diffCoverage
       :clients:venice-client:jacocoTestCoverageVerification :clients:venice-client:diffCoverage
@@ -93,7 +92,8 @@ jobs:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: server
-    arg: :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
+    arg: :clients:da-vinci-client:jacocoTestCoverageVerification :clients:da-vinci-client:diffCoverage
+     :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
   Router:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
