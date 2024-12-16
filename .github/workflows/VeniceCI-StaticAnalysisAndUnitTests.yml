@@ -87,17 +87,17 @@ jobs:
   Controller:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
-    artifact_suffix: controller
+    artifact_suffix: services
     arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage --continue
   Server:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
-    artifact_suffix: server
+    artifact_suffix: services
     arg: :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
   Router:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
-    artifact_suffix: router
+    artifact_suffix: services
     arg: :services:venice-router:jacocoTestCoverageVerification :services:venice-router:diffCoverage --continue
 
   StaticAnalysisAndUnitTestsCompletionCheck:
