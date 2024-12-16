@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -46,7 +47,9 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.DaVinciUserApp;
+import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -60,11 +63,7 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.*;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -83,15 +82,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
-import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.*;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1284,7 +1275,7 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testBootstrapSubscription(DaVinciConfig clientConfig) throws Exception {
+  public void testBootstrapSubscription(DaVinciConfig daVinciConfig) throws Exception {
     String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -1294,6 +1285,7 @@ public class DaVinciClientTest {
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -1304,7 +1296,7 @@ public class DaVinciClientTest {
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
-      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
 
       // Test non-existent key access
       client1.subscribeAll().get();
@@ -1349,25 +1341,18 @@ public class DaVinciClientTest {
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
+        metricsRepository,
         backendConfig,
         Optional.of(Collections.singleton(storeName1)))) {
+
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
 
-      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
-
-      Set<Integer> partitions = new HashSet<>();
-      for (int i = 0; i < 5; ++i) {
-        partitions.add(i);
+      DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
+      if (daVinciBackend != null) {
+        StoreBackend storeBackend = daVinciBackend.getStoreOrThrow(storeName1);
+        ComplementSet<Integer> subscription = storeBackend.getSubscription();
+        assertTrue(subscription.isEmpty());
       }
-
-      client1.subscribe(partitions);
-
-      client1.subscribeAll().get();
-      client1.unsubscribeAll();
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
-      });
     }
   }
 

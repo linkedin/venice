@@ -575,7 +575,7 @@ public class DaVinciBackend implements Closeable {
     return schemaRepository;
   }
 
-  StorageService getStorageService() {
+  public StorageService getStorageService() {
     return storageService;
   }
 
