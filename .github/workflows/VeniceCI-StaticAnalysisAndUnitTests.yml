@@ -126,7 +126,15 @@ jobs:
            echo "Internal module unit tests failed."
            exit 1
          fi
-         if [ "${{ needs.Services.result }}" != "success" ]; then
+         if [ "${{ needs.Controller.result }}" != "success" ]; then
+           echo "Services module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Server.result }}" != "success" ]; then
+           echo "Services module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Router.result }}" != "success" ]; then
            echo "Services module unit tests failed."
            exit 1
          fi
