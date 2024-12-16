@@ -50,6 +50,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ inputs.artifact_suffix }}-artifacts
           tar -zcvf ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ inputs.artifact_suffix }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v3
