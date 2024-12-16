@@ -82,7 +82,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     if (timestamps.isEmpty()) {
-      return null;
+      return CompletableFuture.completedFuture(null);
     }
     return internalSeekToTimestamps(timestamps, "");
   }
@@ -90,7 +90,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     if (partitions.isEmpty()) {
-      return null;
+      return CompletableFuture.completedFuture(null);
     }
     if (!versionSwapThreadScheduled.get()) {
       // schedule the version swap thread and set up the callback listener
@@ -108,7 +108,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
     if (partitions.isEmpty()) {
-      return null;
+      return CompletableFuture.completedFuture(null);
     }
     return internalSeekToTail(partitions, "");
   }
@@ -116,7 +116,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   @Override
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
     if (partitions.isEmpty()) {
-      return null;
+      return CompletableFuture.completedFuture(null);
     }
     return CompletableFuture.supplyAsync(() -> {
       synchronized (internalSeekConsumer) {
