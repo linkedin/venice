@@ -1030,7 +1030,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // TODO: This needs to be implemented later to support Global RT DIV.
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     PubSubProducerCallback callback = new ErrorPropagationCallback(new CompletableFutureCallback(completableFuture));
-    BiConsumer<KeyProvider, Object> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
+    BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
         MessageType.PUT,
         putPayload,
@@ -1595,7 +1595,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
     PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
-    BiConsumer<KeyProvider, Object> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
+    BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
         MessageType.PUT,
         putPayload,

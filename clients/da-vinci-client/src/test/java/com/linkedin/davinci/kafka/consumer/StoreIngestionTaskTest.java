@@ -361,9 +361,8 @@ public abstract class StoreIngestionTaskTest {
   private HostLevelIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedIngestionStats mockVersionedStorageIngestionStats;
-
-  private ChunkAssembler divChunkAssembler;
   private StoreIngestionTask storeIngestionTaskUnderTest;
+  private ChunkAssembler divChunkAssembler;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
   private AggKafkaConsumerService aggKafkaConsumerService;

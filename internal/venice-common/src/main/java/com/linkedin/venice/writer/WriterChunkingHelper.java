@@ -47,7 +47,7 @@ public class WriterChunkingHelper {
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
       KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
-      BiConsumer<VeniceWriter.KeyProvider, Object> sendMessageFunction) {
+      BiConsumer<VeniceWriter.KeyProvider, Put> sendMessageFunction) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(maxSizeForUserPayloadPerMessageInBytes, sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
