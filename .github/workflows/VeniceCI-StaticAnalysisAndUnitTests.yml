@@ -87,24 +87,24 @@ jobs:
   Controller:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
-    artifact_suffix: services
+    artifact_suffix: controller
     arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage --continue
   Server:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
-    artifact_suffix: services
+    artifact_suffix: server
     arg: :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
   Router:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
-    artifact_suffix: services
+    artifact_suffix: router
     arg: :services:venice-router:jacocoTestCoverageVerification :services:venice-router:diffCoverage --continue
 
   StaticAnalysisAndUnitTestsCompletionCheck:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Internal, Services]
+    needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Internal, Controller, Server, Router]
     timeout-minutes: 120
     if: success() || failure()  # Always run this job, regardless of previous job status
     steps:
