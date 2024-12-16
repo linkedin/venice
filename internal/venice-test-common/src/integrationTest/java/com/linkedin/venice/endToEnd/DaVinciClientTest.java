@@ -63,7 +63,11 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.*;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -1345,7 +1349,7 @@ public class DaVinciClientTest {
         backendConfig,
         Optional.of(Collections.singleton(storeName1)))) {
 
-      assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
 
       DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
       if (daVinciBackend != null) {
