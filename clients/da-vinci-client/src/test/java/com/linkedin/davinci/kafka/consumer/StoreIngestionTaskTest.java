@@ -5252,7 +5252,7 @@ public abstract class StoreIngestionTaskTest {
     KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
     value.payloadUnion = new Put();
-    value.messageType = MessageType.GLOBAL_RT_DIV.getValue();
+    value.messageType = MessageType.PUT.getValue();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));
 

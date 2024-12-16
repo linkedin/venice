@@ -1014,7 +1014,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     return sendMessage(
         producerMetadata -> divKey,
-        MessageType.GLOBAL_RT_DIV,
+        MessageType.PUT,
         putPayload,
         partition,
         callback,
@@ -1032,7 +1032,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     PubSubProducerCallback callback = new ErrorPropagationCallback(new CompletableFutureCallback(completableFuture));
     BiConsumer<KeyProvider, Object> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
-        MessageType.GLOBAL_RT_DIV,
+        MessageType.PUT,
         putPayload,
         partition,
         callback,
@@ -1698,7 +1698,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
     return sendMessage(
         manifestKeyProvider,
-        keyType,
+        MessageType.PUT,
         manifestPayload,
         partition,
         callback,

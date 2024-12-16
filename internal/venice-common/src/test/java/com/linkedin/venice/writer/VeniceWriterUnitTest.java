@@ -716,7 +716,7 @@ public class VeniceWriterUnitTest {
           assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
         } else {
           Put put = (Put) kme.payloadUnion;
-          assertEquals(kme.messageType, MessageType.GLOBAL_RT_DIV.getValue());
+          assertEquals(kme.messageType, MessageType.PUT.getValue());
           assertTrue(validSchemaIds.contains(put.getSchemaId()));
         }
       }
