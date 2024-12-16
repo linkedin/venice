@@ -84,13 +84,21 @@ jobs:
      :internal:venice-test-common:jacocoTestCoverageVerification :internal:venice-test-common:diffCoverage --continue
 
 
-  Services:
-    uses: ./.github/workflows/UnitTests-core.yml
-    with:
-      artifact_suffix: services
-      arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage
-       :services:venice-router:jacocoTestCoverageVerification :services:venice-router:diffCoverage
-       :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
+  Controller:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: controller
+    arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage --continue
+  Server:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: server
+    arg: :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
+  Router:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: router
+    arg: :services:venice-router:jacocoTestCoverageVerification :services:venice-router:diffCoverage --continue
 
   StaticAnalysisAndUnitTestsCompletionCheck:
     strategy:
