@@ -614,7 +614,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
       RepushOrchestrator repushOrchestrator =
           ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
-      compactionManager = new CompactionManager(repushOrchestrator);
+      compactionManager =
+          new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
     }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
