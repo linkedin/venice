@@ -74,6 +74,8 @@ import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -87,6 +89,7 @@ import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -97,6 +100,15 @@ public class TestMetaDataHandler {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
+
+  private MetricsRepository metricsRepository;
+
+  @BeforeMethod
+  public void setUp() {
+    metricsRepository = Mockito.mock(MetricsRepository.class);
+    Sensor mockSensor = Mockito.mock(Sensor.class);
+    Mockito.when(metricsRepository.sensor(Mockito.anyString())).thenReturn(mockSensor);
+  }
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
@@ -191,7 +203,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -964,7 +977,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());

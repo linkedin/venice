@@ -594,7 +594,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getKafkaBootstrapServers(),
         config.isSslToKafka(),
         versionFinder,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
