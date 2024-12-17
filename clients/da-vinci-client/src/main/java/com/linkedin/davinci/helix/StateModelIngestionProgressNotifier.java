@@ -5,6 +5,7 @@ import static com.linkedin.davinci.helix.AbstractStateModelFactory.getStateModel
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -51,7 +52,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
         // Report ingestion_failure
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
         storeIngestionService.recordIngestionFailure(storeName);
-        VeniceException veniceException = new VeniceException(errorMsg);
+        VeniceTimeoutException veniceException = new VeniceTimeoutException(errorMsg);
         storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }
       stateModelToIngestionCompleteFlagMap.remove(stateModelId);
