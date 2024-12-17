@@ -56,6 +56,10 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
           }
         }
 
+        if (partitions.isEmpty()) {
+          return;
+        }
+
         LOGGER.info(
             "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: " + consumerName);
         this.consumer.seekToEndOfPush(partitions).get();

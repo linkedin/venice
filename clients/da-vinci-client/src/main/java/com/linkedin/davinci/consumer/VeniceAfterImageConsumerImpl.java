@@ -81,11 +81,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    if (timestamps.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
     return internalSeekToTimestamps(timestamps, "");
   }
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
     if (!versionSwapThreadScheduled.get()) {
       // schedule the version swap thread and set up the callback listener
       this.storeRepository.registerStoreDataChangedListener(versionSwapListener);
@@ -101,11 +107,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
     return internalSeekToTail(partitions, "");
   }
 
   @Override
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
     return CompletableFuture.supplyAsync(() -> {
       synchronized (internalSeekConsumer) {
         try {
@@ -113,6 +125,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           // approach
           // we'd like to do is instead add the offset of the EOP message in the VT, and then just seek to that offset.
           // We'll do that in a future patch.
+          internalSeekConsumer.get().unsubscribeAll();
           internalSeekConsumer.get().subscribe(partitions).get();
 
           // We need to get the internal consumer as we have to intercept the control messages that we would normally
