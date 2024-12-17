@@ -139,8 +139,16 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
   }
 
   void decreaseConsumerStoreLoad(SharedKafkaConsumer consumer, PubSubTopic versionTopic) {
+    /**
+     * When versionTopic is null, it means a specific Topic-Partition has been unsubscribed for more than 1 time. This
+     * can happen during version deprecation, where {@link ParticipantStoreConsumptionTask} is also trying to unsubscribe
+     * every partitions
+     */
     if (versionTopic == null) {
-      getLOGGER().warn("Incoming versionTopic is null, will skip decreasing store load for consumer: {}", consumer);
+      getLOGGER().warn(
+          "Incoming versionTopic is null, will skip decreasing store load for consumer: {} with index: {}",
+          consumer,
+          getConsumerToConsumptionTask().indexOf(consumer));
       return;
     }
     String storeName = versionTopic.getStoreName();

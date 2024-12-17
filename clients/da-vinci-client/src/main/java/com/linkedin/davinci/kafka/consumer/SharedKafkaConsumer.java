@@ -192,6 +192,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     long currentPollTimes = pollTimes;
     long startTime = System.currentTimeMillis();
     Set<PubSubTopicPartition> topicPartitions = supplier.get();
+    updateCurrentAssignment(delegate.getAssignment());
+    waitAfterUnsubscribe(currentPollTimes, topicPartitions, timeoutMs);
     long elapsedTime = System.currentTimeMillis() - startTime;
     LOGGER.info(
         "Shared consumer {} unsubscribed {} partition(s): ({}) in {} ms",
@@ -199,8 +201,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         topicPartitions.size(),
         topicPartitions,
         elapsedTime);
-    updateCurrentAssignment(delegate.getAssignment());
-    waitAfterUnsubscribe(currentPollTimes, topicPartitions, timeoutMs);
   }
 
   protected void waitAfterUnsubscribe(
