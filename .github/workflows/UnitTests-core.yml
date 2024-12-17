@@ -58,7 +58,7 @@ jobs:
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
