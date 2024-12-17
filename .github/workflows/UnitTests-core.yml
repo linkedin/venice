@@ -54,7 +54,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v3
-        if: failure() #  run  only if the previous step fails
+        if: always() 
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
          report_paths: '**/build/test-results/test/TEST-*.xml'
