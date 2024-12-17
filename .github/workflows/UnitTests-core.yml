@@ -54,9 +54,10 @@ jobs:
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v3
-        if: always() # always run even if the previous step fails
+        if: failure() #  run  only if the previous step fails
         with:
-          report_paths: '**/build/test-results/test/TEST-*.xml'
+         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
