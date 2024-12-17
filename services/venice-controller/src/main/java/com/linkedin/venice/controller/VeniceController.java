@@ -69,6 +69,11 @@ public class VeniceController {
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
   private Optional<SystemStoreRepairService> systemStoreRepairService;
 
+  private VeniceControllerRequestHandler secureRequestHandler;
+  private VeniceControllerRequestHandler unsecureRequestHandler;
+  private ThreadPoolExecutor grpcExecutor = null;
+  private static final String CONTROLLER_GRPC_SERVER_THREAD_NAME = "ControllerGrpcServer";
+
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
@@ -80,10 +85,9 @@ public class VeniceController {
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository;
   private final PubSubClientsFactory pubSubClientsFactory;
   static final String CONTROLLER_SERVICE_NAME = "venice-controller";
-  private ThreadPoolExecutor grpcExecutor = null;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -147,11 +151,26 @@ public class VeniceController {
     long serviceDiscoveryRegistrationRetryMS = multiClusterConfigs.getServiceDiscoveryRegistrationRetryMS();
     this.asyncRetryingServiceDiscoveryAnnouncer =
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
-    createServices();
+    this.pubSubTopicRepository = new PubSubTopicRepository();
+    this.controllerService = createControllerService();
+    this.adminServer = createAdminServer(false);
+    this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
+    this.topicCleanupService = createTopicCleanupService();
+    this.storeBackupVersionCleanupService = createStoreBackupVersionCleanupService();
+    this.disabledPartitionEnablerService = createDisabledPartitionEnablerService();
+    this.unusedValueSchemaCleanupService = createUnusedValueSchemaCleanupService();
+    this.storeGraveyardCleanupService = createStoreGraveyardCleanupService();
+    this.systemStoreRepairService = createSystemStoreRepairService();
+    if (multiClusterConfigs.isGrpcServerEnabled()) {
+      initializeGrpcServer();
+    }
+
+    // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
+    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
   }
 
-  private void createServices() {
-    controllerService = new VeniceControllerService(
+  private VeniceControllerService createControllerService() {
+    VeniceControllerService veniceControllerService = new VeniceControllerService(
         multiClusterConfigs,
         metricsRepository,
         sslEnabled,
@@ -164,109 +183,109 @@ public class VeniceController {
         externalSupersetSchemaGenerator,
         pubSubTopicRepository,
         pubSubClientsFactory);
-    adminServer = new AdminSparkServer(
-        // no need to pass the hostname, we are binding to all the addresses
-        multiClusterConfigs.getAdminPort(),
+    Admin admin = veniceControllerService.getVeniceHelixAdmin();
+    if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
+      throw new VeniceException(
+          "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
+    }
+    unsecureRequestHandler = new VeniceControllerRequestHandler(buildRequestHandlerDependencies(admin, false));
+    if (sslEnabled) {
+      secureRequestHandler = new VeniceControllerRequestHandler(buildRequestHandlerDependencies(admin, true));
+    }
+    return veniceControllerService;
+  }
+
+  AdminSparkServer createAdminServer(boolean secure) {
+    return new AdminSparkServer(
+        secure ? multiClusterConfigs.getAdminSecurePort() : multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
         metricsRepository,
         multiClusterConfigs.getClusters(),
-        multiClusterConfigs.isControllerEnforceSSLOnly(),
-        Optional.empty(),
-        false,
-        Optional.empty(),
+        secure || multiClusterConfigs.isControllerEnforceSSLOnly(),
+        secure ? multiClusterConfigs.getSslConfig() : Optional.empty(),
+        secure && multiClusterConfigs.adminCheckReadMethodForKafka(),
+        accessController,
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
-        // TODO: Builder pattern or just pass the config object here?
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
         pubSubTopicRepository,
-        new VeniceControllerRequestHandler(buildRequestHandlerDependencies(false)));
-    if (sslEnabled) {
-      /**
-       * SSL enabled AdminSparkServer uses a different port number than the regular service.
-       */
-      secureAdminServer = new AdminSparkServer(
-          multiClusterConfigs.getAdminSecurePort(),
-          controllerService.getVeniceHelixAdmin(),
-          metricsRepository,
-          multiClusterConfigs.getClusters(),
-          true,
-          multiClusterConfigs.getSslConfig(),
-          multiClusterConfigs.adminCheckReadMethodForKafka(),
-          accessController,
-          multiClusterConfigs.getDisabledRoutes(),
-          multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
-          multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
-          pubSubTopicRepository,
-          new VeniceControllerRequestHandler(buildRequestHandlerDependencies(true)));
-    }
-    storeBackupVersionCleanupService = Optional.empty();
-    storeGraveyardCleanupService = Optional.empty();
-    systemStoreRepairService = Optional.empty();
-    disabledPartitionEnablerService = Optional.empty();
-    unusedValueSchemaCleanupService = Optional.empty();
+        secure ? secureRequestHandler : unsecureRequestHandler);
+  }
 
+  private TopicCleanupService createTopicCleanupService() {
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
-      topicCleanupService = new TopicCleanupServiceForParentController(
+      return new TopicCleanupServiceForParentController(
           admin,
           multiClusterConfigs,
           pubSubTopicRepository,
           new TopicCleanupServiceStats(metricsRepository),
           pubSubClientsFactory);
-      if (!(admin instanceof VeniceParentHelixAdmin)) {
-        throw new VeniceException(
-            "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
-      }
-      storeGraveyardCleanupService =
-          Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
-      LOGGER.info("StoreGraveyardCleanupService is enabled");
-      if (multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
-        systemStoreRepairService = Optional
-            .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
-        LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
-      }
-      this.unusedValueSchemaCleanupService =
-          Optional.of(new UnusedValueSchemaCleanupService(multiClusterConfigs, (VeniceParentHelixAdmin) admin));
     } else {
-      topicCleanupService = new TopicCleanupService(
+      return new TopicCleanupService(
           admin,
           multiClusterConfigs,
           pubSubTopicRepository,
           new TopicCleanupServiceStats(metricsRepository),
           pubSubClientsFactory);
-      if (!(admin instanceof VeniceHelixAdmin)) {
-        throw new VeniceException(
-            "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
-      }
-      storeBackupVersionCleanupService = Optional
-          .of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs, metricsRepository));
-      LOGGER.info("StoreBackupVersionCleanupService is enabled");
-
-      disabledPartitionEnablerService =
-          Optional.of(new DisabledPartitionEnablerService((VeniceHelixAdmin) admin, multiClusterConfigs));
-    }
-    // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
-    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
-
-    // if gRpc server is not enabled, return early
-    if (multiClusterConfigs.isGrpcServerEnabled()) {
-      LOGGER.info("gRPC server is enabled in controller. Initializing gRPC server...");
-      initializeGrpcServer();
     }
   }
 
+  private Optional<StoreBackupVersionCleanupService> createStoreBackupVersionCleanupService() {
+    if (!multiClusterConfigs.isParent()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional
+          .of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs, metricsRepository));
+    }
+    return Optional.empty();
+  }
+
+  private Optional<DisabledPartitionEnablerService> createDisabledPartitionEnablerService() {
+    if (!multiClusterConfigs.isParent()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(new DisabledPartitionEnablerService((VeniceHelixAdmin) admin, multiClusterConfigs));
+    }
+    return Optional.empty();
+  }
+
+  private Optional<StoreGraveyardCleanupService> createStoreGraveyardCleanupService() {
+    if (multiClusterConfigs.isParent()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
+    }
+    return Optional.empty();
+  }
+
+  private Optional<SystemStoreRepairService> createSystemStoreRepairService() {
+    if (multiClusterConfigs.isParent()
+        && multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional
+          .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
+    }
+    return Optional.empty();
+  }
+
+  private Optional<UnusedValueSchemaCleanupService> createUnusedValueSchemaCleanupService() {
+    if (multiClusterConfigs.isParent()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(new UnusedValueSchemaCleanupService(multiClusterConfigs, (VeniceParentHelixAdmin) admin));
+    }
+    return Optional.empty();
+  }
+
+  // package-private for testing
   private void initializeGrpcServer() {
+    LOGGER.info("Initializing gRPC server as it is enabled for the controller...");
     ParentControllerRegionValidationInterceptor parentControllerRegionValidationInterceptor =
         new ParentControllerRegionValidationInterceptor(controllerService.getVeniceHelixAdmin());
     List<ServerInterceptor> interceptors = new ArrayList<>(2);
     interceptors.add(parentControllerRegionValidationInterceptor);
 
-    VeniceControllerGrpcServiceImpl grpcService =
-        new VeniceControllerGrpcServiceImpl(new VeniceControllerRequestHandler(buildRequestHandlerDependencies(false)));
-
+    VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
-        "ControllerGrpcServer",
+        CONTROLLER_GRPC_SERVER_THREAD_NAME,
         Integer.MAX_VALUE,
         BlockingQueueType.LINKED_BLOCKING_QUEUE);
 
@@ -282,8 +301,7 @@ public class VeniceController {
       SSLFactory sslFactory = SslUtils.getSSLFactory(
           multiClusterConfigs.getSslConfig().get().getSslProperties(),
           multiClusterConfigs.getSslFactoryClassName());
-      VeniceControllerGrpcServiceImpl secureGrpcService = new VeniceControllerGrpcServiceImpl(
-          new VeniceControllerRequestHandler(buildRequestHandlerDependencies(true)));
+      VeniceControllerGrpcServiceImpl secureGrpcService = new VeniceControllerGrpcServiceImpl(secureRequestHandler);
       adminSecureGrpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
               .setService(secureGrpcService)
@@ -294,9 +312,10 @@ public class VeniceController {
     }
   }
 
-  private ControllerRequestHandlerDependencies buildRequestHandlerDependencies(boolean secure) {
+  // package-private for testing
+  ControllerRequestHandlerDependencies buildRequestHandlerDependencies(Admin admin, boolean secure) {
     ControllerRequestHandlerDependencies.Builder builder =
-        new ControllerRequestHandlerDependencies.Builder().setAdmin(controllerService.getVeniceHelixAdmin())
+        new ControllerRequestHandlerDependencies.Builder().setAdmin(admin)
             .setMetricsRepository(metricsRepository)
             .setClusters(multiClusterConfigs.getClusters())
             .setDisabledRoutes(multiClusterConfigs.getDisabledRoutes())
@@ -465,5 +484,42 @@ public class VeniceController {
       controller.stop();
       D2ClientFactory.release(zkAddress);
     }));
+  }
+
+  // helper method to aid in testing
+  AdminSparkServer getSecureAdminServer() {
+    return secureAdminServer;
+  }
+
+  VeniceGrpcServer getAdminSecureGrpcServer() {
+    return adminSecureGrpcServer;
+  }
+
+  AdminSparkServer getAdminServer() {
+    return adminServer;
+  }
+
+  VeniceGrpcServer getAdminGrpcServer() {
+    return adminGrpcServer;
+  }
+
+  TopicCleanupService getTopicCleanupService() {
+    return topicCleanupService;
+  }
+
+  Optional<StoreBackupVersionCleanupService> getStoreBackupVersionCleanupService() {
+    return storeBackupVersionCleanupService;
+  }
+
+  Optional<DisabledPartitionEnablerService> getDisabledPartitionEnablerService() {
+    return disabledPartitionEnablerService;
+  }
+
+  Optional<UnusedValueSchemaCleanupService> getUnusedValueSchemaCleanupService() {
+    return unusedValueSchemaCleanupService;
+  }
+
+  Optional<StoreGraveyardCleanupService> getStoreGraveyardCleanupService() {
+    return storeGraveyardCleanupService;
   }
 }

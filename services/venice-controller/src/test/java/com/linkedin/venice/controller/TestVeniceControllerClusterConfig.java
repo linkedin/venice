@@ -139,7 +139,7 @@ public class TestVeniceControllerClusterConfig {
     VeniceControllerClusterConfig.parseClusterMap(builder.build(), REGION_ALLOW_LIST);
   }
 
-  private Properties getBaseSingleRegionProperties(boolean includeMultiRegionConfig) {
+  protected static Properties getBaseSingleRegionProperties(boolean includeMultiRegionConfig) {
     Properties props = TestUtils.getPropertiesForControllerConfig();
     String clusterName = props.getProperty(CLUSTER_NAME);
     props.put(LOCAL_REGION_NAME, "dc-0");
