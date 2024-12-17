@@ -39,7 +39,6 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -123,12 +122,23 @@ public class TestActiveActiveReplicationForIncPush {
     multiRegionMultiClusterWrapper.close();
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAReplicationForIncPushWithSeparateRT() throws Exception {
+    // TODO: Remove this hack if we solve the test-retry plugin's flakiness with DataProviders
+    testAAReplicationForIncPush(true);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAReplicationForIncPush() throws Exception {
+    // TODO: Remove this hack if we solve the test-retry plugin's flakiness with DataProviders
+    testAAReplicationForIncPush(false);
+  }
+
   /**
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all
    * regions. And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationForIncrementalPushToRT(boolean isSeparateRealTimeTopicEnabled) throws Exception {
+  private void testAAReplicationForIncPush(boolean isSeparateRealTimeTopicEnabled) throws Exception {
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();

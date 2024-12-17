@@ -177,11 +177,6 @@ public class TestScatterGatherRequestHandlerImpl {
       }
 
       @Override
-      protected Status tooManyRequests() {
-        return Status.TOO_BUSY;
-      }
-
-      @Override
       protected Status serviceUnavailable() {
         return Status.SERVICE_UNAVAILABLE;
       }
@@ -200,11 +195,6 @@ public class TestScatterGatherRequestHandlerImpl {
       @Override
       protected boolean isRequestRetriable(@Nonnull P path, @Nonnull R role, @Nonnull Status status) {
         return getScatterGatherHelper().isRequestRetriable(path, role, status);
-      }
-
-      @Override
-      protected boolean isServiceUnavailable(Status status) {
-        return serviceUnavailable().equals(status);
       }
 
       @Override
@@ -1802,30 +1792,24 @@ public class TestScatterGatherRequestHandlerImpl {
     ScatterGatherStats.Delta delta = stats.new Delta();
 
     // 503 retry count will not increase if response status is not 503
-    scatterGatherRequestHandler.incrementTotalRetries(delta, HttpResponseStatus.TOO_MANY_REQUESTS);
-    scatterGatherRequestHandler.incrementTotalRetriesWinner(delta, HttpResponseStatus.TOO_MANY_REQUESTS);
-    scatterGatherRequestHandler.incrementTotalRetriesError(delta, HttpResponseStatus.TOO_MANY_REQUESTS);
+    scatterGatherRequestHandler.incrementTotalRetries(delta);
+    scatterGatherRequestHandler.incrementTotalRetriesWinner(delta);
+    scatterGatherRequestHandler.incrementTotalRetriesError(delta);
     delta.apply();
 
     Assert.assertEquals(stats.getTotalRetries(), 1);
     Assert.assertEquals(stats.getTotalRetriesWinner(), 1);
     Assert.assertEquals(stats.getTotalRetriesError(), 1);
-    Assert.assertEquals(stats.getTotalRetriesOn503(), 0);
-    Assert.assertEquals(stats.getTotalRetriesOn503Winner(), 0);
-    Assert.assertEquals(stats.getTotalRetriesOn503Error(), 0);
 
     // 503 retry count will increase if response status is 503
-    scatterGatherRequestHandler.incrementTotalRetries(delta, HttpResponseStatus.SERVICE_UNAVAILABLE);
-    scatterGatherRequestHandler.incrementTotalRetriesWinner(delta, HttpResponseStatus.SERVICE_UNAVAILABLE);
-    scatterGatherRequestHandler.incrementTotalRetriesError(delta, HttpResponseStatus.SERVICE_UNAVAILABLE);
+    scatterGatherRequestHandler.incrementTotalRetries(delta);
+    scatterGatherRequestHandler.incrementTotalRetriesWinner(delta);
+    scatterGatherRequestHandler.incrementTotalRetriesError(delta);
     delta.apply();
 
     Assert.assertEquals(stats.getTotalRetries(), 2);
     Assert.assertEquals(stats.getTotalRetriesWinner(), 2);
     Assert.assertEquals(stats.getTotalRetriesError(), 2);
-    Assert.assertEquals(stats.getTotalRetriesOn503(), 1);
-    Assert.assertEquals(stats.getTotalRetriesOn503Winner(), 1);
-    Assert.assertEquals(stats.getTotalRetriesOn503Error(), 1);
   }
 
   /**

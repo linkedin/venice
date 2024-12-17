@@ -210,7 +210,7 @@ public class MergeConflictResolver {
     if (useFieldLevelTimestamp || RmdUtils.getRmdTimestampType(oldTimestampObject).equals(PER_FIELD_TIMESTAMP)) {
       return mergeDeleteWithFieldLevelTimestamp(
           oldValueBytesProvider,
-          (GenericRecord) oldTimestampObject,
+          oldTimestampObject,
           oldValueSchemaID,
           oldRmdRecord,
           deleteOperationColoID,
@@ -382,15 +382,19 @@ public class MergeConflictResolver {
 
   private MergeConflictResult mergeDeleteWithFieldLevelTimestamp(
       Lazy<ByteBuffer> oldValueBytesProvider,
-      GenericRecord oldValueFieldTimestampsRecord,
+      Object oldTimestampObject,
       int oldValueSchemaID,
       GenericRecord oldRmdRecord,
       int deleteOperationColoID,
       long deleteOperationTimestamp,
       long deleteOperationSourceOffset,
       int deleteOperationSourceBrokerID) {
-    if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
-      return MergeConflictResult.getIgnoredResult();
+
+    if (oldTimestampObject instanceof GenericRecord) {
+      final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
+      if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
+        return MergeConflictResult.getIgnoredResult();
+      }
     }
     // In this case, the writer and reader schemas are the same because deletion does not introduce any new schema.
     final Schema oldValueSchema = getValueSchema(oldValueSchemaID);

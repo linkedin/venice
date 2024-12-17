@@ -1,8 +1,6 @@
 package com.linkedin.alpini.base.registry;
 
-import com.linkedin.alpini.base.misc.ExceptionUtil;
 import com.linkedin.alpini.base.misc.Time;
-import java.sql.SQLException;
 import java.util.EmptyStackException;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -48,23 +46,6 @@ public class TestResourceRegistry {
   }
 
   public static class BadClass implements ResourceRegistry.Factory {
-  }
-
-  public static interface FactoryStaticOtherException extends ResourceRegistry.Factory<MockResource> {
-    MockResource fooFactory();
-
-    static final ResourceRegistry.Factory<MockResource> BAD_FACTORY =
-        ResourceRegistry.registerFactory(FactoryStaticOtherException.class, new FactoryStaticOtherException() {
-          {
-            ExceptionUtil.throwException(new SQLException("Some checked exception"));
-          }
-
-          @Override
-          public MockResource fooFactory() {
-            Assert.fail("Never gets here");
-            return null;
-          }
-        });
   }
 
   public static interface FactoryStaticError extends ResourceRegistry.Factory<MockResource> {
@@ -256,13 +237,6 @@ public class TestResourceRegistry {
   public void testFactoryStaticRuntimeException() {
     ResourceRegistry reg = new ResourceRegistry();
     FactoryStaticRuntimeException factory = reg.factory(FactoryStaticRuntimeException.class);
-    Assert.fail("Should not get here: " + factory);
-  }
-
-  @Test(groups = "unit", expectedExceptions = ExceptionInInitializerError.class)
-  public void testFactoryStaticOtherException() {
-    ResourceRegistry reg = new ResourceRegistry();
-    FactoryStaticOtherException factory = reg.factory(FactoryStaticOtherException.class);
     Assert.fail("Should not get here: " + factory);
   }
 

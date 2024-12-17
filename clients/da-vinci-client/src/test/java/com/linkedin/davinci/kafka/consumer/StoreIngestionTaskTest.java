@@ -2323,6 +2323,7 @@ public abstract class StoreIngestionTaskTest {
         });
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(relevantPartitions, () -> {
+      Utils.sleep(1000);
       // Verify that all partitions reported success.
       maxOffsetPerPartition.entrySet()
           .stream()
@@ -5206,7 +5207,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(pcs).getSourceTopicPartition(any());
     String store = "test_store";
     String kafkaUrl = "localhost:1234";
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store));
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
     PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
     Assert.assertEquals(
@@ -5230,7 +5231,7 @@ public abstract class StoreIngestionTaskTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     String store = "test_store";
     String kafkaUrl = "localhost:1234";
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store));
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
     PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
 
@@ -5247,6 +5248,25 @@ public abstract class StoreIngestionTaskTest {
     verify(storeIngestionTask, times(1)).consumerUnSubscribeForStateTransition(separateRealTimeTopic, pcs);
     storeIngestionTask.unsubscribeFromTopic(versionTopic, pcs);
     verify(storeIngestionTask, times(2)).consumerUnSubscribeForStateTransition(versionTopic, pcs);
+  }
+
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testStoreIngestionInternalClose() throws Exception {
+    AtomicReference<CompletableFuture<Void>> dropPartitionFuture = new AtomicReference<>();
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      dropPartitionFuture.set(storeIngestionTaskUnderTest.dropStoragePartitionGracefully(fooTopicPartition));
+    }, AA_OFF);
+    // Mock out processConsumerActions to ensure the consumer action queue is not processed
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        doNothing().when(storeIngestionTaskUnderTest).processConsumerActions(any());
+      } catch (InterruptedException e) {
+        // ignored
+      }
+    });
+    runTest(config);
+    // The drop partition consumer action should still be handled as part of internalClose
+    dropPartitionFuture.get().get();
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

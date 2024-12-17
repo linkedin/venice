@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -152,7 +153,7 @@ public class UserSystemStoreLifeCycleHelper {
         default:
           throw new VeniceException("Unknown system store type: " + systemStoreName);
       }
-      admin.truncateKafkaTopic(Version.composeRealTimeTopic(systemStoreName));
+      admin.truncateKafkaTopic(Utils.composeRealTimeTopic(systemStoreName));
     } else {
       LOGGER.info("The RT topic for: {} will not be deleted since the user store is migrating", systemStoreName);
     }

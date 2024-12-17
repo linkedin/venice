@@ -17,7 +17,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,7 +34,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
 
   @Override
   protected Map<Integer, ExecutionStatus> expectedMapping() {
-    return CollectionUtil.<Integer, ExecutionStatus>mapBuilder()
+    return CollectionUtils.<Integer, ExecutionStatus>mapBuilder()
         .put(0, ExecutionStatus.NOT_CREATED)
         .put(1, ExecutionStatus.NEW)
         .put(2, ExecutionStatus.STARTED)

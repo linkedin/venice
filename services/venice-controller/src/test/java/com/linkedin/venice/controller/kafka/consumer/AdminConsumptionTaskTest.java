@@ -1162,6 +1162,7 @@ public class AdminConsumptionTaskTest {
             -1,
             1,
             false,
+            "",
             0);
     // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in
     // AdminExecutionTask.
@@ -1319,6 +1320,7 @@ public class AdminConsumptionTaskTest {
             -1,
             1,
             false,
+            "",
             0);
     Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
@@ -1425,17 +1427,41 @@ public class AdminConsumptionTaskTest {
     // dc-0 is the default region for the testing suite so the message for "dc-1" and "dc-2" should be ignored.
     veniceWriter.put(
         emptyKeyBytes,
-        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L, "dc-1"),
+        getAddVersionMessage(
+            clusterName,
+            storeName,
+            mockPushJobId,
+            versionNumber,
+            numberOfPartitions,
+            1L,
+            "dc-1",
+            false),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     veniceWriter.put(
         emptyKeyBytes,
-        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 2L, "dc-2"),
+        getAddVersionMessage(
+            clusterName,
+            storeName,
+            mockPushJobId,
+            versionNumber,
+            numberOfPartitions,
+            2L,
+            "dc-2",
+            false),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     veniceWriter.put(
         emptyKeyBytes,
-        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 3L, "dc-0"),
+        getAddVersionMessage(
+            clusterName,
+            storeName,
+            mockPushJobId,
+            versionNumber,
+            numberOfPartitions,
+            3L,
+            "dc-0",
+            false),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -1450,6 +1476,52 @@ public class AdminConsumptionTaskTest {
           -1,
           1,
           false,
+          "dc-0",
+          0);
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testAddVersionMsgHandlingForTargetedRegionPushWithDeferredSwap() throws Exception {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+    executor.submit(task);
+    String mockPushJobId = "testAddVersionMsgHandlingForTargetedRegionPushWithDeferredSwap";
+    int versionNumber = 1;
+    int numberOfPartitions = 1;
+
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(
+            clusterName,
+            storeName,
+            mockPushJobId,
+            versionNumber,
+            numberOfPartitions,
+            1L,
+            "dc-1",
+            true),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    // dc-0 is the default region, but with target region swap w/ deferred swap enabled, dc-1 should still ingest the
+    // data
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      verify(admin, times(1)).addVersionAndStartIngestion(
+          clusterName,
+          storeName,
+          mockPushJobId,
+          versionNumber,
+          numberOfPartitions,
+          Version.PushType.BATCH,
+          null,
+          -1,
+          1,
+          true,
+          "dc-1",
           0);
     });
 
@@ -1500,7 +1572,15 @@ public class AdminConsumptionTaskTest {
       int versionNum,
       int numberOfPartitions,
       long executionId) {
-    return getAddVersionMessage(clusterName, storeName, pushJobId, versionNum, numberOfPartitions, executionId, null);
+    return getAddVersionMessage(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNum,
+        numberOfPartitions,
+        executionId,
+        null,
+        false);
   }
 
   private byte[] getAddVersionMessage(
@@ -1510,7 +1590,8 @@ public class AdminConsumptionTaskTest {
       int versionNum,
       int numberOfPartitions,
       long executionId,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean deferredSwap) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1519,6 +1600,7 @@ public class AdminConsumptionTaskTest {
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
+    addVersion.versionSwapDeferred = deferredSwap;
     if (targetedRegions != null) {
       addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
     }

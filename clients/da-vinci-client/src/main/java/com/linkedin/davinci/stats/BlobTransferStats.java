@@ -80,7 +80,7 @@ public class BlobTransferStats {
   }
 
   /**
-   * Record the blob transfer time.
+   * Record the blob transfer file receive throughput.
    * @param throughput in MB/sec
    */
   public void recordBlobTransferFileReceiveThroughput(double throughput) {

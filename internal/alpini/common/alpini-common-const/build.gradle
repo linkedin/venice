@@ -1,8 +1,0 @@
-dependencies {
-  testImplementation libraries.testng
-  implementation libraries.log4j2api
-  //testImplementation spec.external.'mockito-all'
-  //testImplementation libraries.testng
-}
-
-

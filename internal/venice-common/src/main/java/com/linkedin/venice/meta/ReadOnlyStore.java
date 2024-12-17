@@ -1573,6 +1573,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }

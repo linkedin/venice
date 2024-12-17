@@ -77,6 +77,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
@@ -402,8 +403,24 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
+
+    // If target region push with deferred version swap is enabled, enable deferVersionSwap and
+    // isTargetedRegionPushEnabled
+    if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
+      pushJobSettingToReturn.deferVersionSwap = true;
+      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
+    }
+
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled
+        && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+      throw new VeniceException(
+          "Target region push and target region push with deferred version swap cannot be enabled"
+              + " at the same time");
+    }
+
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
-      if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+      if (pushJobSettingToReturn.isTargetedRegionPushEnabled
+          || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
         pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
       } else {
         throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
@@ -847,14 +864,14 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
-      if (!pushJobSetting.isTargetedRegionPushEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
-      if (!pushJobSetting.isTargetedRegionPushEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled || pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
         return;
       }
 
@@ -2078,14 +2095,17 @@ public class VenicePushJob implements AutoCloseable {
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
     // Do not enable for deferred swap or hybrid store
-    if (pushJobSetting.deferVersionSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
+    boolean isDeferredSwap =
+        pushJobSetting.deferVersionSwap && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled;
+    if (isDeferredSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
       LOGGER.warn(
           "target region is not available for {} as it hybrid or deferred version swap enabled.",
           jobSetting.storeName);
       jobSetting.isTargetedRegionPushEnabled = false;
     }
 
-    if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
+    if ((jobSetting.isTargetedRegionPushEnabled || jobSetting.isTargetRegionPushWithDeferredSwapEnabled)
+        && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
       // use source grid fabric as target region to reduce data hop, else use default NR source
       if (!StringUtils.isEmpty(jobSetting.sourceGridFabric)) {
