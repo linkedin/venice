@@ -47,6 +47,7 @@
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
