@@ -62,6 +62,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -69,13 +83,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -143,6 +157,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -150,13 +178,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -224,6 +252,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -231,13 +273,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -305,6 +347,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -312,13 +368,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -386,6 +442,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -393,13 +463,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -467,6 +537,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -474,13 +558,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -548,6 +632,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -555,13 +653,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -629,6 +727,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -636,13 +748,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -710,6 +822,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -717,13 +843,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -791,6 +917,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -798,13 +938,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -872,6 +1012,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -879,13 +1033,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -953,6 +1107,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -960,13 +1128,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1034,6 +1202,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1041,13 +1223,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1115,6 +1297,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1122,13 +1318,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1196,6 +1392,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1203,13 +1413,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1277,6 +1487,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1284,13 +1508,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1358,6 +1582,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1365,13 +1603,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1439,6 +1677,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1446,13 +1698,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1520,6 +1772,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1527,13 +1793,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1601,6 +1867,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1608,13 +1888,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1682,6 +1962,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1689,13 +1983,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1763,6 +2057,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1770,13 +2078,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1844,6 +2152,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1851,13 +2173,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1925,6 +2247,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -1932,13 +2268,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2006,6 +2342,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2013,13 +2363,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2087,6 +2437,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2094,13 +2458,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2168,6 +2532,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2175,13 +2553,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2249,6 +2627,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2256,13 +2648,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2330,6 +2722,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2337,13 +2743,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2411,6 +2817,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2418,13 +2838,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -2492,6 +2912,20 @@ jobs:
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
+      - name: Generate Fork Repo Test Reports
+        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
+        uses: dorny/test-reporter@v1.9.1
+        env:
+         NODE_OPTIONS: --max-old-space-size=9182
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
       - name: Publish Test Report
         continue-on-error: true
         env:
@@ -2499,13 +2933,13 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
-         comment: false
-         annotate_only: true
-         flaky_summary: true
-         commit: ${{github.event.workflow_run.head_sha}}
-         detailed_summary: true
-         report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
