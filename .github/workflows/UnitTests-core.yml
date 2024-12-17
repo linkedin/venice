@@ -42,6 +42,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Unit Tests with Code Coverage
         run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
       - name: Package Build Artifacts

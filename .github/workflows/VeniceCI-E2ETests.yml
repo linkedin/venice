@@ -69,7 +69,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -84,7 +84,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -150,7 +150,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -165,7 +165,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -231,7 +231,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -246,7 +246,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -312,7 +312,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -327,7 +327,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -393,7 +393,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -408,7 +408,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -474,7 +474,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -489,7 +489,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -555,7 +555,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -570,7 +570,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -636,7 +636,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -651,7 +651,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -717,7 +717,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -732,7 +732,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -798,7 +798,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -813,7 +813,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -879,7 +879,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -894,7 +894,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -960,7 +960,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -975,7 +975,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1041,7 +1041,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1056,7 +1056,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1122,7 +1122,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1137,7 +1137,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1203,7 +1203,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1218,7 +1218,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1284,7 +1284,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1299,7 +1299,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1365,7 +1365,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1380,7 +1380,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1446,7 +1446,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1461,7 +1461,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1527,7 +1527,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1542,7 +1542,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1608,7 +1608,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1623,7 +1623,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1689,7 +1689,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1704,7 +1704,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1770,7 +1770,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1785,7 +1785,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1851,7 +1851,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1866,7 +1866,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -1932,7 +1932,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -1947,7 +1947,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2013,7 +2013,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2028,7 +2028,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2094,7 +2094,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2109,7 +2109,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2175,7 +2175,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2190,7 +2190,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2256,7 +2256,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2271,7 +2271,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2337,7 +2337,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2352,7 +2352,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2418,7 +2418,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2433,7 +2433,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
@@ -2499,7 +2499,7 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
          comment: false
          annotate_only: true
          flaky_summary: true
@@ -2514,7 +2514,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 100582612927
