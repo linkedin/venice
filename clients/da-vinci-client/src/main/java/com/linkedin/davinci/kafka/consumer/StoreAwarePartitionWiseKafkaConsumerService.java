@@ -122,7 +122,7 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     super.handleUnsubscription(consumer, versionTopic, pubSubTopicPartition);
-    decreaseConsumerStoreLoad(consumer, versionTopic.getStoreName());
+    decreaseConsumerStoreLoad(consumer, versionTopic);
   }
 
   int getConsumerStoreLoad(SharedKafkaConsumer consumer, String storeName) {
@@ -138,7 +138,20 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         .compute(storeName, (k, v) -> (v == null) ? 1 : v + 1);
   }
 
-  void decreaseConsumerStoreLoad(SharedKafkaConsumer consumer, String storeName) {
+  void decreaseConsumerStoreLoad(SharedKafkaConsumer consumer, PubSubTopic versionTopic) {
+    /**
+     * When versionTopic is null, it means a specific Topic-Partition has been unsubscribed for more than 1 time. This
+     * can happen during version deprecation, where {@link ParticipantStoreConsumptionTask} is also trying to unsubscribe
+     * every partitions
+     */
+    if (versionTopic == null) {
+      getLOGGER().warn(
+          "Incoming versionTopic is null, will skip decreasing store load for consumer: {} with index: {}",
+          consumer,
+          getConsumerToConsumptionTask().indexOf(consumer));
+      return;
+    }
+    String storeName = versionTopic.getStoreName();
     if (!getConsumerToBaseLoadCount().containsKey(consumer)) {
       throw new IllegalStateException("Consumer to base load count map does not contain consumer: " + consumer);
     }
