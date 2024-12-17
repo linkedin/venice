@@ -1803,6 +1803,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } else {
       ingestionNotificationDispatcher.reportError(pcsList, message, consumerEx);
     }
+    // Set the replica state to ERROR so that the controller can attempt to reset the partition.
+    if (!isDaVinciClient && resetErrorReplicaEnabled) {
+      zkHelixAdmin.get()
+          .setPartitionsToError(
+              serverConfig.getClusterName(),
+              hostName,
+              kafkaVersionTopic,
+              Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, partitionId)));
+    }
   }
 
   private void internalClose(boolean doFlush) {
@@ -4235,16 +4244,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionStateMap.containsKey(userPartition)) {
       pcsList.add(partitionConsumptionStateMap.get(userPartition));
     }
-    ingestionNotificationDispatcher.reportError(pcsList, message, e);
-    // Set the replica state to ERROR so that the controller can attempt to reset the partition.
-    if (!isDaVinciClient && resetErrorReplicaEnabled) {
-      zkHelixAdmin.get()
-          .setPartitionsToError(
-              serverConfig.getClusterName(),
-              hostName,
-              kafkaVersionTopic,
-              Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, userPartition)));
-    }
+    reportError(pcsList, userPartition, message, e);
   }
 
   public boolean isActiveActiveReplicationEnabled() {
