@@ -30,6 +30,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Avro Compatibility Tests
         run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts

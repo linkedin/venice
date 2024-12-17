@@ -36,6 +36,7 @@ jobs:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
           cache: 'gradle'
+          add-job-summary: never
       - shell: bash
         run: |
           git remote set-head origin --auto
