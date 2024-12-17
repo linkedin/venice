@@ -2323,6 +2323,7 @@ public abstract class StoreIngestionTaskTest {
         });
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(relevantPartitions, () -> {
+      Utils.sleep(1000);
       // Verify that all partitions reported success.
       maxOffsetPerPartition.entrySet()
           .stream()
