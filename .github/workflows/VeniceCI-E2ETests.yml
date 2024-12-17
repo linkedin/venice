@@ -25,6 +25,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1000
@@ -60,13 +61,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -102,6 +104,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1010
@@ -137,13 +140,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -179,6 +183,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1020
@@ -214,13 +219,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -256,6 +262,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1030
@@ -291,13 +298,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -333,6 +341,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1040
@@ -368,13 +377,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -410,6 +420,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1050
@@ -445,13 +456,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -487,6 +499,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1060
@@ -522,13 +535,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -564,6 +578,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1070
@@ -599,13 +614,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -641,6 +657,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1080
@@ -676,13 +693,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -718,6 +736,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1090
@@ -753,13 +772,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -795,6 +815,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1100
@@ -830,13 +851,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -872,6 +894,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1110
@@ -907,13 +930,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -949,6 +973,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1120
@@ -984,13 +1009,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1026,6 +1052,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1130
@@ -1061,13 +1088,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1103,6 +1131,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1200
@@ -1138,13 +1167,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1180,6 +1210,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1210
@@ -1215,13 +1246,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1257,6 +1289,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1220
@@ -1292,13 +1325,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1334,6 +1368,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1230
@@ -1369,13 +1404,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1411,6 +1447,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1240
@@ -1446,13 +1483,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1488,6 +1526,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1250
@@ -1523,13 +1562,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1565,6 +1605,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1260
@@ -1600,13 +1641,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1642,6 +1684,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1270
@@ -1677,13 +1720,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1719,6 +1763,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1280
@@ -1754,13 +1799,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1796,6 +1842,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1400
@@ -1831,13 +1878,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1873,6 +1921,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1410
@@ -1908,13 +1957,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -1950,6 +2000,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1420
@@ -1985,13 +2036,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -2027,6 +2079,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1430
@@ -2062,13 +2115,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -2104,6 +2158,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1440
@@ -2139,13 +2194,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -2181,6 +2237,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1500
@@ -2216,13 +2273,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -2258,6 +2316,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1550
@@ -2293,13 +2352,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}
@@ -2335,6 +2395,7 @@ jobs:
      contents: read
      checks: write
      pull-requests: write
+     issues: write
     timeout-minutes: 120
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_9999
@@ -2370,13 +2431,14 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
          check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
-         comment: true
+         comment: false
          annotate_only: true
          flaky_summary: true
          commit: ${{github.event.workflow_run.head_sha}}

@@ -23,6 +23,7 @@ jobs:
       checks: write
       id-token: write
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
