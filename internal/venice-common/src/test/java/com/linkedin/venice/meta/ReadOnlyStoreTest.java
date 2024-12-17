@@ -21,10 +21,10 @@ import org.testng.annotations.Test;
 public class ReadOnlyStoreTest {
   private static final Logger LOGGER = LogManager.getLogger(ReadOnlyStoreTest.class);
 
-  private static Random RANDOM;
+  private Random RANDOM;
 
   @BeforeClass
-  public static void setup() {
+  public void setupReadOnlyStore() {
     long seed = System.nanoTime();
     RANDOM = new Random(seed);
     LOGGER.info("Random seed set: {}", seed);
@@ -106,7 +106,7 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
   }
 
-  private static ZKStore populateZKStore(ZKStore store) {
+  private ZKStore populateZKStore(ZKStore store) {
     store.setCurrentVersion(RANDOM.nextInt());
     store.setPartitionCount(RANDOM.nextInt());
     store.setLowWatermark(RANDOM.nextLong());
@@ -158,7 +158,7 @@ public class ReadOnlyStoreTest {
     return store;
   }
 
-  private static void assertEqualHybridConfig(StoreHybridConfig actual, HybridStoreConfig expected) {
+  private void assertEqualHybridConfig(StoreHybridConfig actual, HybridStoreConfig expected) {
     assertEquals(actual.getRewindTimeInSeconds(), expected.getRewindTimeInSeconds());
     assertEquals(actual.getOffsetLagThresholdToGoOnline(), expected.getOffsetLagThresholdToGoOnline());
     assertEquals(
@@ -188,13 +188,13 @@ public class ReadOnlyStoreTest {
     }
   }
 
-  private static void assertEqualsETLStoreConfig(StoreETLConfig actual, ETLStoreConfig expected) {
+  private void assertEqualsETLStoreConfig(StoreETLConfig actual, ETLStoreConfig expected) {
     assertEquals(actual.getEtledUserProxyAccount(), expected.getEtledUserProxyAccount());
     assertEquals(actual.getFutureVersionETLEnabled(), expected.isFutureVersionETLEnabled());
     assertEquals(actual.getRegularVersionETLEnabled(), expected.isFutureVersionETLEnabled());
   }
 
-  private static void assertEqualsPartitionerConfig(StorePartitionerConfig actual, PartitionerConfig expected) {
+  private void assertEqualsPartitionerConfig(StorePartitionerConfig actual, PartitionerConfig expected) {
 
     assertEquals(actual.getPartitionerClass(), expected.getPartitionerClass());
     assertEquals(actual.getAmplificationFactor(), expected.getAmplificationFactor());
@@ -207,7 +207,7 @@ public class ReadOnlyStoreTest {
     }
   }
 
-  private static void assertEqualsSystemStores(
+  private void assertEqualsSystemStores(
       Map<CharSequence, SystemStoreProperties> actual,
       Map<String, SystemStoreAttributes> expected) {
 
