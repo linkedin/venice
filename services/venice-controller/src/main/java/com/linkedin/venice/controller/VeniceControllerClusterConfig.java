@@ -163,6 +163,7 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
@@ -551,6 +552,7 @@ public class VeniceControllerClusterConfig {
   private final boolean isLogCompactionEnabled;
   private final int scheduledLogCompactionThreadCount;
   private final long scheduledLogCompactionIntervalMS;
+  private final long timeSinceLastLogCompactionThresholdMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -989,6 +991,8 @@ public class VeniceControllerClusterConfig {
     this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
     this.scheduledLogCompactionIntervalMS =
         props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
+    this.timeSinceLastLogCompactionThresholdMS =
+        props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
   }
 
   public VeniceProperties getProps() {
@@ -1829,5 +1833,9 @@ public class VeniceControllerClusterConfig {
 
   public long getScheduledLogCompactionIntervalMS() {
     return scheduledLogCompactionIntervalMS;
+  }
+
+  public long getTimeSinceLastLogCompactionThresholdMS() {
+    return timeSinceLastLogCompactionThresholdMS;
   }
 }

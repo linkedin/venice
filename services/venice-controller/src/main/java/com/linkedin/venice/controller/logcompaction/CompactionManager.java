@@ -22,13 +22,14 @@ import org.apache.logging.log4j.Logger;
  * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(String)} & processes the status/response of the repush job.
  */
 public class CompactionManager {
-  public static final int DEFAULT_COMPACTION_THRESHOLD_HOURS = 24;
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private RepushOrchestrator repushOrchestrator;
+  private long compactionThresholdHours;
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator) {
+  public CompactionManager(RepushOrchestrator repushOrchestrator, long compactionThresholdHours) {
     this.repushOrchestrator = repushOrchestrator;
+    this.compactionThresholdHours = compactionThresholdHours;
   }
 
   /**
@@ -69,8 +70,7 @@ public class CompactionManager {
   private boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(DEFAULT_COMPACTION_THRESHOLD_HOURS, storeInfo);
-    // TODO LC: get compaction threshold hours from config
+    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(compactionThresholdHours, storeInfo);
   }
 
   /**
@@ -79,7 +79,7 @@ public class CompactionManager {
    * @param storeInfo, the store to check the last compaction time for
    * @return true if the last compaction time is older than the threshold, false otherwise
    */
-  private boolean isLastCompactionTimeOlderThanThresholdHours(int compactionThresholdHours, StoreInfo storeInfo) {
+  private boolean isLastCompactionTimeOlderThanThresholdHours(long compactionThresholdHours, StoreInfo storeInfo) {
     // get the last compaction time
     int currentVersionNumber = storeInfo.getCurrentVersion();
     Optional<Version> currentVersion = storeInfo.getVersion(currentVersionNumber);

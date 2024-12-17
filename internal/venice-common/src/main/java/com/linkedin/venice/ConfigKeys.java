@@ -255,6 +255,12 @@ public class ConfigKeys {
   public static final String SCHEDULED_LOG_COMPACTION_INTERVAL_MS = "scheduled.log.compaction.interval.ms";
 
   /**
+   * Time since last log compaction before a store is considered for log compaction
+   */
+  public static final String TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS =
+      "log.compaction.last.compaction.time.threshold.ms";
+
+  /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
    *

@@ -302,4 +302,8 @@ public class VeniceControllerMultiClusterConfig {
   public long getScheduledLogCompactionIntervalMS() {
     return getCommonConfig().getScheduledLogCompactionIntervalMS();
   }
+
+  public long getTimeSinceLastLogCompactionThresholdMS() {
+    return getCommonConfig().getTimeSinceLastLogCompactionThresholdMS();
+  }
 }
