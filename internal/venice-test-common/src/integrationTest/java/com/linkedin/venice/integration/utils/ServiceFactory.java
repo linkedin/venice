@@ -171,7 +171,7 @@ public class ServiceFactory {
           null,
           false,
           new PubSubTopicRepository(),
-          requestHandler); // Change this.
+          requestHandler);
       server.start();
       return server;
     });

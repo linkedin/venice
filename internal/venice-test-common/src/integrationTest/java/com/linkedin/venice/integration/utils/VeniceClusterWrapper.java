@@ -536,6 +536,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             .collect(Collectors.joining(","));
   }
 
+  /**
+   * Retrieves the gRPC URLs of all available Venice controllers as a comma-separated string.
+   *
+   * @return A comma-separated string of gRPC URLs for all controllers. If no controllers are available,
+   *         the {@code externalControllerDiscoveryURL} is returned.
+   */
   public final synchronized String getAllControllersGrpcURLs() {
     return veniceControllerWrappers.isEmpty()
         ? externalControllerDiscoveryURL
