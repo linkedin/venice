@@ -190,8 +190,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier, long timeoutMs) {
     long currentPollTimes = pollTimes;
-    Set<PubSubTopicPartition> topicPartitions = supplier.get();
     long startTime = System.currentTimeMillis();
+    Set<PubSubTopicPartition> topicPartitions = supplier.get();
     long elapsedTime = System.currentTimeMillis() - startTime;
     LOGGER.info(
         "Shared consumer {} unsubscribed {} partition(s): ({}) in {} ms",
