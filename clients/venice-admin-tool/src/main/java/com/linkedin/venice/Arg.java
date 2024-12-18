@@ -294,7 +294,8 @@ public enum Arg {
   ),
   DAVINCI_HEARTBEAT_REPORTED(
       "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is bootstrapping and sending heartbeats"
-  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config");
+  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
+  REAL_TIME_TOPIC_NAME("real-time-topic-name", "rttn", true, "Create and set a new real time topic");
 
   private final String argName;
   private final String first;

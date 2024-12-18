@@ -39,6 +39,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.Store;
@@ -1118,6 +1119,66 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     for (String topic: response.getTopics()) {
       Assert.assertFalse(topic.endsWith("/" + version.kafkaTopicName()));
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCreateRealTimeTopicCall() throws IOException, ExecutionException, InterruptedException {
+    String clusterName = venice.getClusterNames()[0];
+    String storeName = Utils.getUniqueString("testCreateRealTimeTopicCall");
+    CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.empty());
+    httpClient.start();
+
+    VeniceHelixAdmin childControllerAdmin = venice.getChildRegions().get(0).getRandomController().getVeniceHelixAdmin();
+    childControllerAdmin.createStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(3)
+        .setHybridRewindSeconds(1000)
+        .setHybridOffsetLagThreshold(1000);
+
+    childControllerAdmin.updateStore(clusterName, storeName, updateStoreParams);
+    childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "1", 1, 1);
+
+    // API call with all fields
+    List<NameValuePair> params = new ArrayList<>();
+    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    params.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, "8"));
+
+    makeRealTimeTopicCall(httpClient, params);
+
+    childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "2", 1, 1);
+    this.controllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
+    List<Version> versions = childControllerAdmin.getStore(clusterName, storeName).getVersions();
+    Assert.assertEquals(versions.size(), 2);
+
+    String oldRealTimeTopicName = Utils.getRealTimeTopicName(versions.get(0));
+    String newRealTimeTopicName = Utils.getRealTimeTopicName(versions.get(1));
+
+    Assert.assertNotEquals(oldRealTimeTopicName, newRealTimeTopicName);
+    Assert.assertTrue(
+        childControllerAdmin.getTopicManager()
+            .containsTopic(childControllerAdmin.getPubSubTopicRepository().getTopic(newRealTimeTopicName)));
+
+    httpClient.close();
+  }
+
+  private void makeRealTimeTopicCall(HttpAsyncClient httpClient, List<NameValuePair> params)
+      throws IOException, ExecutionException, InterruptedException {
+    // StringEntity entity = new StringEntity(OBJECT_MAPPER.writeValueAsString(payloads), ContentType.APPLICATION_JSON);
+
+    final HttpPost post = new HttpPost(
+        venice.getChildRegions().get(0).getControllerConnectString()
+            + ControllerRoute.CREATE_REAL_TIME_TOPIC.getPath());
+    post.setEntity(new UrlEncodedFormEntity(params));
+    HttpResponse httpResponse = httpClient.execute(post, null).get();
+
+    Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), 200);
+    String responseString = IOUtils.toString(httpResponse.getEntity().getContent());
   }
 
   private void deleteStore(String storeName) {

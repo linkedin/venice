@@ -4799,7 +4799,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
+    Optional<String> realTimeTopicName = Optional.empty(); // to update real time topic name, there is a separate admin
+                                                           // tool command
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -6447,7 +6448,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     throw new VeniceStoreAlreadyExistsException(storeName, clusterName);
   }
 
-  private void throwStoreDoesNotExist(String clusterName, String storeName) {
+  public static void throwStoreDoesNotExist(String clusterName, String storeName) {
     String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
     LOGGER.error(errorMessage);
     throw new VeniceNoStoreException(storeName, clusterName);
@@ -6462,7 +6463,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     throw new VeniceNoClusterException(clusterName);
   }
 
-  private void logAndThrow(String msg) {
+  public static void logAndThrow(String msg) {
     LOGGER.info(msg);
     throw new VeniceException(msg);
   }
