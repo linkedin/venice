@@ -1595,7 +1595,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobDetails.clusterName = pushJobSetting.clusterName;
     pushJobDetails.overallStatus = new ArrayList<>();
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
-    pushJobDetails.pushId = "";
     pushJobDetails.partitionCount = -1;
     pushJobDetails.valueCompressionStrategy = CompressionStrategy.NO_OP.getValue();
     pushJobDetails.chunkingEnabled = false;
