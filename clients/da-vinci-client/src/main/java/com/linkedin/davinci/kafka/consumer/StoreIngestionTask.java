@@ -1405,8 +1405,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Special handling for current version when encountering {@link MemoryLimitExhaustedException}.
          */
-        if (ExceptionUtils.recursiveClassEquals(partitionException, MemoryLimitExhaustedException.class)
-            && isCurrentVersion.getAsBoolean()) {
+        if (isCurrentVersion.getAsBoolean()
+            && ExceptionUtils.recursiveClassEquals(partitionException, MemoryLimitExhaustedException.class)) {
           LOGGER.warn(
               "Encountered MemoryLimitExhaustedException, and ingestion task will try to reopen the database and"
                   + " resume the consumption after killing ingestion tasks for non current versions");
@@ -1439,10 +1439,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             // DaVinci is always a follower.
             subscribePartition(pubSubTopicPartition, false);
           }
+        } else if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
+          // marking its replica status ERROR which will later be reset by the controller
+          zkHelixAdmin.get()
+              .setPartitionsToError(
+                  serverConfig.getClusterName(),
+                  hostName,
+                  kafkaVersionTopic,
+                  Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, exceptionPartition)));
+          LOGGER.error(
+              "Marking current version replica status to ERROR for replica: {}",
+              Utils.getReplicaId(kafkaVersionTopic, exceptionPartition),
+              partitionException);
+          // No need to reset again, clearing out the exception.
+          partitionIngestionExceptionList.set(exceptionPartition, null);
         } else {
           if (!partitionConsumptionState.isCompletionReported()) {
             reportError(partitionException.getMessage(), exceptionPartition, partitionException);
-
           } else {
             LOGGER.error(
                 "Ignoring exception for replica: {} since it is already online. The replica will continue serving reads, but the data may be stale as it is not actively ingesting data. Please engage the Venice DEV team immediately.",
@@ -1789,6 +1802,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ingestionNotificationDispatcher.reportError(partitionId, message, consumerEx);
     } else {
       ingestionNotificationDispatcher.reportError(pcsList, message, consumerEx);
+    }
+    // Set the replica state to ERROR so that the controller can attempt to reset the partition.
+    if (isCurrentVersion.getAsBoolean() && !isDaVinciClient && resetErrorReplicaEnabled
+        && !(consumerEx instanceof VeniceTimeoutException)) {
+      zkHelixAdmin.get()
+          .setPartitionsToError(
+              serverConfig.getClusterName(),
+              hostName,
+              kafkaVersionTopic,
+              Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, partitionId)));
     }
   }
 
@@ -4222,16 +4245,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionStateMap.containsKey(userPartition)) {
       pcsList.add(partitionConsumptionStateMap.get(userPartition));
     }
+    reportError(pcsList, userPartition, message, e);
     ingestionNotificationDispatcher.reportError(pcsList, message, e);
-    // Set the replica state to ERROR so that the controller can attempt to reset the partition.
-    if (!isDaVinciClient && resetErrorReplicaEnabled) {
-      zkHelixAdmin.get()
-          .setPartitionsToError(
-              serverConfig.getClusterName(),
-              hostName,
-              kafkaVersionTopic,
-              Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, userPartition)));
-    }
   }
 
   public boolean isActiveActiveReplicationEnabled() {
