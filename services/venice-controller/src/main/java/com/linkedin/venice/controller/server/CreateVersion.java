@@ -474,7 +474,7 @@ public class CreateVersion extends AbstractRoute {
         RequestTopicForPushRequest requestTopicForPushRequest = new RequestTopicForPushRequest(
             request.queryParams(CLUSTER),
             request.queryParams(NAME),
-            RequestTopicForPushRequest.extractPushType(request.queryParams(PUSH_TYPE)),
+            PushType.extractPushType(request.queryParams(PUSH_TYPE)),
             request.queryParams(PUSH_JOB_ID));
 
         // populate the request object with optional parameters

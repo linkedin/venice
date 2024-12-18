@@ -49,15 +49,6 @@ public class RequestTopicForPushRequest {
     this.pushJobId = pushJobId;
   }
 
-  public static PushType extractPushType(String pushTypeString) {
-    try {
-      return PushType.valueOf(pushTypeString);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          pushTypeString + " is an invalid push type. Valid push types are: " + Arrays.toString(PushType.values()));
-    }
-  }
-
   public String getClusterName() {
     return clusterName;
   }

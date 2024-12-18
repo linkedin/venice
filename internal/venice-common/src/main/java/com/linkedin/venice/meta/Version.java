@@ -10,10 +10,9 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 
 /**
@@ -43,11 +42,21 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    */
   enum PushType {
     BATCH(0), // Batch jobs will create a new version topic and write to it in a batch manner.
-    STREAM_REPROCESSING(1), // reprocessing jobs will create a new version topic and a reprocessing topic.
+    STREAM_REPROCESSING(1), // Reprocessing jobs will create a new version topic and a reprocessing topic.
     STREAM(2), // Stream jobs will write to a buffer or RT topic.
     INCREMENTAL(3); // Incremental jobs will re-use an existing version topic and write on top of it.
 
     private final int value;
+    private static final Map<Integer, PushType> VALUE_TO_TYPE_MAP = new HashMap<>(4);
+    private static final Map<String, PushType> NAME_TO_TYPE_MAP = new HashMap<>(4);
+
+    // Static initializer for map population
+    static {
+      for (PushType type: PushType.values()) {
+        VALUE_TO_TYPE_MAP.put(type.value, type);
+        NAME_TO_TYPE_MAP.put(type.name(), type);
+      }
+    }
 
     PushType(int value) {
       this.value = value;
@@ -70,15 +79,41 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     }
 
     public boolean isBatchOrStreamReprocessing() {
-      return isBatch() || isStreamReprocessing();
+      return this == BATCH || this == STREAM_REPROCESSING;
     }
 
+    /**
+     * Retrieve the PushType based on its integer value.
+     *
+     * @param value the integer value of the PushType
+     * @return the corresponding PushType
+     * @throws VeniceException if the value is invalid
+     */
     public static PushType valueOf(int value) {
-      Optional<PushType> pushType = Arrays.stream(values()).filter(p -> p.value == value).findFirst();
-      if (!pushType.isPresent()) {
+      PushType pushType = VALUE_TO_TYPE_MAP.get(value);
+      if (pushType == null) {
         throw new VeniceException("Invalid push type with int value: " + value);
       }
-      return pushType.get();
+      return pushType;
+    }
+
+    /**
+     * Extracts the PushType from its string name.
+     *
+     * @param pushTypeString the string representation of the PushType
+     * @return the corresponding PushType
+     * @throws IllegalArgumentException if the string is invalid
+     */
+    public static PushType extractPushType(String pushTypeString) {
+      PushType pushType = NAME_TO_TYPE_MAP.get(pushTypeString);
+      if (pushType == null) {
+        throw new IllegalArgumentException(
+            String.format(
+                "%s is an invalid push type. Valid push types are: %s",
+                pushTypeString,
+                String.join(", ", NAME_TO_TYPE_MAP.keySet())));
+      }
+      return pushType;
     }
   }
 

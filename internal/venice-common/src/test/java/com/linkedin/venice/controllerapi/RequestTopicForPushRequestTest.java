@@ -1,7 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.meta.Version.PushType.BATCH;
-import static com.linkedin.venice.meta.Version.PushType.STREAM;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -51,18 +50,6 @@ public class RequestTopicForPushRequestTest {
         IllegalArgumentException.class,
         () -> new RequestTopicForPushRequest("clusterA", "storeA", BATCH, ""));
     assertEquals(ex4.getMessage(), "pushJobId is required");
-  }
-
-  @Test
-  public void testExtractPushTypeValidAndInvalidValues() {
-    // Valid cases
-    assertEquals(RequestTopicForPushRequest.extractPushType("BATCH"), BATCH);
-    assertEquals(RequestTopicForPushRequest.extractPushType("STREAM"), STREAM);
-
-    // Invalid case
-    IllegalArgumentException ex = Assert
-        .expectThrows(IllegalArgumentException.class, () -> RequestTopicForPushRequest.extractPushType("INVALID"));
-    assertTrue(ex.getMessage().contains("INVALID is an invalid push type"));
   }
 
   @Test
