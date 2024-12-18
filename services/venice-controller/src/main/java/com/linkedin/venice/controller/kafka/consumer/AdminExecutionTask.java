@@ -455,7 +455,8 @@ public class AdminExecutionTask implements Callable<Void> {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setOwner(message.owner.toString())
         .setEnableReads(message.enableReads)
         .setEnableWrites(message.enableWrites)
-        .setPartitionCount(message.partitionNum);
+        .setPartitionCount(message.partitionNum)
+        .setUpdateRealTimeTopic(message.updateRealTimeTopic);
     if (message.partitionerConfig != null) {
       params.setPartitionerClass(message.partitionerConfig.partitionerClass.toString())
           .setPartitionerParams(

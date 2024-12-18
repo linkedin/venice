@@ -463,7 +463,15 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreOwner(String clusterName, String storeName, String owner);
 
-  void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
+  default void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
+    setStorePartitionCount(clusterName, storeName, partitionCount, Optional.of(false));
+  }
+
+  void setStorePartitionCount(
+      String clusterName,
+      String storeName,
+      int partitionCount,
+      Optional<Boolean> updateRealTimeTopic);
 
   void setStoreReadability(String clusterName, String storeName, boolean desiredReadability);
 

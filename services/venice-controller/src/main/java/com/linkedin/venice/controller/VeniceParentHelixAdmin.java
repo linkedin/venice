@@ -63,6 +63,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SW
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATE_REAL_TIME_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
@@ -2109,7 +2110,11 @@ public class VeniceParentHelixAdmin implements Admin {
    * admin message to the admin topic.
    */
   @Override
-  public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
+  public void setStorePartitionCount(
+      String clusterName,
+      String storeName,
+      int partitionCount,
+      Optional<Boolean> updateRealTimeTopic) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
@@ -2129,6 +2134,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStorePartition.clusterName = clusterName;
       setStorePartition.storeName = storeName;
       setStorePartition.partitionNum = partitionCount;
+      setStorePartition.updateRealTimeTopic = updateRealTimeTopic.orElse(false);
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.SET_STORE_PARTITION.getValue();
       message.payloadUnion = setStorePartition;
@@ -2276,6 +2282,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
+      Optional<Boolean> updateRealTimeTopic = params.getUpdateRealTimeTopic();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2323,9 +2330,12 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (partitionCount.isPresent()) {
-        getVeniceHelixAdmin().preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get());
+        getVeniceHelixAdmin()
+            .preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get(), updateRealTimeTopic);
         setStore.partitionNum = partitionCount.get();
         updatedConfigsList.add(PARTITION_COUNT);
+        setStore.updateRealTimeTopic = updateRealTimeTopic.get();
+        updatedConfigsList.add(UPDATE_REAL_TIME_TOPIC);
       } else {
         setStore.partitionNum = currStore.getPartitionCount();
       }
