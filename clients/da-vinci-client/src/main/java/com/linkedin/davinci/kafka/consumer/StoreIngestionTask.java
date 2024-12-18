@@ -1805,7 +1805,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     // Set the replica state to ERROR so that the controller can attempt to reset the partition.
     if (isCurrentVersion.getAsBoolean() && !isDaVinciClient && resetErrorReplicaEnabled
-        && (consumerEx instanceof VeniceTimeoutException)) {
+        && !(consumerEx instanceof VeniceTimeoutException)) {
       zkHelixAdmin.get()
           .setPartitionsToError(
               serverConfig.getClusterName(),
