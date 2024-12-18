@@ -295,6 +295,12 @@ public class VenicePushJob implements AutoCloseable {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
     sharedTmpDir = new Path(pushJobSetting.sharedTmpDir);
     jobTmpDir = new Path(pushJobSetting.jobTmpDir);
+    String pushId =
+        pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
+    if (pushJobSetting.isSourceKafka) {
+      pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
+    }
+    pushJobDetails.pushId = pushId;
   }
 
   // This is a part of the public API. There is value in exposing this to users of VenicePushJob for reporting purposes
@@ -521,7 +527,6 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
-
     return pushJobSettingToReturn;
   }
 
@@ -754,10 +759,7 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
-      String pushId =
-          pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
       if (pushJobSetting.isSourceKafka) {
-        pushId = Version.generateRePushId(pushId);
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
             && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
@@ -784,12 +786,11 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSetting,
           inputDataInfo.getInputFileDataSizeInBytes(),
           controllerClient,
-          pushId,
+          pushJobDetails.pushId.toString(),
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
       // Update and send push job details with new info to the controller
-      pushJobDetails.pushId = pushId;
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
       pushJobDetails.valueCompressionStrategy = pushJobSetting.topicCompressionStrategy != null
           ? pushJobSetting.topicCompressionStrategy.getValue()
@@ -1594,7 +1595,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobDetails.clusterName = pushJobSetting.clusterName;
     pushJobDetails.overallStatus = new ArrayList<>();
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
-    pushJobDetails.pushId = "";
     pushJobDetails.partitionCount = -1;
     pushJobDetails.valueCompressionStrategy = CompressionStrategy.NO_OP.getValue();
     pushJobDetails.chunkingEnabled = false;

@@ -174,6 +174,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+      Assert.assertTrue(Version.isPushIdTTLRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
     // Test with explicit TTL start timestamp
@@ -184,6 +185,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, 100);
+      Assert.assertTrue(Version.isPushIdTTLRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
     // Test with explicit TTL age
@@ -217,6 +219,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertFalse(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+      Assert.assertTrue(Version.isPushIdRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
   }
 
