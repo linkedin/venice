@@ -1832,6 +1832,12 @@ public class ConfigKeys {
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
   /**
+   * If the config is enabled, during Da Vinci bootstrap, Da Vinci backend will automatically subscribe to all the stores
+   * on the disk. The config will be default enabled to match existing behavior.
+   */
+  public static final String DAVINCI_SUBSCRIBE_RESOURCES_DURING_BOOTSTRAP_ENABLED =
+      "davinci.subscribe.resources.during.bootstrap.enabled";
+  /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
