@@ -272,7 +272,11 @@ public class TestSparkInputFromHdfs {
     }
   }
 
-  private void writeVsonFile(File parentDir, String fileName, int start, int end) throws IOException {
+  public static void writeVsonFile(File parentDir, String fileName, int start, int end) throws IOException {
+    writeVsonFile(new Path(parentDir.getAbsolutePath(), fileName), start, end);
+  }
+
+  public static void writeVsonFile(Path path, int start, int end) throws IOException {
     SequenceFile.Metadata metadata = new SequenceFile.Metadata();
     metadata.set(new Text("key.schema"), new Text(VSON_STRING_SCHEMA));
     metadata.set(new Text("value.schema"), new Text(VSON_STRING_SCHEMA));
@@ -281,7 +285,7 @@ public class TestSparkInputFromHdfs {
 
     try (SequenceFile.Writer writer = SequenceFile.createWriter(
         new Configuration(),
-        SequenceFile.Writer.file(new Path(parentDir.toString(), fileName)),
+        SequenceFile.Writer.file(path),
         SequenceFile.Writer.keyClass(BytesWritable.class),
         SequenceFile.Writer.valueClass(BytesWritable.class),
         SequenceFile.Writer.metadata(metadata))) {
