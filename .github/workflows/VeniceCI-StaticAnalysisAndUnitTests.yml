@@ -43,6 +43,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Static Analysis
         run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification
       - name: Package Build Artifacts
