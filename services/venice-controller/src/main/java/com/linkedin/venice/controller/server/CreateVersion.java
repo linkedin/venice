@@ -123,10 +123,27 @@ public class CreateVersion extends AbstractRoute {
     request.setCertificateInRequest(isAclEnabled ? getCertificate(httpRequest) : null);
   }
 
-  private static void verifyPartitioner(PartitionerConfig storePartitionerConfig, Set<String> partitionersFromRequest) {
-    // If partitioners are provided, check if the store partitioner is in the list
-    if (partitionersFromRequest != null && !partitionersFromRequest.isEmpty()
-        && !partitionersFromRequest.contains(storePartitionerConfig.getPartitionerClass())) {
+  /**
+   * Verifies that the partitioner class specified in the request is valid
+   * based on the store's partitioner configuration.
+   *
+   * <p>
+   * If no partitioners are provided (null or empty), the validation is skipped.
+   * (The store's partitioner configuration is used when no partitioners are provided).
+   * </p>
+   *
+   * @param partitionersFromRequest An optional set of partitioners provided in the request.
+   * @param storePartitionerConfig The store's partitioner configuration to use for validation.
+   * @throws VeniceException if the store's partitioner is not in the provided partitioners.
+   */
+  private static void verifyPartitioner(Set<String> partitionersFromRequest, PartitionerConfig storePartitionerConfig) {
+    // Skip validation if the user didn't provide any partitioner. Partitioner from store config will be used.
+    if (partitionersFromRequest == null || partitionersFromRequest.isEmpty()) {
+      return;
+    }
+
+    // Validate if the store's partitioner matches one of the provided partitioners
+    if (!partitionersFromRequest.contains(storePartitionerConfig.getPartitionerClass())) {
       throw new VeniceException(
           "Expected partitioner class " + storePartitionerConfig.getPartitionerClass() + " cannot be found.");
     }
@@ -136,7 +153,7 @@ public class CreateVersion extends AbstractRoute {
       PartitionerConfig storePartitionerConfig,
       Set<String> partitionersFromRequest,
       VersionCreationResponse response) {
-    verifyPartitioner(storePartitionerConfig, partitionersFromRequest);
+    verifyPartitioner(partitionersFromRequest, storePartitionerConfig);
     partitionersFromRequest = partitionersFromRequest != null ? partitionersFromRequest : Collections.emptySet();
     // Get the first partitioner that matches the store partitioner
     for (String partitioner: partitionersFromRequest) {
