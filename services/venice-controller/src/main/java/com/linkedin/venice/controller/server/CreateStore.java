@@ -40,26 +40,38 @@ public class CreateStore extends AbstractRoute {
           return;
         }
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String keySchema = request.queryParams(KEY_SCHEMA);
-        String valueSchema = request.queryParams(VALUE_SCHEMA);
-        boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
-
         String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
         if (owner == null) {
           owner = "";
         }
 
-        String accessPerm = request.queryParams(ACCESS_PERMISSION);
-        Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
+        CreateStoreRequest createStoreRequest = new CreateStoreRequest();
+        createStoreRequest.setClusterName(request.queryParams(CLUSTER));
+        createStoreRequest.setStoreName(request.queryParams(NAME));
+        createStoreRequest.setKeySchema(request.queryParams(KEY_SCHEMA));
+        createStoreRequest.setValueSchema(request.queryParams(VALUE_SCHEMA));
+        createStoreRequest.setSystemStore(Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE)));
+        createStoreRequest.setAccessPerm(request.queryParams(ACCESS_PERMISSION));
+        createStoreRequest.setOwner(owner);
 
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        veniceResponse.setOwner(owner);
-        admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+        veniceResponse.setCluster(createStoreRequest.getClusterName());
+        veniceResponse.setName(createStoreRequest.getStoreName());
+        veniceResponse.setOwner(createStoreRequest.getOwner());
+
+        createStore(createStoreRequest, admin);
       }
     };
+  }
+
+  private void createStore(CreateStoreRequest request, Admin admin) {
+    admin.createStore(
+        request.getClusterName(),
+        request.getStoreName(),
+        request.getOwner(),
+        request.getKeySchema(),
+        request.getValueSchema(),
+        request.isSystemStore(),
+        Optional.ofNullable(request.getAccessPerm()));
   }
 
   /**
@@ -155,5 +167,4 @@ public class CreateStore extends AbstractRoute {
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(controllerResponse);
     };
   }
-
 }
