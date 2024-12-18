@@ -5,11 +5,9 @@ import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,11 +23,11 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private RepushOrchestrator repushOrchestrator;
-  private long compactionThresholdHours;
+  private long timeSinceLastLogCompactionThreshold;
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator, long compactionThresholdHours) {
+  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThreshold) {
     this.repushOrchestrator = repushOrchestrator;
-    this.compactionThresholdHours = compactionThresholdHours;
+    this.timeSinceLastLogCompactionThreshold = timeSinceLastLogCompactionThreshold;
   }
 
   /**
@@ -70,7 +68,7 @@ public class CompactionManager {
   private boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(compactionThresholdHours, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
   }
 
   /**
@@ -82,19 +80,19 @@ public class CompactionManager {
   private boolean isLastCompactionTimeOlderThanThresholdHours(long compactionThresholdHours, StoreInfo storeInfo) {
     // get the last compaction time
     int currentVersionNumber = storeInfo.getCurrentVersion();
-    Optional<Version> currentVersion = storeInfo.getVersion(currentVersionNumber);
-    if (!currentVersion.isPresent()) {
+
+    return storeInfo.getVersion(currentVersionNumber).map(v -> {
+      // calculate hours since last compaction
+      long lastCompactionTime = v.getCreatedTime();
+      long currentTime = System.currentTimeMillis();
+      long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
+      long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
+
+      return hoursSinceLastCompaction > compactionThresholdHours;
+    }).orElseGet(() -> {
       LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
       return false; // invalid store because no current version, this store is not eligible for compaction
-    }
-
-    // calculate hours since last compaction
-    long lastCompactionTime = currentVersion.get().getCreatedTime();
-    long currentTime = System.currentTimeMillis();
-    long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-    long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
-
-    return hoursSinceLastCompaction > compactionThresholdHours;
+    });
   }
 
   /**
