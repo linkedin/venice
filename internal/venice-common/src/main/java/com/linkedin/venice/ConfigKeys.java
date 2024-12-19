@@ -2351,4 +2351,6 @@ public class ConfigKeys {
 
   public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
       "server.delete.unassigned.partitions.on.startup";
+
+  public static final String UPDATE_REAL_TIME_TOPIC = "update.real.time.topic";
 }
