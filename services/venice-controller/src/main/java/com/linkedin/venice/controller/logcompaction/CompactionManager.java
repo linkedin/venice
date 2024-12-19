@@ -65,7 +65,8 @@ public class CompactionManager {
   }
 
   // This function abstracts the criteria for a store to be ready for compaction
-  private boolean isCompactionReady(StoreInfo storeInfo) {
+  // TODO make private
+  public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
     return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
@@ -88,7 +89,7 @@ public class CompactionManager {
       long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
       long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
 
-      return hoursSinceLastCompaction > compactionThresholdHours;
+      return hoursSinceLastCompaction >= compactionThresholdHours;
     }).orElseGet(() -> {
       LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
       return false; // invalid store because no current version, this store is not eligible for compaction

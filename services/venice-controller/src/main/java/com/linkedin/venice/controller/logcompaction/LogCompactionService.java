@@ -53,7 +53,7 @@ public class LogCompactionService extends AbstractVeniceService {
         PRE_EXECUTION_DELAY_MS,
         multiClusterConfigs.getScheduledLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
-    LOGGER.info("log compaction service started");
+    LOGGER.info("LogCompactionService is started");
     return true;
   }
 

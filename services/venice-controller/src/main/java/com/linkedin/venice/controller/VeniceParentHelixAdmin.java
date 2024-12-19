@@ -130,6 +130,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
@@ -4817,6 +4818,11 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public RepushJobResponse compactStore(String storeName) {
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  }
+
+  @Override
+  public CompactionManager getCompactionManager() {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 

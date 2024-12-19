@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
@@ -951,6 +952,8 @@ public interface Admin extends AutoCloseable, Closeable {
    * @return
    */
   RepushJobResponse compactStore(String storeName);
+
+  public CompactionManager getCompactionManager();
 
   /**
    * @return the largest used version number for the given store from store graveyard.

@@ -7520,6 +7520,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  // TODO: for testing
+  @Override
+  public CompactionManager getCompactionManager() {
+    return compactionManager;
+  }
+
   @Override
   public Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
