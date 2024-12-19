@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
@@ -347,6 +348,59 @@ public class UtilsTest {
     when(mockVersion.getStoreName()).thenReturn("TestStore");
     String result = Utils.getRealTimeTopicName(mockVersion);
     assertEquals("TestStore" + Version.REAL_TIME_TOPIC_SUFFIX, result);
+  }
+
+  @Test
+  void testRealTimeTopicNameWithHybridConfig() {
+    // Mock the Store and HybridStoreConfig
+    Store store = mock(Store.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+
+    // Define behavior
+    when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(store.getName()).thenReturn("test-store");
+    when(hybridStoreConfig.getRealTimeTopicName()).thenReturn("real-time-topic");
+
+    // Test
+    String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
+
+    // Validate
+    assertEquals("real-time-topic", result);
+
+    // Verify calls
+    verify(store).getHybridStoreConfig();
+    verify(store).getName();
+    verify(hybridStoreConfig).getRealTimeTopicName();
+  }
+
+  @Test
+  void testRealTimeTopicNameEmptyWithHybridConfig() {
+    // Mock the Store and HybridStoreConfig
+    Store store = mock(Store.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+
+    // Define behavior
+    when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(store.getName()).thenReturn("test-store");
+    when(hybridStoreConfig.getRealTimeTopicName()).thenReturn("");
+
+    String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
+
+    assertEquals("test-store_rt", result);
+  }
+
+  @Test
+  void testRealTimeTopicNameWithoutHybridConfig() {
+    // Mock the Store
+    Store store = mock(Store.class);
+
+    // Define behavior
+    when(store.getHybridStoreConfig()).thenReturn(null);
+    when(store.getName()).thenReturn("test-store");
+
+    String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
+
+    assertEquals("test-store_rt", result);
   }
 
   @Test
