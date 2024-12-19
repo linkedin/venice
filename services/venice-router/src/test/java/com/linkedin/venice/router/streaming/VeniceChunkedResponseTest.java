@@ -8,7 +8,6 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.RouterStats;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 
@@ -23,7 +22,7 @@ public class VeniceChunkedResponseTest {
         mock(ChannelHandlerContext.class),
         chunkedWriteHandler,
         mock(RouterStats.class),
-        Optional.empty());
+        null);
     assertThrows(
         // This used to throw a NPE as part of a previous regression, we want a better error message
         VeniceException.class,

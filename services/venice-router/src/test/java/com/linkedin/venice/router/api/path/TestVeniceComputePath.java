@@ -16,9 +16,13 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.api.VeniceResponseDecompressor;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -32,6 +36,7 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
+import java.util.TreeMap;
 import org.apache.commons.lang.ArrayUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -42,6 +47,8 @@ public class TestVeniceComputePath {
       + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
       + "         { \"name\": \"id\", \"type\": \"string\" },       "
       + "         { \"name\": \"member_score\", \"type\": \"double\" }        " + "  ]       " + " }       ";
+
+  private final NameRepository nameRepository = new NameRepository();
 
   public static ComputeRequestV1 getComputeRequest() {
     DotProduct dotProduct = new DotProduct();
@@ -118,17 +125,19 @@ public class TestVeniceComputePath {
     for (int apiVersion = 1; apiVersion <= LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST; apiVersion++) {
       BasicFullHttpRequest request = getComputeHttpRequest(resourceName, computeRequest, keys, apiVersion);
 
+      RouterRetryConfig retryConfig = mock(RouterRetryConfig.class);
+      when(retryConfig.isSmartLongTailRetryEnabled()).thenReturn(false);
+      when(retryConfig.getSmartLongTailRetryAbortThresholdMs()).thenReturn(-1);
+      when(retryConfig.getLongTailRetryMaxRouteForMultiKeyReq()).thenReturn(1);
       VeniceComputePath computePath = new VeniceComputePath(
-          storeName,
-          versionNumber,
-          resourceName,
+          nameRepository.getStoreVersionName(resourceName),
           request,
           getVenicePartitionFinder(-1),
           10,
-          false,
-          -1,
-          1,
-          mock(RetryManager.class));
+          mock(AggRouterHttpRequestStats.class),
+          retryConfig,
+          mock(RetryManager.class),
+          mock(VeniceResponseDecompressor.class));
       Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
     }
   }
@@ -203,35 +212,36 @@ public class TestVeniceComputePath {
     }
 
     int maxKeyCount = 100;
-    boolean smartLongTailRetryEnabled = false;
-    int smartLongTailRetryAbortThresholdMs = -1;
-    int longTailRetryMaxRouteForMultiKeyReq = 1;
+
+    RouterRetryConfig retryConfig = mock(RouterRetryConfig.class);
+    when(retryConfig.isSmartLongTailRetryEnabled()).thenReturn(false);
+    when(retryConfig.getSmartLongTailRetryAbortThresholdMs()).thenReturn(-1);
+    when(retryConfig.getLongTailRetryMaxRouteForMultiKeyReq()).thenReturn(1);
+    TreeMap<Integer, Integer> batchGetRetryThresholds = new TreeMap<>();
+    batchGetRetryThresholds.put(1, 1);
+    when(retryConfig.getLongTailRetryForBatchGetThresholdMs()).thenReturn(batchGetRetryThresholds);
 
     VeniceMultiGetPath multiGetPath = new VeniceMultiGetPath(
-        storeName,
-        versionNumber,
-        resourceName,
+        nameRepository.getStoreVersionName(resourceName),
         TestVeniceMultiGetPath.getMultiGetHttpRequest(resourceName, keys, Optional.empty()),
         getVenicePartitionFinder(-1),
         maxKeyCount,
-        smartLongTailRetryEnabled,
-        smartLongTailRetryAbortThresholdMs,
-        null,
-        longTailRetryMaxRouteForMultiKeyReq,
-        mock(RetryManager.class));
+        mock(AggRouterHttpRequestStats.class),
+        retryConfig,
+        mock(RetryManager.class),
+        mock(VeniceResponseDecompressor.class),
+        null);
     byte[] serializedMultiGetRequest = multiGetPath.serializeRouterRequest();
 
     VeniceComputePath computePath = new VeniceComputePath(
-        storeName,
-        LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST,
-        resourceName,
+        nameRepository.getStoreVersionName(resourceName),
         getComputeHttpRequest(resourceName, getComputeRequest(), keys, LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST),
         getVenicePartitionFinder(-1),
         maxKeyCount,
-        smartLongTailRetryEnabled,
-        smartLongTailRetryAbortThresholdMs,
-        longTailRetryMaxRouteForMultiKeyReq,
-        mock(RetryManager.class));
+        mock(AggRouterHttpRequestStats.class),
+        retryConfig,
+        mock(RetryManager.class),
+        mock(VeniceResponseDecompressor.class));
     VeniceMultiGetPath syntheticMultiGetPath = computePath.toMultiGetPath();
     Assert.assertEquals(syntheticMultiGetPath.serializeRouterRequest(), serializedMultiGetRequest);
     Assert
