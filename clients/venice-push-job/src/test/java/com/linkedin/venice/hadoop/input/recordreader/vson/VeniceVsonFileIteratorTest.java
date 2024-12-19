@@ -10,6 +10,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.spark.input.hdfs.TestSparkInputFromHdfs;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -56,9 +57,20 @@ public class VeniceVsonFileIteratorTest {
     assertTrue(exception3.getMessage().contains("RecordReader cannot be null"));
 
     // Case 4: Invalid SequenceFile
-    expectThrows(
+    Exception exception4 = expectThrows(
         VeniceException.class,
         () -> new VeniceVsonFileIterator(fileSystem, tempNonSeqFilePath, mockRecordReader));
+    assertTrue(ExceptionUtils.recursiveMessageContains(exception4, "not a SequenceFile"));
+
+    // Create avro file
+    File tempAvroFile = File.createTempFile("test-file", ".avro", tempDir);
+    Path tempAvroFilePath = new Path(tempAvroFile.getAbsolutePath());
+    TestSparkInputFromHdfs.writeAvroFile(tempDir, tempAvroFilePath.getName(), 1, 2);
+
+    Exception exception5 = expectThrows(
+        VeniceException.class,
+        () -> new VeniceVsonFileIterator(fileSystem, tempAvroFilePath, mockRecordReader));
+    assertTrue(ExceptionUtils.recursiveMessageContains(exception5, "not a SequenceFile"));
   }
 
   @Test

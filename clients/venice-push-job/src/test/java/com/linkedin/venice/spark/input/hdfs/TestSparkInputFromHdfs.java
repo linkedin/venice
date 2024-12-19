@@ -257,7 +257,7 @@ public class TestSparkInputFromHdfs {
     return config;
   }
 
-  private void writeAvroFile(File inputDir, String fileName, int start, int end) throws IOException {
+  public static void writeAvroFile(File inputDir, String fileName, int start, int end) throws IOException {
     File file = new File(inputDir, fileName);
 
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(AVRO_FILE_SCHEMA);
