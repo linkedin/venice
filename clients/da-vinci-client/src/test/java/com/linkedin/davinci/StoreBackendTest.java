@@ -403,6 +403,8 @@ public class StoreBackendTest {
       try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
         assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
       }
+      // Bootstrap checker thread can also modify the versionMap, adding wait-assert here to avoid NPE.
+      assertNotNull(versionMap.get(version2.kafkaTopicName()));
     });
     versionMap.get(version2.kafkaTopicName()).completePartition(partition);
 
