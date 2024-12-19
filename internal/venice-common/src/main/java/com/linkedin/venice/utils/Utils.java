@@ -545,6 +545,18 @@ public class Utils {
     return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
+  public static String getRealTimeTopicNameFromStoreConfig(Store store) {
+    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+    String storeName = store.getName();
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    } else {
+      return composeRealTimeTopic(storeName);
+    }
+  }
+
   /**
    * It follows the following order to search for real time topic name,
    * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name

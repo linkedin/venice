@@ -2725,6 +2725,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Update ZK with the new version
             store.addVersion(version, true);
+
             repository.updateStore(store);
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
@@ -2786,7 +2787,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
                   || store.isIncrementalPushEnabled())) {
                 // Create rt topic in parent colo if the store is aggregate mode hybrid store
-                PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+                PubSubTopic realTimeTopic =
+                    pubSubTopicRepository.getTopic(Utils.getRealTimeTopicNameFromStoreConfig(store));
                 if (!getTopicManager().containsTopic(realTimeTopic)) {
                   getTopicManager().createTopic(
                       realTimeTopic,
@@ -4281,17 +4283,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (multiClusterConfigs.getUpdateRealTimeTopic() && store.isHybrid()
           && partitionCount != store.getPartitionCount()) {
         updateRealTimeTopicName(store);
-        PubSubTopic newRealTimeTopic =
-            getPubSubTopicRepository().getTopic(store.getHybridStoreConfig().getRealTimeTopicName());
-        getTopicManager().createTopic(
-            newRealTimeTopic,
-            partitionCount,
-            clusterConfig.getKafkaReplicationFactorRTTopics(),
-            store.getRetentionTime(),
-            false,
-            // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-            clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-            false);
       }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
