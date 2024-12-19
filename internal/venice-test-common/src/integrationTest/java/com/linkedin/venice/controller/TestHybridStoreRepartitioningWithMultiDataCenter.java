@@ -13,10 +13,14 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -36,6 +40,8 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  List<TopicManager> topicManagers;
+  PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -57,6 +63,11 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         Optional.empty());
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    topicManagers = new ArrayList<>(2);
+    topicManagers
+        .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+    topicManagers
+        .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
   }
 
   @AfterClass(alwaysRun = true)
@@ -101,13 +112,15 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
     TestWriteUtils.updateStore(storeName, parentControllerClient, new UpdateStoreQueryParams().setPartitionCount(2));
 
-    for (ControllerClient controllerClient: childControllerClients) {
+    for (int i = 0; i < childControllerClients.length; i++) {
+      final int ii = i;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
-        String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo);
-        String expectedRealTimeTopicNameInStoreConfig = Utils.createNewRealTimeTopicName(realTimeTopicNameInVersion);
+        StoreInfo storeInfo = childControllerClients[ii].getStore(storeName).getStore();
+        String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
+        PubSubTopic realTimePubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInVersion);
 
-        Assert.assertNotEquals(expectedRealTimeTopicNameInStoreConfig, realTimeTopicNameInVersion);
+        // verify rt topic is created with the default partition count = 3
+        Assert.assertEquals(topicManagers.get(ii).getPartitionCount(realTimePubSubTopic), 3);
       });
     }
 
@@ -119,20 +132,24 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
     }
 
-    for (ControllerClient controllerClient: childControllerClients) {
+    for (int i = 0; i < childControllerClients.length; i++) {
+      final int ii = i;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+        StoreInfo storeInfo = childControllerClients[ii].getStore(storeName).getStore();
         String realTimeTopicNameInBackupVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
         String realTimeTopicNameInCurrentVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(1));
         String expectedRealTimeTopicNameInStoreConfig =
             Utils.createNewRealTimeTopicName(realTimeTopicNameInBackupVersion);
         String actualRealTimeTopicNameInStoreConfig = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
+        PubSubTopic newRtPubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInCurrentVersion);
 
+        // verify rt topic name
         Assert.assertNotEquals(realTimeTopicNameInBackupVersion, realTimeTopicNameInCurrentVersion);
         Assert.assertEquals(realTimeTopicNameInCurrentVersion, actualRealTimeTopicNameInStoreConfig);
         Assert.assertEquals(actualRealTimeTopicNameInStoreConfig, expectedRealTimeTopicNameInStoreConfig);
 
-        storeInfo.getVersions().get(1).getPartitionCount();
+        // verify rt topic is created with the updated partition count = 2
+        Assert.assertEquals(topicManagers.get(ii).getPartitionCount(newRtPubSubTopic), 2);
       });
     }
   }
