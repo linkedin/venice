@@ -72,3 +72,10 @@ sourceSets.main.resources.srcDir(generateSslCertificate)
 ext {
   jacocoCoverageThreshold = 0.33
 }
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}
