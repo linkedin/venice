@@ -1127,10 +1127,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
     prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, true);
-
-    // In case new topic is empty and leader can never become online
-    // TODO: Remove this check after AGG mode is deprecated.
-    defaultReadyToServeChecker.apply(partitionConsumptionState);
   }
 
   /**
@@ -1155,7 +1151,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      return true;
+      // TODO: Remove this check totally once Aggregate mode is fully deprecated.
+      return isHybridAggregateMode();
     }
     return false;
   }

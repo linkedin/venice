@@ -77,6 +77,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -2071,6 +2072,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         }
       }
+      // This ready-to-serve check is acceptable in SIT thread as it happens before subscription.
       if (!isCompletedReport) {
         defaultReadyToServeChecker.apply(newPartitionConsumptionState);
       }
@@ -4566,7 +4568,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionRole = versionRole;
   }
 
-  protected boolean isDaVinciClient() {
+  boolean isDaVinciClient() {
     return isDaVinciClient;
+  }
+
+  boolean isHybridAggregateMode() {
+    return hybridStoreConfig.isPresent()
+        && hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE);
   }
 }
